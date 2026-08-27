@@ -46,7 +46,8 @@ MFA wajib untuk identity yang memiliki salah satu kategori akses berikut:
 - SQ Hub platform administrator atau pengelola Application Access;
 - HCIS Super Admin;
 - administrator aplikasi/domain;
-- role dengan kemampuan mengubah data kepegawaian sensitif, payroll/finance administration, credential, security policy, atau access-control configuration.
+- role yang dapat melihat atau mengubah data berisiko tinggi milik orang lain, termasuk payroll/payslip organisasi, finance administration, credential, security policy, access-control configuration, atau personal-data administration yang sensitif;
+- Human Capital/Employee-master administrator yang dapat melakukan perubahan terhadap data pegawai lintas unit/organisasi.
 
 Domain boleh mewajibkan MFA untuk role tambahan berdasarkan risiko.
 
@@ -108,7 +109,9 @@ Keycloak authenticates identity
         -> domain app checks local role/permission/scope
 ```
 
-Akun yang disabled/suspended pada identity lifecycle tidak boleh memperoleh session baru. Domain suspension/application-access revocation tetap mengikuti owner masing-masing dan tidak boleh direpresentasikan sebagai password hack/fake credential state.
+Akun yang disabled pada **global identity lifecycle** tidak boleh memperoleh session baru. Domain-local suspension/application-access revocation tetap mengikuti owner masing-masing dan tidak boleh otomatis men-disable global identity.
+
+Contoh: Staff dapat kehilangan akses HCIS tetapi tetap memiliki akses sah ke SPMB Admin. HCIS tidak berwenang mematikan SQ Identity global hanya karena status lokal HCIS berubah.
 
 ## 11. Review triggers
 Policy ini harus direview jika:
