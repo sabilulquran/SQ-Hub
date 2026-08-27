@@ -7,7 +7,10 @@ export interface MachinePrincipal {
 export type VerifyMachineToken = (token: string) => Promise<MachinePrincipal>;
 
 export class MachineAuthError extends Error {
-  constructor(message: string) {
+  constructor(
+    public readonly code: "INVALID_TOKEN" | "FORBIDDEN_CLIENT",
+    message: string,
+  ) {
     super(message);
     this.name = "MachineAuthError";
   }
@@ -38,13 +41,13 @@ export function createKeycloakMachineTokenVerifier(input: {
             : null;
 
       if (!clientId || !input.allowedClients.has(clientId)) {
-        throw new MachineAuthError("machine client is not allowed");
+        throw new MachineAuthError("FORBIDDEN_CLIENT", "machine client is not allowed");
       }
 
       return { clientId };
     } catch (error) {
       if (error instanceof MachineAuthError) throw error;
-      throw new MachineAuthError("machine token is invalid");
+      throw new MachineAuthError("INVALID_TOKEN", "machine token is invalid");
     }
   };
 }
