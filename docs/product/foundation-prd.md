@@ -48,6 +48,7 @@ SQ Hub menyimpan registry aplikasi yang bergabung dalam ekosistem, minimum:
 - Application Access tidak menggantikan role/permission bisnis di aplikasi domain.
 - HCIS tetap menentukan permission HCIS; SPMB tetap menentukan permission SPMB.
 - Jangan menjadikan Keycloak role/authorization configuration sebagai source of truth alternatif untuk Application Access atau domain permission.
+- Wave 1 menyediakan operator/CLI path dan server-to-server access check; full admin UI bukan blocker foundation.
 
 ### HUB-FND-006 Hub Launcher
 - Staff dapat melihat aplikasi yang diizinkan dari SQ Hub.
@@ -103,17 +104,26 @@ Contoh target ownership awal:
 ## Experience target
 Staff masuk menggunakan NIP atau email yang sesuai policy melalui SQ Identity, membuka SQ Hub, melihat aplikasi yang memang dimiliki aksesnya, lalu berpindah antara HCIS dan SPMB tanpa login ulang. SQ Identity dan seluruh aplikasi mengikuti bahasa visual SQ yang diturunkan dari baseline HCIS, sambil tetap memiliki karakter domain masing-masing.
 
+## Implementation Wave 1
+Implementation pertama mengikuti `docs/product/implementation-wave-1.md` dan tiga contract:
+- `HUB-IMPL-001` Keycloak staging;
+- `HUB-IMPL-002` Application Registry + Application Access;
+- `HUB-IMPL-003` HCIS OIDC consumer.
+
+Engineering stack mengikuti ADR-0006 dan staging naming untuk Wave 1 menggunakan `login-staging.`, `hub-staging.`, dan `hcis-staging.sabilulquran.or.id`.
+
 ## Open decisions
-- application-access administration workflow;
 - Organizational Unit migration/cutover plan from HCIS;
 - Keycloak production version pin setelah staging verification dan operational sizing;
-- staging hostname convention;
-- exact implementation technology and versioning strategy for shared design packages.
+- exact implementation technology and versioning strategy for distributable shared design packages;
+- full Application Access administration UI/workflow beyond the Wave 1 operator path.
 
 ## Closed decisions references
 - IdP: ADR-0003 Keycloak.
 - Design baseline: ADR-0004 HCIS visual baseline.
 - Staff login/MFA/session policy: `docs/security/staff-authentication-policy.md`.
 - HCIS authentication migration: ADR-0005 + `docs/migration/hcis-auth-cutover-plan.md`.
+- SQ Hub engineering stack: ADR-0006.
+- Wave 1 scope/contracts: `docs/product/implementation-wave-1.md` + `docs/specs/HUB-IMPL-00*.md`.
 
 Open decisions harus ditutup melalui domain/security specification atau ADR sebelum implementasi terkait dimulai.
