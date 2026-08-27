@@ -32,9 +32,28 @@ and applies across SQ Identity and all application frontends.
 - Staff authentication is centralized through SQ Identity.
 - Keycloak is the selected self-hosted Identity Provider engine (ADR-0003).
 - Domain applications trust SQ Identity using standard OIDC/OAuth2 flows.
-- Domain applications do not own staff passwords or MFA material after migration.
-- Applications treat the authenticated `sub` as an opaque stable identifier.
+- Domain applications do not own Staff passwords or MFA material after migration.
+- Applications treat `issuer + sub` as the opaque stable external identity key.
 - Keycloak is not the source of truth for all application/domain authorization.
+- Human login policy: Employee uses NIP/`employee_number` as primary username, verified unique email may be an alternate; Staff without NIP uses verified unique email in Foundation v1.
+
+## Web application authentication pattern
+For internal web applications with a backend, prefer server-side Authorization Code flow:
+```text
+Browser
+   -> Application
+   -> redirect SQ Identity / Keycloak
+   -> user authenticates
+   -> application server callback + code exchange
+   -> resolve issuer+sub to local principal
+   -> check SQ Hub Application Access
+   -> create app-scoped HttpOnly session
+   -> domain authorization
+```
+
+Access/refresh tokens are handled server-side and are not stored in browser localStorage/sessionStorage. Each application owns its own scoped session cookie; SSO comes from the IdP session, not a wildcard shared cookie.
+
+Foundation v1 SSO baseline: idle 8 hours, maximum 12 hours, Remember Me disabled initially, access-token baseline 5 minutes.
 
 ## Authorization split
 SQ Hub owns Application Access: whether an Identity may enter an application.
@@ -42,6 +61,19 @@ SQ Hub owns Application Access: whether an Identity may enter an application.
 Each application owns its domain authorization: what the Identity may do inside that application.
 
 Keycloak owns authentication/session/protocol concerns. Its roles/Authorization Services must not become a second source of truth for Application Access or domain permissions without a superseding ADR.
+
+## HCIS transition pattern
+HCIS migration follows ADR-0005.
+
+Existing HCIS `accounts.id` remains the local authorization principal during migration. HCIS adds `identity_issuer + identity_subject` mapping to Keycloak while retaining existing local role/permission/scope relations.
+
+Credential migration is intentionally avoided:
+- no password hash import;
+- no HCIS MFA-secret import;
+- no recovery-code import;
+- no old session import.
+
+Users activate/create new SQ Identity credentials. Production cutover changes HCIS from local password auth to OIDC as a controlled switch, without a public dual-auth period. Legacy credential data is removed after a maximum 14-day rollback window.
 
 ## Organization
 Target ownership Organizational Unit is SQ Hub. HCIS remains operational with its current organization data until the explicit mapping/migration/cutover plan is completed.
@@ -79,4 +111,6 @@ Staging hostname convention remains TBD.
 - Do not require separate physical servers merely to preserve domain boundaries.
 - Do not introduce event bus/message broker before a concrete workflow requires it.
 - Do not implement custom cryptographic/authentication protocols when Keycloak/standard protocols cover the requirement.
+- Do not migrate legacy HCIS password/MFA formats into Keycloak through custom compatibility plugins without a superseding ADR.
+- Do not silently fall back from failed OIDC authentication to legacy local login.
 - Do not invent a new cross-product visual language that conflicts with the accepted HCIS/SQ design baseline.
