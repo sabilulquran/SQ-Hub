@@ -15,13 +15,13 @@ services:
       retries: 20
     networks:
       - backend
-    mem_limit: ${SQ_HUB_DB_MEMORY_LIMIT:-256m}
+    mem_limit: ${SQ_HUB_DB_MEMORY_LIMIT:-160m}
 
   api:
     build:
       context: ..
       dockerfile: apps/api/Dockerfile
-    image: sq-hub/api:staging
+    image: ${SQ_HUB_API_IMAGE:-ghcr.io/imadjinasi/sq-hub-api:staging}
     restart: unless-stopped
     environment:
       PORT: 3100
@@ -55,7 +55,7 @@ services:
       sq_platform_staging:
         aliases:
           - sq-hub-api-staging
-    mem_limit: ${SQ_HUB_API_MEMORY_LIMIT:-192m}
+    mem_limit: ${SQ_HUB_API_MEMORY_LIMIT:-128m}
 
 networks:
   backend:
