@@ -36,6 +36,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Set up Node for API lockfile
+        if: matrix.name == 'api'
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Generate API lockfile for Docker build context
+        if: matrix.name == 'api'
+        run: npm install --package-lock-only --ignore-scripts
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
