@@ -127,9 +127,89 @@ For each synthetic UAT persona:
 2. obtain its exact OIDC `issuer + sub`;
 3. map that pair to the intended existing HCIS staging `accounts.id`;
 4. create an active SQ Hub Application Access grant for `applicationKey=hcis`;
-5. record only synthetic staging identifiers in UAT evidence.
+5. verify both mappings before browser UAT;
+6. record only synthetic staging identifiers in UAT evidence.
 
-Email or NIP may help an operator locate a candidate account during preview, but persisted binding is only `issuer + sub`.
+Email or NIP may help an operator locate a candidate account before this flow, but persisted binding is only `issuer + sub`.
+
+### 6.1 Map the identity in HCIS
+
+From the HCIS checkout, preview first:
+
+```bash
+docker compose \
+  -p hcis-staging \
+  --env-file infra/.env.staging \
+  -f infra/docker-compose.staging.yml \
+  exec -e HCIS_ALLOW_OIDC_IDENTITY_MAPPING=1 api \
+  node apps/api/dist/modules/auth/cli/map-oidc-identity.js \
+  --account-id <HCIS_ACCOUNT_UUID> \
+  --issuer https://login-staging.sabilulquran.or.id/realms/sq-staff-staging \
+  --subject <KEYCLOAK_SUB>
+```
+
+Only after verifying the preview, append `--apply`. A replacement of a different existing binding additionally requires `--replace`.
+
+The HCIS repository contains the full mapping/unmapping procedure in `docs/migration/HUB-IMPL-003-identity-mapping-cli.md`.
+
+### 6.2 Inspect and grant SQ Hub Application Access
+
+From the SQ Hub checkout, inspect current access first:
+
+```bash
+docker compose \
+  -p sq-hub-staging \
+  --env-file infra/.env.staging \
+  -f infra/docker-compose.staging.yml \
+  exec api \
+  node apps/api/dist/cli/access-admin.js \
+  access show \
+  --issuer https://login-staging.sabilulquran.or.id/realms/sq-staff-staging \
+  --subject <KEYCLOAK_SUB> \
+  --app hcis
+```
+
+Grant access:
+
+```bash
+docker compose \
+  -p sq-hub-staging \
+  --env-file infra/.env.staging \
+  -f infra/docker-compose.staging.yml \
+  exec api \
+  node apps/api/dist/cli/access-admin.js \
+  access grant \
+  --issuer https://login-staging.sabilulquran.or.id/realms/sq-staff-staging \
+  --subject <KEYCLOAK_SUB> \
+  --app hcis \
+  --reason "HUB-IMPL-003 synthetic staging UAT" \
+  --actor <OPERATOR_REF> \
+  --actor-kind human
+```
+
+The command records the actor, reason, target, and resulting access state in SQ Hub audit history.
+
+### 6.3 Revoke for deny/rollback tests
+
+To exercise the required Application Access deny case or to remove the synthetic grant after UAT:
+
+```bash
+docker compose \
+  -p sq-hub-staging \
+  --env-file infra/.env.staging \
+  -f infra/docker-compose.staging.yml \
+  exec api \
+  node apps/api/dist/cli/access-admin.js \
+  access revoke \
+  --issuer https://login-staging.sabilulquran.or.id/realms/sq-staff-staging \
+  --subject <KEYCLOAK_SUB> \
+  --app hcis \
+  --reason "HUB-IMPL-003 deny or cleanup rehearsal" \
+  --actor <OPERATOR_REF> \
+  --actor-kind human
+```
+
+Revoking HCIS Application Access must not disable the global Keycloak identity and must not remove access to unrelated applications.
 
 ## 7. Browser UAT matrix
 
