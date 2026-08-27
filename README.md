@@ -22,6 +22,7 @@ Mulai dari:
 - [`docs/architecture/adr/`](docs/architecture/adr/) — keputusan arsitektur accepted.
 - [`docs/security/security-baseline.md`](docs/security/security-baseline.md) — security baseline.
 - [`docs/design/design-system-direction.md`](docs/design/design-system-direction.md) — arah SQ Design System.
+- [`docs/operations/operational-baseline.md`](docs/operations/operational-baseline.md) — environment, observability, backup, dan recovery minimum.
 - [`docs/development/ai-assisted-workflow.md`](docs/development/ai-assisted-workflow.md) — workflow pengembangan AI-assisted.
 
 ## Initial URLs
