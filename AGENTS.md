@@ -27,6 +27,8 @@ Agent tidak boleh membaca seluruh `docs/` secara default.
 3. Baca hanya domain/ADR/security/design/operations docs yang dirujuk spec atau relevan langsung.
 4. Inspeksi existing code dan tests.
 
+Untuk task identity/auth, minimum baca ADR-0003 dan security baseline. Untuk task visual lintas aplikasi, baca `docs/design/hcis-baseline.md` sebelum membuka seluruh frontend HCIS.
+
 ## 4. Platform boundaries
 - SQ Hub adalah shared digital foundation, bukan ERP monolith.
 - Business logic HCIS, SPMB, Finance, Workspace, Academic, dan aplikasi lain tetap dimiliki aplikasi masing-masing.
@@ -36,11 +38,12 @@ Agent tidak boleh membaca seluruh `docs/` secara default.
 - Jangan memperkenalkan microservice, event bus, atau shared abstraction besar tanpa kebutuhan nyata dan ADR.
 
 ## 5. Identity and access
-- Staff authentication terpusat melalui SQ Identity.
-- Password, MFA, recovery, dan session identity bukan tanggung jawab aplikasi domain.
-- Application Access dikelola secara global oleh SQ Hub.
-- Permission dan role spesifik domain tetap dimiliki aplikasi domain.
-- Technical identity identifier diperlakukan sebagai opaque stable identifier; aplikasi tidak boleh bergantung pada formatnya.
+- Staff authentication terpusat melalui SQ Identity dengan Keycloak sebagai IdP engine (ADR-0003).
+- Jangan membuat custom OAuth/OIDC/MFA protocol implementation ketika Keycloak/standard flow memenuhi kebutuhan.
+- Password, MFA, recovery, dan IdP session bukan tanggung jawab aplikasi domain.
+- Application Access dikelola secara global oleh SQ Hub, bukan menjadi Keycloak role source of truth.
+- Permission dan role spesifik domain tetap dimiliki aplikasi domain; jangan memindahkannya ke Keycloak Authorization Services tanpa superseding ADR.
+- Technical identity identifier/`sub` diperlakukan sebagai opaque stable identifier; aplikasi tidak boleh bergantung pada formatnya.
 - Untuk Employee, NIP/nomor pegawai dapat menjadi human login identifier. Staff tanpa NIP mengikuti policy identifier yang ditetapkan secara eksplisit.
 - NIK tidak digunakan sebagai username/login identifier.
 
@@ -48,17 +51,21 @@ Agent tidak boleh membaca seluruh `docs/` secara default.
 Organizational Unit adalah target shared master milik SQ Hub. Existing HCIS organization data tetap operasional sampai migration/cutover eksplisit selesai. Jangan membuat master unit paralel atau dual-write tanpa aturan sinkronisasi yang terdokumentasi.
 
 ## 7. Design system
-- Semua aplikasi SQ Hub harus menggunakan prinsip visual, design tokens, dan shared UI patterns yang sama.
-- Jangan menciptakan pola UI baru jika pola yang sesuai sudah ada.
+- HCIS visual system pada snapshot yang ditetapkan ADR-0004 adalah baseline awal SQ Design System.
+- Semua aplikasi SQ Hub harus menggunakan prinsip visual, semantic tokens, dan shared UI patterns yang senada dengan baseline tersebut.
+- SQ Identity/Keycloak harus ditheme mengikuti SQ design language; jangan menerima default provider UI sebagai final product experience.
+- Jangan menciptakan pola UI baru jika pola HCIS/SQ yang sesuai sudah ada.
+- Jangan menyalin business-specific HCIS component lalu menganggapnya generic shared component.
 - Komponen shared baru dibuat saat reuse nyata atau kebutuhan lintas aplikasi terbukti.
 - Business-specific UI tetap berada di aplikasi domain.
+- Setelah shared primitives tersedia di SQ Hub, SQ Hub menjadi canonical source untuk design system lintas produk.
 
 ## 8. Security and privacy
 - Gunakan data sintetis untuk development, prompt, test, screenshot, dan demo.
 - Jangan commit secret, credential, token, production dump, atau data pribadi production.
 - Terapkan least privilege.
 - Auth, application access, cryptography, audit, dan migration memerlukan review tambahan.
-- Jangan memberi agent AI unrestricted write access ke production database.
+- Jangan memberi agent AI unrestricted write access ke production database atau Keycloak admin API.
 
 ## 9. Environments and operations
 Development/staging dan production harus terpisah secara logis walaupun dapat berada pada VPS yang sama. Agent tidak boleh menggunakan production sebagai playground development. Operational changes mengikuti `docs/operations/operational-baseline.md`.
@@ -71,7 +78,7 @@ Sebelum merge:
 - dokumentasi sinkron;
 - migration memiliki recovery plan;
 - tidak ada secret atau data production di diff;
-- AI review memeriksa invented requirement, over-abstraction, unnecessary dependency, hidden authorization, destructive migration, silent fallback, dan data leakage.
+- AI review memeriksa invented requirement, over-abstraction, unnecessary dependency, hidden authorization, destructive migration, silent fallback, data leakage, dan design drift.
 
 ## 11. Pull request discipline
 - Satu PR memiliki tujuan dan scope jelas.
