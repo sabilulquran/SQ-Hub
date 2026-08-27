@@ -1,0 +1,33 @@
+{
+  "name": "@sq-hub/api",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node --env-file=.env.local --import tsx --watch src/server.ts",
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/server.js",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "lint": "eslint .",
+    "test": "vitest run",
+    "migrate": "node --env-file-if-exists=.env.local --import tsx src/db/migrate.ts",
+    "seed": "node --env-file-if-exists=.env.local --import tsx src/db/seed.ts",
+    "access:admin": "node --env-file-if-exists=.env.local --import tsx src/cli/access-admin.ts"
+  },
+  "dependencies": {
+    "fastify": "5.12.1",
+    "jose": "6.2.10",
+    "pg": "8.16.3",
+    "zod": "3.24.2"
+  },
+  "devDependencies": {
+    "@eslint/js": "10.0.1",
+    "@types/node": "22.16.5",
+    "@types/pg": "8.15.5",
+    "eslint": "10.9.0",
+    "globals": "17.11.0",
+    "tsx": "4.23.12",
+    "typescript": "5.8.3",
+    "typescript-eslint": "8.67.0",
+    "vitest": "4.1.11"
+  }
+}

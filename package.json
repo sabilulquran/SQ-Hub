@@ -1,0 +1,20 @@
+{
+  "name": "sq-hub",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev:api": "npm --workspace @sq-hub/api run dev",
+    "build": "npm --workspace @sq-hub/api run build",
+    "typecheck": "npm --workspace @sq-hub/api run typecheck",
+    "lint": "npm --workspace @sq-hub/api run lint",
+    "test": "npm --workspace @sq-hub/api run test",
+    "migrate": "npm --workspace @sq-hub/api run migrate",
+    "seed": "npm --workspace @sq-hub/api run seed",
+    "access:admin": "npm --workspace @sq-hub/api run access:admin --",
+    "db:up": "docker compose --env-file infra/.env.local -f infra/docker-compose.local.yml up -d postgres",
+    "db:down": "docker compose --env-file infra/.env.local -f infra/docker-compose.local.yml down"
+  }
+}
