@@ -3,6 +3,8 @@ dist/
 .env
 .env.local
 .env.*.local
+infra/keycloak/.env.staging
+infra/keycloak/backup/
 coverage/
 .DS_Store
 *.log
