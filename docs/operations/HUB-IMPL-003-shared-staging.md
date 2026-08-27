@@ -25,6 +25,8 @@ Internet
 
 The `sq_platform_staging` Docker network is a private service-discovery boundary. The SQ Hub API also binds `127.0.0.1:18100` only for VPS-local smoke checks; it is not a public application endpoint.
 
+The current shared YSQ staging VPS is memory-constrained. CI publishes optimized runtime images to GHCR; the VPS deployment path must use `docker compose pull` and `up --no-build` rather than building Node/Keycloak images on the server.
+
 ## 1. Create shared service network
 
 Create once on the staging VPS:
@@ -73,14 +75,20 @@ docker compose \
   config -q
 ```
 
-Start with an isolated Compose project name:
+Pull the prebuilt staging image and start with an isolated Compose project name:
 
 ```bash
 docker compose \
   -p sq-hub-staging \
   --env-file infra/.env.staging \
   -f infra/docker-compose.staging.yml \
-  up -d --build
+  pull
+
+docker compose \
+  -p sq-hub-staging \
+  --env-file infra/.env.staging \
+  -f infra/docker-compose.staging.yml \
+  up -d --no-build
 ```
 
 The API startup command applies migrations and idempotently seeds the `hcis` application registry entry.
