@@ -17,12 +17,13 @@ services:
       - keycloak_staging_postgres:/var/lib/postgresql/data
     networks:
       - sq_identity_internal
+    mem_limit: ${KEYCLOAK_DB_MEMORY_LIMIT:-192m}
 
   keycloak:
     build:
       context: ../..
       dockerfile: infra/keycloak/Containerfile
-    image: sq-hub/keycloak:26.7.2-staging
+    image: ${SQ_HUB_KEYCLOAK_IMAGE:-ghcr.io/imadjinasi/sq-hub-keycloak:26.7.2-staging}
     restart: unless-stopped
     depends_on:
       keycloak-db:
@@ -46,7 +47,7 @@ services:
     ports:
       - "127.0.0.1:${KEYCLOAK_HTTP_PORT:-8080}:8080"
       - "127.0.0.1:${KEYCLOAK_MANAGEMENT_PORT:-9000}:9000"
-    mem_limit: ${KEYCLOAK_MEMORY_LIMIT:-2g}
+    mem_limit: ${KEYCLOAK_MEMORY_LIMIT:-768m}
     healthcheck:
       test:
         - CMD-SHELL
