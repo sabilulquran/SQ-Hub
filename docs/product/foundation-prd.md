@@ -66,6 +66,7 @@ Contoh target ownership awal:
 
 ## Non-goals v1
 - universal Person Registry;
+- central authentication untuk applicant, guardian, student, vendor, atau external user lain; kebutuhan external identity diputuskan oleh domain terkait dan ADR terpisah bila kelak perlu disatukan;
 - Finance, Workspace, Academic, Asset business logic;
 - universal domain permission engine;
 - custom OAuth/OIDC protocol implementation;
