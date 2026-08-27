@@ -7,7 +7,12 @@ SQ Hub menyediakan fondasi lintas aplikasi untuk identity/SSO staf, Organization
 SQ Hub **bukan ERP monolith**. Business logic HCIS, SPMB, Finance, Workspace, Academic, dan aplikasi domain lain tetap dimiliki aplikasi masing-masing.
 
 ## Status
-Foundation documentation accepted. Wave 1 implementation contracts are defined; application/runtime implementation has not yet been completed.
+Foundation documentation accepted. Wave 1 implementation is in progress.
+
+Current runtime status:
+- `HUB-IMPL-002` Application Registry + Application Access — implemented in the SQ Hub API foundation and protected by CI;
+- `HUB-IMPL-001` Keycloak staging foundation — next infrastructure implementation;
+- `HUB-IMPL-003` HCIS OIDC consumer — follows after the identity/access foundations are available.
 
 Keputusan foundation yang sudah dikunci:
 - **SQ Identity menggunakan Keycloak** sebagai self-hosted Identity Provider engine.
