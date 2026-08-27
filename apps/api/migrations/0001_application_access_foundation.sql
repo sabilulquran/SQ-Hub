@@ -14,7 +14,7 @@ CREATE TABLE IF NOT EXISTS application_access (
   id uuid PRIMARY KEY,
   identity_issuer text NOT NULL CHECK (length(trim(identity_issuer)) > 0),
   identity_subject text NOT NULL CHECK (length(trim(identity_subject)) > 0),
-  application_id uuid NOT NULL REFERENCES applications(id) ON DELETE CASCADE,
+  application_id uuid NOT NULL REFERENCES applications(id) ON DELETE RESTRICT,
   status text NOT NULL CHECK (status IN ('active', 'revoked')),
   reason text NULL,
   actor_kind text NOT NULL CHECK (actor_kind IN ('human', 'service', 'system')),
