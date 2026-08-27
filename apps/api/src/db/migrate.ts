@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { readdir, readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 
@@ -13,6 +14,7 @@ try {
   await pool.query(`
     CREATE TABLE IF NOT EXISTS schema_migrations (
       filename text PRIMARY KEY,
+      checksum_sha256 text NOT NULL CHECK (length(checksum_sha256) = 64),
       applied_at timestamptz NOT NULL DEFAULT now()
     )
   `);
@@ -22,27 +24,41 @@ try {
     .sort();
 
   for (const filename of filenames) {
-    const existing = await pool.query<{ filename: string }>(
-      "SELECT filename FROM schema_migrations WHERE filename = $1",
-      [filename],
-    );
-    if (existing.rowCount && existing.rowCount > 0) continue;
-
     const sql = await readFile(new URL(`../../migrations/${filename}`, import.meta.url), "utf8");
+    const checksum = createHash("sha256").update(sql).digest("hex");
     const client = await pool.connect();
+
     try {
       await client.query("BEGIN");
       await client.query("SELECT pg_advisory_xact_lock(77241002)");
-      const recheck = await client.query<{ filename: string }>(
-        "SELECT filename FROM schema_migrations WHERE filename = $1",
+
+      const existing = await client.query<{ checksum: string }>(
+        `
+          SELECT checksum_sha256 AS checksum
+          FROM schema_migrations
+          WHERE filename = $1
+        `,
         [filename],
       );
-      if (!recheck.rowCount) {
-        await client.query(sql);
-        await client.query("INSERT INTO schema_migrations (filename) VALUES ($1)", [filename]);
-        console.log(`applied ${filename}`);
+      const applied = existing.rows[0];
+
+      if (applied) {
+        if (applied.checksum !== checksum) {
+          throw new Error(
+            `Migration ${filename} checksum changed after application. Create a new migration instead of editing an applied file.`,
+          );
+        }
+        await client.query("COMMIT");
+        continue;
       }
+
+      await client.query(sql);
+      await client.query(
+        "INSERT INTO schema_migrations (filename, checksum_sha256) VALUES ($1, $2)",
+        [filename, checksum],
+      );
       await client.query("COMMIT");
+      console.log(`applied ${filename}`);
     } catch (error) {
       await client.query("ROLLBACK");
       throw error;
