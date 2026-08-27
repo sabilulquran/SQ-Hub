@@ -64,8 +64,8 @@ SQ Hub menyimpan registry aplikasi yang bergabung dalam ekosistem, minimum:
 Perubahan sensitif pada identity/application access dan tindakan administrasi penting harus dapat diaudit: actor, action, target, time, dan outcome minimum.
 
 ### HUB-FND-009 Staff MFA
-- MFA wajib untuk privileged/platform/application administrators dan role dengan write access sensitif seperti employee master/payroll/security/access control sesuai `staff-authentication-policy.md`.
-- Staff biasa belum diwajibkan MFA pada Foundation v1, tetapi boleh enroll secara sukarela.
+- MFA wajib untuk privileged/platform/application administrators dan identity yang dapat melihat atau mengubah data berisiko tinggi milik orang lain, termasuk payroll organisasi, finance administration, employee-master administration, credential, security, dan access control sesuai `staff-authentication-policy.md`.
+- Staff biasa tanpa akses sensitif/privileged belum diwajibkan MFA pada Foundation v1, tetapi boleh enroll secara sukarela.
 - Baseline initial factor adalah TOTP + recovery codes; passkey/WebAuthn boleh digunakan setelah UAT.
 
 ### HUB-FND-010 HCIS Identity Migration
@@ -74,6 +74,7 @@ Perubahan sensitif pada identity/application access dan tindakan administrasi pe
 - HCIS menyimpan mapping `identity_issuer + identity_subject` terhadap local principal.
 - Password hash, MFA secret, recovery codes, dan session lama HCIS **tidak** dimigrasikan ke Keycloak.
 - Staff membuat credential baru pada SQ Identity.
+- HCIS account status adalah domain-local state; suspension/inactive HCIS tidak otomatis men-disable global SQ Identity.
 - Production cutover menggunakan controlled switch, bukan dua login publik paralel.
 - Credential lama boleh dipertahankan maksimum 14 hari hanya sebagai rollback window, kemudian wajib dihapus setelah cutover diterima.
 
