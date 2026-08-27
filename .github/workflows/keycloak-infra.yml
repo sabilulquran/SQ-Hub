@@ -1,0 +1,179 @@
+name: Keycloak Infra
+
+on:
+  pull_request:
+    paths:
+      - "infra/keycloak/**"
+      - ".github/workflows/keycloak-infra.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "infra/keycloak/**"
+      - ".github/workflows/keycloak-infra.yml"
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    env:
+      KEYCLOAK_DB_NAME: keycloak_staging
+      KEYCLOAK_DB_USERNAME: keycloak
+      KEYCLOAK_DB_PASSWORD: ci-keycloak-db-password-only
+      KEYCLOAK_BOOTSTRAP_ADMIN_USERNAME: ci-bootstrap-admin
+      KEYCLOAK_BOOTSTRAP_ADMIN_PASSWORD: ci-bootstrap-admin-password-only
+      KEYCLOAK_HOSTNAME: http://127.0.0.1:8080
+      KEYCLOAK_HTTP_PORT: "8080"
+      KEYCLOAK_MANAGEMENT_PORT: "9000"
+      KEYCLOAK_MEMORY_LIMIT: 2g
+      KEYCLOAK_ENV_FILE: /tmp/keycloak-ci.env
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate realm JSON
+        run: jq empty infra/keycloak/realm/sq-staff-staging-realm.json
+
+      - name: Write CI-only env file
+        shell: bash
+        run: |
+          cat > "$KEYCLOAK_ENV_FILE" <<EOF
+          KEYCLOAK_HOSTNAME=$KEYCLOAK_HOSTNAME
+          KEYCLOAK_HTTP_PORT=$KEYCLOAK_HTTP_PORT
+          KEYCLOAK_MANAGEMENT_PORT=$KEYCLOAK_MANAGEMENT_PORT
+          KEYCLOAK_MEMORY_LIMIT=$KEYCLOAK_MEMORY_LIMIT
+          KEYCLOAK_DB_NAME=$KEYCLOAK_DB_NAME
+          KEYCLOAK_DB_USERNAME=$KEYCLOAK_DB_USERNAME
+          KEYCLOAK_DB_PASSWORD=$KEYCLOAK_DB_PASSWORD
+          KEYCLOAK_BOOTSTRAP_ADMIN_USERNAME=$KEYCLOAK_BOOTSTRAP_ADMIN_USERNAME
+          KEYCLOAK_BOOTSTRAP_ADMIN_PASSWORD=$KEYCLOAK_BOOTSTRAP_ADMIN_PASSWORD
+          EOF
+          chmod 600 "$KEYCLOAK_ENV_FILE"
+
+      - name: Validate compose rendering
+        run: |
+          docker compose \
+            --env-file "$KEYCLOAK_ENV_FILE" \
+            -f infra/keycloak/docker-compose.staging.yml \
+            -f infra/keycloak/docker-compose.bootstrap.yml \
+            config > /tmp/keycloak-compose.yml
+
+      - name: Build and start Keycloak smoke stack
+        run: |
+          docker compose \
+            --env-file "$KEYCLOAK_ENV_FILE" \
+            -f infra/keycloak/docker-compose.staging.yml \
+            -f infra/keycloak/docker-compose.bootstrap.yml \
+            up -d --build
+
+      - name: Wait for Keycloak readiness
+        shell: bash
+        run: |
+          ready=0
+          for attempt in $(seq 1 60); do
+            if curl --fail --silent http://127.0.0.1:9000/health/ready > /tmp/keycloak-health.json; then
+              ready=1
+              break
+            fi
+            sleep 5
+          done
+          if [[ "$ready" != "1" ]]; then
+            docker compose \
+              --env-file "$KEYCLOAK_ENV_FILE" \
+              -f infra/keycloak/docker-compose.staging.yml \
+              -f infra/keycloak/docker-compose.bootstrap.yml \
+              logs keycloak
+            exit 1
+          fi
+          jq -e '.status == "UP"' /tmp/keycloak-health.json
+
+      - name: Verify OIDC issuer
+        run: |
+          curl --fail --silent \
+            http://127.0.0.1:8080/realms/sq-staff-staging/.well-known/openid-configuration \
+            > /tmp/discovery.json
+          jq -e '.issuer == "http://127.0.0.1:8080/realms/sq-staff-staging"' /tmp/discovery.json
+
+      - name: Verify imported realm policy and clients
+        shell: bash
+        run: |
+          token="$({
+            curl --fail --silent \
+              --data-urlencode "client_id=admin-cli" \
+              --data-urlencode "username=$KEYCLOAK_BOOTSTRAP_ADMIN_USERNAME" \
+              --data-urlencode "password=$KEYCLOAK_BOOTSTRAP_ADMIN_PASSWORD" \
+              --data-urlencode "grant_type=password" \
+              http://127.0.0.1:8080/realms/master/protocol/openid-connect/token
+          } | jq -r '.access_token')"
+          test -n "$token"
+          test "$token" != "null"
+
+          curl --fail --silent \
+            -H "Authorization: Bearer $token" \
+            http://127.0.0.1:8080/admin/realms/sq-staff-staging \
+            > /tmp/realm.json
+
+          jq -e '
+            .realm == "sq-staff-staging" and
+            .registrationAllowed == false and
+            .rememberMe == false and
+            .duplicateEmailsAllowed == false and
+            .bruteForceProtected == true and
+            .failureFactor == 5 and
+            .passwordPolicy == "length(12) and notUsername" and
+            .ssoSessionIdleTimeout == 28800 and
+            .ssoSessionMaxLifespan == 43200 and
+            .accessTokenLifespan == 300 and
+            .loginTheme == "sq-hub"
+          ' /tmp/realm.json
+
+          for client_id in hcis-staging sq-hub-api-staging hcis-api-staging; do
+            curl --fail --silent \
+              -H "Authorization: Bearer $token" \
+              "http://127.0.0.1:8080/admin/realms/sq-staff-staging/clients?clientId=$client_id" \
+              > "/tmp/client-$client_id.json"
+            jq -e 'length == 1' "/tmp/client-$client_id.json"
+          done
+
+          jq -e '.[0].standardFlowEnabled == true and .[0].directAccessGrantsEnabled == false' \
+            /tmp/client-hcis-staging.json
+          jq -e '.[0].bearerOnly == true' /tmp/client-sq-hub-api-staging.json
+          jq -e '.[0].serviceAccountsEnabled == true and .[0].directAccessGrantsEnabled == false' \
+            /tmp/client-hcis-api-staging.json
+
+      - name: Verify backup and disposable restore
+        run: |
+          bash infra/keycloak/scripts/backup.sh /tmp/keycloak-ci.dump
+          bash infra/keycloak/scripts/restore-check.sh /tmp/keycloak-ci.dump
+
+      - name: Reject committed Keycloak secrets
+        shell: bash
+        run: |
+          if grep -R -n -E '"secret"[[:space:]]*:[[:space:]]*"[^$][^"]+"' infra/keycloak/realm; then
+            echo "A client secret appears to be committed in realm configuration." >&2
+            exit 1
+          fi
+
+      - name: Show service status on failure
+        if: failure()
+        run: |
+          docker compose \
+            --env-file "$KEYCLOAK_ENV_FILE" \
+            -f infra/keycloak/docker-compose.staging.yml \
+            -f infra/keycloak/docker-compose.bootstrap.yml \
+            ps || true
+          docker compose \
+            --env-file "$KEYCLOAK_ENV_FILE" \
+            -f infra/keycloak/docker-compose.staging.yml \
+            -f infra/keycloak/docker-compose.bootstrap.yml \
+            logs --no-color keycloak keycloak-db || true
+
+      - name: Tear down smoke stack
+        if: always()
+        run: |
+          docker compose \
+            --env-file "$KEYCLOAK_ENV_FILE" \
+            -f infra/keycloak/docker-compose.staging.yml \
+            -f infra/keycloak/docker-compose.bootstrap.yml \
+            down -v || true
