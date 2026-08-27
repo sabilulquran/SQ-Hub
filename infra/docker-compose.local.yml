@@ -1,0 +1,19 @@
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-sq_hub}
+      POSTGRES_USER: ${POSTGRES_USER:-sq_hub}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-sq_hub}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-sq_hub} -d ${POSTGRES_DB:-sq_hub}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    volumes:
+      - sq_hub_postgres_local:/var/lib/postgresql/data
+
+volumes:
+  sq_hub_postgres_local:
