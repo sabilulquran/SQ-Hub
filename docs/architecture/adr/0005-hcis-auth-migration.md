@@ -45,7 +45,8 @@ A future authorization-domain refactor may rename `accounts` to a clearer princi
 ## Login identifier mapping
 For migrated Employee accounts:
 - Keycloak username = HCIS `employees.employee_number` (NIP) when available;
-- Keycloak email = account/employee email after validation;
+- Keycloak email = validated `accounts.email`, because every current HCIS account already requires an email;
+- `employees.email` is treated as a comparison/profile source during migration; if it differs materially from `accounts.email`, migration reports the mismatch for explicit resolution instead of guessing;
 - email login may be enabled as alternate login when unique and verified.
 
 For non-Employee Staff that do not have NIP, use verified unique email as username during Foundation v1.
@@ -120,11 +121,16 @@ Before HCIS production cutover, every migrated Staff identity that should use HC
 
 Do not use Keycloak realm/client roles as a hidden substitute for the SQ Hub Application Access source of truth.
 
-## Status mapping
-Migration tooling must explicitly map account lifecycle state. Initial rule:
-- eligible `active` HCIS account -> provisioned/enabled identity after activation requirements are satisfied;
-- `suspended` / `inactive` -> no enabled HCIS access;
-- `invited` -> provisioned with required activation actions or held pending according to the migration runbook.
+## Lifecycle boundary
+HCIS account status is **domain-local state** and must not silently become global SQ Identity lifecycle state.
+
+Initial migration rule:
+- eligible `active` HCIS account -> candidate for HCIS Application Access after identity activation;
+- HCIS `suspended` / `inactive` -> deny/revoke HCIS Application Access and/or local HCIS authorization, **not automatically disable the global Keycloak identity**;
+- `invited` -> provision with required activation actions or hold pending according to the migration runbook;
+- global Keycloak disablement is performed only when the Staff identity lifecycle owner determines the person should no longer authenticate to any SQ application.
+
+Example: a Staff member may lose HCIS access but still legitimately need SPMB Admin or another application. HCIS is not allowed to disable that person's global identity merely because its local account is suspended.
 
 The migration must report ambiguous/missing employee/email/NIP mapping rather than guessing.
 
@@ -144,3 +150,4 @@ No automatic silent fallback from OIDC failure to local password login is allowe
 - Migration implementation is simpler and safer than maintaining legacy credential compatibility inside Keycloak.
 - HCIS authentication code can be deleted after a short verified rollback window.
 - A later application can reuse the same SQ Identity without inheriting HCIS credential tables.
+- Domain-local suspension cannot accidentally lock a Staff member out of unrelated SQ applications.
