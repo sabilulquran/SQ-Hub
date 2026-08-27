@@ -43,7 +43,10 @@ jobs:
       - name: Install dependencies
         run: npm install
 
-      - name: Apply migrations
+      - name: Apply migrations from empty database
+        run: npm run migrate
+
+      - name: Verify migrations are idempotent
         run: npm run migrate
 
       - name: Seed staging-shaped registry data
