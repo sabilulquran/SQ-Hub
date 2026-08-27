@@ -1,10 +1,10 @@
 login-staging.sabilulquran.or.id {
     encode zstd gzip
 
-    @admin path /admin/*
+    @admin path /admin /admin/*
     respond @admin 404
 
-    @masterRealm path /realms/master/*
+    @masterRealm path /realms/master /realms/master/*
     respond @masterRealm 404
 
     reverse_proxy sq-identity-staging:8080 {
