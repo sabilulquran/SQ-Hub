@@ -30,8 +30,10 @@ Do not require nested `*.staging.sabilulquran.or.id` naming in Wave 1.
 - Credentials are injected at runtime and not committed.
 
 ## Realm
-Create one Staff realm for Wave 1, recommended key:
-`SQ-Staff-Staging`
+Create one Staff realm for Wave 1 with stable lowercase key:
+`sq-staff-staging`
+
+Realm name is part of the OIDC issuer URL and therefore must not be treated as cosmetic after identity mappings are created. Do not rename the realm after staging mappings exist without an explicit migration.
 
 Realm behavior:
 - self-registration disabled;
@@ -112,6 +114,7 @@ No production Staff credential/data is required for Wave 1.
 - `login-staging.sabilulquran.or.id` serves SQ Identity over HTTPS;
 - Keycloak version is explicitly pinned, not `latest`;
 - readiness check reports healthy after full initialization;
+- OIDC issuer contains the stable `sq-staff-staging` realm key;
 - login with synthetic NIP username succeeds;
 - alternate verified email login is verified if enabled;
 - incorrect credentials trigger expected protection behavior;
