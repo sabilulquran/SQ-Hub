@@ -24,10 +24,17 @@ Jika sumber bertentangan, jangan menebak. Perbarui specification/ADR atau eskala
 Agent tidak boleh membaca seluruh `docs/` secara default.
 1. Baca `AGENTS.md`.
 2. Baca spec task.
-3. Baca hanya domain/ADR/security/design/operations docs yang dirujuk spec atau relevan langsung.
+3. Baca hanya domain/ADR/security/design/operations/migration docs yang dirujuk spec atau relevan langsung.
 4. Inspeksi existing code dan tests.
 
-Untuk task identity/auth, minimum baca ADR-0003 dan security baseline. Untuk task visual lintas aplikasi, baca `docs/design/hcis-baseline.md` sebelum membuka seluruh frontend HCIS.
+Untuk task identity/auth, minimum baca:
+- ADR-0003 (Keycloak);
+- ADR-0005 (HCIS auth migration) bila menyentuh HCIS;
+- `docs/security/staff-authentication-policy.md`;
+- `docs/security/security-baseline.md`;
+- cutover plan bila task memengaruhi provisioning/migration/deployment.
+
+Untuk task visual lintas aplikasi, baca `docs/design/hcis-baseline.md` sebelum membuka seluruh frontend HCIS.
 
 ## 4. Platform boundaries
 - SQ Hub adalah shared digital foundation, bukan ERP monolith.
@@ -43,9 +50,20 @@ Untuk task identity/auth, minimum baca ADR-0003 dan security baseline. Untuk tas
 - Password, MFA, recovery, dan IdP session bukan tanggung jawab aplikasi domain.
 - Application Access dikelola secara global oleh SQ Hub, bukan menjadi Keycloak role source of truth.
 - Permission dan role spesifik domain tetap dimiliki aplikasi domain; jangan memindahkannya ke Keycloak Authorization Services tanpa superseding ADR.
-- Technical identity identifier/`sub` diperlakukan sebagai opaque stable identifier; aplikasi tidak boleh bergantung pada formatnya.
-- Untuk Employee, NIP/nomor pegawai dapat menjadi human login identifier. Staff tanpa NIP mengikuti policy identifier yang ditetapkan secara eksplisit.
+- Technical identity mapping menggunakan OIDC `issuer + sub` sebagai opaque stable identifier; aplikasi tidak boleh bergantung pada formatnya.
+- Employee login menggunakan NIP/`employee_number` sebagai primary username; verified unique email dapat menjadi alternate login.
+- Staff tanpa NIP menggunakan verified unique email pada Foundation v1; jangan invent Staff number.
 - NIK tidak digunakan sebagai username/login identifier.
+- Browser app tidak menyimpan access/refresh token di localStorage/sessionStorage.
+- Jangan membuat wildcard/shared auth cookie lintas seluruh subdomain.
+
+### HCIS auth migration guardrails
+- Preserve existing HCIS local principal `accounts.id` during migration.
+- Jangan migrasikan password hash, MFA secret, recovery code, atau session HCIS ke Keycloak.
+- Jangan membuat custom Keycloak credential compatibility plugin kecuali ada superseding ADR.
+- Production tidak boleh menawarkan local-password login dan OIDC login secara paralel setelah cutover.
+- OIDC failure harus fail closed; tidak boleh silent fallback ke local auth.
+- Legacy credential retention maksimum 14 hari hanya untuk explicit rollback, lalu wajib dihapus setelah accepted cutover.
 
 ## 6. Organization
 Organizational Unit adalah target shared master milik SQ Hub. Existing HCIS organization data tetap operasional sampai migration/cutover eksplisit selesai. Jangan membuat master unit paralel atau dual-write tanpa aturan sinkronisasi yang terdokumentasi.
@@ -79,6 +97,8 @@ Sebelum merge:
 - migration memiliki recovery plan;
 - tidak ada secret atau data production di diff;
 - AI review memeriksa invented requirement, over-abstraction, unnecessary dependency, hidden authorization, destructive migration, silent fallback, data leakage, dan design drift.
+
+Untuk auth/OIDC migration, verification juga wajib memeriksa identity mapping, fail-closed behavior, token storage, cookie security, Application Access, local authorization continuity, logout, backup/restore, dan rollback rehearsal.
 
 ## 11. Pull request discipline
 - Satu PR memiliki tujuan dan scope jelas.
