@@ -3,20 +3,24 @@ import { z } from "zod";
 import type { ApplicationAccessRepository } from "./repository.js";
 import type { AccessDecision, AccessRecord, ActorRef, ApplicationRecord, AuditRecord } from "./types.js";
 
-export const identityRefSchema = z.object({
-  issuer: z.string().url().max(2048),
-  subject: z.string().trim().min(1).max(512),
-});
+export const identityRefSchema = z
+  .object({
+    issuer: z.string().url().max(2048),
+    subject: z.string().trim().min(1).max(512),
+  })
+  .strict();
 
 export const applicationKeySchema = z
   .string()
   .trim()
   .regex(/^[a-z0-9][a-z0-9-]{0,62}$/);
 
-export const actorSchema = z.object({
-  kind: z.enum(["human", "service", "system"]),
-  ref: z.string().trim().min(1).max(512),
-});
+export const actorSchema = z
+  .object({
+    kind: z.enum(["human", "service", "system"]),
+    ref: z.string().trim().min(1).max(512),
+  })
+  .strict();
 
 const reasonSchema = z.string().trim().max(1000).nullable().default(null);
 
@@ -42,6 +46,7 @@ export class ApplicationAccessService {
         status: z.enum(["active", "inactive"]),
         actor: actorSchema,
       })
+      .strict()
       .parse(input);
     return this.repository.upsertApplication(parsed);
   }
@@ -59,6 +64,7 @@ export class ApplicationAccessService {
         reason: reasonSchema,
         actor: actorSchema,
       })
+      .strict()
       .parse(input);
     return this.repository.setAccess({ ...parsed, status: "active" });
   }
@@ -76,6 +82,7 @@ export class ApplicationAccessService {
         reason: reasonSchema,
         actor: actorSchema,
       })
+      .strict()
       .parse(input);
     return this.repository.setAccess({ ...parsed, status: "revoked" });
   }
