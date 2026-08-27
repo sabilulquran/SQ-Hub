@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import type pg from "pg";
+import type { Pool, PoolClient } from "pg";
 
 import type {
   AccessDecision,
@@ -69,7 +69,7 @@ export interface ApplicationAccessRepository {
 }
 
 export class PgApplicationAccessRepository implements ApplicationAccessRepository {
-  constructor(private readonly pool: pg.Pool) {}
+  constructor(private readonly pool: Pool) {}
 
   async listApplications(): Promise<ApplicationRecord[]> {
     const result = await this.pool.query<ApplicationRow>(`
@@ -340,7 +340,7 @@ export class PgApplicationAccessRepository implements ApplicationAccessRepositor
   }
 
   private async insertAudit(
-    client: pg.PoolClient,
+    client: PoolClient,
     input: {
       actor: ActorRef;
       action: string;
