@@ -13,8 +13,9 @@ Menyediakan foundation lintas aplikasi yang cukup untuk menghubungkan HCIS dan a
 ## Foundation v1 capabilities
 ### HUB-FND-001 Staff Identity
 - Staff memiliki satu identity global SQ Hub.
-- Identity memakai technical UUID yang tidak perlu diketahui pengguna.
-- NIP/nomor pegawai menjadi kandidat human login identifier; email dapat digunakan sesuai keputusan identity implementation.
+- Aplikasi domain memperlakukan technical identity identifier sebagai opaque stable identifier; pengguna tidak perlu mengetahui identifier teknis tersebut.
+- Untuk Employee, NIP/nomor pegawai menjadi kandidat utama human login identifier agar tidak menciptakan nomor identitas paralel.
+- Staff tanpa NIP harus memiliki fallback identifier policy yang diputuskan secara eksplisit; email dapat menjadi kandidat sesuai keputusan identity implementation.
 - NIK tidak digunakan sebagai login identifier.
 
 ### HUB-FND-002 Single Sign-On
@@ -23,8 +24,9 @@ Menyediakan foundation lintas aplikasi yang cukup untuk menghubungkan HCIS dan a
 - Detail protocol dan Identity Provider diputuskan melalui ADR.
 
 ### HUB-FND-003 Organizational Unit Master
-- SQ Hub menjadi source of truth untuk Organizational Unit.
-- Aplikasi domain mereferensikan unit resmi SQ Hub.
+- Target system of record Organizational Unit adalah SQ Hub.
+- Aplikasi domain mereferensikan unit resmi SQ Hub setelah cutover.
+- HCIS yang saat ini telah memiliki organizational unit harus dimigrasikan melalui mapping dan cutover plan; jangan mengasumsikan ownership berpindah hanya dengan deploy SQ Hub.
 - Master unit paralel tidak boleh dibuat tanpa keputusan arsitektur eksplisit.
 
 ### HUB-FND-004 Application Registry
@@ -55,7 +57,7 @@ Perubahan sensitif pada identity/application access dan tindakan administrasi pe
 ## Integration principle
 Aplikasi boleh sangat terintegrasi tetapi ownership data harus jelas. Sebagai default, cross-domain write dilakukan melalui contract/API yang dimiliki domain target, bukan dengan menulis tabel domain lain secara langsung.
 
-Contoh ownership awal:
+Contoh target ownership awal:
 - Organizational Unit -> SQ Hub
 - Employee/leave/attendance/payroll -> HCIS
 - Applicant/admission/selection -> SPMB
@@ -76,9 +78,10 @@ Staff dapat masuk melalui SQ Identity, membuka SQ Hub, melihat aplikasi yang mem
 
 ## Open decisions
 - self-hosted Identity Provider selection;
-- exact login identifier policy (NIP only vs NIP/email);
+- exact login identifier policy untuk Employee dan Staff tanpa NIP;
 - session/MFA policy;
 - application-access administration workflow;
+- Organizational Unit migration/cutover plan from HCIS;
 - staging hostname convention;
 - exact implementation technology for shared design packages.
 
