@@ -25,10 +25,11 @@ Untuk setiap `accounts` record, resolve:
 - `status`;
 - linked `employee_id` jika ada;
 - Employee `employee_number`/NIP jika ada;
-- email;
+- `accounts.email`;
+- `employees.email` sebagai comparison/profile source bila ada;
 - target username;
-- target identity enabled/activation state;
-- HCIS Application Access target;
+- target HCIS Application Access state;
+- global identity lifecycle decision jika memang tersedia dari owner yang berwenang;
 - warning/error.
 
 ### Validation blockers
@@ -36,7 +37,8 @@ Jangan lanjutkan account jika:
 - Employee account tidak memiliki employee link yang valid;
 - employee number/NIP duplikat atau kosong untuk account yang seharusnya Employee;
 - email target duplikat pada realm policy yang membutuhkan uniqueness;
-- email activation/recovery kosong/tidak valid;
+- `accounts.email` untuk activation/recovery kosong/tidak valid;
+- `accounts.email` dan `employees.email` berbeda secara material dan belum di-resolve;
 - satu HCIS account terpetakan ke lebih dari satu Keycloak identity;
 - satu Keycloak identity terpetakan ke lebih dari satu HCIS local account tanpa keputusan eksplisit.
 
@@ -64,7 +66,8 @@ Provision dengan Admin API menggunakan least-privilege service account.
 
 ### Employee
 - username = `employee_number`/NIP;
-- email = validated account/employee email;
+- email = validated `accounts.email`;
+- compare `employees.email`; mismatch harus menjadi warning/blocker sampai resolved, bukan dipilih otomatis;
 - display/profile name dari employee master bila diperlukan;
 - temporary/activation-required credential flow;
 - no imported password hash;
@@ -76,10 +79,16 @@ Provision dengan Admin API menggunakan least-privilege service account.
 - map local principal explicitly;
 - do not invent Staff number.
 
-### Lifecycle
-- active/eligible -> enabled subject to activation requirements;
-- suspended/inactive -> disabled or not granted HCIS Application Access;
-- invited -> activation required according to migration batch policy.
+### Lifecycle boundary
+HCIS lifecycle tidak boleh otomatis mengubah global Keycloak identity lifecycle.
+
+Initial migration behavior:
+- HCIS `active` + eligible -> candidate for HCIS Application Access after activation;
+- HCIS `suspended` / `inactive` -> deny/revoke HCIS Application Access and local HCIS use, **do not automatically disable Keycloak identity**;
+- HCIS `invited` -> activation required or held pending according to the migration batch policy;
+- disable global Keycloak identity only when the global Staff identity owner explicitly determines the person should no longer authenticate to any SQ application.
+
+This preserves cases where a person may legitimately lose HCIS access but still need SPMB Admin or another SQ application.
 
 ## Phase 4 - OIDC integration in HCIS staging
 Implement server-side Authorization Code flow.
@@ -104,14 +113,15 @@ Test with synthetic/test users representing:
 - Human Capital administrator;
 - Foundation Board/non-Employee Staff;
 - HCIS Super Admin;
-- suspended/inactive account.
+- HCIS-suspended account whose global identity remains valid for another test application.
 
 Expected:
 - user creates new SQ Identity password;
 - privileged user enrolls TOTP and receives recovery codes;
 - old HCIS password is not accepted by SQ Identity unless user independently chooses the same value and policy permits it;
 - SSO works to a second test OIDC client without credential re-entry;
-- local HCIS role/scope is unchanged after login.
+- local HCIS role/scope is unchanged after login;
+- HCIS suspension blocks HCIS without automatically breaking the second application's login.
 
 ## Phase 6 - Acceptance tests before production
 Minimum:
@@ -119,7 +129,8 @@ Minimum:
 - verified email alternative succeeds when enabled;
 - wrong/unknown identity cannot bind itself to an HCIS account;
 - `issuer + sub` mapping is unique;
-- suspended/inactive account cannot gain HCIS access;
+- HCIS suspended/inactive account cannot gain HCIS access;
+- HCIS local suspension does not automatically disable unrelated application access;
 - privileged account cannot complete login without required MFA;
 - ordinary Staff behavior matches MFA policy;
 - Application Access denial blocks HCIS even if Keycloak authentication succeeds;
@@ -139,12 +150,12 @@ Order:
 2. verify Keycloak health and pinned version;
 3. run migration preview; require zero unresolved blockers;
 4. provision production identities and record `issuer + sub` mappings;
-5. create HCIS Application Access grants;
+5. create HCIS Application Access grants only for eligible HCIS users;
 6. send/perform credential activation according to rollout plan;
 7. verify representative accounts;
 8. switch HCIS production auth mode from local -> OIDC;
 9. disable public/direct local login endpoints;
-10. monitor login failures, mapping errors, Keycloak health, and HCIS authorization outcomes.
+10. monitor login failures, mapping errors, Keycloak health, Application Access, and HCIS authorization outcomes.
 
 No production dual-login period.
 
