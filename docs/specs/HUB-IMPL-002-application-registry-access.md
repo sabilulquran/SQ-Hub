@@ -30,6 +30,8 @@ Minimum conceptual fields:
 
 `application_key` is immutable after first production use except through explicit migration/ADR-quality change.
 
+The registry lives in environment-specific SQ Hub databases. Therefore `canonical_url` is the canonical URL **for that environment**, not a production URL with a runtime override hidden elsewhere.
+
 ### `application_access`
 Minimum conceptual fields:
 - `id uuid primary key`;
@@ -64,15 +66,17 @@ Do not use NIP/email as the key. NIP/email may be used by provisioning/operator 
 No universal Person table is introduced.
 
 ## Initial application seed
-Wave 1 seeds:
+Wave 1 staging database seeds:
 ```text
 application_key: hcis
 name: HCIS
-canonical_url: https://hcis.sabilulquran.or.id
+canonical_url: https://hcis-staging.sabilulquran.or.id
 status: active
 ```
 
-Staging configuration may override the effective consumer URL to `https://hcis-staging.sabilulquran.or.id` without changing the stable `application_key`.
+A future production SQ Hub database uses the same stable `application_key: hcis` but stores `https://hcis.sabilulquran.or.id` as its own environment-local canonical URL.
+
+Do not make launcher/API behavior depend on a hidden URL override that can accidentally send staging users to production.
 
 ## Operator path
 Before an admin UI exists, provide reviewed operator commands or CLI workflows for:
@@ -98,7 +102,7 @@ Content-Type: application/json
 
 {
   "identity": {
-    "issuer": "https://login-staging.sabilulquran.or.id/...",
+    "issuer": "https://login-staging.sabilulquran.or.id/realms/sq-staff-staging",
     "subject": "opaque-sub"
   },
   "applicationKey": "hcis"
@@ -158,6 +162,7 @@ This preserves the goal that maintenance of one application does not unnecessari
 ## Tests
 Minimum automated coverage:
 - application key uniqueness;
+- environment-local canonical URL seed;
 - grant + check allow;
 - no grant -> deny;
 - revoked grant -> deny;
@@ -173,7 +178,7 @@ Minimum automated coverage:
 ## Acceptance criteria
 - API typecheck/lint/test/build pass;
 - migration applies from empty database and has a documented recovery/down strategy;
-- `hcis` application exists with stable key;
+- staging `hcis` application exists with stable key and staging canonical URL;
 - synthetic identity can be granted/revoked access via supported operator path;
 - HCIS-authorized machine client can check an access decision;
 - other/invalid clients cannot call internal access check;
