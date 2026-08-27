@@ -27,6 +27,7 @@ jobs:
       KEYCLOAK_HTTP_PORT: "8080"
       KEYCLOAK_MANAGEMENT_PORT: "9000"
       KEYCLOAK_MEMORY_LIMIT: 2g
+      EDGE_NETWORK: edge_proxy
       KEYCLOAK_ENV_FILE: /tmp/keycloak-ci.env
 
     steps:
@@ -43,6 +44,7 @@ jobs:
           KEYCLOAK_HTTP_PORT=$KEYCLOAK_HTTP_PORT
           KEYCLOAK_MANAGEMENT_PORT=$KEYCLOAK_MANAGEMENT_PORT
           KEYCLOAK_MEMORY_LIMIT=$KEYCLOAK_MEMORY_LIMIT
+          EDGE_NETWORK=$EDGE_NETWORK
           KEYCLOAK_DB_NAME=$KEYCLOAK_DB_NAME
           KEYCLOAK_DB_USERNAME=$KEYCLOAK_DB_USERNAME
           KEYCLOAK_DB_PASSWORD=$KEYCLOAK_DB_PASSWORD
@@ -58,6 +60,11 @@ jobs:
             -f infra/keycloak/docker-compose.staging.yml \
             -f infra/keycloak/docker-compose.bootstrap.yml \
             config > /tmp/keycloak-compose.yml
+
+      - name: Prepare shared edge network
+        run: |
+          docker network inspect "$EDGE_NETWORK" >/dev/null 2>&1 \
+            || docker network create "$EDGE_NETWORK"
 
       - name: Build and start Keycloak smoke stack
         run: |
@@ -177,3 +184,4 @@ jobs:
             -f infra/keycloak/docker-compose.staging.yml \
             -f infra/keycloak/docker-compose.bootstrap.yml \
             down -v || true
+          docker network rm "$EDGE_NETWORK" >/dev/null 2>&1 || true

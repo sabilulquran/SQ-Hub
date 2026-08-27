@@ -1,0 +1,30 @@
+login-staging.sabilulquran.or.id {
+    encode zstd gzip
+
+    @admin path /admin /admin/*
+    respond @admin 404
+
+    @masterRealm path /realms/master /realms/master/*
+    respond @masterRealm 404
+
+    reverse_proxy sq-identity-staging:8080 {
+        header_up Host {host}
+        header_up X-Forwarded-Host {host}
+        header_up X-Forwarded-Proto https
+        header_up X-Forwarded-Port 443
+        header_up X-Forwarded-For {remote_host}
+        header_up X-Real-IP {remote_host}
+
+        header_up -X-Original-Forwarded-For
+        header_up -X-Original-URL
+        header_up -X-Original-Method
+        header_up -X-Forwarded-Access-Token
+    }
+
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains"
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "SAMEORIGIN"
+        Referrer-Policy "strict-origin-when-cross-origin"
+    }
+}
