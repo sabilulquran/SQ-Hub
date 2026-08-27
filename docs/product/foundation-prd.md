@@ -17,11 +17,13 @@ Menyediakan foundation lintas aplikasi yang cukup untuk menghubungkan HCIS dan a
 - Untuk Employee, NIP/nomor pegawai menjadi kandidat utama human login identifier agar tidak menciptakan nomor identitas paralel.
 - Staff tanpa NIP harus memiliki fallback identifier policy yang diputuskan secara eksplisit; email dapat menjadi kandidat sesuai keputusan identity implementation.
 - NIK tidak digunakan sebagai login identifier.
+- SQ Identity menggunakan Keycloak sebagai self-hosted Identity Provider engine sesuai ADR-0003.
 
 ### HUB-FND-002 Single Sign-On
 - Staff yang telah login melalui SQ Identity dapat membuka aplikasi lain yang diizinkan tanpa memasukkan credential kembali.
 - Aplikasi domain tidak menerima atau menyimpan password staff.
-- Detail protocol dan Identity Provider diputuskan melalui ADR.
+- Internal applications integrate to SQ Identity through standard OIDC/OAuth2 flows supported by Keycloak.
+- Keycloak owns authentication protocol/session concerns; SQ Hub and domain applications retain their authorization ownership boundaries.
 
 ### HUB-FND-003 Organizational Unit Master
 - Target system of record Organizational Unit adalah SQ Hub.
@@ -41,6 +43,7 @@ SQ Hub menyimpan registry aplikasi yang bergabung dalam ekosistem, minimum:
 - SQ Hub menentukan aplikasi apa yang dapat diakses sebuah staff identity.
 - Application Access tidak menggantikan role/permission bisnis di aplikasi domain.
 - HCIS tetap menentukan permission HCIS; SPMB tetap menentukan permission SPMB.
+- Jangan menjadikan Keycloak role/authorization configuration sebagai source of truth alternatif untuk Application Access atau domain permission.
 
 ### HUB-FND-006 Hub Launcher
 - Staff dapat melihat aplikasi yang diizinkan dari SQ Hub.
@@ -48,7 +51,9 @@ SQ Hub menyimpan registry aplikasi yang bergabung dalam ekosistem, minimum:
 - Initial target URL: `hub.sabilulquran.or.id`.
 
 ### HUB-FND-007 Shared Design Foundation
-- SQ Hub mendefinisikan design principles, tokens, app-shell conventions, shared components/patterns, dan accessibility baseline.
+- HCIS frontend yang telah sesuai brand menjadi baseline awal SQ Design System sesuai ADR-0004 dan `docs/design/hcis-baseline.md`.
+- SQ Hub mengekstrak/menormalisasi design principles, tokens, app-shell conventions, shared components/patterns, dan accessibility baseline dari baseline tersebut.
+- SQ Identity/Keycloak login theme harus senada dengan baseline SQ.
 - Shared implementation hanya dibuat ketika kebutuhan reuse sudah nyata.
 
 ### HUB-FND-008 Audit Foundation
@@ -70,20 +75,22 @@ Contoh target ownership awal:
 - Finance, Workspace, Academic, Asset business logic;
 - universal domain permission engine;
 - custom OAuth/OIDC protocol implementation;
+- Keycloak Authorization Services sebagai universal permission engine;
 - event bus/message broker sebelum ada kebutuhan;
 - single database requirement untuk semua aplikasi;
 - production application coding sebelum architecture/security foundation disetujui.
 
 ## Experience target
-Staff dapat masuk melalui SQ Identity, membuka SQ Hub, melihat aplikasi yang memang dimiliki aksesnya, lalu berpindah antara HCIS dan SPMB tanpa login ulang. Tampilan aplikasi tetap memiliki karakter domain masing-masing tetapi terasa sebagai satu keluarga produk.
+Staff dapat masuk melalui SQ Identity, membuka SQ Hub, melihat aplikasi yang memang dimiliki aksesnya, lalu berpindah antara HCIS dan SPMB tanpa login ulang. SQ Identity dan seluruh aplikasi mengikuti bahasa visual SQ yang diturunkan dari baseline HCIS, sambil tetap memiliki karakter domain masing-masing.
 
 ## Open decisions
-- self-hosted Identity Provider selection;
 - exact login identifier policy untuk Employee dan Staff tanpa NIP;
 - session/MFA policy;
 - application-access administration workflow;
 - Organizational Unit migration/cutover plan from HCIS;
+- HCIS authentication migration/cutover plan to Keycloak;
+- Keycloak production configuration/version pin and operational sizing;
 - staging hostname convention;
-- exact implementation technology for shared design packages.
+- exact implementation technology and versioning strategy for shared design packages.
 
 Open decisions harus ditutup melalui domain/security specification atau ADR sebelum implementasi terkait dimulai.
