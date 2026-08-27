@@ -7,10 +7,10 @@ SQ Hub mendorong integrasi kuat tanpa mengaburkan ownership data dan business lo
 
 Setiap data penting harus memiliki satu system of record yang jelas. Aplikasi lain boleh membaca atau menggunakan data tersebut melalui integration contract yang disepakati, tetapi tidak mengambil alih ownership secara diam-diam.
 
-## Initial ownership
+## Target ownership
 | Data/capability | Owner |
 |---|---|
-| Staff global identity | SQ Identity / SQ Hub |
+| Staff global identity | SQ Identity (SQ Hub capability) |
 | Organizational Unit | SQ Hub |
 | Application Registry | SQ Hub |
 | Application Access | SQ Hub |
@@ -22,6 +22,18 @@ Setiap data penting harus memiliki satu system of record yang jelas. Aplikasi la
 | Finance business records | Finance (future) |
 | Work/project records | Workspace (future) |
 | Student academic records | Academic (future) |
+
+## Organizational Unit transition
+HCIS sudah memiliki konsep `organizational_units`. Foundation v1 menetapkan **target ownership** Organizational Unit pada SQ Hub, tetapi cutover tidak boleh diasumsikan terjadi hanya karena dokumen ini diterima.
+
+Sebelum SQ Hub menjadi system of record aktif untuk Organizational Unit:
+- inventaris dan petakan unit HCIS yang sudah ada;
+- tentukan stable identifier/mapping untuk integrasi;
+- tentukan migration/cutover plan;
+- hindari periode dual-write tanpa aturan sinkronisasi yang eksplisit;
+- pastikan HCIS tetap berjalan normal sampai cutover dinyatakan selesai.
+
+Setelah cutover, aplikasi domain tidak membuat master unit paralel sebagai source of truth baru.
 
 ## Cross-domain workflow
 Cross-domain workflow adalah expected behavior, bukan exception. Contoh:
