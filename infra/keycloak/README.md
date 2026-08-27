@@ -10,16 +10,20 @@ This directory contains the reproducible, non-secret staging foundation for SQ I
 Internet
   -> HTTPS reverse proxy
   -> login-staging.sabilulquran.or.id
-  -> 127.0.0.1:8080
+  -> shared Caddy edge network (`edge_proxy`)
+  -> sq-identity-staging:8080
   -> Keycloak 26.7.2 (production mode / optimized image)
        -> dedicated PostgreSQL staging database
+
+127.0.0.1:8080
+  -> VPS-local HTTP smoke/debug binding only
 
 127.0.0.1:9000
   -> Keycloak health/metrics management interface
   -> never proxied publicly
 ```
 
-The public reverse-proxy example blocks `/admin/` and `/realms/master/`. Administrative work must use a controlled local/VPS path rather than exposing the administration surface through the public login hostname.
+The YSQ VPS topology uses the shared Caddy Docker network. A host-Nginx example is retained as an alternative reference. Both public proxy examples block `/admin/` and `/realms/master/`. Administrative work must use a controlled local/VPS path rather than exposing the administration surface through the public login hostname.
 
 ## Files
 
@@ -27,7 +31,8 @@ The public reverse-proxy example blocks `/admin/` and `/realms/master/`. Adminis
 - `docker-compose.staging.yml` — normal staging runtime; contains no bootstrap-admin requirement.
 - `docker-compose.bootstrap.yml` — first-bootstrap-only admin override.
 - `realm/sq-staff-staging-realm.json` — non-secret realm/client baseline.
-- `reverse-proxy.nginx.example.conf` — public login-host Nginx example.
+- `reverse-proxy.caddy.example` — shared-Caddy configuration for the YSQ VPS edge network.
+- `reverse-proxy.nginx.example.conf` — host-Nginx alternative reference.
 - `themes/sq-hub/` — SQ login theme derived from the accepted HCIS design baseline; no font files are bundled.
 - `scripts/backup.sh` — PostgreSQL custom-format backup.
 - `scripts/restore-check.sh` — restores a backup to a disposable verification database and checks that the staging realm exists.
@@ -45,6 +50,8 @@ Set strong values for:
 - `KEYCLOAK_DB_PASSWORD`;
 - `KEYCLOAK_BOOTSTRAP_ADMIN_USERNAME`;
 - `KEYCLOAK_BOOTSTRAP_ADMIN_PASSWORD`.
+
+Confirm `EDGE_NETWORK` points to the existing shared Caddy Docker network, normally `edge_proxy`.
 
 `.env.staging` must never be committed.
 
@@ -117,7 +124,11 @@ Do not claim this acceptance item from the realm JSON alone; verify it in runnin
 
 ## Public reverse proxy
 
-`reverse-proxy.nginx.example.conf` is intentionally an example rather than an assumption about the VPS TLS/ACME layout. Required invariants:
+For the existing YSQ VPS Docker topology, use `reverse-proxy.caddy.example` and ensure both Caddy and Keycloak are attached to the same `edge_proxy` network. The Keycloak container publishes the alias `sq-identity-staging` for this purpose.
+
+`reverse-proxy.nginx.example.conf` remains available for a host-Nginx deployment. The localhost `127.0.0.1:8080` binding is retained for VPS-local smoke/debug use and for that alternative topology; it is not the preferred Caddy data path.
+
+Required invariants for either proxy:
 - TLS terminates at the supported reverse proxy;
 - only the public login/OIDC surface is exposed;
 - `/admin/` and `/realms/master/` are not exposed on the public login host;
@@ -147,7 +158,7 @@ A backup is not considered proven until restore-check succeeds. Staging rollout 
 
 ## CI vs shared staging
 
-GitHub CI is allowed to run Keycloak with an explicit `http://127.0.0.1` hostname only as an isolated smoke environment. That test proves image build, realm import, health, policy/client configuration, and backup/restore mechanics.
+GitHub CI is allowed to run Keycloak with an explicit `http://127.0.0.1` hostname only as an isolated smoke environment. CI creates a disposable `edge_proxy` network so the shared-Caddy attachment is exercised without exposing a public listener. That test proves image build, realm import, health, policy/client configuration, network attachment, and backup/restore mechanics.
 
 CI success does **not** prove:
 - the real VPS DNS/TLS/reverse proxy;
