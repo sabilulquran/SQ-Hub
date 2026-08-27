@@ -11,6 +11,10 @@ Foundation documentation. Belum ada application implementation.
 
 Keputusan foundation yang sudah dikunci:
 - **SQ Identity menggunakan Keycloak** sebagai self-hosted Identity Provider engine.
+- **Employee login menggunakan NIP/employee number sebagai primary username**, dengan verified unique email sebagai alternate login; Staff tanpa NIP memakai verified unique email pada Foundation v1.
+- **MFA wajib untuk privileged/security-sensitive Staff**, belum mandatory untuk seluruh Staff pada Foundation v1.
+- **SSO session baseline:** idle 8 jam, max 12 jam, Remember Me off pada rollout awal.
+- **HCIS auth migration tidak memindahkan password/MFA lama**; local principal ID dipertahankan dan ditautkan ke Keycloak melalui OIDC `issuer + sub`.
 - **HCIS frontend menjadi baseline awal SQ Design System**; shared primitives nantinya diekstrak ke SQ Hub.
 
 ## Source of truth
@@ -21,8 +25,10 @@ Mulai dari:
 - [`docs/domain/glossary.md`](docs/domain/glossary.md) — istilah resmi.
 - [`docs/domain/ownership-and-integration.md`](docs/domain/ownership-and-integration.md) — ownership data dan integrasi lintas aplikasi.
 - [`docs/architecture/target-architecture.md`](docs/architecture/target-architecture.md) — target logical architecture.
-- [`docs/architecture/adr/`](docs/architecture/adr/) — keputusan arsitektur accepted, termasuk IdP dan design baseline.
+- [`docs/architecture/adr/`](docs/architecture/adr/) — keputusan arsitektur accepted, termasuk IdP, design baseline, dan HCIS auth migration.
 - [`docs/security/security-baseline.md`](docs/security/security-baseline.md) — security baseline.
+- [`docs/security/staff-authentication-policy.md`](docs/security/staff-authentication-policy.md) — login, password, MFA, session, logout, dan recovery policy Staff.
+- [`docs/migration/hcis-auth-cutover-plan.md`](docs/migration/hcis-auth-cutover-plan.md) — executable migration/cutover runbook untuk HCIS -> SQ Identity.
 - [`docs/design/design-system-direction.md`](docs/design/design-system-direction.md) — arah SQ Design System.
 - [`docs/design/hcis-baseline.md`](docs/design/hcis-baseline.md) — snapshot/ringkasan visual HCIS yang menjadi baseline SQ.
 - [`docs/operations/operational-baseline.md`](docs/operations/operational-baseline.md) — environment, observability, backup, dan recovery minimum.
