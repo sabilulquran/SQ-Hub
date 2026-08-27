@@ -8,14 +8,17 @@ SQ Hub dikembangkan secara AI-assisted dengan source of truth, task boundary, ve
 ## Workflow
 ```text
 Product/domain specification
-        -> architecture/security/design references
+        -> architecture/security/design/operations references
         -> implementation
-        -> local/CI verification
+        -> local verification
+        -> pull request
         -> adversarial AI review
         -> human review
-        -> pull request
+        -> CI/final verification
         -> merge
 ```
+
+Review dapat dimulai sebelum PR dibuka, tetapi merge decision harus berdasarkan diff PR dan evidence verification terbaru.
 
 ## Task contract
 Setiap implementation task minimum menyebutkan:
@@ -31,7 +34,7 @@ Agent tidak boleh redesign requirement saat diminta implementasi.
 ## Context loading
 1. Baca `AGENTS.md`.
 2. Baca specification task.
-3. Baca hanya referenced/relevant ADR, domain, security, atau design docs.
+3. Baca hanya referenced/relevant ADR, domain, security, design, atau operations docs.
 4. Inspeksi code/tests yang berkaitan.
 5. Jangan preload seluruh documentation tree.
 
@@ -70,7 +73,7 @@ Reviewer harus mencari alasan perubahan belum layak merge, terutama:
 - UI pattern yang menyimpang dari design system;
 - test yang sekadar mengafirmasi implementasi tanpa memverifikasi behavior.
 
-Builder dan reviewer idealnya diperlakukan sebagai peran terpisah.
+Builder dan reviewer idealnya diperlakukan sebagai peran terpisah. Reviewer menilai specification dan diff, bukan hanya penjelasan builder.
 
 ## Human approval required
 - product scope changes;
