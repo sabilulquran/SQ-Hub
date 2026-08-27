@@ -24,7 +24,7 @@ Jika sumber bertentangan, jangan menebak. Perbarui specification/ADR atau eskala
 Agent tidak boleh membaca seluruh `docs/` secara default.
 1. Baca `AGENTS.md`.
 2. Baca spec task.
-3. Baca hanya domain/ADR/security/design docs yang dirujuk spec atau relevan langsung.
+3. Baca hanya domain/ADR/security/design/operations docs yang dirujuk spec atau relevan langsung.
 4. Inspeksi existing code dan tests.
 
 ## 4. Platform boundaries
@@ -40,11 +40,12 @@ Agent tidak boleh membaca seluruh `docs/` secara default.
 - Password, MFA, recovery, dan session identity bukan tanggung jawab aplikasi domain.
 - Application Access dikelola secara global oleh SQ Hub.
 - Permission dan role spesifik domain tetap dimiliki aplikasi domain.
-- NIP/nomor pegawai dapat menjadi human login identifier; UUID tetap digunakan sebagai technical identity identifier.
+- Technical identity identifier diperlakukan sebagai opaque stable identifier; aplikasi tidak boleh bergantung pada formatnya.
+- Untuk Employee, NIP/nomor pegawai dapat menjadi human login identifier. Staff tanpa NIP mengikuti policy identifier yang ditetapkan secara eksplisit.
 - NIK tidak digunakan sebagai username/login identifier.
 
 ## 6. Organization
-Organizational Unit adalah shared master milik SQ Hub. Aplikasi lain mereferensikan unit resmi yang sama dan tidak membuat master unit paralel tanpa alasan terdokumentasi.
+Organizational Unit adalah target shared master milik SQ Hub. Existing HCIS organization data tetap operasional sampai migration/cutover eksplisit selesai. Jangan membuat master unit paralel atau dual-write tanpa aturan sinkronisasi yang terdokumentasi.
 
 ## 7. Design system
 - Semua aplikasi SQ Hub harus menggunakan prinsip visual, design tokens, dan shared UI patterns yang sama.
@@ -59,8 +60,8 @@ Organizational Unit adalah shared master milik SQ Hub. Aplikasi lain mereferensi
 - Auth, application access, cryptography, audit, dan migration memerlukan review tambahan.
 - Jangan memberi agent AI unrestricted write access ke production database.
 
-## 9. Environments
-Development/staging dan production harus terpisah secara logis walaupun dapat berada pada VPS yang sama. Agent tidak boleh menggunakan production sebagai playground development.
+## 9. Environments and operations
+Development/staging dan production harus terpisah secara logis walaupun dapat berada pada VPS yang sama. Agent tidak boleh menggunakan production sebagai playground development. Operational changes mengikuti `docs/operations/operational-baseline.md`.
 
 ## 10. Quality gates
 Sebelum merge:
