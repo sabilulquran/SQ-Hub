@@ -32,7 +32,7 @@
 - reset on compromise/admin reset or explicit security-policy change.
 
 ### MFA baseline
-MFA is mandatory for privileged/security-sensitive identities, including platform/identity administrators, HCIS Super Admin, application administrators, and roles able to administer sensitive employee/payroll/security/access-control data. Staff ordinary is optional-enrollment on Foundation v1.
+MFA is mandatory for privileged/security-sensitive identities, including platform/identity administrators, HCIS Super Admin, application administrators, Human Capital/Employee-master administrators, and roles that can view or change high-risk data belonging to other people such as organizational payroll/payslip, finance administration, credentials, security policy, or access-control configuration. Ordinary Staff without sensitive/privileged access is optional-enrollment on Foundation v1.
 
 Initial second factor: TOTP with recovery codes. Passkey/WebAuthn may be enabled after UAT; SMS OTP is not baseline.
 
@@ -76,6 +76,7 @@ User-facing logout must terminate the current application session and SQ Identit
 - Domain applications enforce their own permissions server-side.
 - Client-side hiding is not an authorization control.
 - Token claims may contain derived access information for performance/integration, but must not silently become a competing source of truth to SQ Hub Application Access.
+- Domain-local account suspension/revocation does not automatically disable global SQ Identity; each layer's lifecycle owner must act within its own boundary.
 
 ## Audit
 Security-sensitive administrative actions must create audit records with minimum actor, action, target, timestamp, and outcome. Audit records must not contain raw passwords, authentication tokens, MFA secrets, or unnecessary sensitive payloads.
@@ -89,6 +90,7 @@ Required constraints:
 - preserve HCIS local authorization principal IDs;
 - map Keycloak using unique `issuer + sub`;
 - do not migrate legacy HCIS password hashes, MFA secrets, recovery codes, or sessions;
+- HCIS suspension/inactive state must not automatically disable global Keycloak identity;
 - no production dual-login period;
 - no automatic fallback from OIDC to local auth;
 - legacy credential material may remain for maximum 14 days only as explicit rollback material, then must be irreversibly removed after accepted cutover.
