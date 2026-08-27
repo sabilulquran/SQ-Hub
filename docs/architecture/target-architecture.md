@@ -62,6 +62,25 @@ Each application owns its domain authorization: what the Identity may do inside 
 
 Keycloak owns authentication/session/protocol concerns. Its roles/Authorization Services must not become a second source of truth for Application Access or domain permissions without a superseding ADR.
 
+## Application Access runtime pattern
+Wave 1 domain applications check SQ Hub Application Access when creating a **new application session**, not synchronously on every protected request.
+
+```text
+OIDC login succeeds
+      -> domain app calls SQ Hub access-check API
+      -> grant active?
+           yes -> create local app session
+           no  -> deny
+```
+
+This means:
+- new session issuance fails closed if access cannot be verified;
+- existing valid domain sessions are not torn down merely because SQ Hub API is temporarily under maintenance;
+- Application Access revocation is immediately effective for new sessions;
+- faster revocation of already-issued sessions is a later cross-application capability, not a reason to make every domain request depend on SQ Hub.
+
+Machine calls to SQ Hub use dedicated service identities/tokens, not human credentials.
+
 ## HCIS transition pattern
 HCIS migration follows ADR-0005.
 
@@ -83,6 +102,15 @@ Target ownership Organizational Unit is SQ Hub. HCIS remains operational with it
 - Physical infrastructure may be shared, but logical ownership must remain explicit.
 - Cross-domain operational writes use owned contracts/APIs by default.
 
+## Engineering stack
+SQ Hub follows ADR-0006 and the HCIS engineering family:
+- TypeScript/Node.js;
+- Fastify + PostgreSQL for API;
+- React/Vite/Tailwind for web when required;
+- Vitest/typecheck/lint quality gates.
+
+Same technology family does not mean same runtime or repository. HCIS and SQ Hub remain independently deployable.
+
 ## Design system
 - HCIS visual language at the accepted reference snapshot is the initial SQ Design System baseline (ADR-0004).
 - `docs/design/hcis-baseline.md` captures the foundation so routine agents do not need to rediscover HCIS styling.
@@ -91,17 +119,30 @@ Target ownership Organizational Unit is SQ Hub. HCIS remains operational with it
 - Domain-specific UI remains with domain applications.
 
 ## Deployment direction
-Initial deployment may use one VPS and shared PostgreSQL infrastructure. Logical staging and production environments remain separate.
+Initial deployment may use one VPS and shared PostgreSQL server infrastructure. Logical database/service ownership and staging/production environments remain separate.
 
 Keycloak may run on the same VPS initially if measured capacity is sufficient, but it remains a separately operated shared service with its own production configuration, resource limits, backup/restore, and upgrade verification.
 
-Target public naming:
+Target production naming:
 - `hub.sabilulquran.or.id` — Hub Launcher
 - `login.sabilulquran.or.id` — SQ Identity / Keycloak entry point
 - `hcis.sabilulquran.or.id` — HCIS
 - `spmb.sabilulquran.or.id` — SPMB
 
-Staging hostname convention remains TBD.
+Wave 1 staging naming:
+- `hub-staging.sabilulquran.or.id`
+- `login-staging.sabilulquran.or.id`
+- `hcis-staging.sabilulquran.or.id`
+
+Staging and production may share a VPS but must not share mutable realm/database/configuration state.
+
+## Implementation Wave 1
+Implementation contracts:
+- `HUB-IMPL-001` — Keycloak staging foundation;
+- `HUB-IMPL-002` — Application Registry and Application Access;
+- `HUB-IMPL-003` — HCIS OIDC consumer integration.
+
+See `docs/product/implementation-wave-1.md`.
 
 ## Architecture constraints
 - Do not create an ERP monolith.
@@ -113,4 +154,5 @@ Staging hostname convention remains TBD.
 - Do not implement custom cryptographic/authentication protocols when Keycloak/standard protocols cover the requirement.
 - Do not migrate legacy HCIS password/MFA formats into Keycloak through custom compatibility plugins without a superseding ADR.
 - Do not silently fall back from failed OIDC authentication to legacy local login.
+- Do not make every domain request synchronously depend on SQ Hub merely to achieve faster access revocation.
 - Do not invent a new cross-product visual language that conflicts with the accepted HCIS/SQ design baseline.

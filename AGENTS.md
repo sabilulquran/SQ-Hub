@@ -7,9 +7,10 @@ Urutan otoritas:
 1. `docs/product/` untuk tujuan, scope, dan acceptance criteria.
 2. `docs/domain/` untuk istilah, ownership, dan perilaku domain.
 3. ADR berstatus Accepted di `docs/architecture/adr/`.
-4. Kontrak API/schema yang relevan.
-5. Automated tests.
-6. Implementasi kode.
+4. `docs/specs/` untuk implementation contract task yang sudah scoped.
+5. Kontrak API/schema yang relevan.
+6. Automated tests.
+7. Implementasi kode.
 
 Jika sumber bertentangan, jangan menebak. Perbarui specification/ADR atau eskalasi keputusan.
 
@@ -19,13 +20,19 @@ Jika sumber bertentangan, jangan menebak. Perbarui specification/ADR atau eskala
 - Prefer missing feature over invented feature.
 - Perubahan perilaku wajib memperbarui dokumen sumber kebenaran yang relevan.
 - Asumsi belum diputuskan harus diberi status `DRAFT`, `DISCOVERY`, atau `TBD`.
+- Wave 1 implementation wajib mengacu pada salah satu `HUB-IMPL-00x`; jangan mengerjakan task generik seperti "implement SQ Hub".
 
 ## 3. Progressive context
 Agent tidak boleh membaca seluruh `docs/` secara default.
 1. Baca `AGENTS.md`.
-2. Baca spec task.
-3. Baca hanya domain/ADR/security/design/operations/migration docs yang dirujuk spec atau relevan langsung.
+2. Baca spec task di `docs/specs/`.
+3. Baca hanya product/domain/ADR/security/design/operations/migration docs yang dirujuk spec atau relevan langsung.
 4. Inspeksi existing code dan tests.
+
+Untuk Wave 1:
+- Keycloak staging -> `HUB-IMPL-001` + ADR-0003 + auth/security/operations docs.
+- Registry/Application Access -> `HUB-IMPL-002` + Foundation PRD + ADR-0006.
+- HCIS OIDC -> `HUB-IMPL-003` + ADR-0005 + auth policy + HCIS source of truth.
 
 Untuk task identity/auth, minimum baca:
 - ADR-0003 (Keycloak);
@@ -56,6 +63,8 @@ Untuk task visual lintas aplikasi, baca `docs/design/hcis-baseline.md` sebelum m
 - NIK tidak digunakan sebagai username/login identifier.
 - Browser app tidak menyimpan access/refresh token di localStorage/sessionStorage.
 - Jangan membuat wildcard/shared auth cookie lintas seluruh subdomain.
+- Machine-to-machine calls menggunakan dedicated service identity; jangan reuse credential manusia.
+- Jangan membuat setiap protected domain request synchronously bergantung pada SQ Hub hanya untuk access checking. Ikuti timing contract pada `HUB-IMPL-002`/`003`.
 
 ### HCIS auth migration guardrails
 - Preserve existing HCIS local principal `accounts.id` during migration.
@@ -68,7 +77,13 @@ Untuk task visual lintas aplikasi, baca `docs/design/hcis-baseline.md` sebelum m
 ## 6. Organization
 Organizational Unit adalah target shared master milik SQ Hub. Existing HCIS organization data tetap operasional sampai migration/cutover eksplisit selesai. Jangan membuat master unit paralel atau dual-write tanpa aturan sinkronisasi yang terdokumentasi.
 
-## 7. Design system
+## 7. Engineering stack
+- Foundation stack mengikuti ADR-0006: TypeScript/Node.js, Fastify/PostgreSQL untuk API, React/Vite/Tailwind untuk web saat dibutuhkan.
+- Jangan copy semua dependency HCIS; tambahkan hanya dependency yang digunakan.
+- Repo tetap independently deployable dari HCIS.
+- Jangan membuat shared package sebelum ada consumer/reuse nyata dan distribution strategy yang diterima.
+
+## 8. Design system
 - HCIS visual system pada snapshot yang ditetapkan ADR-0004 adalah baseline awal SQ Design System.
 - Semua aplikasi SQ Hub harus menggunakan prinsip visual, semantic tokens, dan shared UI patterns yang senada dengan baseline tersebut.
 - SQ Identity/Keycloak harus ditheme mengikuti SQ design language; jangan menerima default provider UI sebagai final product experience.
@@ -78,17 +93,22 @@ Organizational Unit adalah target shared master milik SQ Hub. Existing HCIS orga
 - Business-specific UI tetap berada di aplikasi domain.
 - Setelah shared primitives tersedia di SQ Hub, SQ Hub menjadi canonical source untuk design system lintas produk.
 
-## 8. Security and privacy
+## 9. Security and privacy
 - Gunakan data sintetis untuk development, prompt, test, screenshot, dan demo.
 - Jangan commit secret, credential, token, production dump, atau data pribadi production.
 - Terapkan least privilege.
 - Auth, application access, cryptography, audit, dan migration memerlukan review tambahan.
 - Jangan memberi agent AI unrestricted write access ke production database atau Keycloak admin API.
 
-## 9. Environments and operations
+## 10. Environments and operations
 Development/staging dan production harus terpisah secara logis walaupun dapat berada pada VPS yang sama. Agent tidak boleh menggunakan production sebagai playground development. Operational changes mengikuti `docs/operations/operational-baseline.md`.
 
-## 10. Quality gates
+Wave 1 staging hostnames:
+- `login-staging.sabilulquran.or.id`;
+- `hub-staging.sabilulquran.or.id`;
+- `hcis-staging.sabilulquran.or.id`.
+
+## 11. Quality gates
 Sebelum merge:
 - acceptance criteria terpenuhi;
 - typecheck/lint/test/build lulus ketika sudah tersedia;
@@ -96,11 +116,11 @@ Sebelum merge:
 - dokumentasi sinkron;
 - migration memiliki recovery plan;
 - tidak ada secret atau data production di diff;
-- AI review memeriksa invented requirement, over-abstraction, unnecessary dependency, hidden authorization, destructive migration, silent fallback, data leakage, dan design drift.
+- AI review memeriksa invented requirement, over-abstraction, unnecessary dependency, hidden authorization, destructive migration, silent fallback, data leakage, design drift, dan unintended runtime coupling.
 
 Untuk auth/OIDC migration, verification juga wajib memeriksa identity mapping, fail-closed behavior, token storage, cookie security, Application Access, local authorization continuity, logout, backup/restore, dan rollback rehearsal.
 
-## 11. Pull request discipline
+## 12. Pull request discipline
 - Satu PR memiliki tujuan dan scope jelas.
 - Sertakan specification ID, perubahan perilaku, risiko, test evidence, dan rollback/recovery jika relevan.
 - Jangan mencampur refactor besar dengan perubahan perilaku tanpa alasan kuat.
