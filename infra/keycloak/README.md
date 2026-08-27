@@ -37,6 +37,12 @@ The YSQ VPS topology uses the shared Caddy Docker network. A host-Nginx example 
 - `scripts/backup.sh` — PostgreSQL custom-format backup.
 - `scripts/restore-check.sh` — restores a backup to a disposable verification database and checks that the staging realm exists.
 
+## Runtime image and shared-VPS sizing
+
+GitHub-hosted CI builds and publishes the optimized staging image to GHCR. The shared YSQ staging VPS should **pull** that image and start it with `--no-build`; do not compile the Keycloak image on the memory-constrained shared host.
+
+The current staging default is `KEYCLOAK_MEMORY_LIMIT=768m` plus `KEYCLOAK_DB_MEMORY_LIMIT=192m`. This is intentionally a staging compromise for the current shared VPS, not a production sizing recommendation. Reassess memory before production or meaningful load testing.
+
 ## Prepare staging secrets
 
 Create a local VPS-only file from `.env.example`:
@@ -57,6 +63,16 @@ Confirm `EDGE_NETWORK` points to the existing shared Caddy Docker network, norma
 
 ## First bootstrap only
 
+Pull the prebuilt image first:
+
+```bash
+docker compose \
+  --env-file infra/keycloak/.env.staging \
+  -f infra/keycloak/docker-compose.staging.yml \
+  -f infra/keycloak/docker-compose.bootstrap.yml \
+  pull
+```
+
 The bootstrap administrator is injected only when the bootstrap override is explicitly included:
 
 ```bash
@@ -64,7 +80,7 @@ docker compose \
   --env-file infra/keycloak/.env.staging \
   -f infra/keycloak/docker-compose.staging.yml \
   -f infra/keycloak/docker-compose.bootstrap.yml \
-  up -d --build
+  up -d --no-build
 ```
 
 Verify readiness from the VPS:
@@ -88,7 +104,7 @@ After that path is verified, restart using **only** the normal staging compose f
 docker compose \
   --env-file infra/keycloak/.env.staging \
   -f infra/keycloak/docker-compose.staging.yml \
-  up -d
+  up -d --no-build
 ```
 
 Then remove/rotate the bootstrap-admin values from operational secret storage. The normal compose file does not require them for subsequent restarts.
