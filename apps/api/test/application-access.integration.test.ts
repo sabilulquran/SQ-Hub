@@ -12,13 +12,14 @@ const pool = new Pool({ connectionString: databaseUrl });
 const repository = new PgApplicationAccessRepository(pool);
 const service = new ApplicationAccessService(repository);
 const actor = { kind: "human" as const, ref: "test:operator" };
+const stagingUrl = "https://hcis-staging.sabilulquran.or.id";
 
 beforeEach(async () => {
   await pool.query("TRUNCATE platform_audit_events, application_access, applications CASCADE");
   await service.upsertApplication({
     applicationKey: "hcis",
     name: "HCIS",
-    canonicalUrl: "https://hcis-staging.sabilulquran.or.id",
+    canonicalUrl: stagingUrl,
     status: "active",
     actor,
   });
@@ -29,6 +30,32 @@ afterAll(async () => {
 });
 
 describe("Application Access", () => {
+  it("stores the environment-local canonical URL for the application registry", async () => {
+    await expect(service.listApplications()).resolves.toEqual([
+      expect.objectContaining({
+        applicationKey: "hcis",
+        canonicalUrl: stagingUrl,
+        status: "active",
+      }),
+    ]);
+  });
+
+  it("returns UNKNOWN_APPLICATION for an unregistered application", async () => {
+    await expect(
+      service.checkAccess(
+        {
+          issuer: "https://login-staging.sabilulquran.or.id/realms/sq-staff-staging",
+          subject: "user-unknown-app",
+        },
+        "spmb",
+      ),
+    ).resolves.toEqual({
+      allowed: false,
+      applicationKey: "spmb",
+      decision: "UNKNOWN_APPLICATION",
+    });
+  });
+
   it("denies, grants, then revokes one exact issuer+subject", async () => {
     const identity = {
       issuer: "https://login-staging.sabilulquran.or.id/realms/sq-staff-staging",
@@ -52,6 +79,36 @@ describe("Application Access", () => {
       allowed: false,
       decision: "GRANT_REVOKED",
     });
+  });
+
+  it("keeps grant and revoke operations idempotent at the current-state level", async () => {
+    const identity = {
+      issuer: "https://login-staging.sabilulquran.or.id/realms/sq-staff-staging",
+      subject: "user-idempotent",
+    };
+
+    await service.grant({ identity, applicationKey: "hcis", actor });
+    await service.grant({ identity, applicationKey: "hcis", actor });
+    const granted = await service.getAccess(identity, "hcis");
+    expect(granted).toMatchObject({ status: "active" });
+
+    await service.revoke({ identity, applicationKey: "hcis", actor });
+    await service.revoke({ identity, applicationKey: "hcis", actor });
+    const revoked = await service.getAccess(identity, "hcis");
+    expect(revoked).toMatchObject({ status: "revoked" });
+
+    const count = await pool.query<{ count: string }>(
+      `
+        SELECT count(*)::text AS count
+        FROM application_access aa
+        JOIN applications a ON a.id = aa.application_id
+        WHERE aa.identity_issuer = $1
+          AND aa.identity_subject = $2
+          AND a.application_key = 'hcis'
+      `,
+      [identity.issuer, identity.subject],
+    );
+    expect(count.rows[0]?.count).toBe("1");
   });
 
   it("does not collide the same subject from a different issuer", async () => {
@@ -81,7 +138,7 @@ describe("Application Access", () => {
     await service.upsertApplication({
       applicationKey: "hcis",
       name: "HCIS",
-      canonicalUrl: "https://hcis-staging.sabilulquran.or.id",
+      canonicalUrl: stagingUrl,
       status: "inactive",
       actor,
     });
