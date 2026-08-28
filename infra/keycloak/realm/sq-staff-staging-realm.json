@@ -13,8 +13,7 @@
   "editUsernameAllowed": false,
   "internationalizationEnabled": true,
   "supportedLocales": [
-    "id",
-    "en"
+    "id"
   ],
   "defaultLocale": "id",
   "bruteForceProtected": true,
