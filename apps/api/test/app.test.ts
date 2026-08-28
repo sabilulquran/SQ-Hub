@@ -6,7 +6,7 @@ import type { AccessDecision } from "../src/modules/application-access/types.js"
 
 const body = {
   identity: {
-    issuer: "https://login-staging.sabilulquran.or.id/realms/sq-staff-staging",
+    issuer: "https://login.sabilulquran.or.id/realms/sq-staff-staging",
     subject: "user-001",
   },
   applicationKey: "hcis",

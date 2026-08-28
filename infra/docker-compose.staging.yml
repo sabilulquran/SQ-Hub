@@ -27,7 +27,7 @@ services:
       PORT: 3100
       DATABASE_URL: postgresql://${SQ_HUB_DB_USER}:${SQ_HUB_DB_PASSWORD}@postgres:5432/${SQ_HUB_DB_NAME}
       HCIS_CANONICAL_URL: ${HCIS_CANONICAL_URL:-https://hcis-staging.sabilulquran.or.id}
-      KEYCLOAK_ISSUER: ${KEYCLOAK_ISSUER:-https://login-staging.sabilulquran.or.id/realms/sq-staff-staging}
+      KEYCLOAK_ISSUER: ${KEYCLOAK_ISSUER:-https://login.sabilulquran.or.id/realms/sq-staff-staging}
       MACHINE_TOKEN_AUDIENCE: ${MACHINE_TOKEN_AUDIENCE:-sq-hub-api-staging}
       ALLOWED_MACHINE_CLIENTS: ${ALLOWED_MACHINE_CLIENTS:-hcis-api-staging}
     command:

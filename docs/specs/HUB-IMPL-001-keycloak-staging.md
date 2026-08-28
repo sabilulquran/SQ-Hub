@@ -8,13 +8,13 @@
 ## Outcome
 Menjalankan SQ Identity staging yang cukup production-like untuk menguji HCIS OIDC integration tanpa menyentuh production authentication.
 
-## Staging naming
-Use simple sibling hostnames under the existing DNS zone:
-- `login-staging.sabilulquran.or.id` — public SQ Identity staging frontend/OIDC endpoints;
+## Staging endpoints
+Use the active public SQ Identity hostname and isolate staging through its realm and separate staging data/configuration:
+- `login.sabilulquran.or.id` — public SQ Identity staging frontend/OIDC endpoints for the `sq-staff-staging` realm;
 - `hub-staging.sabilulquran.or.id` — reserved for SQ Hub staging consumer/API surface when exposed;
 - `hcis-staging.sabilulquran.or.id` — HCIS staging consumer.
 
-Do not require nested `*.staging.sabilulquran.or.id` naming in Wave 1.
+Do not invent a second `login-staging.sabilulquran.or.id` endpoint or require nested `*.staging.sabilulquran.or.id` naming in Wave 1.
 
 ## Runtime baseline
 - Keycloak 26.7.2 is the initial validation candidate; exact production pin remains separate from this staging result.
@@ -111,7 +111,7 @@ Create only synthetic/test identities representing:
 No production Staff credential/data is required for Wave 1.
 
 ## Acceptance criteria
-- `login-staging.sabilulquran.or.id` serves SQ Identity over HTTPS;
+- `login.sabilulquran.or.id` serves the `sq-staff-staging` issuer over HTTPS;
 - Keycloak version is explicitly pinned, not `latest`;
 - readiness check reports healthy after full initialization;
 - OIDC issuer contains the stable `sq-staff-staging` realm key;

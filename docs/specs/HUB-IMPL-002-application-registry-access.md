@@ -102,7 +102,7 @@ Content-Type: application/json
 
 {
   "identity": {
-    "issuer": "https://login-staging.sabilulquran.or.id/realms/sq-staff-staging",
+    "issuer": "https://login.sabilulquran.or.id/realms/sq-staff-staging",
     "subject": "opaque-sub"
   },
   "applicationKey": "hcis"

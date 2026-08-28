@@ -104,7 +104,7 @@ Organizational Unit adalah target shared master milik SQ Hub. Existing HCIS orga
 Development/staging dan production harus terpisah secara logis walaupun dapat berada pada VPS yang sama. Agent tidak boleh menggunakan production sebagai playground development. Operational changes mengikuti `docs/operations/operational-baseline.md`.
 
 Wave 1 staging hostnames:
-- `login-staging.sabilulquran.or.id`;
+- `login.sabilulquran.or.id` (SQ Identity staging uses the `sq-staff-staging` realm and separate staging data/configuration);
 - `hub-staging.sabilulquran.or.id`;
 - `hcis-staging.sabilulquran.or.id`.
 

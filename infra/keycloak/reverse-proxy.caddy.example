@@ -1,4 +1,4 @@
-login-staging.sabilulquran.or.id {
+login.sabilulquran.or.id {
     encode zstd gzip
 
     @admin path /admin /admin/*
