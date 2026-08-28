@@ -12,7 +12,6 @@ on:
       - main
     paths:
       - "infra/keycloak/**"
-      - ".github/workflows/publish-keycloak-staging-image.yml"
 
 permissions:
   contents: read
