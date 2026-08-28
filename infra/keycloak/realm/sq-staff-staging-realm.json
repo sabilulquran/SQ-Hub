@@ -1,6 +1,6 @@
 {
   "realm": "sq-staff-staging",
-  "displayName": "SQ Hub Staging",
+  "displayName": "SQ Identity Staging",
   "enabled": true,
   "sslRequired": "external",
   "registrationAllowed": false,
@@ -11,6 +11,11 @@
   "duplicateEmailsAllowed": false,
   "resetPasswordAllowed": false,
   "editUsernameAllowed": false,
+  "internationalizationEnabled": true,
+  "supportedLocales": [
+    "id"
+  ],
+  "defaultLocale": "id",
   "bruteForceProtected": true,
   "permanentLockout": false,
   "failureFactor": 5,
