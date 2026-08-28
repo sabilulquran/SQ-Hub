@@ -9,7 +9,7 @@ This directory contains the reproducible, non-secret staging foundation for SQ I
 ```text
 Internet
   -> HTTPS reverse proxy
-  -> login-staging.sabilulquran.or.id
+  -> login.sabilulquran.or.id (`sq-staff-staging` realm)
   -> shared Caddy edge network (`edge_proxy`)
   -> sq-identity-staging:8080
   -> Keycloak 26.7.2 (production mode / optimized image)
@@ -93,7 +93,7 @@ Verify the issuer after DNS/TLS/reverse proxy is active:
 
 ```bash
 curl --fail \
-  https://login-staging.sabilulquran.or.id/realms/sq-staff-staging/.well-known/openid-configuration
+  https://login.sabilulquran.or.id/realms/sq-staff-staging/.well-known/openid-configuration
 ```
 
 Before removing bootstrap credentials, establish and verify the named administrative/recovery path required by the security baseline. Do not reuse a daily Staff identity as the bootstrap/emergency administrator.

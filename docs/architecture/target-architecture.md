@@ -131,7 +131,7 @@ Target production naming:
 
 Wave 1 staging naming:
 - `hub-staging.sabilulquran.or.id`
-- `login-staging.sabilulquran.or.id`
+- `login.sabilulquran.or.id` — staging is isolated by the `sq-staff-staging` realm and separate staging data/configuration.
 - `hcis-staging.sabilulquran.or.id`
 
 Staging and production may share a VPS but must not share mutable realm/database/configuration state.

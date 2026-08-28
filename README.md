@@ -22,7 +22,7 @@ Keputusan foundation yang sudah dikunci:
 - **HCIS auth migration tidak memindahkan password/MFA lama**; local principal ID dipertahankan dan ditautkan ke Keycloak melalui OIDC `issuer + sub`.
 - **HCIS frontend menjadi baseline awal SQ Design System**; shared primitives nantinya diekstrak ke SQ Hub.
 - **SQ Hub mengikuti engineering family HCIS:** TypeScript, Fastify, PostgreSQL, React/Vite/Tailwind ketika web dibutuhkan.
-- **Wave 1 staging naming:** `login-staging.`, `hub-staging.`, dan `hcis-staging.sabilulquran.or.id`.
+- **Wave 1 staging naming:** `login.sabilulquran.or.id` uses the `sq-staff-staging` realm and separate staging data/configuration; the application hosts are `hub-staging.sabilulquran.or.id` and `hcis-staging.sabilulquran.or.id`.
 
 ## Source of truth
 Mulai dari:
@@ -60,7 +60,7 @@ Production target:
 
 Wave 1 staging:
 - `hub-staging.sabilulquran.or.id`
-- `login-staging.sabilulquran.or.id`
+- `login.sabilulquran.or.id` — SQ Identity staging uses the `sq-staff-staging` realm and separate staging data/configuration.
 - `hcis-staging.sabilulquran.or.id`
 
 Staging dan production wajib terpisah secara logis walaupun berada pada VPS yang sama.

@@ -61,14 +61,14 @@ npm run access:admin -- application upsert \
   --actor operator:local
 
 npm run access:admin -- access grant \
-  --issuer https://login-staging.sabilulquran.or.id/realms/sq-staff-staging \
+  --issuer https://login.sabilulquran.or.id/realms/sq-staff-staging \
   --subject synthetic-user-001 \
   --app hcis \
   --reason wave-1-test \
   --actor operator:local
 
 npm run access:admin -- access revoke \
-  --issuer https://login-staging.sabilulquran.or.id/realms/sq-staff-staging \
+  --issuer https://login.sabilulquran.or.id/realms/sq-staff-staging \
   --subject synthetic-user-001 \
   --app hcis \
   --reason wave-1-test-complete \

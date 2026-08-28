@@ -44,7 +44,7 @@ describe("Application Access", () => {
     await expect(
       service.checkAccess(
         {
-          issuer: "https://login-staging.sabilulquran.or.id/realms/sq-staff-staging",
+          issuer: "https://login.sabilulquran.or.id/realms/sq-staff-staging",
           subject: "user-unknown-app",
         },
         "spmb",
@@ -58,7 +58,7 @@ describe("Application Access", () => {
 
   it("denies, grants, then revokes one exact issuer+subject", async () => {
     const identity = {
-      issuer: "https://login-staging.sabilulquran.or.id/realms/sq-staff-staging",
+      issuer: "https://login.sabilulquran.or.id/realms/sq-staff-staging",
       subject: "user-001",
     };
 
@@ -83,7 +83,7 @@ describe("Application Access", () => {
 
   it("keeps grant and revoke operations idempotent at the current-state level", async () => {
     const identity = {
-      issuer: "https://login-staging.sabilulquran.or.id/realms/sq-staff-staging",
+      issuer: "https://login.sabilulquran.or.id/realms/sq-staff-staging",
       subject: "user-idempotent",
     };
 
@@ -113,7 +113,7 @@ describe("Application Access", () => {
 
   it("does not collide the same subject from a different issuer", async () => {
     const allowed = {
-      issuer: "https://login-staging.sabilulquran.or.id/realms/sq-staff-staging",
+      issuer: "https://login.sabilulquran.or.id/realms/sq-staff-staging",
       subject: "same-sub",
     };
     const otherIssuer = {
@@ -131,7 +131,7 @@ describe("Application Access", () => {
 
   it("denies access when the application is inactive", async () => {
     const identity = {
-      issuer: "https://login-staging.sabilulquran.or.id/realms/sq-staff-staging",
+      issuer: "https://login.sabilulquran.or.id/realms/sq-staff-staging",
       subject: "user-002",
     };
     await service.grant({ identity, applicationKey: "hcis", actor });
@@ -151,7 +151,7 @@ describe("Application Access", () => {
 
   it("writes an audit trail for application and access mutations", async () => {
     const identity = {
-      issuer: "https://login-staging.sabilulquran.or.id/realms/sq-staff-staging",
+      issuer: "https://login.sabilulquran.or.id/realms/sq-staff-staging",
       subject: "user-003",
     };
     await service.grant({ identity, applicationKey: "hcis", actor, reason: "needed" });

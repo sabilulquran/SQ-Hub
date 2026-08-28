@@ -9,7 +9,7 @@ This runbook connects the accepted SQ Identity/Keycloak staging foundation, SQ H
 
 ```text
 Internet
-  -> login-staging.sabilulquran.or.id
+  -> login.sabilulquran.or.id (`sq-staff-staging` realm)
        -> Keycloak staging
 
 Internet
@@ -45,14 +45,14 @@ Follow `infra/keycloak/README.md` for bootstrap, normal runtime, DNS/TLS, recove
 The canonical issuer required by both SQ Hub and HCIS is:
 
 ```text
-https://login-staging.sabilulquran.or.id/realms/sq-staff-staging
+https://login.sabilulquran.or.id/realms/sq-staff-staging
 ```
 
 Verify discovery before starting OIDC UAT:
 
 ```bash
 curl --fail \
-  https://login-staging.sabilulquran.or.id/realms/sq-staff-staging/.well-known/openid-configuration
+  https://login.sabilulquran.or.id/realms/sq-staff-staging/.well-known/openid-configuration
 ```
 
 ## 3. Bring up SQ Hub Application Access
@@ -152,7 +152,7 @@ docker compose \
   exec -e HCIS_ALLOW_OIDC_IDENTITY_MAPPING=1 api \
   node apps/api/dist/modules/auth/cli/map-oidc-identity.js \
   --account-id <HCIS_ACCOUNT_UUID> \
-  --issuer https://login-staging.sabilulquran.or.id/realms/sq-staff-staging \
+  --issuer https://login.sabilulquran.or.id/realms/sq-staff-staging \
   --subject <KEYCLOAK_SUB>
 ```
 
@@ -172,7 +172,7 @@ docker compose \
   exec api \
   node apps/api/dist/cli/access-admin.js \
   access show \
-  --issuer https://login-staging.sabilulquran.or.id/realms/sq-staff-staging \
+  --issuer https://login.sabilulquran.or.id/realms/sq-staff-staging \
   --subject <KEYCLOAK_SUB> \
   --app hcis
 ```
@@ -187,7 +187,7 @@ docker compose \
   exec api \
   node apps/api/dist/cli/access-admin.js \
   access grant \
-  --issuer https://login-staging.sabilulquran.or.id/realms/sq-staff-staging \
+  --issuer https://login.sabilulquran.or.id/realms/sq-staff-staging \
   --subject <KEYCLOAK_SUB> \
   --app hcis \
   --reason "HUB-IMPL-003 synthetic staging UAT" \
@@ -209,7 +209,7 @@ docker compose \
   exec api \
   node apps/api/dist/cli/access-admin.js \
   access revoke \
-  --issuer https://login-staging.sabilulquran.or.id/realms/sq-staff-staging \
+  --issuer https://login.sabilulquran.or.id/realms/sq-staff-staging \
   --subject <KEYCLOAK_SUB> \
   --app hcis \
   --reason "HUB-IMPL-003 deny or cleanup rehearsal" \
