@@ -102,6 +102,27 @@ jobs:
             > /tmp/discovery.json
           jq -e '.issuer == "http://127.0.0.1:8080/realms/sq-staff-staging"' /tmp/discovery.json
 
+      - name: Verify SQ Identity login theme
+        shell: bash
+        run: |
+          status="$(curl --silent --show-error \
+            --output /tmp/sq-identity-login.html \
+            --write-out '%{http_code}' \
+            --get \
+            --data-urlencode 'client_id=hcis-staging' \
+            --data-urlencode 'response_type=code' \
+            --data-urlencode 'scope=openid' \
+            --data-urlencode 'redirect_uri=https://hcis-staging.sabilulquran.or.id/auth/callback' \
+            --data-urlencode 'code_challenge=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA' \
+            --data-urlencode 'code_challenge_method=S256' \
+            --data-urlencode 'ui_locales=id' \
+            http://127.0.0.1:8080/realms/sq-staff-staging/protocol/openid-connect/auth)"
+          test "$status" = "200"
+          grep -Fq 'SQ Identity' /tmp/sq-identity-login.html
+          grep -Fq 'Selamat datang kembali' /tmp/sq-identity-login.html
+          grep -Fq 'css/sq-hub.css' /tmp/sq-identity-login.html
+          grep -Fq 'img/ysq-mark.svg' /tmp/sq-identity-login.html
+
       - name: Verify imported realm policy and clients
         shell: bash
         run: |
@@ -123,9 +144,13 @@ jobs:
 
           jq -e '
             .realm == "sq-staff-staging" and
+            .displayName == "SQ Identity Staging" and
             .registrationAllowed == false and
             .rememberMe == false and
             .duplicateEmailsAllowed == false and
+            .internationalizationEnabled == true and
+            .defaultLocale == "id" and
+            (.supportedLocales | sort) == (["en", "id"] | sort) and
             .bruteForceProtected == true and
             .failureFactor == 5 and
             .passwordPolicy == "length(12) and notUsername" and
