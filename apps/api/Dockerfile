@@ -8,7 +8,7 @@ COPY apps/api/package.json apps/api/package.json
 RUN npm ci
 
 COPY apps/api apps/api
-RUN npm run build
+RUN npm --workspace @sq-hub/api run build
 
 FROM node:22-alpine AS runtime
 WORKDIR /app
