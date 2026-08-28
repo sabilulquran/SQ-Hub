@@ -4,6 +4,10 @@ import { createPool } from "./db/pool.js";
 import { createKeycloakMachineTokenVerifier } from "./modules/application-access/machine-auth.js";
 import { PgApplicationAccessRepository } from "./modules/application-access/repository.js";
 import { ApplicationAccessService } from "./modules/application-access/service.js";
+import { HubOidcProvider } from "./modules/hub-auth/oidc-provider.js";
+import { PgHubAuthRepository } from "./modules/hub-auth/repository.js";
+import { HubAuthService } from "./modules/hub-auth/service.js";
+import { PgHubWorkspaceRepository } from "./modules/hub-auth/workspace-repository.js";
 
 const config = loadConfig();
 const pool = createPool(config.databaseUrl);
@@ -15,7 +19,32 @@ const verifyMachineToken = createKeycloakMachineTokenVerifier({
   allowedClients: config.allowedMachineClients,
 });
 
-const app = buildApp({ accessService, verifyMachineToken, logger: true });
+const hubOidcProvider = new HubOidcProvider({
+  issuer: config.keycloakIssuer,
+  clientId: config.hubOidcClientId,
+  clientSecret: config.hubOidcClientSecret,
+  redirectUri: config.hubOidcRedirectUri,
+  postLogoutRedirectUri: config.hubOidcPostLogoutRedirectUri,
+});
+const hubAuth = new HubAuthService(
+  new PgHubAuthRepository(pool),
+  hubOidcProvider,
+  new PgHubWorkspaceRepository(pool),
+  {
+    sessionIdleHours: config.hubSessionIdleHours,
+    sessionMaxHours: config.hubSessionMaxHours,
+    transactionTtlMinutes: config.hubOidcTransactionTtlMinutes,
+    secureCookies: config.hubCookieSecure,
+  },
+);
+
+const app = buildApp({
+  accessService,
+  verifyMachineToken,
+  hubAuth,
+  hubRedirectUri: config.hubOidcRedirectUri,
+  logger: true,
+});
 
 const shutdown = async (signal: string) => {
   app.log.info({ signal }, "shutting down");

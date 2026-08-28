@@ -60,6 +60,30 @@
       }
     },
     {
+      "clientId": "sq-hub-staging",
+      "name": "SQ Hub Staging",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "bearerOnly": false,
+      "standardFlowEnabled": true,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": false,
+      "frontchannelLogout": true,
+      "fullScopeAllowed": false,
+      "redirectUris": [
+        "https://hub-staging.sabilulquran.or.id/auth/callback"
+      ],
+      "webOrigins": [
+        "https://hub-staging.sabilulquran.or.id"
+      ],
+      "attributes": {
+        "pkce.code.challenge.method": "S256",
+        "post.logout.redirect.uris": "https://hub-staging.sabilulquran.or.id/*"
+      }
+    },
+    {
       "clientId": "sq-hub-api-staging",
       "name": "SQ Hub API Staging",
       "enabled": true,

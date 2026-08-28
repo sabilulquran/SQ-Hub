@@ -1,6 +1,10 @@
 import { z } from "zod";
 
-const configSchema = z.object({
+const booleanString = z
+  .enum(["true", "false"])
+  .transform((value) => value === "true");
+
+const foundationConfigSchema = z.object({
   PORT: z.coerce.number().int().min(1).max(65535).default(3100),
   DATABASE_URL: z.string().min(1),
   HCIS_CANONICAL_URL: z.string().url(),
@@ -9,7 +13,18 @@ const configSchema = z.object({
   ALLOWED_MACHINE_CLIENTS: z.string().min(1),
 });
 
-export interface AppConfig {
+const serverConfigSchema = foundationConfigSchema.extend({
+  SQ_HUB_OIDC_CLIENT_ID: z.string().trim().min(1),
+  SQ_HUB_OIDC_CLIENT_SECRET: z.string().min(1),
+  SQ_HUB_OIDC_REDIRECT_URI: z.string().url(),
+  SQ_HUB_OIDC_POST_LOGOUT_REDIRECT_URI: z.string().url(),
+  HUB_SESSION_IDLE_HOURS: z.coerce.number().positive().max(8).default(8),
+  HUB_SESSION_MAX_HOURS: z.coerce.number().positive().max(12).default(12),
+  HUB_OIDC_TRANSACTION_TTL_MINUTES: z.coerce.number().positive().max(15).default(10),
+  HUB_COOKIE_SECURE: booleanString.default("true"),
+});
+
+export interface FoundationConfig {
   port: number;
   databaseUrl: string;
   hcisCanonicalUrl: string;
@@ -18,14 +33,23 @@ export interface AppConfig {
   allowedMachineClients: ReadonlySet<string>;
 }
 
-export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
-  const parsed = configSchema.parse(env);
+export interface AppConfig extends FoundationConfig {
+  hubOidcClientId: string;
+  hubOidcClientSecret: string;
+  hubOidcRedirectUri: string;
+  hubOidcPostLogoutRedirectUri: string;
+  hubSessionIdleHours: number;
+  hubSessionMaxHours: number;
+  hubOidcTransactionTtlMinutes: number;
+  hubCookieSecure: boolean;
+}
+
+function foundationConfig(parsed: z.infer<typeof foundationConfigSchema>): FoundationConfig {
   const allowedMachineClients = new Set(
     parsed.ALLOWED_MACHINE_CLIENTS.split(",")
       .map((value) => value.trim())
       .filter(Boolean),
   );
-
   if (allowedMachineClients.size === 0) {
     throw new Error("ALLOWED_MACHINE_CLIENTS must contain at least one client id");
   }
@@ -37,5 +61,28 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     keycloakIssuer: parsed.KEYCLOAK_ISSUER.replace(/\/$/, ""),
     machineTokenAudience: parsed.MACHINE_TOKEN_AUDIENCE,
     allowedMachineClients,
+  };
+}
+
+export function loadFoundationConfig(env: NodeJS.ProcessEnv = process.env): FoundationConfig {
+  return foundationConfig(foundationConfigSchema.parse(env));
+}
+
+export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
+  const parsed = serverConfigSchema.parse(env);
+  if (parsed.HUB_SESSION_IDLE_HOURS > parsed.HUB_SESSION_MAX_HOURS) {
+    throw new Error("HUB_SESSION_IDLE_HOURS cannot exceed HUB_SESSION_MAX_HOURS");
+  }
+
+  return {
+    ...foundationConfig(parsed),
+    hubOidcClientId: parsed.SQ_HUB_OIDC_CLIENT_ID,
+    hubOidcClientSecret: parsed.SQ_HUB_OIDC_CLIENT_SECRET,
+    hubOidcRedirectUri: parsed.SQ_HUB_OIDC_REDIRECT_URI,
+    hubOidcPostLogoutRedirectUri: parsed.SQ_HUB_OIDC_POST_LOGOUT_REDIRECT_URI,
+    hubSessionIdleHours: parsed.HUB_SESSION_IDLE_HOURS,
+    hubSessionMaxHours: parsed.HUB_SESSION_MAX_HOURS,
+    hubOidcTransactionTtlMinutes: parsed.HUB_OIDC_TRANSACTION_TTL_MINUTES,
+    hubCookieSecure: parsed.HUB_COOKIE_SECURE,
   };
 }
