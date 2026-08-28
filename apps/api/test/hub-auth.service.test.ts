@@ -13,7 +13,6 @@ import type {
 import {
   HUB_OIDC_TRANSACTION_COOKIE_NAME,
   HUB_SESSION_COOKIE_NAME,
-  HubAuthError,
   HubAuthService,
 } from "../src/modules/hub-auth/service.js";
 import type {
@@ -74,11 +73,11 @@ class MemoryStore implements HubAuthStore {
     return record;
   }
 
-  async getSession(tokenHash: string, _idleSeconds: number) {
+  async getSession(tokenHash: string) {
     return this.session?.tokenHash === tokenHash ? this.session.record : null;
   }
 
-  async revokeSession(tokenHash: string, _context: HubRequestContext) {
+  async revokeSession(tokenHash: string) {
     this.revokedHash = tokenHash;
   }
 }
@@ -124,7 +123,7 @@ class FakeWorkspaceSource implements HubWorkspaceApplicationSource {
     },
   ];
 
-  async listAuthorizedApplications(_identity: { issuer: string; subject: string }) {
+  async listAuthorizedApplications() {
     return this.applications;
   }
 }
@@ -139,7 +138,7 @@ function service() {
     transactionTtlMinutes: 10,
     secureCookies: true,
   });
-  return { auth, store, provider, workspace };
+  return { auth, store, provider };
 }
 
 function cookieValue(setCookie: string, name: string) {
@@ -218,12 +217,10 @@ describe("HubAuthService", () => {
 
   it("rejects a missing Hub session and revokes an authenticated session on logout", async () => {
     const { auth, store } = service();
-    await expect(auth.getWorkspace(null)).rejects.toEqual(
-      expect.objectContaining<Partial<HubAuthError>>({
-        statusCode: 401,
-        code: "UNAUTHENTICATED",
-      }),
-    );
+    await expect(auth.getWorkspace(null)).rejects.toMatchObject({
+      statusCode: 401,
+      code: "UNAUTHENTICATED",
+    });
 
     const begin = await auth.beginLogin();
     const transactionToken = cookieValue(begin.setCookie, HUB_OIDC_TRANSACTION_COOKIE_NAME);

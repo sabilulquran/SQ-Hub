@@ -159,12 +159,7 @@ export class HubAuthService implements HubAuthRuntime {
       await this.repository.revokeSession(hashOpaqueToken(sessionToken), context);
     }
 
-    let logoutUrl: URL | null = null;
-    try {
-      logoutUrl = await this.oidcProvider.buildLogoutUrl();
-    } catch {
-      logoutUrl = null;
-    }
+    const logoutUrl = await this.oidcProvider.buildLogoutUrl().catch(() => null);
 
     return {
       clearCookie: clearCookie(HUB_SESSION_COOKIE_NAME, this.secureCookies),
