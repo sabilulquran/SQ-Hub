@@ -121,7 +121,7 @@ jobs:
           grep -Fq 'SQ Identity' /tmp/sq-identity-login.html
           grep -Fq 'Selamat datang kembali' /tmp/sq-identity-login.html
           grep -Fq 'css/sq-hub.css' /tmp/sq-identity-login.html
-          grep -Fq 'img/ysq-mark.svg' /tmp/sq-identity-login.html
+          grep -Fq 'img/favicon.svg' /tmp/sq-identity-login.html
 
       - name: Verify imported realm policy and clients
         shell: bash
