@@ -7,7 +7,7 @@ on:
       - main
 
 jobs:
-  api:
+  foundation:
     runs-on: ubuntu-latest
     timeout-minutes: 20
 
@@ -55,16 +55,16 @@ jobs:
       - name: Seed staging-shaped registry data
         run: npm run seed
 
-      - name: Typecheck
+      - name: Typecheck API and web
         run: npm run typecheck
 
-      - name: Lint
+      - name: Lint API and web
         run: npm run lint
 
-      - name: Test
+      - name: Test API and web
         run: npm run test
 
-      - name: Build
+      - name: Build API and web
         run: npm run build
 
       - name: Validate staging Compose
@@ -72,3 +72,51 @@ jobs:
 
       - name: Build staging API image
         run: docker build -f apps/api/Dockerfile -t sq-hub-api:ci .
+
+      - name: Build SQ Hub web image
+        run: docker build -f apps/web/Dockerfile -t sq-hub-web:ci .
+
+      - name: Build design-preview bundle
+        if: github.event_name == 'pull_request'
+        run: VITE_SQ_HUB_PREVIEW=1 npm run build:web
+
+      - name: Capture desktop and mobile visual smoke
+        if: github.event_name == 'pull_request'
+        shell: bash
+        run: |
+          npm --workspace @sq-hub/web run preview -- --host 127.0.0.1 --port 4173 >/tmp/sq-hub-preview.log 2>&1 &
+          PREVIEW_PID=$!
+          trap 'kill "$PREVIEW_PID" 2>/dev/null || true' EXIT
+
+          for attempt in {1..30}; do
+            if curl --fail --silent http://127.0.0.1:4173 >/dev/null; then
+              break
+            fi
+            if [ "$attempt" -eq 30 ]; then
+              cat /tmp/sq-hub-preview.log
+              exit 1
+            fi
+            sleep 1
+          done
+
+          CHROME="$(command -v google-chrome || command -v google-chrome-stable || command -v chromium || command -v chromium-browser || true)"
+          if [ -z "$CHROME" ]; then
+            echo "No Chromium-compatible browser found on runner"
+            exit 1
+          fi
+
+          mkdir -p visual-smoke
+          "$CHROME" --headless=new --no-sandbox --disable-gpu --hide-scrollbars --window-size=1440,900 --screenshot=visual-smoke/sq-hub-desktop-1440x900.png http://127.0.0.1:4173
+          "$CHROME" --headless=new --no-sandbox --disable-gpu --hide-scrollbars --window-size=390,844 --screenshot=visual-smoke/sq-hub-mobile-390x844.png http://127.0.0.1:4173
+
+          test -s visual-smoke/sq-hub-desktop-1440x900.png
+          test -s visual-smoke/sq-hub-mobile-390x844.png
+
+      - name: Upload visual smoke screenshots
+        if: github.event_name == 'pull_request'
+        uses: actions/upload-artifact@v4
+        with:
+          name: sq-hub-visual-smoke
+          path: visual-smoke/*.png
+          if-no-files-found: error
+          retention-days: 7
