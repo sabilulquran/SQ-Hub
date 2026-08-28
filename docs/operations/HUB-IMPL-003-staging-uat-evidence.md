@@ -55,6 +55,7 @@ The following **deferred pre-production security/persona gates** remain required
 
 | Deferred gate | Source requirement | Current result |
 | --- | --- | --- |
+| Ordinary Employee persona | Spec and runbook require an ordinary Employee synthetic persona. The recorded happy path does not classify the current synthetic user as this persona. | NOT EXECUTED / NOT RECORDED |
 | Local authorization continuity for manager and Human Capital administrator | `HUB-IMPL-003` requires existing role/permission/scope behavior to continue; the runbook requires manager and Human Capital administrator browser UAT. | NOT EXECUTED / NOT RECORDED |
 | Privileged/Super Admin MFA and recovery | Spec and runbook require a privileged persona with MFA; runbook requires TOTP and recovery-path verification. | NOT EXECUTED / NOT RECORDED |
 | Non-Employee Staff | Spec and runbook require a non-Employee Staff persona. | NOT EXECUTED / NOT RECORDED |
