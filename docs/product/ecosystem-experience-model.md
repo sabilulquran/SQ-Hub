@@ -180,7 +180,7 @@ SQ Portal tidak memiliki business rule admission, recruitment, finance, assessme
 
 **Working recommendation:** dokumentasi ecosystem-level tetap berada di repository `SQ-Hub` selama masih dalam discovery karena keputusan identity, access, integration, dan experience model memengaruhi seluruh foundation.
 
-Ketika implementasi SQ Portal dimulai, **SQ Portal sebaiknya menjadi repository/deployment terpisah** dari `SQ-Hub`, misalnya `imadjinasi/SQ-Portal`.
+Repository implementasi SQ Portal sudah disiapkan terpisah di **`imadjinasi/SQ-Portal`** (`https://github.com/imadjinasi/SQ-Portal`). Repository ini menjadi target implementasi/deployment SQ Portal ketika specification dan ADR yang diperlukan sudah diterima.
 
 Alasannya:
 
@@ -192,7 +192,7 @@ Alasannya:
 
 Repository SQ Portal hanya memiliki portal experience dan integration layer yang diperlukan. Business logic SPMB, Recruitment, Finance, dan domain lain tidak dipindahkan ke repo tersebut.
 
-Keputusan repository ini adalah rekomendasi discovery dan perlu difinalkan sebelum implementation spec pertama SQ Portal.
+Keputusan repository sudah diarahkan ke `imadjinasi/SQ-Portal`; implementasi tetap menunggu specification/ADR agar boundary identity, authorization, dan integration tidak diinventasikan saat coding.
 
 ## Entry points
 
