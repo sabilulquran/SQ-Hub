@@ -36,6 +36,7 @@ The YSQ VPS topology uses the shared Caddy Docker network. A host-Nginx example 
 - `themes/sq-hub/` — SQ login theme derived from the accepted HCIS design baseline; no font files are bundled.
 - `scripts/backup.sh` — PostgreSQL custom-format backup.
 - `scripts/restore-check.sh` — restores a backup to a disposable verification database and checks that the staging realm exists.
+- `../../docs/operations/staff-identity-provisioning.md` — minimum profile-complete provisioning contract for manual staging and future automation.
 
 ## Runtime image and shared-VPS sizing
 
@@ -126,6 +127,14 @@ The imported staging realm is `sq-staff-staging` and currently establishes:
 - SQ login theme.
 
 Email login is only acceptable for identities provisioned with a verified/controlled email according to the Staff Authentication Policy. Self-registration is disabled, so provisioning must enforce that invariant.
+
+## Staff profile completeness
+
+Before a normal Staff identity is considered provisioned, both Keycloak `firstName` and `lastName` must be populated together with the accepted login identifier and controlled email state. Do not rely on the end user to repair administrator-owned omissions through an unexpected first-login profile-completion screen.
+
+The exact operational sequence and synthetic-user guardrails are defined in `docs/operations/staff-identity-provisioning.md`. Future SQ Admin Center/provisioning automation must enforce the same rule before reporting provisioning success or granting application access.
+
+Do not disable Keycloak profile validation globally to hide incomplete provisioning. Required actions remain valid when they are intentional security/user workflows.
 
 ### Recovery codes
 
