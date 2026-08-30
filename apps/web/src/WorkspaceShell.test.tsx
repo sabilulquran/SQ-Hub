@@ -21,11 +21,14 @@ const workspace: WorkspaceSnapshot = {
 };
 
 describe("SQ Hub workspace shell", () => {
-  it("renders the YSQ workspace identity and responsive account triggers", () => {
+  it("renders the HCIS-aligned YSQ brand lockup and responsive account triggers", () => {
     const html = renderToStaticMarkup(<WorkspaceShell workspace={workspace} preview />);
 
     expect(html).toContain("SQ Hub");
     expect(html).toContain("Yayasan Sabilul Qur&#x27;an");
+    expect(html).toContain("h-11 w-11 shrink-0 object-contain");
+    expect(html).toContain("h-9 w-9 shrink-0 object-contain");
+    expect(html).not.toContain("h-8 w-8 object-contain");
     expect(html.match(/aria-haspopup="menu"/g)).toHaveLength(2);
     expect(html).toContain("Administrasi SQ");
     expect(html).toContain("Preview desain");
