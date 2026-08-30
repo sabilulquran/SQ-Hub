@@ -1,9 +1,9 @@
 import { randomUUID } from "node:crypto";
 
-import { loadConfig } from "../config.js";
+import { loadFoundationConfig } from "../config.js";
 import { createPool } from "./pool.js";
 
-const config = loadConfig();
+const config = loadFoundationConfig();
 const pool = createPool(config.databaseUrl);
 
 try {

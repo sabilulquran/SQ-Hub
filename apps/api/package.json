@@ -8,7 +8,7 @@
     "start": "node dist/server.js",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "lint": "eslint .",
-    "test": "vitest run",
+    "test": "vitest run --fileParallelism=false",
     "migrate": "node --env-file-if-exists=.env.local --import tsx src/db/migrate.ts",
     "seed": "node --env-file-if-exists=.env.local --import tsx src/db/seed.ts",
     "access:admin": "node --env-file-if-exists=.env.local --import tsx src/cli/access-admin.ts"
@@ -16,6 +16,7 @@
   "dependencies": {
     "fastify": "5.12.1",
     "jose": "6.2.10",
+    "openid-client": "6.8.7",
     "pg": "8.16.3",
     "zod": "3.24.2"
   },

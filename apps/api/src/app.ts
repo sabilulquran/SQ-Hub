@@ -11,6 +11,8 @@ import {
   identityRefSchema,
   type ApplicationAccessService,
 } from "./modules/application-access/service.js";
+import { registerHubAuthRoutes } from "./modules/hub-auth/routes.js";
+import type { HubAuthRuntime } from "./modules/hub-auth/service.js";
 
 const checkBodySchema = z
   .object({
@@ -22,6 +24,8 @@ const checkBodySchema = z
 export function buildApp(input: {
   accessService: Pick<ApplicationAccessService, "checkAccess">;
   verifyMachineToken: VerifyMachineToken;
+  hubAuth?: HubAuthRuntime;
+  hubRedirectUri?: string;
   logger?: boolean;
 }) {
   const app = Fastify({ logger: input.logger ?? false });
@@ -55,6 +59,13 @@ export function buildApp(input: {
     );
     return reply.code(200).send(decision);
   });
+
+  if (input.hubAuth) {
+    if (!input.hubRedirectUri) {
+      throw new Error("hubRedirectUri is required when Hub auth routes are enabled");
+    }
+    registerHubAuthRoutes(app, input.hubAuth, input.hubRedirectUri);
+  }
 
   return app;
 }

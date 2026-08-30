@@ -1,10 +1,10 @@
-import { loadConfig } from "../config.js";
+import { loadFoundationConfig } from "../config.js";
 import { createPool } from "../db/pool.js";
 import { PgApplicationAccessRepository, makeAccessTargetRef } from "../modules/application-access/repository.js";
 import { ApplicationAccessService } from "../modules/application-access/service.js";
 import type { ActorKind } from "../modules/application-access/types.js";
 
-const config = loadConfig();
+const config = loadFoundationConfig();
 const pool = createPool(config.databaseUrl);
 const service = new ApplicationAccessService(new PgApplicationAccessRepository(pool));
 const args = process.argv.slice(2);
