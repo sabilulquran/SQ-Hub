@@ -3,11 +3,16 @@ import { useCallback, useEffect, useState } from "react";
 
 import { WorkspaceShell } from "@/WorkspaceShell";
 import { BrandLockup } from "@/components/BrandLockup";
-import type { WorkspaceSnapshot } from "@/types";
+import type { AdminAccessState, AdminContext, WorkspaceSnapshot } from "@/types";
 
 type RuntimeState =
   | { status: "loading" }
-  | { status: "ready"; workspace: WorkspaceSnapshot }
+  | {
+      status: "ready";
+      workspace: WorkspaceSnapshot;
+      view: "workspace" | "admin";
+      adminState?: AdminAccessState;
+    }
   | { status: "error"; message: string };
 
 function startupError(): string | null {
@@ -19,6 +24,28 @@ function startupError(): string | null {
     return "Proses masuk melalui SQ Identity belum dapat diselesaikan. Silakan coba lagi.";
   }
   return null;
+}
+
+function isAdminPath(): boolean {
+  return window.location.pathname === "/admin" || window.location.pathname.startsWith("/admin/");
+}
+
+async function fetchAdminState(): Promise<AdminAccessState | "unauthenticated"> {
+  const response = await fetch("/api/admin/context", {
+    method: "GET",
+    credentials: "same-origin",
+    headers: { Accept: "application/json" },
+  });
+
+  if (response.status === 401) return "unauthenticated";
+  if (response.status === 403) {
+    const body = (await response.json().catch(() => ({}))) as { error?: string };
+    return body.error === "ADMIN_REAUTH_REQUIRED"
+      ? { status: "reauth_required" }
+      : { status: "forbidden" };
+  }
+  if (!response.ok) throw new Error(`admin context request failed: ${response.status}`);
+  return { status: "authorized", context: (await response.json()) as AdminContext };
 }
 
 export function WorkspaceApp() {
@@ -45,7 +72,17 @@ export function WorkspaceApp() {
       }
 
       const workspace = (await response.json()) as WorkspaceSnapshot;
-      setState({ status: "ready", workspace });
+      if (!isAdminPath()) {
+        setState({ status: "ready", workspace, view: "workspace" });
+        return;
+      }
+
+      const adminState = await fetchAdminState();
+      if (adminState === "unauthenticated") {
+        window.location.assign("/api/auth/oidc/start");
+        return;
+      }
+      setState({ status: "ready", workspace, view: "admin", adminState });
     } catch {
       setState({
         status: "error",
@@ -78,7 +115,14 @@ export function WorkspaceApp() {
   }, []);
 
   if (state.status === "ready") {
-    return <WorkspaceShell workspace={state.workspace} onLogout={logout} />;
+    return (
+      <WorkspaceShell
+        workspace={state.workspace}
+        view={state.view}
+        adminState={state.adminState}
+        onLogout={logout}
+      />
+    );
   }
 
   return (
@@ -114,7 +158,9 @@ export function WorkspaceApp() {
             <button
               type="button"
               onClick={() => {
-                window.history.replaceState({}, "", "/");
+                const url = new URL(window.location.href);
+                url.searchParams.delete("authError");
+                window.history.replaceState({}, "", `${url.pathname}${url.search}`);
                 void loadWorkspace();
               }}
               className="mt-6 inline-flex items-center gap-2 rounded-2xl bg-brand-primary px-4 py-2.5 text-sm font-bold text-white shadow-[var(--shadow-button)] transition hover:brightness-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
