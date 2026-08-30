@@ -11,6 +11,12 @@ import type { HubWorkspaceApplicationSource } from "./workspace-repository.js";
 export const HUB_SESSION_COOKIE_NAME = "sq_hub_session";
 export const HUB_OIDC_TRANSACTION_COOKIE_NAME = "sq_hub_oidc_tx";
 
+export interface HubPlatformAdminAuthorizationSource {
+  authorizeSession(session: HubSessionRecord): Promise<{
+    status: "authorized" | "forbidden" | "reauth_required";
+  }>;
+}
+
 export interface HubWorkspaceSnapshot {
   user: {
     displayName: string;
@@ -21,6 +27,9 @@ export interface HubWorkspaceSnapshot {
     name: string;
     canonicalUrl: string;
   }>;
+  capabilities: {
+    platformAdministration: boolean;
+  };
 }
 
 export class HubAuthError extends Error {
@@ -41,6 +50,7 @@ export interface HubAuthRuntime {
     transactionToken: string | null,
     context: HubRequestContext,
   ): Promise<{ setCookies: string[] }>;
+  getAuthenticatedSession(sessionToken: string | null): Promise<HubSessionRecord>;
   getWorkspace(sessionToken: string | null): Promise<HubWorkspaceSnapshot>;
   logout(
     sessionToken: string | null,
@@ -65,6 +75,7 @@ export class HubAuthService implements HubAuthRuntime {
       transactionTtlMinutes: number;
       secureCookies: boolean;
     },
+    private readonly platformAdmin?: HubPlatformAdminAuthorizationSource,
   ) {
     this.idleSeconds = options.sessionIdleHours * 60 * 60;
     this.maxSeconds = options.sessionMaxHours * 60 * 60;
@@ -131,12 +142,26 @@ export class HubAuthService implements HubAuthRuntime {
     };
   }
 
+  getAuthenticatedSession(sessionToken: string | null): Promise<HubSessionRecord> {
+    return this.getRequiredSession(sessionToken);
+  }
+
   async getWorkspace(sessionToken: string | null): Promise<HubWorkspaceSnapshot> {
     const session = await this.getRequiredSession(sessionToken);
     const applications = await this.workspaceApplications.listAuthorizedApplications({
       issuer: session.issuer,
       subject: session.subject,
     });
+
+    let platformAdministration = false;
+    if (this.platformAdmin) {
+      try {
+        platformAdministration =
+          (await this.platformAdmin.authorizeSession(session)).status === "authorized";
+      } catch {
+        platformAdministration = false;
+      }
+    }
 
     return {
       user: {
@@ -148,6 +173,9 @@ export class HubAuthService implements HubAuthRuntime {
         name: application.name,
         canonicalUrl: application.canonicalUrl,
       })),
+      capabilities: {
+        platformAdministration,
+      },
     };
   }
 
