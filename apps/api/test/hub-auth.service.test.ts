@@ -67,6 +67,7 @@ class MemoryStore implements HubAuthStore {
       issuer: input.identity.issuer,
       subject: input.identity.subject,
       displayName: input.identity.displayName,
+      createdAt: new Date(),
       expiresAt: input.expiresAt,
     };
     this.session = { tokenHash: input.tokenHash, identity: input.identity, record };
@@ -90,7 +91,8 @@ class FakeOidcProvider implements HubOidcProviderLike {
   };
   completedWith: HubOidcAuthorizationTransaction | null = null;
 
-  async createAuthorizationRequest() {
+  async createAuthorizationRequest(
+  ) {
     return {
       url: new URL("https://login.example.test/authorize"),
       transaction: this.transaction,
@@ -128,16 +130,26 @@ class FakeWorkspaceSource implements HubWorkspaceApplicationSource {
   }
 }
 
-function service() {
+function service(platformAdministration = false) {
   const store = new MemoryStore();
   const provider = new FakeOidcProvider();
   const workspace = new FakeWorkspaceSource();
-  const auth = new HubAuthService(store, provider, workspace, {
-    sessionIdleHours: 8,
-    sessionMaxHours: 12,
-    transactionTtlMinutes: 10,
-    secureCookies: true,
-  });
+  const auth = new HubAuthService(
+    store,
+    provider,
+    workspace,
+    {
+      sessionIdleHours: 8,
+      sessionMaxHours: 12,
+      transactionTtlMinutes: 10,
+      secureCookies: true,
+    },
+    {
+      authorizeSession: async () => ({
+        status: platformAdministration ? "authorized" : "forbidden",
+      }),
+    },
+  );
   return { auth, store, provider };
 }
 
@@ -211,8 +223,54 @@ describe("HubAuthService", () => {
           canonicalUrl: "https://hcis-staging.sabilulquran.or.id",
         },
       ],
+      capabilities: { platformAdministration: false },
     });
     expect(JSON.stringify(workspace)).not.toContain("opaque-subject");
+  });
+
+  it("exposes only a server-computed platform administration capability", async () => {
+    const { auth } = service(true);
+    const begin = await auth.beginLogin();
+    const transactionToken = cookieValue(begin.setCookie, HUB_OIDC_TRANSACTION_COOKIE_NAME);
+    const completed = await auth.completeLogin(
+      new URL("https://hub-staging.sabilulquran.or.id/auth/callback"),
+      transactionToken,
+      context,
+    );
+    const sessionToken = cookieValue(completed.setCookies[0]!, HUB_SESSION_COOKIE_NAME);
+
+    await expect(auth.getWorkspace(sessionToken)).resolves.toMatchObject({
+      capabilities: { platformAdministration: true },
+    });
+  });
+
+  it("fails the optional admin capability closed without breaking the ordinary workspace", async () => {
+    const store = new MemoryStore();
+    const auth = new HubAuthService(
+      store,
+      new FakeOidcProvider(),
+      new FakeWorkspaceSource(),
+      {
+        sessionIdleHours: 8,
+        sessionMaxHours: 12,
+        transactionTtlMinutes: 10,
+        secureCookies: true,
+      },
+      { authorizeSession: async () => Promise.reject(new Error("admin store unavailable")) },
+    );
+    const begin = await auth.beginLogin();
+    const transactionToken = cookieValue(begin.setCookie, HUB_OIDC_TRANSACTION_COOKIE_NAME);
+    const completed = await auth.completeLogin(
+      new URL("https://hub-staging.sabilulquran.or.id/auth/callback"),
+      transactionToken,
+      context,
+    );
+    const sessionToken = cookieValue(completed.setCookies[0]!, HUB_SESSION_COOKIE_NAME);
+
+    await expect(auth.getWorkspace(sessionToken)).resolves.toMatchObject({
+      applications: [{ key: "hcis" }],
+      capabilities: { platformAdministration: false },
+    });
   });
 
   it("rejects a missing Hub session and revokes an authenticated session on logout", async () => {
