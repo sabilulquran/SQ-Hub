@@ -6,6 +6,7 @@ import {
   ScrollText,
   ShieldCheck,
 } from "lucide-react";
+import type { ReactNode } from "react";
 
 import type { AdminAccessState } from "@/types";
 
@@ -127,7 +128,7 @@ function OverviewCard({
   value,
   detail,
 }: {
-  icon: React.ReactNode;
+  icon: ReactNode;
   title: string;
   value: number;
   detail: string;
