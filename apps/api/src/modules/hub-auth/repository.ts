@@ -17,6 +17,7 @@ export interface HubSessionIdentity {
 
 export interface HubSessionRecord extends HubSessionIdentity {
   sessionId: string;
+  createdAt: Date;
   expiresAt: Date;
 }
 
@@ -52,6 +53,7 @@ interface SessionRow {
   identityIssuer: string;
   identitySubject: string;
   displayName: string;
+  createdAt: Date;
   expiresAt: Date;
 }
 
@@ -135,6 +137,7 @@ export class PgHubAuthRepository implements HubAuthStore {
             identity_issuer AS "identityIssuer",
             identity_subject AS "identitySubject",
             display_name AS "displayName",
+            created_at AS "createdAt",
             expires_at AS "expiresAt"
         `,
         [
@@ -171,6 +174,7 @@ export class PgHubAuthRepository implements HubAuthStore {
         issuer: row.identityIssuer,
         subject: row.identitySubject,
         displayName: row.displayName,
+        createdAt: row.createdAt,
         expiresAt: row.expiresAt,
       };
     } catch (error) {
@@ -189,6 +193,7 @@ export class PgHubAuthRepository implements HubAuthStore {
           identity_issuer AS "identityIssuer",
           identity_subject AS "identitySubject",
           display_name AS "displayName",
+          created_at AS "createdAt",
           expires_at AS "expiresAt"
         FROM hub_sessions
         WHERE token_hash = $1
@@ -212,6 +217,7 @@ export class PgHubAuthRepository implements HubAuthStore {
       issuer: row.identityIssuer,
       subject: row.identitySubject,
       displayName: row.displayName,
+      createdAt: row.createdAt,
       expiresAt: row.expiresAt,
     };
   }
