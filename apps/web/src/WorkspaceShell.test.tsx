@@ -18,6 +18,9 @@ const workspace: WorkspaceSnapshot = {
       canonicalUrl: "https://hcis.example.test",
     },
   ],
+  capabilities: {
+    platformAdministration: false,
+  },
 };
 
 describe("SQ Hub workspace shell", () => {
@@ -41,6 +44,68 @@ describe("SQ Hub workspace shell", () => {
     expect(html).toContain("https://hcis.example.test");
     expect(html).not.toContain("Finance");
     expect(html).not.toContain("SPMB");
+  });
+
+  it("does not expose an enabled Admin Center entry to an ordinary user", () => {
+    const html = renderToStaticMarkup(<WorkspaceShell workspace={workspace} />);
+
+    expect(html).not.toContain('href="/admin"');
+  });
+
+  it("activates Administrasi SQ navigation only for a server-authorized admin capability", () => {
+    const html = renderToStaticMarkup(
+      <WorkspaceShell
+        workspace={{
+          ...workspace,
+          capabilities: { platformAdministration: true },
+        }}
+      />,
+    );
+
+    expect(html).toContain('href="/admin"');
+    expect(html).toContain("Administrasi SQ");
+  });
+
+  it("renders the protected read-only Admin Center overview", () => {
+    const html = renderToStaticMarkup(
+      <WorkspaceShell
+        workspace={{ ...workspace, capabilities: { platformAdministration: true } }}
+        view="admin"
+        adminState={{
+          status: "authorized",
+          context: {
+            authorized: true,
+            displayName: "Pegawai Sintetis",
+            capabilities: { platformAdministration: true },
+            overview: {
+              applications: { total: 2, active: 1, inactive: 1 },
+              applicationAccess: { total: 3, active: 2, revoked: 1 },
+              auditEventsLast24Hours: 4,
+            },
+          },
+        }}
+      />,
+    );
+
+    expect(html).toContain("Fondasi administrasi platform");
+    expect(html).toContain("Ringkasan platform");
+    expect(html).toContain("Akses Aplikasi");
+    expect(html).toContain("Audit 24 jam");
+    expect(html).not.toContain("opaque-subject");
+  });
+
+  it("shows a safe privileged reauthentication state without a password form", () => {
+    const html = renderToStaticMarkup(
+      <WorkspaceShell
+        workspace={workspace}
+        view="admin"
+        adminState={{ status: "reauth_required" }}
+      />,
+    );
+
+    expect(html).toContain("Masuk ulang untuk Administrasi SQ");
+    expect(html).toContain("Keluar dan masuk kembali");
+    expect(html).not.toContain('type="password"');
   });
 
   it("shows a safe empty state when the workspace contains no authorized applications", () => {
