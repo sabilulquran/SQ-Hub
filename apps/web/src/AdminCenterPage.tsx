@@ -15,6 +15,7 @@ interface AdminCenterPageProps {
   workspace: WorkspaceSnapshot;
   onLogout?: () => void | Promise<void>;
   previewApplications?: AdminApplication[];
+  onAuthorizationDenied?: (reason: "forbidden" | "reauth") => void;
 }
 
 type AdminState =
@@ -28,6 +29,7 @@ export function AdminCenterPage({
   workspace,
   onLogout,
   previewApplications,
+  onAuthorizationDenied,
 }: AdminCenterPageProps) {
   const [state, setState] = useState<AdminState>(() =>
     previewApplications
@@ -55,7 +57,9 @@ export function AdminCenterPage({
       }
       if (contextResponse.status === 403) {
         const body = (await contextResponse.json().catch(() => ({}))) as { error?: string };
-        setState(body.error === "ADMIN_REAUTH_REQUIRED" ? { status: "reauth" } : { status: "forbidden" });
+        const reason = body.error === "ADMIN_REAUTH_REQUIRED" ? "reauth" : "forbidden";
+        onAuthorizationDenied?.(reason);
+        setState({ status: reason });
         return;
       }
       if (!contextResponse.ok) throw new Error("admin context unavailable");
@@ -71,7 +75,9 @@ export function AdminCenterPage({
       }
       if (applicationsResponse.status === 403) {
         const body = (await applicationsResponse.json().catch(() => ({}))) as { error?: string };
-        setState(body.error === "ADMIN_REAUTH_REQUIRED" ? { status: "reauth" } : { status: "forbidden" });
+        const reason = body.error === "ADMIN_REAUTH_REQUIRED" ? "reauth" : "forbidden";
+        onAuthorizationDenied?.(reason);
+        setState({ status: reason });
         return;
       }
       if (!applicationsResponse.ok) throw new Error("admin applications unavailable");
@@ -81,7 +87,7 @@ export function AdminCenterPage({
     } catch {
       setState({ status: "error" });
     }
-  }, [previewApplications]);
+  }, [onAuthorizationDenied, previewApplications]);
 
   useEffect(() => {
     if (previewApplications) return;
