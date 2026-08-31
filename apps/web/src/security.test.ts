@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
 const sourceFiles = [
+  new URL("./AdminCenterPage.tsx", import.meta.url),
   new URL("./WorkspaceApp.tsx", import.meta.url),
   new URL("./WorkspaceShell.tsx", import.meta.url),
   new URL("./main.tsx", import.meta.url),
