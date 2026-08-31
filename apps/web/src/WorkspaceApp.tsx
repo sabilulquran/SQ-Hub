@@ -1,6 +1,7 @@
 import { AlertTriangle, LoaderCircle, RefreshCw } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 
+import { AdminCenterPage } from "@/AdminCenterPage";
 import { WorkspaceShell } from "@/WorkspaceShell";
 import { BrandLockup } from "@/components/BrandLockup";
 import type { WorkspaceSnapshot } from "@/types";
@@ -19,6 +20,10 @@ function startupError(): string | null {
     return "Proses masuk melalui SQ Identity belum dapat diselesaikan. Silakan coba lagi.";
   }
   return null;
+}
+
+function adminRoute(): boolean {
+  return window.location.pathname === "/admin" || window.location.pathname.startsWith("/admin/");
 }
 
 export function WorkspaceApp() {
@@ -78,6 +83,9 @@ export function WorkspaceApp() {
   }, []);
 
   if (state.status === "ready") {
+    if (adminRoute()) {
+      return <AdminCenterPage workspace={state.workspace} onLogout={logout} />;
+    }
     return <WorkspaceShell workspace={state.workspace} onLogout={logout} />;
   }
 
