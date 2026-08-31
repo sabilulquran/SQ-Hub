@@ -35,6 +35,7 @@ The YSQ VPS topology uses the shared Caddy Docker network. A host-Nginx example 
 - `reverse-proxy.nginx.example.conf` — host-Nginx alternative reference.
 - `themes/sq-hub/` — SQ login theme derived from the accepted HCIS design baseline; no font files are bundled.
 - `scripts/backup.sh` — PostgreSQL custom-format backup.
+- `scripts/reconcile-recovery-codes.sh` — idempotent staging-only recovery-code convergence through authenticated `kcadm`.
 - `scripts/restore-check.sh` — restores a backup to a disposable verification database and checks that the staging realm exists.
 - `../../docs/operations/staff-identity-provisioning.md` — minimum profile-complete provisioning contract for manual staging and future automation.
 
@@ -146,6 +147,57 @@ Keycloak 26.7 supports recovery authentication codes. `CONFIGURE_TOTP` is config
 4. A saved recovery code can be used through `Try Another Way` when TOTP is unavailable.
 
 Do not claim this acceptance item from the realm JSON alone; verify it in running staging.
+
+Startup `--import-realm` imports a realm only when it does not already exist. The shared staging realm uses persistent PostgreSQL state, so changing the imported JSON or restarting Keycloak does not converge these settings into that existing realm. Run the source-controlled reconciliation after initial bootstrap and whenever an existing staging realm must be converged.
+
+The script accepts only the exact `sq-staff-staging` realm and uses a pre-authenticated `kcadm` configuration inside the Keycloak container. Create that short-lived configuration from the controlled VPS terminal. Omitting `--password` makes `kcadm` prompt locally; never put a password or token in the command line, shell history, repository, or evidence:
+
+```bash
+docker compose \
+  --env-file infra/keycloak/.env.staging \
+  -f infra/keycloak/docker-compose.staging.yml \
+  exec keycloak \
+  /opt/keycloak/bin/kcadm.sh config credentials \
+  --config /tmp/sq-hub-recovery-codes.kcadm \
+  --server http://127.0.0.1:8080 \
+  --realm master \
+  --user <REVIEWED_STAGING_ADMIN>
+```
+
+Run the reconciliation twice. The second run proves that the accepted state is idempotent:
+
+```bash
+KEYCLOAK_ENV_FILE=infra/keycloak/.env.staging \
+KEYCLOAK_KCADM_CONFIG=/tmp/sq-hub-recovery-codes.kcadm \
+  bash infra/keycloak/scripts/reconcile-recovery-codes.sh
+
+KEYCLOAK_ENV_FILE=infra/keycloak/.env.staging \
+KEYCLOAK_KCADM_CONFIG=/tmp/sq-hub-recovery-codes.kcadm \
+  bash infra/keycloak/scripts/reconcile-recovery-codes.sh
+```
+
+Expected sanitized output from the second run is exactly:
+
+```text
+RECOVERY_REQUIRED_ACTION_ENABLED_PASS
+RECOVERY_BROWSER_FLOW_ALTERNATIVE_PASS
+OTP_BROWSER_FLOW_ALTERNATIVE_PASS
+RECOVERY_RECONCILE_IDEMPOTENT_PASS
+```
+
+The script enables `CONFIGURE_RECOVERY_AUTHN_CODES` with `defaultAction=false`, changes only the bound Browser flow's `auth-recovery-authn-code-form` execution to `ALTERNATIVE`, and refuses to proceed unless the existing `auth-otp-form` execution is exactly `ALTERNATIVE`. It does not assign the required action to any user, modify TOTP/password policy, or touch clients, sessions, Application Access, HCIS roles, or another realm.
+
+Remove the short-lived authenticated configuration after verification:
+
+```bash
+docker compose \
+  --env-file infra/keycloak/.env.staging \
+  -f infra/keycloak/docker-compose.staging.yml \
+  exec -T keycloak \
+  rm -f /tmp/sq-hub-recovery-codes.kcadm
+```
+
+Do not record `kcadm` configuration contents, administrator credentials, tokens, TOTP material, recovery codes, raw user subjects, or client secrets. Recovery-code enrollment and a separate-browser authentication check for the controlled synthetic privileged identity remain mandatory before granting Platform Administrator.
 
 ## Public reverse proxy
 
