@@ -175,6 +175,96 @@ jobs:
           jq -e '.[0].serviceAccountsEnabled == true and .[0].directAccessGrantsEnabled == false' \
             /tmp/client-hcis-api-staging.json
 
+      - name: Reconcile and verify recovery-code prerequisites
+        shell: bash
+        run: |
+          kcadm_config=/tmp/sq-hub-recovery-codes-ci.kcadm
+
+          docker compose \
+            --env-file "$KEYCLOAK_ENV_FILE" \
+            -f infra/keycloak/docker-compose.staging.yml \
+            -f infra/keycloak/docker-compose.bootstrap.yml \
+            exec -T keycloak \
+            sh -ceu '
+              /opt/keycloak/bin/kcadm.sh config credentials \
+                --config "$1" \
+                --server http://127.0.0.1:8080 \
+                --realm master \
+                --user "$KC_BOOTSTRAP_ADMIN_USERNAME" \
+                --password "$KC_BOOTSTRAP_ADMIN_PASSWORD" >/dev/null
+            ' sh "$kcadm_config"
+
+          first_output="$(
+            KEYCLOAK_KCADM_CONFIG="$kcadm_config" \
+              bash infra/keycloak/scripts/reconcile-recovery-codes.sh
+          )"
+          printf '%s\n' "$first_output"
+
+          second_output="$(
+            KEYCLOAK_KCADM_CONFIG="$kcadm_config" \
+              bash infra/keycloak/scripts/reconcile-recovery-codes.sh
+          )"
+          printf '%s\n' "$second_output"
+
+          expected_second_output="$(printf '%s\n' \
+            RECOVERY_REQUIRED_ACTION_ENABLED_PASS \
+            RECOVERY_BROWSER_FLOW_ALTERNATIVE_PASS \
+            OTP_BROWSER_FLOW_ALTERNATIVE_PASS \
+            RECOVERY_RECONCILE_IDEMPOTENT_PASS)"
+          test "$second_output" = "$expected_second_output"
+
+          required_action_json="$(
+            docker compose \
+              --env-file "$KEYCLOAK_ENV_FILE" \
+              -f infra/keycloak/docker-compose.staging.yml \
+              exec -T keycloak \
+              /opt/keycloak/bin/kcadm.sh get \
+              authentication/required-actions/CONFIGURE_RECOVERY_AUTHN_CODES \
+              -r sq-staff-staging \
+              --config "$kcadm_config"
+          )"
+          jq -e '
+            .alias == "CONFIGURE_RECOVERY_AUTHN_CODES" and
+            .providerId == "CONFIGURE_RECOVERY_AUTHN_CODES" and
+            .enabled == true and
+            .defaultAction == false
+          ' >/dev/null <<<"$required_action_json"
+
+          realm_json="$(
+            docker compose \
+              --env-file "$KEYCLOAK_ENV_FILE" \
+              -f infra/keycloak/docker-compose.staging.yml \
+              exec -T keycloak \
+              /opt/keycloak/bin/kcadm.sh get realms/sq-staff-staging \
+              --config "$kcadm_config"
+          )"
+          browser_flow="$(jq -er '.browserFlow | select(type == "string" and length > 0)' <<<"$realm_json")"
+          executions_json="$(
+            docker compose \
+              --env-file "$KEYCLOAK_ENV_FILE" \
+              -f infra/keycloak/docker-compose.staging.yml \
+              exec -T keycloak \
+              /opt/keycloak/bin/kcadm.sh get \
+              "authentication/flows/$browser_flow/executions" \
+              -r sq-staff-staging \
+              --config "$kcadm_config"
+          )"
+          jq -e '
+            ([.[] | select(
+              .providerId == "auth-recovery-authn-code-form" and
+              .requirement == "ALTERNATIVE"
+            )] | length) == 1 and
+            ([.[] | select(
+              .providerId == "auth-otp-form" and
+              .requirement == "ALTERNATIVE"
+            )] | length) == 1
+          ' >/dev/null <<<"$executions_json"
+
+          docker compose \
+            --env-file "$KEYCLOAK_ENV_FILE" \
+            -f infra/keycloak/docker-compose.staging.yml \
+            exec -T keycloak rm -f "$kcadm_config"
+
       - name: Verify backup and disposable restore
         run: |
           bash infra/keycloak/scripts/backup.sh /tmp/keycloak-ci.dump
