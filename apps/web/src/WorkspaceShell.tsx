@@ -18,35 +18,33 @@ interface WorkspaceShellProps {
   onLogout?: () => void | Promise<void>;
 }
 
-function ReservedAdminItem({ mobile = false }: { mobile?: boolean }) {
+function AdminNavItem({ mobile = false }: { mobile?: boolean }) {
   if (mobile) {
     return (
-      <button
-        type="button"
-        disabled
-        className="flex min-w-0 flex-1 flex-col items-center gap-1 rounded-2xl px-2 py-2 text-[10px] font-semibold text-muted-foreground opacity-60"
-        aria-label="Administrasi SQ, segera"
+      <a
+        href="/admin"
+        className="flex min-w-0 flex-1 flex-col items-center gap-1 rounded-2xl px-2 py-2 text-[10px] font-semibold text-muted-foreground transition hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        aria-label="Administrasi SQ"
       >
         <ShieldEllipsis className="h-5 w-5" aria-hidden="true" />
         <span>Admin</span>
-      </button>
+      </a>
     );
   }
 
   return (
-    <div
-      className="flex items-center gap-3 rounded-2xl px-3.5 py-3 text-sm font-semibold text-muted-foreground opacity-65"
-      aria-label="Administrasi SQ, segera"
+    <a
+      href="/admin"
+      className="flex items-center gap-3 rounded-2xl px-3.5 py-3 text-sm font-semibold text-muted-foreground transition hover:bg-white hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
     >
       <ShieldEllipsis className="h-[18px] w-[18px]" aria-hidden="true" />
       <span className="min-w-0 flex-1">Administrasi SQ</span>
-      <span className="rounded-full bg-muted px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide">Segera</span>
-    </div>
+    </a>
   );
 }
 
 export function WorkspaceShell({ workspace, preview = false, onLogout }: WorkspaceShellProps) {
-  const { user, applications } = workspace;
+  const { user, applications, capabilities } = workspace;
 
   return (
     <div className="min-h-screen bg-background">
@@ -71,12 +69,14 @@ export function WorkspaceShell({ workspace, preview = false, onLogout }: Workspa
           </a>
         </nav>
 
-        <div className="mt-7">
-          <p className="px-3.5 text-[10px] font-bold uppercase tracking-[0.16em] text-muted-foreground">Platform</p>
-          <div className="mt-2">
-            <ReservedAdminItem />
+        {capabilities.platformAdministration ? (
+          <div className="mt-7">
+            <p className="px-3.5 text-[10px] font-bold uppercase tracking-[0.16em] text-muted-foreground">Platform</p>
+            <div className="mt-2">
+              <AdminNavItem />
+            </div>
           </div>
-        </div>
+        ) : null}
 
         <div className="mt-auto pt-6">
           <div className="mb-3 rounded-2xl bg-brand-primary-pale/65 px-3.5 py-3 text-[11px] leading-5 text-brand-primary-deep">
@@ -185,7 +185,7 @@ export function WorkspaceShell({ workspace, preview = false, onLogout }: Workspa
               </span>
               <h3 className="mt-4 font-display text-lg font-bold text-brand-heading">Administrasi tetap terpisah</h3>
               <p className="mt-2 text-sm leading-6 text-muted-foreground">
-                Administrasi platform akan memiliki batas kewenangan sendiri dan tidak otomatis memberi akses penuh ke data bisnis setiap aplikasi.
+                Administrasi platform memiliki batas kewenangan sendiri dan tidak otomatis memberi akses penuh ke data bisnis setiap aplikasi.
               </p>
             </div>
           </section>
@@ -208,7 +208,7 @@ export function WorkspaceShell({ workspace, preview = false, onLogout }: Workspa
           <Grid2X2 className="h-5 w-5" aria-hidden="true" />
           <span>Aplikasi</span>
         </a>
-        <ReservedAdminItem mobile />
+        {capabilities.platformAdministration ? <AdminNavItem mobile /> : null}
       </nav>
     </div>
   );
