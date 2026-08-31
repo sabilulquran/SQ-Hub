@@ -14,4 +14,7 @@ export const workspaceFixture: WorkspaceSnapshot = {
       canonicalUrl: "https://hcis-staging.sabilulquran.or.id",
     },
   ],
+  capabilities: {
+    platformAdministration: true,
+  },
 };
