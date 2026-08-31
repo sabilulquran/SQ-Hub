@@ -14,6 +14,7 @@ import type { AdminApplication, WorkspaceSnapshot } from "@/types";
 interface AdminCenterPageProps {
   workspace: WorkspaceSnapshot;
   onLogout?: () => void | Promise<void>;
+  previewApplications?: AdminApplication[];
 }
 
 type AdminState =
@@ -23,10 +24,23 @@ type AdminState =
   | { status: "reauth" }
   | { status: "error" };
 
-export function AdminCenterPage({ workspace, onLogout }: AdminCenterPageProps) {
-  const [state, setState] = useState<AdminState>({ status: "loading" });
+export function AdminCenterPage({
+  workspace,
+  onLogout,
+  previewApplications,
+}: AdminCenterPageProps) {
+  const [state, setState] = useState<AdminState>(() =>
+    previewApplications
+      ? { status: "ready", applications: previewApplications }
+      : { status: "loading" },
+  );
 
   const loadAdmin = useCallback(async () => {
+    if (previewApplications) {
+      setState({ status: "ready", applications: previewApplications });
+      return;
+    }
+
     setState({ status: "loading" });
     try {
       const contextResponse = await fetch("/api/admin/context", {
@@ -67,11 +81,12 @@ export function AdminCenterPage({ workspace, onLogout }: AdminCenterPageProps) {
     } catch {
       setState({ status: "error" });
     }
-  }, []);
+  }, [previewApplications]);
 
   useEffect(() => {
+    if (previewApplications) return;
     void loadAdmin();
-  }, [loadAdmin]);
+  }, [loadAdmin, previewApplications]);
 
   return (
     <div className="min-h-screen bg-background">
