@@ -74,8 +74,9 @@ networks:
     external: true
     name: ${EDGE_NETWORK:-edge_proxy}
   sq_identity_directory_staging:
-    external: true
     name: ${SQ_IDENTITY_DIRECTORY_STAGING_NETWORK:-sq_identity_directory_staging}
+    driver: bridge
+    internal: true
 
 volumes:
   keycloak_staging_postgres:
