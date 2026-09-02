@@ -5,6 +5,7 @@ import { HubAuthError, type HubAuthRuntime } from "../src/modules/hub-auth/servi
 import type { IdentityDirectory } from "../src/modules/identity-directory/client.js";
 import { PlatformAdminAuthorizationError } from "../src/modules/platform-admin/service.js";
 
+const hubOrigin = "https://hub-staging.example.test";
 const session = {
   sessionId: "session-admin-routes-001",
   issuer: "https://login.example.test/realms/staff",
@@ -24,7 +25,7 @@ const staffIdentity = {
   emailVerified: true,
   displayName: "Synthetic Staff",
   enabled: true,
-  security: { totpConfigured: true, recoveryCodesConfigured: true },
+  security: { totpConfigured: true, recoveryCodesConfigured: null },
 };
 
 function fakeHub(overrides: Partial<HubAuthRuntime> = {}): HubAuthRuntime {
@@ -77,7 +78,8 @@ function makeApp(input: {
     },
     verifyMachineToken: async () => ({ clientId: "hcis-api-staging" }),
     hubAuth: input.hubAuth ?? fakeHub(),
-    hubRedirectUri: "https://hub-staging.example.test/auth/callback",
+    hubRedirectUri: `${hubOrigin}/auth/callback`,
+    adminAllowedOrigin: hubOrigin,
     platformAdmin: {
       authorize: input.authorize ?? (async () => undefined),
     },
@@ -132,6 +134,12 @@ function makeApp(input: {
     identityDirectory: fakeDirectory(),
   });
 }
+
+const mutationHeaders = {
+  cookie: "sq_hub_session=opaque",
+  "content-type": "application/json",
+  origin: hubOrigin,
+};
 
 describe("SQ Admin Center routes", () => {
   it("requires an authenticated Hub session", async () => {
@@ -224,7 +232,7 @@ describe("SQ Admin Center routes", () => {
           emailVerified: true,
           displayName: "Synthetic Staff",
           enabled: true,
-          security: { totpConfigured: true, recoveryCodesConfigured: true },
+          security: { totpConfigured: true, recoveryCodesConfigured: null },
         },
       ],
     });
@@ -236,7 +244,7 @@ describe("SQ Admin Center routes", () => {
     const rejected = await app.inject({
       method: "POST",
       url: "/admin/application-access/grant",
-      headers: { cookie: "sq_hub_session=opaque", "content-type": "application/json" },
+      headers: mutationHeaders,
       payload: {
         subject: "opaque-staff-subject",
         applicationKey: "hcis",
@@ -250,7 +258,7 @@ describe("SQ Admin Center routes", () => {
     const accepted = await app.inject({
       method: "POST",
       url: "/admin/application-access/grant",
-      headers: { cookie: "sq_hub_session=opaque", "content-type": "application/json" },
+      headers: mutationHeaders,
       payload: {
         subject: "opaque-staff-subject",
         applicationKey: "hcis",
@@ -270,13 +278,36 @@ describe("SQ Admin Center routes", () => {
     const response = await app.inject({
       method: "POST",
       url: "/admin/application-access/revoke",
-      headers: { cookie: "sq_hub_session=opaque", "content-type": "application/json" },
+      headers: mutationHeaders,
       payload: { subject: "opaque-staff-subject", applicationKey: "hcis", reason: "" },
     });
     await app.close();
 
     expect(response.statusCode).toBe(400);
     expect(response.json()).toEqual({ error: "INVALID_REQUEST" });
+  });
+
+  it("rejects privileged mutations from a sibling or missing origin", async () => {
+    const app = makeApp({});
+    for (const origin of ["https://hcis-staging.example.test", undefined]) {
+      const response = await app.inject({
+        method: "POST",
+        url: "/admin/application-access/grant",
+        headers: {
+          cookie: "sq_hub_session=opaque",
+          "content-type": "application/json",
+          ...(origin ? { origin } : {}),
+        },
+        payload: {
+          subject: "opaque-staff-subject",
+          applicationKey: "hcis",
+          reason: "Synthetic UAT",
+        },
+      });
+      expect(response.statusCode).toBe(403);
+      expect(response.json()).toEqual({ error: "ADMIN_ORIGIN_FORBIDDEN" });
+    }
+    await app.close();
   });
 
   it("sanitizes raw access target references from audit responses", async () => {
