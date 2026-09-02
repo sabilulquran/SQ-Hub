@@ -29,6 +29,7 @@ export function buildApp(input: {
   verifyMachineToken: VerifyMachineToken;
   hubAuth?: HubAuthRuntime;
   hubRedirectUri?: string;
+  adminAllowedOrigin?: string;
   platformAdmin?: Pick<PlatformAdminService, "authorize">;
   adminApplicationRegistry?: Pick<ApplicationAccessService, "listApplications" | "upsertApplication">;
   adminApplicationAccess?: Pick<
@@ -82,6 +83,7 @@ export function buildApp(input: {
       hubAuth: input.hubAuth,
       platformAdmin: input.platformAdmin,
       applicationRegistry: input.adminApplicationRegistry,
+      ...(input.adminAllowedOrigin ? { allowedOrigin: input.adminAllowedOrigin } : {}),
       ...(input.adminApplicationAccess ? { applicationAccess: input.adminApplicationAccess } : {}),
       ...(input.identityDirectory ? { identityDirectory: input.identityDirectory } : {}),
     });
