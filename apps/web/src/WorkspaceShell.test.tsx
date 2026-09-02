@@ -18,6 +18,9 @@ const workspace: WorkspaceSnapshot = {
       canonicalUrl: "https://hcis.example.test",
     },
   ],
+  capabilities: {
+    platformAdministration: false,
+  },
 };
 
 describe("SQ Hub workspace shell", () => {
@@ -30,8 +33,23 @@ describe("SQ Hub workspace shell", () => {
     expect(html).toContain("h-9 w-9 shrink-0 object-contain");
     expect(html).not.toContain("h-8 w-8 object-contain");
     expect(html.match(/aria-haspopup="menu"/g)).toHaveLength(2);
-    expect(html).toContain("Administrasi SQ");
     expect(html).toContain("Preview desain");
+  });
+
+  it("shows actionable Administrasi SQ navigation only for a server-authorized capability", () => {
+    const ordinary = renderToStaticMarkup(<WorkspaceShell workspace={workspace} />);
+    expect(ordinary).not.toContain('href="/admin"');
+
+    const admin = renderToStaticMarkup(
+      <WorkspaceShell
+        workspace={{
+          ...workspace,
+          capabilities: { platformAdministration: true },
+        }}
+      />,
+    );
+    expect(admin).toContain("Administrasi SQ");
+    expect(admin.match(/href="\/admin"/g)).toHaveLength(2);
   });
 
   it("renders only applications supplied by the authorized workspace boundary", () => {

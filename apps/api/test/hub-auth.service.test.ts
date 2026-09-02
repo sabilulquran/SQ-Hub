@@ -67,6 +67,7 @@ class MemoryStore implements HubAuthStore {
       issuer: input.identity.issuer,
       subject: input.identity.subject,
       displayName: input.identity.displayName,
+      createdAt: new Date(),
       expiresAt: input.expiresAt,
     };
     this.session = { tokenHash: input.tokenHash, identity: input.identity, record };
@@ -128,16 +129,24 @@ class FakeWorkspaceSource implements HubWorkspaceApplicationSource {
   }
 }
 
-function service() {
+function service(platformAdministration = false) {
   const store = new MemoryStore();
   const provider = new FakeOidcProvider();
   const workspace = new FakeWorkspaceSource();
-  const auth = new HubAuthService(store, provider, workspace, {
-    sessionIdleHours: 8,
-    sessionMaxHours: 12,
-    transactionTtlMinutes: 10,
-    secureCookies: true,
-  });
+  const auth = new HubAuthService(
+    store,
+    provider,
+    workspace,
+    {
+      sessionIdleHours: 8,
+      sessionMaxHours: 12,
+      transactionTtlMinutes: 10,
+      secureCookies: true,
+    },
+    {
+      canUseAdmin: async () => platformAdministration,
+    },
+  );
   return { auth, store, provider };
 }
 
@@ -191,7 +200,7 @@ describe("HubAuthService", () => {
   });
 
   it("returns a browser workspace without exposing the opaque OIDC subject", async () => {
-    const { auth } = service();
+    const { auth } = service(true);
     const begin = await auth.beginLogin();
     const transactionToken = cookieValue(begin.setCookie, HUB_OIDC_TRANSACTION_COOKIE_NAME);
     const completed = await auth.completeLogin(
@@ -211,6 +220,7 @@ describe("HubAuthService", () => {
           canonicalUrl: "https://hcis-staging.sabilulquran.or.id",
         },
       ],
+      capabilities: { platformAdministration: true },
     });
     expect(JSON.stringify(workspace)).not.toContain("opaque-subject");
   });

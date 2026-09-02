@@ -13,6 +13,8 @@ import {
 } from "./modules/application-access/service.js";
 import { registerHubAuthRoutes } from "./modules/hub-auth/routes.js";
 import type { HubAuthRuntime } from "./modules/hub-auth/service.js";
+import { registerPlatformAdminRoutes } from "./modules/platform-admin/routes.js";
+import type { PlatformAdminService } from "./modules/platform-admin/service.js";
 
 const checkBodySchema = z
   .object({
@@ -26,6 +28,8 @@ export function buildApp(input: {
   verifyMachineToken: VerifyMachineToken;
   hubAuth?: HubAuthRuntime;
   hubRedirectUri?: string;
+  platformAdmin?: Pick<PlatformAdminService, "authorize">;
+  adminApplicationRegistry?: Pick<ApplicationAccessService, "listApplications">;
   logger?: boolean;
 }) {
   const app = Fastify({ logger: input.logger ?? false });
@@ -65,6 +69,14 @@ export function buildApp(input: {
       throw new Error("hubRedirectUri is required when Hub auth routes are enabled");
     }
     registerHubAuthRoutes(app, input.hubAuth, input.hubRedirectUri);
+  }
+
+  if (input.hubAuth && input.platformAdmin && input.adminApplicationRegistry) {
+    registerPlatformAdminRoutes(app, {
+      hubAuth: input.hubAuth,
+      platformAdmin: input.platformAdmin,
+      applicationRegistry: input.adminApplicationRegistry,
+    });
   }
 
   return app;

@@ -108,9 +108,13 @@ jobs:
           mkdir -p visual-smoke
           "$CHROME" --headless=new --no-sandbox --disable-gpu --hide-scrollbars --window-size=1440,900 --screenshot=visual-smoke/sq-hub-desktop-1440x900.png http://127.0.0.1:4173
           "$CHROME" --headless=new --no-sandbox --disable-gpu --hide-scrollbars --window-size=390,844 --screenshot=visual-smoke/sq-hub-mobile-390x844.png http://127.0.0.1:4173
+          "$CHROME" --headless=new --no-sandbox --disable-gpu --hide-scrollbars --window-size=1440,900 --screenshot=visual-smoke/sq-admin-desktop-1440x900.png http://127.0.0.1:4173/admin
+          "$CHROME" --headless=new --no-sandbox --disable-gpu --hide-scrollbars --window-size=390,844 --screenshot=visual-smoke/sq-admin-mobile-390x844.png http://127.0.0.1:4173/admin
 
           test -s visual-smoke/sq-hub-desktop-1440x900.png
           test -s visual-smoke/sq-hub-mobile-390x844.png
+          test -s visual-smoke/sq-admin-desktop-1440x900.png
+          test -s visual-smoke/sq-admin-mobile-390x844.png
 
       - name: Upload visual smoke screenshots
         if: github.event_name == 'pull_request'

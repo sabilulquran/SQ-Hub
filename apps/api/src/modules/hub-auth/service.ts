@@ -21,6 +21,9 @@ export interface HubWorkspaceSnapshot {
     name: string;
     canonicalUrl: string;
   }>;
+  capabilities: {
+    platformAdministration: boolean;
+  };
 }
 
 export class HubAuthError extends Error {
@@ -42,11 +45,16 @@ export interface HubAuthRuntime {
     context: HubRequestContext,
   ): Promise<{ setCookies: string[] }>;
   getWorkspace(sessionToken: string | null): Promise<HubWorkspaceSnapshot>;
+  getSession(sessionToken: string | null): Promise<HubSessionRecord>;
   logout(
     sessionToken: string | null,
     context: HubRequestContext,
   ): Promise<{ clearCookie: string; logoutUrl: URL | null }>;
   clearTransactionCookie(): string;
+}
+
+export interface HubPlatformAdminCapabilitySource {
+  canUseAdmin(session: HubSessionRecord): Promise<boolean>;
 }
 
 export class HubAuthService implements HubAuthRuntime {
@@ -65,6 +73,7 @@ export class HubAuthService implements HubAuthRuntime {
       transactionTtlMinutes: number;
       secureCookies: boolean;
     },
+    private readonly platformAdmin?: HubPlatformAdminCapabilitySource,
   ) {
     this.idleSeconds = options.sessionIdleHours * 60 * 60;
     this.maxSeconds = options.sessionMaxHours * 60 * 60;
@@ -137,6 +146,9 @@ export class HubAuthService implements HubAuthRuntime {
       issuer: session.issuer,
       subject: session.subject,
     });
+    const platformAdministration = this.platformAdmin
+      ? await this.platformAdmin.canUseAdmin(session)
+      : false;
 
     return {
       user: {
@@ -148,7 +160,14 @@ export class HubAuthService implements HubAuthRuntime {
         name: application.name,
         canonicalUrl: application.canonicalUrl,
       })),
+      capabilities: {
+        platformAdministration,
+      },
     };
+  }
+
+  getSession(sessionToken: string | null): Promise<HubSessionRecord> {
+    return this.getRequiredSession(sessionToken);
   }
 
   async logout(

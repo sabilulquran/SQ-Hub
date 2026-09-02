@@ -39,6 +39,15 @@ function fakeHub(overrides: Partial<HubAuthRuntime> = {}): HubAuthRuntime {
           canonicalUrl: "https://hcis-staging.sabilulquran.or.id",
         },
       ],
+      capabilities: { platformAdministration: false },
+    }),
+    getSession: async () => ({
+      sessionId: "session-001",
+      issuer: "https://login.example.test/realms/staff",
+      subject: "opaque-subject",
+      displayName: "SQ Hub UAT",
+      createdAt: new Date("2026-08-31T00:00:00Z"),
+      expiresAt: new Date("2026-08-31T12:00:00Z"),
     }),
     logout: async () => ({
       clearCookie: "sq_hub_session=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0; Secure",
@@ -74,6 +83,7 @@ describe("SQ Hub browser auth routes", () => {
     expect(response.json()).toMatchObject({
       user: { displayName: "SQ Hub UAT", initials: "SH" },
       applications: [{ key: "hcis", name: "HCIS" }],
+      capabilities: { platformAdministration: false },
     });
     expect(response.body).not.toContain("subject");
   });

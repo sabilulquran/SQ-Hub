@@ -1,8 +1,10 @@
 import { AlertTriangle, LoaderCircle, RefreshCw } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useState } from "react";
 
+import { AdminCenterPage } from "@/AdminCenterPage";
 import { WorkspaceShell } from "@/WorkspaceShell";
 import { BrandLockup } from "@/components/BrandLockup";
+import { adminRouteStateFromResponse, type AdminRouteState } from "@/admin-route-state";
 import type { WorkspaceSnapshot } from "@/types";
 
 type RuntimeState =
@@ -19,6 +21,10 @@ function startupError(): string | null {
     return "Proses masuk melalui SQ Identity belum dapat diselesaikan. Silakan coba lagi.";
   }
   return null;
+}
+
+function adminRoute(): boolean {
+  return window.location.pathname === "/admin" || window.location.pathname.startsWith("/admin/");
 }
 
 export function WorkspaceApp() {
@@ -78,6 +84,9 @@ export function WorkspaceApp() {
   }, []);
 
   if (state.status === "ready") {
+    if (adminRoute()) {
+      return <AdminRoute workspace={state.workspace} onLogout={logout} />;
+    }
     return <WorkspaceShell workspace={state.workspace} onLogout={logout} />;
   }
 
@@ -126,5 +135,112 @@ export function WorkspaceApp() {
         )}
       </div>
     </main>
+  );
+}
+
+function AdminRoute({
+  workspace,
+  onLogout,
+}: {
+  workspace: WorkspaceSnapshot;
+  onLogout: () => void | Promise<void>;
+}) {
+  const [state, setState] = useState<AdminRouteState>("loading");
+
+  const verifyAuthorization = useCallback(async () => {
+    setState("loading");
+    try {
+      const response = await fetch("/api/admin/context", {
+        method: "GET",
+        credentials: "same-origin",
+        headers: { Accept: "application/json" },
+      });
+
+      if (response.status === 401) {
+        window.location.assign("/api/auth/oidc/start");
+        return;
+      }
+
+      const body = response.status === 403
+        ? (await response.json().catch(() => ({}))) as { error?: string }
+        : undefined;
+      setState(adminRouteStateFromResponse(response.status, body?.error));
+    } catch {
+      setState("unavailable");
+    }
+  }, []);
+
+  useEffect(() => {
+    void verifyAuthorization();
+  }, [verifyAuthorization]);
+
+  if (state === "authorized") {
+    return (
+      <AdminCenterPage
+        workspace={workspace}
+        onLogout={onLogout}
+        onAuthorizationDenied={(reason) => setState(reason)}
+      />
+    );
+  }
+
+  if (state === "forbidden") return <NotFoundPage />;
+  if (state === "reauth") return <ReauthenticationPage onLogout={onLogout} />;
+  if (state === "unavailable") return <UnavailablePage onRetry={verifyAuthorization} />;
+  return <LoadingPage />;
+}
+
+function NeutralPage({ children }: { children: ReactNode }) {
+  return (
+    <main className="flex min-h-screen items-center justify-center px-5 py-10">
+      <div className="w-full max-w-xl rounded-[2rem] border border-border/75 bg-white p-6 text-center shadow-[var(--shadow-raised)] sm:p-9">
+        <div className="flex justify-center">
+          <BrandLockup />
+        </div>
+        {children}
+      </div>
+    </main>
+  );
+}
+
+function LoadingPage() {
+  return (
+    <NeutralPage>
+      <div className="mx-auto mt-8 flex h-12 w-12 items-center justify-center rounded-2xl bg-brand-primary-pale text-brand-primary-deep">
+        <LoaderCircle className="h-5 w-5 animate-spin" aria-hidden="true" />
+      </div>
+      <h1 className="mt-5 font-display text-2xl font-bold tracking-[-0.025em] text-brand-heading sm:text-3xl">Memuat halaman</h1>
+    </NeutralPage>
+  );
+}
+
+export function NotFoundPage() {
+  return (
+    <NeutralPage>
+      <p className="mt-8 text-sm font-bold uppercase tracking-[0.16em] text-muted-foreground">404</p>
+      <h1 className="mt-2 font-display text-2xl font-bold tracking-[-0.025em] text-brand-heading sm:text-3xl">Halaman tidak ditemukan</h1>
+      <p className="mx-auto mt-3 max-w-md text-sm leading-6 text-muted-foreground">Halaman yang Anda cari tidak tersedia.</p>
+      <a href="/" className="mt-6 inline-flex rounded-2xl bg-brand-primary px-4 py-2.5 text-sm font-bold text-white shadow-[var(--shadow-button)]">Kembali ke SQ Hub</a>
+    </NeutralPage>
+  );
+}
+
+function ReauthenticationPage({ onLogout }: { onLogout: () => void | Promise<void> }) {
+  return (
+    <NeutralPage>
+      <h1 className="mt-8 font-display text-2xl font-bold tracking-[-0.025em] text-brand-heading sm:text-3xl">Masuk ulang diperlukan</h1>
+      <p className="mx-auto mt-3 max-w-md text-sm leading-6 text-muted-foreground">Keluar lalu masuk kembali melalui SQ Identity untuk memperbarui sesi Anda.</p>
+      <button type="button" onClick={() => void onLogout()} className="mt-6 rounded-2xl bg-brand-primary px-4 py-2.5 text-sm font-bold text-white shadow-[var(--shadow-button)]">Keluar dan masuk kembali</button>
+    </NeutralPage>
+  );
+}
+
+function UnavailablePage({ onRetry }: { onRetry: () => void | Promise<void> }) {
+  return (
+    <NeutralPage>
+      <h1 className="mt-8 font-display text-2xl font-bold tracking-[-0.025em] text-brand-heading sm:text-3xl">Halaman belum dapat dibuka</h1>
+      <p className="mx-auto mt-3 max-w-md text-sm leading-6 text-muted-foreground">Coba lagi beberapa saat.</p>
+      <button type="button" onClick={() => void onRetry()} className="mt-6 rounded-2xl bg-brand-primary px-4 py-2.5 text-sm font-bold text-white shadow-[var(--shadow-button)]">Coba lagi</button>
+    </NeutralPage>
   );
 }
