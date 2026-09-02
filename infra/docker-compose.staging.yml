@@ -38,6 +38,10 @@ services:
       HUB_SESSION_MAX_HOURS: ${HUB_SESSION_MAX_HOURS:-12}
       HUB_OIDC_TRANSACTION_TTL_MINUTES: ${HUB_OIDC_TRANSACTION_TTL_MINUTES:-10}
       HUB_COOKIE_SECURE: ${HUB_COOKIE_SECURE:-true}
+      KEYCLOAK_DIRECTORY_BASE_URL: ${KEYCLOAK_DIRECTORY_BASE_URL:-http://sq-identity-directory-staging:8080}
+      KEYCLOAK_DIRECTORY_REALM: ${KEYCLOAK_DIRECTORY_REALM:-sq-staff-staging}
+      KEYCLOAK_DIRECTORY_CLIENT_ID: ${KEYCLOAK_DIRECTORY_CLIENT_ID:-sq-hub-directory-staging}
+      KEYCLOAK_DIRECTORY_CLIENT_SECRET: ${KEYCLOAK_DIRECTORY_CLIENT_SECRET:?set KEYCLOAK_DIRECTORY_CLIENT_SECRET}
     command:
       - sh
       - -c
@@ -63,6 +67,7 @@ services:
       sq_platform_staging:
         aliases:
           - sq-hub-api-staging
+      sq_identity_directory_staging:
     mem_limit: ${SQ_HUB_API_MEMORY_LIMIT:-128m}
 
   web:
@@ -91,6 +96,9 @@ networks:
   sq_platform_staging:
     external: true
     name: ${SQ_PLATFORM_STAGING_NETWORK:-sq_platform_staging}
+  sq_identity_directory_staging:
+    external: true
+    name: ${SQ_IDENTITY_DIRECTORY_STAGING_NETWORK:-sq_identity_directory_staging}
 
 volumes:
   sq_hub_staging_pgdata:
