@@ -36,8 +36,8 @@ export interface AdminStaff {
   displayName: string;
   enabled: boolean;
   security: {
-    totpConfigured: boolean;
-    recoveryCodesConfigured: boolean;
+    totpConfigured: boolean | null;
+    recoveryCodesConfigured: boolean | null;
   };
 }
 
