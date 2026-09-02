@@ -1,6 +1,6 @@
 # HUB-IMPL-008 — SQ Identity HCIS visual-parity refinement
 
-**Status:** DRAFT  
+**Status:** ACCEPTED  
 **Product:** SQ Identity  
 **Area:** Login theme / design system  
 **Delivery:** Separate from Go 5A  
@@ -67,4 +67,4 @@ Before any staging deployment, CI and review must show:
 
 ## Implementation follow-up
 
-No Keycloak theme code is authorized by this DRAFT. After acceptance, implementation must be made in its own focused change/PR, separate from PR #27, with the cache-safe asset update and visual UAT evidence above.
+Implementation is authorized by this accepted specification and must be made in its own focused change/PR, separate from PR #27, with the cache-safe asset update and visual UAT evidence above.
