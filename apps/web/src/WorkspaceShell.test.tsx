@@ -28,12 +28,14 @@ describe("SQ Hub workspace shell", () => {
     const html = renderToStaticMarkup(<WorkspaceShell workspace={workspace} preview />);
 
     expect(html).toContain("SQ Hub");
+    expect(html).toContain("Akun SQ");
     expect(html).toContain("Yayasan Sabilul Qur&#x27;an");
     expect(html).toContain("h-11 w-11 shrink-0 object-contain");
     expect(html).toContain("h-9 w-9 shrink-0 object-contain");
     expect(html).not.toContain("h-8 w-8 object-contain");
     expect(html.match(/aria-haspopup="menu"/g)).toHaveLength(2);
     expect(html).toContain("Preview desain");
+    expect(html).not.toContain("SQ Identity");
   });
 
   it("shows actionable Administrasi SQ navigation only for a server-authorized capability", () => {
@@ -67,6 +69,6 @@ describe("SQ Hub workspace shell", () => {
     );
 
     expect(html).toContain("Belum ada aplikasi");
-    expect(html).toContain("Application Access aktif");
+    expect(html).toContain("Belum ada akses aplikasi aktif");
   });
 });
