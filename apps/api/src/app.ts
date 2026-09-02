@@ -82,8 +82,8 @@ export function buildApp(input: {
       hubAuth: input.hubAuth,
       platformAdmin: input.platformAdmin,
       applicationRegistry: input.adminApplicationRegistry,
-      applicationAccess: input.adminApplicationAccess,
-      identityDirectory: input.identityDirectory,
+      ...(input.adminApplicationAccess ? { applicationAccess: input.adminApplicationAccess } : {}),
+      ...(input.identityDirectory ? { identityDirectory: input.identityDirectory } : {}),
     });
   }
 
