@@ -87,8 +87,23 @@ if [[ "$(jq 'length' <<<"${missing_roles}")" != "0" ]]; then
     | kcadm create "users/${service_user_id}/role-mappings/clients/${rm_uuid}" -r "${REALM}" -f - >/dev/null
 fi
 
+# fullScopeAllowed remains false, so explicitly scope the client token to the exact
+# realm-management roles its service account owns. Without these scope mappings,
+# client_credentials can authenticate but the access token cannot exercise the roles.
+current_scope_roles="$(kcadm get "clients/${client_uuid}/scope-mappings/clients/${rm_uuid}" -r "${REALM}")" \
+  || fail "unable to inspect directory-client realm-management scope mappings"
+extra_scope_roles="$(jq '[.[] | select(.name != "query-users" and .name != "view-users")] | length' <<<"${current_scope_roles}")"
+[[ "${extra_scope_roles}" == "0" ]] || fail "directory client scope contains broader realm-management roles"
+
+missing_scope_roles="$(jq --argjson current "${current_scope_roles}" '[.[] | select(.name as $name | ($current | map(.name) | index($name) | not))]' <<<"${roles_payload}")"
+if [[ "$(jq 'length' <<<"${missing_scope_roles}")" != "0" ]]; then
+  printf '%s' "${missing_scope_roles}" \
+    | kcadm create "clients/${client_uuid}/scope-mappings/clients/${rm_uuid}" -r "${REALM}" -f - >/dev/null
+fi
+
 verify_client="$(kcadm get "clients/${client_uuid}" -r "${REALM}")"
 verify_roles="$(kcadm get "users/${service_user_id}/role-mappings/clients/${rm_uuid}" -r "${REALM}")"
+verify_scope_roles="$(kcadm get "clients/${client_uuid}/scope-mappings/clients/${rm_uuid}" -r "${REALM}")"
 
 jq -e '
   .enabled == true and
@@ -102,11 +117,16 @@ jq -e '
 ' >/dev/null <<<"${verify_client}" || fail "directory client did not converge"
 
 [[ "$(jq '[.[] | select(.name == "query-users" or .name == "view-users")] | length' <<<"${verify_roles}")" == "2" ]] \
-  || fail "least-privilege roles did not converge"
+  || fail "least-privilege service-account roles did not converge"
 [[ "$(jq '[.[] | select(.name != "query-users" and .name != "view-users")] | length' <<<"${verify_roles}")" == "0" ]] \
   || fail "unexpected direct realm-management role remains"
+[[ "$(jq '[.[] | select(.name == "query-users" or .name == "view-users")] | length' <<<"${verify_scope_roles}")" == "2" ]] \
+  || fail "least-privilege client scope mappings did not converge"
+[[ "$(jq '[.[] | select(.name != "query-users" and .name != "view-users")] | length' <<<"${verify_scope_roles}")" == "0" ]] \
+  || fail "unexpected realm-management client scope mapping remains"
 
-unset DIRECTORY_SECRET client_payload client_json service_user roles_payload current_roles missing_roles verify_client verify_roles
+unset DIRECTORY_SECRET client_payload client_json service_user roles_payload current_roles missing_roles \
+  current_scope_roles missing_scope_roles verify_client verify_roles verify_scope_roles
 
 echo "DIRECTORY_CLIENT_CONFIGURATION_PASS"
 echo "DIRECTORY_CLIENT_LEAST_PRIVILEGE_PASS"
