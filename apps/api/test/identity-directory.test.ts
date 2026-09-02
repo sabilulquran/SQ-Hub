@@ -20,7 +20,7 @@ function makeDirectory() {
 }
 
 describe("KeycloakIdentityDirectory", () => {
-  it("returns browser-safe user metadata and MFA readiness booleans", async () => {
+  it("returns browser-safe user metadata within view-users privilege", async () => {
     globalThis.fetch = vi.fn(async (input, init) => {
       const url = String(input);
       if (url.endsWith("/protocol/openid-connect/token")) {
@@ -31,6 +31,7 @@ describe("KeycloakIdentityDirectory", () => {
         });
       }
       if (url.includes("/users?") && url.includes("search=synthetic")) {
+        expect(url).toContain("briefRepresentation=false");
         return new Response(
           JSON.stringify([
             {
@@ -41,16 +42,12 @@ describe("KeycloakIdentityDirectory", () => {
               firstName: "Synthetic",
               lastName: "Staff",
               enabled: true,
+              totp: true,
+              requiredActions: [],
             },
           ]),
           { status: 200, headers: { "content-type": "application/json" } },
         );
-      }
-      if (url.endsWith("/users/opaque-subject-001/credentials")) {
-        return new Response(JSON.stringify([{ type: "otp" }, { type: "recovery-authn-codes" }]), {
-          status: 200,
-          headers: { "content-type": "application/json" },
-        });
       }
       throw new Error(`Unexpected fetch ${url}`);
     }) as typeof fetch;
@@ -68,10 +65,41 @@ describe("KeycloakIdentityDirectory", () => {
         emailVerified: true,
         displayName: "Synthetic Staff",
         enabled: true,
-        security: { totpConfigured: true, recoveryCodesConfigured: true },
+        security: { totpConfigured: true, recoveryCodesConfigured: null },
       },
     ]);
     expect(JSON.stringify(results)).not.toContain("opaque-machine-token");
+  });
+
+  it("reports a pending recovery required action as not configured", async () => {
+    globalThis.fetch = vi.fn(async (input) => {
+      const url = String(input);
+      if (url.endsWith("/protocol/openid-connect/token")) {
+        return new Response(JSON.stringify({ access_token: "opaque-machine-token", expires_in: 60 }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      }
+      if (url.endsWith("/users/opaque-subject-001")) {
+        return new Response(
+          JSON.stringify({
+            id: "opaque-subject-001",
+            username: "19870001",
+            enabled: true,
+            totp: false,
+            requiredActions: ["CONFIGURE_RECOVERY_AUTHN_CODES"],
+          }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        );
+      }
+      throw new Error(`Unexpected fetch ${url}`);
+    }) as typeof fetch;
+
+    const result = await makeDirectory().inspect("opaque-subject-001");
+    expect(result?.security).toEqual({
+      totpConfigured: false,
+      recoveryCodesConfigured: false,
+    });
   });
 
   it("bounds search results and caches the client-credentials token", async () => {
