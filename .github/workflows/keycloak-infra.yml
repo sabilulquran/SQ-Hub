@@ -279,18 +279,18 @@ jobs:
           test "$first_output" = "$expected_output"
           test "$second_output" = "$expected_output"
 
-          client_json="$(
+          synthetic_user_id="$(
             docker compose --env-file "$KEYCLOAK_ENV_FILE" -f infra/keycloak/docker-compose.staging.yml \
-              exec -T keycloak /opt/keycloak/bin/kcadm.sh get clients \
-              -r sq-staff-staging -q clientId=sq-hub-directory-staging --config "$kcadm_config"
+              exec -T keycloak /opt/keycloak/bin/kcadm.sh create users \
+              -r sq-staff-staging \
+              -s username=ci-directory-smoke \
+              -s enabled=true \
+              -s firstName=CI \
+              -s lastName=Directory \
+              -i \
+              --config "$kcadm_config"
           )"
-          client_uuid="$(jq -er 'if length == 1 then .[0].id else error("directory client ambiguous") end' <<<"$client_json")"
-          service_user_json="$(
-            docker compose --env-file "$KEYCLOAK_ENV_FILE" -f infra/keycloak/docker-compose.staging.yml \
-              exec -T keycloak /opt/keycloak/bin/kcadm.sh get "clients/$client_uuid/service-account-user" \
-              -r sq-staff-staging --config "$kcadm_config"
-          )"
-          service_user_id="$(jq -er '.id' <<<"$service_user_json")"
+          test -n "$synthetic_user_id"
 
           directory_token="$(
             {
@@ -306,17 +306,17 @@ jobs:
 
           curl --fail --silent \
             -H "Authorization: Bearer $directory_token" \
-            'http://127.0.0.1:8080/admin/realms/sq-staff-staging/users?search=service-account&max=10&briefRepresentation=false' \
+            'http://127.0.0.1:8080/admin/realms/sq-staff-staging/users?search=ci-directory-smoke&max=10&briefRepresentation=false' \
             > /tmp/directory-users.json
-          jq -e 'type == "array"' /tmp/directory-users.json
+          jq -e 'type == "array" and length == 1 and .[0].username == "ci-directory-smoke"' /tmp/directory-users.json
 
           curl --fail --silent \
             -H "Authorization: Bearer $directory_token" \
-            "http://127.0.0.1:8080/admin/realms/sq-staff-staging/users/$service_user_id" \
+            "http://127.0.0.1:8080/admin/realms/sq-staff-staging/users/$synthetic_user_id" \
             > /tmp/directory-user.json
-          jq -e '.id != null and .username != null' /tmp/directory-user.json
+          jq -e '.id != null and .username == "ci-directory-smoke"' /tmp/directory-user.json
 
-          unset directory_token client_json service_user_json
+          unset directory_token synthetic_user_id
           rm -f /tmp/directory-users.json /tmp/directory-user.json
           docker compose --env-file "$KEYCLOAK_ENV_FILE" -f infra/keycloak/docker-compose.staging.yml \
             exec -T keycloak rm -f "$kcadm_config"
