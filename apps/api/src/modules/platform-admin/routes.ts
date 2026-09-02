@@ -40,14 +40,16 @@ const accessMutationSchema = z
   })
   .strict();
 
-const staffQuerySchema = z.object({
-  q: z.string().trim().min(2).max(120),
-});
-
+const staffQuerySchema = z.object({ q: z.string().trim().min(2).max(120) });
 const auditQuerySchema = z.object({
   q: z.string().trim().max(120).optional().default(""),
   limit: z.coerce.number().int().min(1).max(200).optional().default(100),
 });
+
+class AdminOriginError extends Error {
+  readonly statusCode = 403;
+  readonly code = "ADMIN_ORIGIN_FORBIDDEN";
+}
 
 export function registerPlatformAdminRoutes(
   app: FastifyInstance,
@@ -55,6 +57,7 @@ export function registerPlatformAdminRoutes(
     hubAuth: HubAuthRuntime;
     platformAdmin: Pick<PlatformAdminService, "authorize">;
     applicationRegistry: Pick<ApplicationAccessService, "listApplications" | "upsertApplication">;
+    allowedOrigin?: string;
     applicationAccess?: Pick<
       ApplicationAccessService,
       "listApplications" | "getAccess" | "grant" | "revoke" | "listAudit"
@@ -94,6 +97,7 @@ export function registerPlatformAdminRoutes(
     reply.header("Cache-Control", "no-store");
     try {
       const session = await authorizeSession(request.headers.cookie, input);
+      requireSameOrigin(request.headers.origin, input.allowedOrigin);
       const params = z.object({ applicationKey: applicationKeySchema }).parse(request.params);
       const body = applicationBodySchema.parse(request.body);
       const application = await input.applicationRegistry.upsertApplication({
@@ -177,6 +181,7 @@ export function registerPlatformAdminRoutes(
     reply.header("Cache-Control", "no-store");
     try {
       const session = await authorizeSession(request.headers.cookie, input);
+      requireSameOrigin(request.headers.origin, input.allowedOrigin);
       const directory = requireDirectory(input.identityDirectory);
       const accessService = requireAccessService(input.applicationAccess);
       const body = accessMutationSchema.parse(request.body);
@@ -198,6 +203,7 @@ export function registerPlatformAdminRoutes(
     reply.header("Cache-Control", "no-store");
     try {
       const session = await authorizeSession(request.headers.cookie, input);
+      requireSameOrigin(request.headers.origin, input.allowedOrigin);
       const directory = requireDirectory(input.identityDirectory);
       const accessService = requireAccessService(input.applicationAccess);
       const body = accessMutationSchema.parse(request.body);
@@ -236,14 +242,15 @@ export function registerPlatformAdminRoutes(
 
 async function authorizeSession(
   cookie: string | undefined,
-  input: {
-    hubAuth: HubAuthRuntime;
-    platformAdmin: Pick<PlatformAdminService, "authorize">;
-  },
+  input: { hubAuth: HubAuthRuntime; platformAdmin: Pick<PlatformAdminService, "authorize"> },
 ) {
   const session = await input.hubAuth.getSession(readCookie(cookie, HUB_SESSION_COOKIE_NAME));
   await input.platformAdmin.authorize(session);
   return session;
+}
+
+function requireSameOrigin(origin: string | undefined, allowedOrigin: string | undefined) {
+  if (!allowedOrigin || origin !== allowedOrigin) throw new AdminOriginError();
 }
 
 function actorForSession(session: { issuer: string; subject: string }) {
@@ -298,10 +305,9 @@ function toBrowserAccess(record: {
 }
 
 function toBrowserAudit(record: AuditRecord) {
-  const payload = record.payload;
   const safePayload: Record<string, unknown> = {};
   for (const key of ["applicationKey", "reason", "status", "canonicalUrl"]) {
-    const value = payload[key];
+    const value = record.payload[key];
     if (typeof value === "string" || value === null) safePayload[key] = value;
   }
   return {
@@ -316,23 +322,16 @@ function toBrowserAudit(record: AuditRecord) {
 }
 
 function sendAdminError(
-  reply: {
-    status(code: number): { send(payload: { error: string }): unknown };
-  },
+  reply: { status(code: number): { send(payload: { error: string }): unknown } },
   error: unknown,
 ) {
-  if (error instanceof HubAuthError) {
-    return reply.status(error.statusCode).send({ error: error.code });
-  }
+  if (error instanceof HubAuthError) return reply.status(error.statusCode).send({ error: error.code });
   if (error instanceof PlatformAdminAuthorizationError) {
     return reply.status(error.statusCode).send({ error: error.code });
   }
-  if (error instanceof z.ZodError) {
-    return reply.status(400).send({ error: "INVALID_REQUEST" });
-  }
-  if (error instanceof UnknownApplicationError) {
-    return reply.status(404).send({ error: "UNKNOWN_APPLICATION" });
-  }
+  if (error instanceof AdminOriginError) return reply.status(error.statusCode).send({ error: error.code });
+  if (error instanceof z.ZodError) return reply.status(400).send({ error: "INVALID_REQUEST" });
+  if (error instanceof UnknownApplicationError) return reply.status(404).send({ error: "UNKNOWN_APPLICATION" });
   if (error instanceof IdentityDirectoryError) {
     return reply.status(503).send({ error: "IDENTITY_DIRECTORY_UNAVAILABLE" });
   }
