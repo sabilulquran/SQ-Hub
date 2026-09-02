@@ -23,6 +23,7 @@ jobs:
       KEYCLOAK_DB_PASSWORD: ci-keycloak-db-password-only
       KEYCLOAK_BOOTSTRAP_ADMIN_USERNAME: ci-bootstrap-admin
       KEYCLOAK_BOOTSTRAP_ADMIN_PASSWORD: ci-bootstrap-admin-password-only
+      KEYCLOAK_DIRECTORY_CLIENT_SECRET: ci-directory-client-secret-only
       KEYCLOAK_HOSTNAME: http://127.0.0.1:8080
       KEYCLOAK_HTTP_PORT: "8080"
       KEYCLOAK_MANAGEMENT_PORT: "9000"
@@ -50,6 +51,7 @@ jobs:
           KEYCLOAK_DB_PASSWORD=$KEYCLOAK_DB_PASSWORD
           KEYCLOAK_BOOTSTRAP_ADMIN_USERNAME=$KEYCLOAK_BOOTSTRAP_ADMIN_USERNAME
           KEYCLOAK_BOOTSTRAP_ADMIN_PASSWORD=$KEYCLOAK_BOOTSTRAP_ADMIN_PASSWORD
+          KEYCLOAK_DIRECTORY_CLIENT_SECRET=$KEYCLOAK_DIRECTORY_CLIENT_SECRET
           EOF
           chmod 600 "$KEYCLOAK_ENV_FILE"
 
@@ -121,6 +123,7 @@ jobs:
           grep -Fq 'SQ Identity' /tmp/sq-identity-login.html
           grep -Fq 'Selamat datang kembali' /tmp/sq-identity-login.html
           grep -Fq 'css/sq-identity-066c6982e041.css' /tmp/sq-identity-login.html
+          grep -Fq 'css/sq-identity-615a8687ea40.css' /tmp/sq-identity-login.html
           ! grep -Fq 'css/sq-hub.css' /tmp/sq-identity-login.html
           grep -Fq 'img/favicon.svg' /tmp/sq-identity-login.html
 
@@ -260,6 +263,98 @@ jobs:
             )] | length) == 1
           ' >/dev/null <<<"$executions_json"
 
+          docker compose \
+            --env-file "$KEYCLOAK_ENV_FILE" \
+            -f infra/keycloak/docker-compose.staging.yml \
+            exec -T keycloak rm -f "$kcadm_config"
+
+      - name: Reconcile and verify least-privilege directory client
+        shell: bash
+        run: |
+          kcadm_config=/tmp/sq-hub-directory-ci.kcadm
+
+          docker compose \
+            --env-file "$KEYCLOAK_ENV_FILE" \
+            -f infra/keycloak/docker-compose.staging.yml \
+            -f infra/keycloak/docker-compose.bootstrap.yml \
+            exec -T keycloak \
+            sh -ceu '
+              /opt/keycloak/bin/kcadm.sh config credentials \
+                --config "$1" \
+                --server http://127.0.0.1:8080 \
+                --realm master \
+                --user "$KC_BOOTSTRAP_ADMIN_USERNAME" \
+                --password "$KC_BOOTSTRAP_ADMIN_PASSWORD" >/dev/null
+            ' sh "$kcadm_config"
+
+          first_output="$(
+            KEYCLOAK_KCADM_CONFIG="$kcadm_config" \
+            KEYCLOAK_DIRECTORY_CLIENT_SECRET="$KEYCLOAK_DIRECTORY_CLIENT_SECRET" \
+              bash infra/keycloak/scripts/reconcile-directory-client.sh
+          )"
+          printf '%s\n' "$first_output"
+
+          second_output="$(
+            KEYCLOAK_KCADM_CONFIG="$kcadm_config" \
+            KEYCLOAK_DIRECTORY_CLIENT_SECRET="$KEYCLOAK_DIRECTORY_CLIENT_SECRET" \
+              bash infra/keycloak/scripts/reconcile-directory-client.sh
+          )"
+          printf '%s\n' "$second_output"
+
+          expected_output="$(printf '%s\n' \
+            DIRECTORY_CLIENT_CONFIGURATION_PASS \
+            DIRECTORY_CLIENT_LEAST_PRIVILEGE_PASS)"
+          test "$first_output" = "$expected_output"
+          test "$second_output" = "$expected_output"
+
+          client_json="$(
+            docker compose \
+              --env-file "$KEYCLOAK_ENV_FILE" \
+              -f infra/keycloak/docker-compose.staging.yml \
+              exec -T keycloak \
+              /opt/keycloak/bin/kcadm.sh get clients \
+              -r sq-staff-staging \
+              -q clientId=sq-hub-directory-staging \
+              --config "$kcadm_config"
+          )"
+          client_uuid="$(jq -er 'if length == 1 then .[0].id else error("directory client ambiguous") end' <<<"$client_json")"
+          service_user_json="$(
+            docker compose \
+              --env-file "$KEYCLOAK_ENV_FILE" \
+              -f infra/keycloak/docker-compose.staging.yml \
+              exec -T keycloak \
+              /opt/keycloak/bin/kcadm.sh get "clients/$client_uuid/service-account-user" \
+              -r sq-staff-staging \
+              --config "$kcadm_config"
+          )"
+          service_user_id="$(jq -er '.id' <<<"$service_user_json")"
+
+          directory_token="$(
+            {
+              printf 'client_id=%s&' 'sq-hub-directory-staging'
+              printf 'client_secret=%s&' "$(printf '%s' "$KEYCLOAK_DIRECTORY_CLIENT_SECRET" | jq -sRr @uri)"
+              printf 'grant_type=client_credentials'
+            } | curl --fail --silent \
+              --header 'Content-Type: application/x-www-form-urlencoded' \
+              --data-binary @- \
+              http://127.0.0.1:8080/realms/sq-staff-staging/protocol/openid-connect/token \
+              | jq -er '.access_token'
+          )"
+
+          curl --fail --silent \
+            -H "Authorization: Bearer $directory_token" \
+            'http://127.0.0.1:8080/admin/realms/sq-staff-staging/users?search=service-account&max=10' \
+            > /tmp/directory-users.json
+          jq -e 'type == "array"' /tmp/directory-users.json
+
+          curl --fail --silent \
+            -H "Authorization: Bearer $directory_token" \
+            "http://127.0.0.1:8080/admin/realms/sq-staff-staging/users/$service_user_id/credentials" \
+            > /tmp/directory-credentials.json
+          jq -e 'type == "array"' /tmp/directory-credentials.json
+
+          unset directory_token client_json service_user_json
+          rm -f /tmp/directory-users.json /tmp/directory-credentials.json
           docker compose \
             --env-file "$KEYCLOAK_ENV_FILE" \
             -f infra/keycloak/docker-compose.staging.yml \
