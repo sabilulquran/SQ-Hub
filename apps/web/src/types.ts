@@ -36,8 +36,10 @@ export interface AdminStaff {
   displayName: string;
   enabled: boolean;
   security: {
-    totpConfigured: boolean | null;
-    recoveryCodesConfigured: boolean | null;
+    // The browser treats anything other than a positively verified true as caution/not verified.
+    // The server-side directory model retains the nullable/unknown distinction.
+    totpConfigured: boolean;
+    recoveryCodesConfigured: boolean;
   };
 }
 
