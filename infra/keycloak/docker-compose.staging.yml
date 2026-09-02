@@ -63,6 +63,9 @@ services:
       edge_proxy:
         aliases:
           - sq-identity-staging
+      sq_identity_directory_staging:
+        aliases:
+          - sq-identity-directory-staging
 
 networks:
   sq_identity_internal:
@@ -70,6 +73,9 @@ networks:
   edge_proxy:
     external: true
     name: ${EDGE_NETWORK:-edge_proxy}
+  sq_identity_directory_staging:
+    external: true
+    name: ${SQ_IDENTITY_DIRECTORY_STAGING_NETWORK:-sq_identity_directory_staging}
 
 volumes:
   keycloak_staging_postgres:
