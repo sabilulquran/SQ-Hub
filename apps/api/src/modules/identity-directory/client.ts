@@ -1,6 +1,6 @@
 export interface StaffDirectorySecurity {
-  totpConfigured: boolean;
-  recoveryCodesConfigured: boolean;
+  totpConfigured: boolean | null;
+  recoveryCodesConfigured: boolean | null;
 }
 
 export interface StaffDirectoryIdentity {
@@ -32,10 +32,8 @@ interface KeycloakUserRepresentation {
   firstName?: string;
   lastName?: string;
   enabled?: boolean;
-}
-
-interface KeycloakCredentialRepresentation {
-  type?: string;
+  totp?: boolean;
+  requiredActions?: string[];
 }
 
 interface TokenResponse {
@@ -73,15 +71,15 @@ export class KeycloakIdentityDirectory implements IdentityDirectory {
     const params = new URLSearchParams({
       search: normalized,
       max: String(safeLimit),
-      briefRepresentation: "true",
+      briefRepresentation: "false",
     });
     const users = await this.adminGet<KeycloakUserRepresentation[]>(`users?${params.toString()}`);
-    const entries = users
+    return users
       .filter((user): user is KeycloakUserRepresentation & { id: string; username: string } =>
         Boolean(user.id && user.username),
       )
-      .slice(0, safeLimit);
-    return Promise.all(entries.map((user) => this.toEntry(user)));
+      .slice(0, safeLimit)
+      .map((user) => this.toEntry(user));
   }
 
   async inspect(subject: string): Promise<StaffDirectoryEntry | null> {
@@ -95,15 +93,9 @@ export class KeycloakIdentityDirectory implements IdentityDirectory {
     return this.toEntry(user as KeycloakUserRepresentation & { id: string; username: string });
   }
 
-  private async toEntry(
-    user: KeycloakUserRepresentation & { id: string; username: string },
-  ): Promise<StaffDirectoryEntry> {
-    const credentials = await this.adminGet<KeycloakCredentialRepresentation[]>(
-      `users/${encodeURIComponent(user.id)}/credentials`,
-    );
-    const credentialTypes = new Set(
-      credentials.map((credential) => credential.type?.toLowerCase()).filter(Boolean),
-    );
+  private toEntry(user: KeycloakUserRepresentation & { id: string; username: string }): StaffDirectoryEntry {
+    const requiredActions = new Set(user.requiredActions ?? []);
+    const recoveryActionPending = requiredActions.has("CONFIGURE_RECOVERY_AUTHN_CODES");
     const displayName = [user.firstName, user.lastName].filter(Boolean).join(" ").trim() || user.username;
     return {
       identity: { issuer: this.issuer, subject: user.id },
@@ -113,8 +105,10 @@ export class KeycloakIdentityDirectory implements IdentityDirectory {
       displayName,
       enabled: user.enabled !== false,
       security: {
-        totpConfigured: credentialTypes.has("otp"),
-        recoveryCodesConfigured: credentialTypes.has("recovery-authn-codes"),
+        totpConfigured: typeof user.totp === "boolean" ? user.totp : null,
+        // view/query-users deliberately cannot read arbitrary credential lists. A pending
+        // required action proves recovery is not configured; otherwise the state is unknown.
+        recoveryCodesConfigured: recoveryActionPending ? false : null,
       },
     };
   }
