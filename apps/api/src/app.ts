@@ -13,6 +13,7 @@ import {
 } from "./modules/application-access/service.js";
 import { registerHubAuthRoutes } from "./modules/hub-auth/routes.js";
 import type { HubAuthRuntime } from "./modules/hub-auth/service.js";
+import type { IdentityDirectory } from "./modules/identity-directory/client.js";
 import { registerPlatformAdminRoutes } from "./modules/platform-admin/routes.js";
 import type { PlatformAdminService } from "./modules/platform-admin/service.js";
 
@@ -29,7 +30,12 @@ export function buildApp(input: {
   hubAuth?: HubAuthRuntime;
   hubRedirectUri?: string;
   platformAdmin?: Pick<PlatformAdminService, "authorize">;
-  adminApplicationRegistry?: Pick<ApplicationAccessService, "listApplications">;
+  adminApplicationRegistry?: Pick<ApplicationAccessService, "listApplications" | "upsertApplication">;
+  adminApplicationAccess?: Pick<
+    ApplicationAccessService,
+    "listApplications" | "getAccess" | "grant" | "revoke" | "listAudit"
+  >;
+  identityDirectory?: IdentityDirectory;
   logger?: boolean;
 }) {
   const app = Fastify({ logger: input.logger ?? false });
@@ -76,6 +82,8 @@ export function buildApp(input: {
       hubAuth: input.hubAuth,
       platformAdmin: input.platformAdmin,
       applicationRegistry: input.adminApplicationRegistry,
+      applicationAccess: input.adminApplicationAccess,
+      identityDirectory: input.identityDirectory,
     });
   }
 
