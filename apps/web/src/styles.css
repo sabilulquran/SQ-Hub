@@ -96,6 +96,32 @@ button {
   color: inherit;
 }
 
+.sq-admin-input {
+  width: 100%;
+  min-height: 2.85rem;
+  border: 1px solid var(--border);
+  border-radius: 0.9rem;
+  background: white;
+  padding: 0.7rem 0.85rem;
+  color: var(--foreground);
+  font: inherit;
+  font-size: 0.875rem;
+  outline: none;
+  box-shadow: inset 0 1px 1px oklch(0.2 0.02 245 / 0.02);
+  transition: border-color 150ms ease, box-shadow 150ms ease;
+}
+
+.sq-admin-input:focus {
+  border-color: var(--brand-primary);
+  box-shadow: 0 0 0 3px oklch(0.651 0.106 195.68 / 0.14);
+}
+
+.sq-admin-input:disabled {
+  cursor: not-allowed;
+  background: var(--muted);
+  color: var(--muted-foreground);
+}
+
 ::selection {
   background: var(--brand-primary-pale);
   color: var(--brand-primary-deep);

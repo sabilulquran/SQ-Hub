@@ -22,6 +22,10 @@ const serverConfigSchema = foundationConfigSchema.extend({
   HUB_SESSION_MAX_HOURS: z.coerce.number().positive().max(12).default(12),
   HUB_OIDC_TRANSACTION_TTL_MINUTES: z.coerce.number().positive().max(15).default(10),
   HUB_COOKIE_SECURE: booleanString.default("true"),
+  KEYCLOAK_DIRECTORY_BASE_URL: z.string().url(),
+  KEYCLOAK_DIRECTORY_REALM: z.string().trim().min(1).default("sq-staff-staging"),
+  KEYCLOAK_DIRECTORY_CLIENT_ID: z.string().trim().min(1).default("sq-hub-directory-staging"),
+  KEYCLOAK_DIRECTORY_CLIENT_SECRET: z.string().min(1),
 });
 
 export interface FoundationConfig {
@@ -42,6 +46,10 @@ export interface AppConfig extends FoundationConfig {
   hubSessionMaxHours: number;
   hubOidcTransactionTtlMinutes: number;
   hubCookieSecure: boolean;
+  keycloakDirectoryBaseUrl: string;
+  keycloakDirectoryRealm: string;
+  keycloakDirectoryClientId: string;
+  keycloakDirectoryClientSecret: string;
 }
 
 function foundationConfig(parsed: z.infer<typeof foundationConfigSchema>): FoundationConfig {
@@ -84,5 +92,9 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     hubSessionMaxHours: parsed.HUB_SESSION_MAX_HOURS,
     hubOidcTransactionTtlMinutes: parsed.HUB_OIDC_TRANSACTION_TTL_MINUTES,
     hubCookieSecure: parsed.HUB_COOKIE_SECURE,
+    keycloakDirectoryBaseUrl: parsed.KEYCLOAK_DIRECTORY_BASE_URL.replace(/\/$/, ""),
+    keycloakDirectoryRealm: parsed.KEYCLOAK_DIRECTORY_REALM,
+    keycloakDirectoryClientId: parsed.KEYCLOAK_DIRECTORY_CLIENT_ID,
+    keycloakDirectoryClientSecret: parsed.KEYCLOAK_DIRECTORY_CLIENT_SECRET,
   };
 }
