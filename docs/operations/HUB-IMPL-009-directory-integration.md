@@ -9,8 +9,10 @@ This runbook covers the staging-only Keycloak directory client used by SQ Hub Go
 - Grant type: client credentials through the Keycloak service account.
 - Direct realm-management roles: exactly `query-users` and `view-users`.
 - Browser/direct-password/implicit flows: disabled.
+- `manage-users`, impersonation, client-management, and broad administrator authority are explicitly out of scope.
 - Admin REST is reached from the SQ Hub API only through `sq_identity_directory_staging`, an internal Docker network created by the Keycloak staging Compose project.
 - The client secret exists only in controlled runtime env files and must never be printed, committed, passed in browser configuration, or placed in command arguments.
+- The directory integration reads bounded user representations only; it does not request arbitrary-user credential lists.
 
 ## Persistent-realm convergence
 
@@ -33,9 +35,11 @@ After the Hub API and Keycloak share the internal network, verify from the Hub A
 
 1. the internal Keycloak hostname resolves;
 2. the realm OIDC endpoint is reachable over the internal network;
-3. a server-side directory lookup for a controlled synthetic Staff identity returns bounded profile data and safe TOTP/recovery booleans;
-4. the browser receives no directory client token/secret;
-5. public Keycloak `/admin/` remains blocked by the public reverse proxy.
+3. the service account can perform bounded user search and read a user representation with only `query-users` + `view-users`;
+4. a server-side directory lookup for a controlled synthetic Staff identity returns bounded profile data and safe readiness values without reading credential material;
+5. TOTP readiness may be true/false/unknown from the user representation; a pending recovery-code required action may prove recovery is not configured, otherwise recovery readiness remains unknown rather than escalating privilege;
+6. the browser receives no directory client token/secret;
+7. public Keycloak `/admin/` remains blocked by the public reverse proxy.
 
 ## Rollback
 
