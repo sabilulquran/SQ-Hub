@@ -15,10 +15,10 @@ type RuntimeState =
 function startupError(): string | null {
   const category = new URLSearchParams(window.location.search).get("authError");
   if (category === "identity_unavailable") {
-    return "SQ Identity belum dapat dihubungi. Coba lagi beberapa saat.";
+    return "Akun SQ belum dapat dihubungi. Coba lagi beberapa saat.";
   }
   if (category === "oidc_failed") {
-    return "Proses masuk melalui SQ Identity belum dapat diselesaikan. Silakan coba lagi.";
+    return "Proses masuk melalui Akun SQ belum dapat diselesaikan. Silakan coba lagi.";
   }
   return null;
 }
@@ -92,32 +92,32 @@ export function WorkspaceApp() {
 
   return (
     <main className="flex min-h-screen items-center justify-center px-5 py-10">
-      <div className="w-full max-w-xl rounded-[2rem] border border-border/75 bg-white p-6 text-center shadow-[var(--shadow-raised)] sm:p-9">
+      <div className="w-full max-w-lg rounded-2xl border border-border/75 bg-white p-6 text-center shadow-[var(--shadow-raised)] sm:p-8">
         <div className="flex justify-center">
           <BrandLockup />
         </div>
 
         {state.status === "loading" ? (
           <>
-            <div className="mx-auto mt-8 flex h-12 w-12 items-center justify-center rounded-2xl bg-brand-primary-pale text-brand-primary-deep">
+            <div className="mx-auto mt-7 flex h-11 w-11 items-center justify-center rounded-xl bg-brand-primary-pale text-brand-primary-deep">
               <LoaderCircle className="h-5 w-5 animate-spin" aria-hidden="true" />
             </div>
-            <h1 className="mt-5 font-display text-2xl font-bold tracking-[-0.025em] text-brand-heading sm:text-3xl">
+            <h1 className="mt-4 font-display text-2xl font-bold tracking-[-0.025em] text-brand-heading">
               Menyiapkan ruang kerja Anda
             </h1>
-            <p className="mx-auto mt-3 max-w-md text-sm leading-6 text-muted-foreground">
+            <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-muted-foreground">
               SQ Hub sedang memeriksa sesi dan akses aplikasi Anda.
             </p>
           </>
         ) : (
           <>
-            <div className="mx-auto mt-8 flex h-12 w-12 items-center justify-center rounded-2xl bg-brand-yellow/25 text-foreground">
+            <div className="mx-auto mt-7 flex h-11 w-11 items-center justify-center rounded-xl bg-brand-yellow/25 text-foreground">
               <AlertTriangle className="h-5 w-5" aria-hidden="true" />
             </div>
-            <h1 className="mt-5 font-display text-2xl font-bold tracking-[-0.025em] text-brand-heading sm:text-3xl">
+            <h1 className="mt-4 font-display text-2xl font-bold tracking-[-0.025em] text-brand-heading">
               SQ Hub belum dapat dibuka
             </h1>
-            <p className="mx-auto mt-3 max-w-md text-sm leading-6 text-muted-foreground">
+            <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-muted-foreground">
               {state.message}
             </p>
             <button
@@ -126,7 +126,7 @@ export function WorkspaceApp() {
                 window.history.replaceState({}, "", "/");
                 void loadWorkspace();
               }}
-              className="mt-6 inline-flex items-center gap-2 rounded-2xl bg-brand-primary px-4 py-2.5 text-sm font-bold text-white shadow-[var(--shadow-button)] transition hover:brightness-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+              className="mt-5 inline-flex items-center gap-2 rounded-xl bg-brand-primary px-4 py-2.5 text-sm font-bold text-white shadow-[var(--shadow-button)] transition hover:brightness-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
             >
               <RefreshCw className="h-4 w-4" aria-hidden="true" />
               Coba lagi
@@ -193,7 +193,7 @@ function AdminRoute({
 function NeutralPage({ children }: { children: ReactNode }) {
   return (
     <main className="flex min-h-screen items-center justify-center px-5 py-10">
-      <div className="w-full max-w-xl rounded-[2rem] border border-border/75 bg-white p-6 text-center shadow-[var(--shadow-raised)] sm:p-9">
+      <div className="w-full max-w-lg rounded-2xl border border-border/75 bg-white p-6 text-center shadow-[var(--shadow-raised)] sm:p-8">
         <div className="flex justify-center">
           <BrandLockup />
         </div>
@@ -206,10 +206,10 @@ function NeutralPage({ children }: { children: ReactNode }) {
 function LoadingPage() {
   return (
     <NeutralPage>
-      <div className="mx-auto mt-8 flex h-12 w-12 items-center justify-center rounded-2xl bg-brand-primary-pale text-brand-primary-deep">
+      <div className="mx-auto mt-7 flex h-11 w-11 items-center justify-center rounded-xl bg-brand-primary-pale text-brand-primary-deep">
         <LoaderCircle className="h-5 w-5 animate-spin" aria-hidden="true" />
       </div>
-      <h1 className="mt-5 font-display text-2xl font-bold tracking-[-0.025em] text-brand-heading sm:text-3xl">Memuat halaman</h1>
+      <h1 className="mt-4 font-display text-2xl font-bold tracking-[-0.025em] text-brand-heading">Memuat halaman</h1>
     </NeutralPage>
   );
 }
@@ -217,10 +217,10 @@ function LoadingPage() {
 export function NotFoundPage() {
   return (
     <NeutralPage>
-      <p className="mt-8 text-sm font-bold uppercase tracking-[0.16em] text-muted-foreground">404</p>
-      <h1 className="mt-2 font-display text-2xl font-bold tracking-[-0.025em] text-brand-heading sm:text-3xl">Halaman tidak ditemukan</h1>
-      <p className="mx-auto mt-3 max-w-md text-sm leading-6 text-muted-foreground">Halaman yang Anda cari tidak tersedia.</p>
-      <a href="/" className="mt-6 inline-flex rounded-2xl bg-brand-primary px-4 py-2.5 text-sm font-bold text-white shadow-[var(--shadow-button)]">Kembali ke SQ Hub</a>
+      <p className="mt-7 text-sm font-bold uppercase tracking-[0.16em] text-muted-foreground">404</p>
+      <h1 className="mt-2 font-display text-2xl font-bold tracking-[-0.025em] text-brand-heading">Halaman tidak ditemukan</h1>
+      <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-muted-foreground">Halaman yang Anda cari tidak tersedia.</p>
+      <a href="/" className="mt-5 inline-flex rounded-xl bg-brand-primary px-4 py-2.5 text-sm font-bold text-white shadow-[var(--shadow-button)]">Kembali ke SQ Hub</a>
     </NeutralPage>
   );
 }
@@ -228,9 +228,9 @@ export function NotFoundPage() {
 function ReauthenticationPage({ onLogout }: { onLogout: () => void | Promise<void> }) {
   return (
     <NeutralPage>
-      <h1 className="mt-8 font-display text-2xl font-bold tracking-[-0.025em] text-brand-heading sm:text-3xl">Masuk ulang diperlukan</h1>
-      <p className="mx-auto mt-3 max-w-md text-sm leading-6 text-muted-foreground">Keluar lalu masuk kembali melalui SQ Identity untuk memperbarui sesi Anda.</p>
-      <button type="button" onClick={() => void onLogout()} className="mt-6 rounded-2xl bg-brand-primary px-4 py-2.5 text-sm font-bold text-white shadow-[var(--shadow-button)]">Keluar dan masuk kembali</button>
+      <h1 className="mt-7 font-display text-2xl font-bold tracking-[-0.025em] text-brand-heading">Masuk ulang diperlukan</h1>
+      <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-muted-foreground">Keluar lalu masuk kembali melalui Akun SQ untuk memperbarui sesi Anda.</p>
+      <button type="button" onClick={() => void onLogout()} className="mt-5 rounded-xl bg-brand-primary px-4 py-2.5 text-sm font-bold text-white shadow-[var(--shadow-button)]">Keluar dan masuk kembali</button>
     </NeutralPage>
   );
 }
@@ -238,9 +238,9 @@ function ReauthenticationPage({ onLogout }: { onLogout: () => void | Promise<voi
 function UnavailablePage({ onRetry }: { onRetry: () => void | Promise<void> }) {
   return (
     <NeutralPage>
-      <h1 className="mt-8 font-display text-2xl font-bold tracking-[-0.025em] text-brand-heading sm:text-3xl">Halaman belum dapat dibuka</h1>
-      <p className="mx-auto mt-3 max-w-md text-sm leading-6 text-muted-foreground">Coba lagi beberapa saat.</p>
-      <button type="button" onClick={() => void onRetry()} className="mt-6 rounded-2xl bg-brand-primary px-4 py-2.5 text-sm font-bold text-white shadow-[var(--shadow-button)]">Coba lagi</button>
+      <h1 className="mt-7 font-display text-2xl font-bold tracking-[-0.025em] text-brand-heading">Halaman belum dapat dibuka</h1>
+      <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-muted-foreground">Coba lagi beberapa saat.</p>
+      <button type="button" onClick={() => void onRetry()} className="mt-5 rounded-xl bg-brand-primary px-4 py-2.5 text-sm font-bold text-white shadow-[var(--shadow-button)]">Coba lagi</button>
     </NeutralPage>
   );
 }
