@@ -18,7 +18,7 @@ Every `/api/admin/*` Go 5B endpoint remains protected by the existing SQ Hub Pla
 
 Platform Administrator still does not imply HCIS, Finance, SPMB, Recruitment, Academic, payroll, employee-master, or other domain permissions.
 
-Browser-triggered mutations derive the audit actor from the authenticated Hub session on the server. The browser must not be allowed to forge the actor identity.
+Browser-triggered mutations derive the audit actor from the authenticated Hub session on the server. The browser must not be allowed to forge the actor identity. Because Hub sessions use cookies and sibling subdomains are same-site, privileged browser mutations must also require the exact trusted SQ Hub `Origin`; missing or sibling-site origins fail closed.
 
 ## Staff identity lookup
 
@@ -26,22 +26,23 @@ Provide a human-friendly Staff lookup inside Administrasi SQ so an administrator
 
 Requirements:
 - lookup is server-side only; the browser never receives a Keycloak admin token or client secret;
-- integration uses a dedicated least-privilege Keycloak service account limited to reading users/credentials needed for safe enrollment checks in the exact `sq-staff-staging` realm;
+- integration uses a dedicated least-privilege Keycloak service account limited to user query/view operations in the exact `sq-staff-staging` realm;
 - persisted authorization remains keyed by exact OIDC `issuer + sub`;
 - search results may expose safe human-facing profile fields needed for disambiguation, but the UI must not display raw OIDC subjects;
 - the API may return the opaque subject only as an internal mutation handle to the protected browser session;
 - credentials, password hashes, TOTP seeds, recovery codes, credential values, tokens, or admin secrets must never be returned or logged;
 - lookup is bounded and requires a non-empty query; it is not a bulk identity export.
 
-Safe security readiness metadata may include booleans such as `totpConfigured` and `recoveryCodesConfigured`. These are operational precondition signals only; SQ Hub does not become the owner of MFA credential state.
+Safe readiness metadata is derived only from fields available under the least-privilege user representation. `totpConfigured` may be true/false/unknown. A pending recovery-code required action may safely prove `recoveryCodesConfigured=false`; otherwise recovery enrollment is reported as unknown rather than escalating the directory client to credential-read/user-management authority.
 
 ## Least-privilege identity-directory integration
 
 Create a dedicated staging client/service identity for SQ Hub directory reads. It must:
 - use client credentials server-to-server only;
 - have no standard browser flow and no direct-access password grant;
-- receive only the minimum realm-management read/query roles required for the lookup and safe credential-type inspection;
-- not receive user-management, realm-management, impersonation, client-management, or broad administrator authority;
+- receive only the minimum direct realm-management roles required for bounded user query/view (`query-users` and `view-users` in the accepted staging implementation);
+- not receive `manage-users`, impersonation, client-management, realm-management, or broad administrator authority;
+- not call arbitrary-user credential-list endpoints when those require broader privileges;
 - keep its client secret only in runtime secret/environment configuration;
 - communicate through an explicitly controlled internal staging network/endpoint rather than exposing browser access to the Keycloak Admin API.
 
@@ -83,9 +84,9 @@ Foundation-scale implementation may bound the query to the most recent records a
 
 ## Privileged identity / MFA precondition checks
 
-Where practical, Go 5B surfaces automated safe readiness checks from the identity-directory integration, especially TOTP and recovery-code enrollment booleans for identities being considered for security-sensitive administration.
+Where practical under least privilege, Go 5B surfaces automated safe readiness signals from the identity-directory integration. It must distinguish **unknown** from **not configured** instead of requesting broad Keycloak user-management privileges merely to inspect credential types.
 
-Go 5B does not create or reset those credentials and does not change Keycloak authentication policy. Platform Administrator bootstrap/revoke remains the reviewed Go 5A operator path unless a later accepted specification explicitly adds web self-service for that privilege.
+Go 5B does not create or reset credentials and does not change Keycloak authentication policy. Platform Administrator bootstrap/revoke remains the reviewed Go 5A operator path unless a later accepted specification explicitly adds web self-service for that privilege.
 
 ## API behavior
 
@@ -96,9 +97,10 @@ All Go 5B admin endpoints:
 - use explicit input validation and bounded query/result sizes;
 - fail closed when authorization or required identity-directory verification is unavailable;
 - derive mutation actor server-side;
+- require the exact trusted Hub `Origin` for browser `PUT`/`POST` mutations and reject missing/sibling origins;
 - reject domain-role/permission fields and unrelated Keycloak administration fields.
 
-Suggested protected contracts, names may be refined in implementation while preserving behavior:
+Protected contracts:
 - `GET /admin/staff?q=...`
 - `GET /admin/staff/:subject/access`
 - `PUT /admin/applications/:applicationKey`
@@ -113,7 +115,7 @@ Extend `/admin` with three clear platform-owned areas:
 - **Akses Aplikasi** — Staff lookup plus grant/revoke status/actions;
 - **Audit Platform** — searchable recent platform audit.
 
-Follow the accepted SQ/HCIS design baseline and reuse the existing Admin Center shell. Destructive/revocation actions require a clear confirmation state and reason. UI must not imply that Application Access is a domain permission.
+Follow the accepted SQ/HCIS design baseline and reuse the existing Admin Center shell. Destructive/revocation actions require a clear confirmation state and reason. UI must not imply that Application Access is a domain permission. Unknown MFA readiness must not be rendered as a positive enrollment claim.
 
 ## Tests and verification
 
@@ -123,13 +125,15 @@ Minimum automated coverage:
 - staff lookup requires a non-empty bounded query;
 - directory client credentials never reach API responses/log fixtures;
 - identity lookup preserves exact issuer+subject and same subject from another issuer does not collide;
+- directory service account remains limited to direct `query-users` + `view-users`, and CI proves required user lookup/detail endpoints with those roles;
 - registry create/update uses existing source of truth and cannot change an existing key;
 - grant/revoke uses existing source of truth, is deterministic/idempotent, and writes audit;
 - browser mutation actor is derived server-side and cannot be supplied by request payload;
 - grant/revoke reason is required at the admin HTTP boundary;
+- privileged browser mutations reject missing or non-Hub `Origin`;
 - domain-role/permission payloads are rejected;
 - audit API/UI sanitizes raw OIDC subjects and secret/credential material;
-- TOTP/recovery readiness is represented only as safe booleans;
+- TOTP/recovery readiness is represented without escalating to credential-read authority and preserves unknown state;
 - desktop/mobile Admin Center smoke remains usable.
 
 ## Staging deployment and recovery
@@ -153,4 +157,5 @@ Production rollout is not authorized by this specification.
 - Organizational Unit master/cutover;
 - universal Person Registry;
 - exposing Keycloak Admin REST credentials or tokens to the browser;
+- broad Keycloak `manage-users` authority solely for MFA-readiness display;
 - production deployment.
