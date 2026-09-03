@@ -25,6 +25,9 @@ jobs:
   publish:
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    env:
+      IMAGE_NAME: ghcr.io/${{ github.repository_owner }}/sq-hub-keycloak
+      OCI_SOURCE: https://github.com/${{ github.repository }}
 
     steps:
       - name: Check out source to build
@@ -54,7 +57,8 @@ jobs:
           context: .
           file: infra/keycloak/Containerfile
           push: true
-          tags: ghcr.io/imadjinasi/sq-hub-keycloak:sha-${{ steps.source.outputs.sha }}
+          tags: ${{ env.IMAGE_NAME }}:sha-${{ steps.source.outputs.sha }}
+          labels: org.opencontainers.image.source=${{ env.OCI_SOURCE }}
           cache-from: type=gha,scope=keycloak
           cache-to: type=gha,mode=max,scope=keycloak
 
@@ -66,7 +70,8 @@ jobs:
           file: infra/keycloak/Containerfile
           push: true
           tags: |
-            ghcr.io/imadjinasi/sq-hub-keycloak:26.7.2-staging
-            ghcr.io/imadjinasi/sq-hub-keycloak:sha-${{ steps.source.outputs.sha }}
+            ${{ env.IMAGE_NAME }}:26.7.2-staging
+            ${{ env.IMAGE_NAME }}:sha-${{ steps.source.outputs.sha }}
+          labels: org.opencontainers.image.source=${{ env.OCI_SOURCE }}
           cache-from: type=gha,scope=keycloak
           cache-to: type=gha,mode=max,scope=keycloak
