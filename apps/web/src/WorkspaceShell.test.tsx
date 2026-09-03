@@ -5,58 +5,39 @@ import { WorkspaceShell } from "@/WorkspaceShell";
 import type { WorkspaceSnapshot } from "@/types";
 
 const workspace: WorkspaceSnapshot = {
-  user: {
-    displayName: "Pegawai Sintetis",
-    initials: "PS",
-    contextLabel: "Unit Contoh",
-  },
-  applications: [
-    {
-      key: "hcis",
-      name: "HCIS",
-      description: "Aplikasi kepegawaian",
-      canonicalUrl: "https://hcis.example.test",
-    },
-  ],
-  capabilities: {
-    platformAdministration: false,
-  },
+  user: { displayName: "Pegawai Sintetis", initials: "PS", contextLabel: "Unit Contoh" },
+  applications: [{ key: "hcis", name: "HCIS", description: "Aplikasi kepegawaian", canonicalUrl: "https://hcis.example.test" }],
+  capabilities: { platformAdministration: false },
 };
 
 describe("SQ Hub workspace shell", () => {
-  it("renders the HCIS-aligned YSQ brand lockup and responsive account triggers", () => {
+  it("renders the frozen-HCIS shell proportions, YSQ lockup, and responsive account triggers", () => {
     const html = renderToStaticMarkup(<WorkspaceShell workspace={workspace} preview />);
-
     expect(html).toContain("SQ Hub");
     expect(html).toContain("Akun SQ");
     expect(html).toContain("Yayasan Sabilul Qur&#x27;an");
+    expect(html).toContain("w-72");
+    expect(html).toContain("lg:pl-72");
+    expect(html).toContain("h-9 w-9 shrink-0 items-center justify-center rounded-xl");
+    expect(html).toContain("rounded-[1.75rem]");
     expect(html).toContain("h-11 w-11 shrink-0 object-contain");
     expect(html).toContain("h-9 w-9 shrink-0 object-contain");
-    expect(html).not.toContain("h-8 w-8 object-contain");
     expect(html.match(/aria-haspopup="menu"/g)).toHaveLength(2);
     expect(html).toContain("Preview desain");
     expect(html).not.toContain("SQ Identity");
+    expect(html).not.toContain("rounded-[2rem] bg-brand-primary");
   });
 
   it("shows actionable Administrasi SQ navigation only for a server-authorized capability", () => {
     const ordinary = renderToStaticMarkup(<WorkspaceShell workspace={workspace} />);
     expect(ordinary).not.toContain('href="/admin"');
-
-    const admin = renderToStaticMarkup(
-      <WorkspaceShell
-        workspace={{
-          ...workspace,
-          capabilities: { platformAdministration: true },
-        }}
-      />,
-    );
+    const admin = renderToStaticMarkup(<WorkspaceShell workspace={{ ...workspace, capabilities: { platformAdministration: true } }} />);
     expect(admin).toContain("Administrasi SQ");
     expect(admin.match(/href="\/admin"/g)).toHaveLength(2);
   });
 
   it("renders only applications supplied by the authorized workspace boundary", () => {
     const html = renderToStaticMarkup(<WorkspaceShell workspace={workspace} />);
-
     expect(html).toContain("HCIS");
     expect(html).toContain("https://hcis.example.test");
     expect(html).not.toContain("Finance");
@@ -64,10 +45,7 @@ describe("SQ Hub workspace shell", () => {
   });
 
   it("shows a safe empty state when the workspace contains no authorized applications", () => {
-    const html = renderToStaticMarkup(
-      <WorkspaceShell workspace={{ ...workspace, applications: [] }} />,
-    );
-
+    const html = renderToStaticMarkup(<WorkspaceShell workspace={{ ...workspace, applications: [] }} />);
     expect(html).toContain("Belum ada aplikasi");
     expect(html).toContain("Belum ada akses aplikasi aktif");
   });
