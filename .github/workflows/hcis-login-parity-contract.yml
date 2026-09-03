@@ -38,6 +38,29 @@ jobs:
 
           echo 'HCIS_LOGIN_PARITY_CONTRACT_PASS'
 
+      - name: Verify exact HCIS logo assets and markup
+        shell: bash
+        run: |
+          footer='infra/keycloak/themes/sq-hub/login/footer.ftl'
+          logo_css='infra/keycloak/themes/sq-hub/login/resources/css/hcis-logo-assets.css'
+          logo='infra/keycloak/themes/sq-hub/login/resources/img/logo.png'
+          logo_white='infra/keycloak/themes/sq-hub/login/resources/img/logo-white.png'
+          theme='infra/keycloak/themes/sq-hub/login/theme.properties'
+
+          test -s "$logo"
+          test -s "$logo_white"
+          test "$(git hash-object "$logo")" = '9c738fe89212ec5f107c0dd6fe738bbf42ae94c1'
+          test "$(git hash-object "$logo_white")" = '6c71fddbba785a167b965901d400fd1559a41e50'
+          grep -Fq '${url.resourcesPath}/img/logo.png' "$footer"
+          grep -Fq '${url.resourcesPath}/img/logo-white.png' "$footer"
+          grep -Fq 'hcis-logo-assets.css' "$theme"
+          grep -Fq 'height: 3.5rem !important' "$logo_css"
+          grep -Fq 'height: 4rem !important' "$logo_css"
+          ! grep -Fq 'sq-brand-lockup__mark' "$footer"
+          ! grep -Fq 'sq-brand-lockup__text' "$footer"
+
+          echo 'HCIS_EXACT_LOGO_ASSET_CONTRACT_PASS'
+
       - name: Reject the rejected desktop composition in the parity layer
         shell: bash
         run: |
