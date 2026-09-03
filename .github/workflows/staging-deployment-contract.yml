@@ -1,0 +1,76 @@
+name: Staging Deployment Contract
+
+on:
+  pull_request:
+    paths:
+      - "infra/**"
+      - ".github/workflows/publish-web-staging-image.yml"
+      - ".github/workflows/publish-keycloak-staging-image.yml"
+      - ".github/workflows/staging-deployment-contract.yml"
+      - "docs/operations/staging-image-publishing.md"
+      - "docs/operations/staging-service-deployment.md"
+  push:
+    branches:
+      - main
+    paths:
+      - "infra/**"
+      - ".github/workflows/publish-web-staging-image.yml"
+      - ".github/workflows/publish-keycloak-staging-image.yml"
+      - ".github/workflows/staging-deployment-contract.yml"
+      - "docs/operations/staging-image-publishing.md"
+      - "docs/operations/staging-service-deployment.md"
+
+jobs:
+  contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate deployment script syntax
+        run: bash -n infra/scripts/deploy-staging-service.sh
+
+      - name: Verify runtime env files are ignored
+        shell: bash
+        run: |
+          git check-ignore -q infra/.env.staging
+          git check-ignore -q infra/keycloak/.env.staging
+
+      - name: Validate Hub staging compose
+        run: docker compose --env-file infra/staging.env.example -f infra/docker-compose.staging.yml config -q
+
+      - name: Prove Hub mandatory env fails before mutation
+        shell: bash
+        run: |
+          grep -v '^SQ_HUB_DB_PASSWORD=' infra/staging.env.example > /tmp/hub-missing.env
+          if docker compose --env-file /tmp/hub-missing.env -f infra/docker-compose.staging.yml config -q >/dev/null 2>&1; then
+            echo "Hub compose unexpectedly accepted missing mandatory DB password" >&2
+            exit 1
+          fi
+
+      - name: Prove Keycloak mandatory env fails before mutation
+        shell: bash
+        run: |
+          if docker compose --env-file infra/keycloak/.env.example -f infra/keycloak/docker-compose.staging.yml config -q >/dev/null 2>&1; then
+            echo "Keycloak compose unexpectedly accepted empty mandatory DB password" >&2
+            exit 1
+          fi
+
+      - name: Verify organization-owned runtime namespace
+        shell: bash
+        run: |
+          files=(
+            infra/docker-compose.staging.yml
+            infra/staging.env.example
+            infra/keycloak/docker-compose.staging.yml
+            infra/keycloak/.env.example
+            .github/workflows/publish-web-staging-image.yml
+            .github/workflows/publish-keycloak-staging-image.yml
+          )
+          if grep -nF 'ghcr.io/imadjinasi/' "${files[@]}"; then
+            echo "Personal GHCR namespace remains in active runtime/publisher configuration" >&2
+            exit 1
+          fi
+          grep -Fq 'ghcr.io/sabilulquran/sq-hub-web' .github/workflows/publish-web-staging-image.yml
+          grep -Fq 'ghcr.io/sabilulquran/sq-hub-keycloak' .github/workflows/publish-keycloak-staging-image.yml
+          echo "STAGING_DEPLOYMENT_CONTRACT_PASS"

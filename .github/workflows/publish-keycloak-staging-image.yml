@@ -12,6 +12,7 @@ on:
       - main
     paths:
       - "infra/keycloak/**"
+      - ".github/workflows/publish-keycloak-staging-image.yml"
 
 permissions:
   contents: read
@@ -26,10 +27,20 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
-      IMAGE_NAME: ghcr.io/${{ github.repository_owner }}/sq-hub-keycloak
-      OCI_SOURCE: https://github.com/${{ github.repository }}
+      EXPECTED_REPOSITORY: sabilulquran/SQ-Hub
+      IMAGE_NAME: ghcr.io/sabilulquran/sq-hub-keycloak
+      OCI_SOURCE: https://github.com/sabilulquran/SQ-Hub
 
     steps:
+      - name: Refuse non-organization publisher context
+        shell: bash
+        run: |
+          if [[ "$GITHUB_REPOSITORY" != "$EXPECTED_REPOSITORY" ]]; then
+            echo "Publisher context must be $EXPECTED_REPOSITORY; got $GITHUB_REPOSITORY" >&2
+            exit 1
+          fi
+          [[ "$IMAGE_NAME" == ghcr.io/sabilulquran/* ]]
+
       - name: Check out source to build
         uses: actions/checkout@v4
         with:
@@ -75,3 +86,10 @@ jobs:
           labels: org.opencontainers.image.source=${{ env.OCI_SOURCE }}
           cache-from: type=gha,scope=keycloak
           cache-to: type=gha,mode=max,scope=keycloak
+
+      - name: Verify immutable organization image exists
+        shell: bash
+        run: |
+          docker buildx imagetools inspect \
+            "$IMAGE_NAME:sha-${{ steps.source.outputs.sha }}" >/dev/null
+          echo "KEYCLOAK_ORG_IMAGE_PUBLISH_PASS"

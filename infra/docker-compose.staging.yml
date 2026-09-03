@@ -21,7 +21,7 @@ services:
     build:
       context: ..
       dockerfile: apps/api/Dockerfile
-    image: ${SQ_HUB_API_IMAGE:-ghcr.io/imadjinasi/sq-hub-api:staging}
+    image: ${SQ_HUB_API_IMAGE:?set SQ_HUB_API_IMAGE}
     restart: unless-stopped
     environment:
       PORT: 3100
@@ -74,7 +74,7 @@ services:
     build:
       context: ..
       dockerfile: apps/web/Dockerfile
-    image: ${SQ_HUB_WEB_IMAGE:-ghcr.io/imadjinasi/sq-hub-web:staging}
+    image: ${SQ_HUB_WEB_IMAGE:?set SQ_HUB_WEB_IMAGE}
     restart: unless-stopped
     depends_on:
       api:
