@@ -12,6 +12,18 @@ Polish the staging SQ Hub workspace, SQ Admin Center, and shared Staff authentic
 
 The user-facing name of the shared Staff authentication surface becomes **Akun SQ**. This is a presentation/product-language change only: Keycloak remains the IdP engine and the existing OIDC issuer, realm key, client IDs, technical identity keys, authentication flows, MFA/recovery behavior, session policy, and authorization ownership remain unchanged.
 
+## Visual acceptance correction — 2026-09-03
+
+The first HUB-IMPL-010 staging visual was rejected because Akun SQ and SQ Hub still looked like different design products from the approved HCIS experience. This correction is authoritative for visual implementation and supersedes earlier wording that could be interpreted as permission to create a looser, merely HCIS-inspired variant.
+
+Frozen visual source: `imadjinasi/hcisysq@a1117ce0899d97824955feadf72c5b68d6e9f9e5`, especially:
+- `apps/web/src/layouts/AuthLayout.tsx`;
+- `apps/web/src/components/hcis/HcisBrandPanel.tsx`;
+- `apps/web/src/components/hcis/LoginForm.tsx`;
+- `apps/web/src/layouts/AppShell.tsx`.
+
+Acceptance is intentionally simple: **at a glance, Akun SQ, SQ Hub, and SQ Admin Center must read as one visual family with HCIS, not as products that merely share a color palette.** Business navigation and capabilities remain product-specific; shared structure, proportions, typography hierarchy, surfaces, icon treatment, radius/shadow rhythm, and responsive shell follow the frozen HCIS baseline closely.
+
 ## Product naming decision
 
 User-facing authentication wording must use **Akun SQ** instead of **SQ Identity** on login, logout, recovery, required-action, footer, and SQ Hub explanatory copy.
@@ -25,45 +37,46 @@ Technical implementation names may continue to use established `sq-identity`, `i
 
 ## SQ Hub workspace polish
 
-The workspace must retain the accepted HCIS-derived shell semantics while reducing visual noise and dashboard-template duplication.
+The workspace must use the frozen HCIS AppShell visual structure rather than a separate dashboard/landing-page composition.
 
 Required direction:
-- reduce desktop sidebar width and excessive whitespace while preserving clear navigation hierarchy;
-- keep one strong page title hierarchy rather than repeating the same page title in both header and hero;
-- reduce oversized hero/card radius and shadow intensity to a calmer application surface;
-- keep the turquoise SQ brand treatment but use warm neutral surfaces for most content;
-- tighten application-grid spacing and empty states;
+- desktop sidebar follows the HCIS `w-72`-class proportion and spacing rhythm;
+- logo/product lockup, navigation icon tiles, selected pale-turquoise state, sticky header, account card, centered max-width content, and mobile bottom navigation follow the frozen HCIS AppShell language closely;
+- `Aplikasi Saya` is page content inside that shell, not a separate dashboard design;
+- remove the giant turquoise greeting/hero treatment when no equivalent exists in the HCIS AppShell baseline;
+- application cards use the same warm surface, restrained shadow, radius, typography, and icon-tile language as HCIS;
 - replace `SQ Identity` explanatory language with `Akun SQ`;
 - preserve responsive mobile navigation and accessible focus treatment;
 - no new application/business capability is introduced by this visual pass.
 
 ## SQ Admin Center polish
 
-The Admin Center must become denser, easier to scan, and more operationally legible without weakening authorization boundaries.
+The Admin Center must use the same HCIS-derived SQ Hub shell and must not read as a third product, while preserving all existing Go 5A/Go 5B behavior and authorization boundaries.
 
 Required direction:
+- use the same desktop sidebar proportions, navigation icon-tile treatment, sticky header, account surface, typography/radius/shadow rhythm, and responsive language as the workspace;
 - avoid duplicated `Administrasi SQ` page-title treatment;
-- compact tabs, cards, forms, and spacing while keeping the existing three Go 5B areas: `Aplikasi`, `Akses Aplikasi`, `Audit Platform`;
-- keep application key visibly immutable during edit;
-- present form validation in human-readable Indonesian instead of raw backend codes such as `INVALID_REQUEST` where a safe local explanation is possible;
-- provide clear helper text for canonical URL format;
-- make Staff lookup/result, MFA readiness, access status, and grant/revoke actions easier to scan;
+- keep the existing three Go 5B areas: `Aplikasi`, `Akses Aplikasi`, `Audit Platform`;
+- keep application key immutable during edit;
+- keep human-readable Indonesian validation and canonical URL helper text;
 - keep mandatory access-change reason and revoke confirmation;
-- keep Audit Platform sanitized and readable as an administrative event log;
+- keep Audit Platform sanitized and readable;
 - raw OIDC subjects, tokens, credentials, TOTP values, recovery codes, and client secrets remain excluded from rendered administrative evidence.
 
 ## Akun SQ authentication polish
 
-The Keycloak `sq-hub` login theme remains based on `keycloak.v2` and the HCIS/SQ visual baseline, but the current patch-on-patch appearance must be consolidated into a calmer composition.
+The Keycloak `sq-hub` login theme remains based on `keycloak.v2` and must reproduce the frozen HCIS AuthLayout/HcisBrandPanel composition closely while preserving native Keycloak authentication surfaces.
 
 Required direction:
 - retain the approximately 56/44 desktop authentication composition and compact mobile header;
-- use `Akun SQ` as the visible product name everywhere in the theme;
-- make the authentication form the primary focus; brand ornamentation and UTSMAN values are supporting material, not competing primary cards;
-- simplify the UTSMAN treatment so it remains recognizable without visually dominating the brand panel;
-- normalize spacing, radii, focus states, alerts, OTP choices, recovery-code layout, required actions, and logout confirmation;
-- preserve the approved YSQ mark, SQ palette, Indonesian-first presentation, and favicon behavior;
-- replace stacked legacy visual overlay usage with one new content-versioned polish stylesheet loaded last; existing historical stylesheets may remain in the repository but must not both remain active if they produce conflicting presentation;
+- restore a proper Sabilul Qur'an organizational lockup at the upper-left of the turquoise panel; do not let a giant `Akun SQ` wordmark replace organizational branding;
+- keep `Akun SQ` as the application-neutral authentication product headline and use application-neutral Sabilul Qur'an digital-service copy;
+- render the six UTSMAN values as a 3×2 card grid on desktop, with icon tile, label, and short description;
+- retain the large yellow circle, orange accent, cyan glow/subtle decorative circle, security footer, and warm form surface proportions from the frozen HCIS brand panel/auth layout;
+- match the HCIS heading accent, form max-width, input/password control, button, radius, shadow, and footer rhythm closely;
+- preserve login, invalid credentials, OTP/TOTP, Try Another Way, recovery authentication/setup, required actions, errors, and logout surfaces;
+- do not add fake Google sign-in or fake password-recovery capability when the IdP is not configured for it;
+- replace stacked legacy custom visual overlays with one active content-versioned HCIS-fidelity stylesheet; historical stylesheets may remain in the repository but retired conflicting overlays must not be loaded by the theme;
 - no custom credential/MFA/recovery protocol and no broad Keycloak template fork.
 
 ## Security and protocol invariants
@@ -87,7 +100,6 @@ Browser code must continue to avoid access/refresh tokens in local/session stora
 - changing realm/client identity, issuer hostname, credential policy, MFA policy, or session lifetimes;
 - production cutover;
 - redesigning HCIS business screens;
-- introducing a standalone design-system package without a second concrete consumer need;
 - changing Application Registry/Application Access data models.
 
 ## Verification and acceptance
@@ -97,17 +109,18 @@ Before staging deployment:
 2. desktop and mobile visual smoke covers SQ Hub workspace and Admin Center;
 3. Keycloak login, invalid credential, OTP/TOTP, recovery, required action, and logout surfaces remain functional;
 4. rendered authentication UI contains `Akun SQ` and no longer presents `SQ Identity` as the user-facing product name;
-5. the new Keycloak polish stylesheet uses a new content-versioned asset name and returning-browser cache behavior is verified;
-6. Admin Center local validation converts predictable invalid form input into human-readable Indonesian without exposing backend internals;
+5. the active Keycloak HCIS-fidelity stylesheet uses a new content-versioned asset name, the retired custom overlays are absent from rendered login HTML, and returning-browser cache behavior is verified;
+6. Admin Center predictable invalid form input remains human-readable without exposing backend internals;
 7. screenshots/evidence use only synthetic staging data and contain no passwords, TOTP values, recovery codes, cookies, tokens, secrets, or raw OIDC subjects;
 8. production remains untouched.
 
 ## Staging UAT
 
 A focused UAT after CI must check:
-- SQ Hub desktop/mobile hierarchy, spacing, application cards, and account copy;
-- Admin Center application form, Staff/access panel, audit readability, and authorization behavior;
+- SQ Hub desktop/mobile shell fidelity, spacing, application cards, and account copy;
+- Admin Center shell fidelity, application form, Staff/access panel, audit readability, and authorization behavior;
 - Akun SQ desktop/mobile login plus invalid credential, TOTP/alternate method, recovery layout, required action when intentionally triggered, logout confirmation, and returning-browser cache refresh;
+- visual acceptance remains a user decision; CI/runtime health alone does not declare visual acceptance;
 - Platform Administrator is revoked again after any privileged synthetic UAT.
 
 ## Implementation follow-up
