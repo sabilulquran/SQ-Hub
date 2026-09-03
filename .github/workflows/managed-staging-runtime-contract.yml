@@ -1,0 +1,63 @@
+name: Managed Staging Runtime Contract
+
+on:
+  pull_request:
+    paths:
+      - "infra/scripts/deploy-managed-staging-service.sh"
+      - ".github/workflows/managed-staging-runtime-contract.yml"
+      - "docs/operations/managed-staging-runtime-deployment.md"
+  push:
+    branches:
+      - main
+    paths:
+      - "infra/scripts/deploy-managed-staging-service.sh"
+      - ".github/workflows/managed-staging-runtime-contract.yml"
+      - "docs/operations/managed-staging-runtime-deployment.md"
+
+jobs:
+  contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate managed staging deploy script syntax
+        run: bash -n infra/scripts/deploy-managed-staging-service.sh
+
+      - name: Verify managed runtime source of truth
+        shell: bash
+        run: |
+          script=infra/scripts/deploy-managed-staging-service.sh
+          grep -Fq 'RUNTIME_ROOT="${SQ_HUB_STAGING_RUNTIME_ROOT:-/var/www/sq-hub}"' "$script"
+          grep -Fq '$RUNTIME_ROOT/.sq-hub-managed' "$script"
+          grep -Fq '$RUNTIME_ROOT/secrets/hub.env' "$script"
+          grep -Fq '$RUNTIME_ROOT/secrets/keycloak.env' "$script"
+          grep -Fq '$RUNTIME_ROOT/docker-compose.hub.hubimpl010.yml' "$script"
+          grep -Fq '$RUNTIME_ROOT/docker-compose.keycloak.hubimpl010.yml' "$script"
+
+      - name: Verify service scoped mutation and rollback guardrails
+        shell: bash
+        run: |
+          script=infra/scripts/deploy-managed-staging-service.sh
+          grep -Fq -- '--no-deps --no-build --pull never --force-recreate "$SERVICE"' "$script"
+          grep -Fq 'NON_TARGET_SERVICES=(postgres api)' "$script"
+          grep -Fq 'NON_TARGET_SERVICES=(keycloak-db)' "$script"
+          grep -Fq 'MANAGED_STAGING_ROLLBACK_PASS' "$script"
+          grep -Fq 'MANAGED_STAGING_NON_TARGET_UNTOUCHED_PASS' "$script"
+          grep -Fq 'MANAGED_STAGING_PERSISTENT_OVERRIDE_PASS' "$script"
+
+      - name: Refuse secret reconstruction and personal deployment targets
+        shell: bash
+        run: |
+          script=infra/scripts/deploy-managed-staging-service.sh
+          if grep -Fq '.Config.Env' "$script"; then
+            echo "Managed deployment script must not reconstruct secrets from container runtime env" >&2
+            exit 1
+          fi
+          if grep -Fq 'ghcr.io/imadjinasi/' "$script"; then
+            echo "Managed deployment target must not use the historical personal GHCR namespace" >&2
+            exit 1
+          fi
+          grep -Fq 'ghcr.io/sabilulquran/sq-hub-web:sha-' "$script"
+          grep -Fq 'ghcr.io/sabilulquran/sq-hub-keycloak:sha-' "$script"
+          echo "MANAGED_STAGING_DEPLOYMENT_CONTRACT_PASS"
