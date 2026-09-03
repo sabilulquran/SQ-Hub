@@ -1,10 +1,7 @@
 <#macro content>
   <div class="sq-brand-lockup" aria-label="Sabilul Qur'an">
-    <span class="sq-brand-lockup__mark" aria-hidden="true"></span>
-    <span class="sq-brand-lockup__text">
-      <strong>Sabilul Qur&apos;an</strong>
-      <small>Islamic Tahfizh School</small>
-    </span>
+    <img class="sq-brand-lockup__logo sq-brand-lockup__logo--light" src="${url.resourcesPath}/img/logo.png" alt="Sabilul Qur'an">
+    <img class="sq-brand-lockup__logo sq-brand-lockup__logo--dark" src="${url.resourcesPath}/img/logo-white.png" alt="Sabilul Qur'an">
   </div>
 
   <div class="sq-brand-values" aria-label="Nilai Utsman">

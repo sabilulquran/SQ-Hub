@@ -1,0 +1,23 @@
+/* Exact HCIS brand assets: public/images/logo.png and logo-white.png. */
+.sq-brand-lockup {
+  gap: 0 !important;
+}
+
+.sq-brand-lockup__logo {
+  display: block !important;
+  width: auto !important;
+  height: 4rem !important;
+  max-width: 100% !important;
+  object-fit: contain !important;
+}
+
+/* Akun SQ currently has Keycloak darkMode=false, matching the HCIS light-theme asset. */
+.sq-brand-lockup__logo--dark {
+  display: none !important;
+}
+
+@media (max-width: 767px) {
+  .sq-brand-lockup__logo {
+    height: 3.5rem !important;
+  }
+}
