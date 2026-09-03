@@ -3,6 +3,7 @@ dist/
 .env
 .env.local
 .env.*.local
+infra/.env.staging
 infra/keycloak/.env.staging
 infra/keycloak/backup/
 coverage/

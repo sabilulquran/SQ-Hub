@@ -1,7 +1,7 @@
 # Staging image publishing
 
 **Status:** ACCEPTED operational rule
-**Applies to:** SQ Hub API, SQ Hub web, and SQ Identity / Keycloak staging images
+**Applies to:** SQ Hub API, SQ Hub web, and Akun SQ / Keycloak staging images
 **Related specs:** HUB-IMPL-001, HUB-IMPL-002, HUB-IMPL-003
 
 ## Purpose
@@ -10,21 +10,28 @@ Staging images must be publishable and deployable independently. A Keycloak-only
 
 This separation is especially important for pre-merge UAT: a candidate image may be published for one exact commit without moving the shared staging alias or mutating another service.
 
-## Package ownership and repository transfer
+## Package ownership after repository transfer
 
-The publisher workflows derive the GHCR namespace from `github.repository_owner` instead of hard-coding a personal account. While this repository remains under `imadjinasi`, the effective package names remain under `ghcr.io/imadjinasi/...`. After a reviewed repository transfer to `sabilulquran`, the same workflows will target `ghcr.io/sabilulquran/...`.
+The active repository is `sabilulquran/SQ-Hub`. Active Web and Keycloak publishers are deliberately pinned to the organization-owned package namespace and refuse to run from any other repository context:
 
-Each published image also records `org.opencontainers.image.source=https://github.com/${{ github.repository }}` so newly published packages can be associated with the repository that produced them.
+- `ghcr.io/sabilulquran/sq-hub-web`;
+- `ghcr.io/sabilulquran/sq-hub-keycloak`.
 
-Repository transfer does **not** itself migrate existing GHCR packages or authorize a staging deployment. Existing `ghcr.io/imadjinasi/...` packages and the currently deployed staging image references remain unchanged until a separate reviewed package/runtime migration is completed.
+This is fail-safe transfer behavior: a stale/historical workflow event whose GitHub context still identifies `imadjinasi/SQ-Hub` must fail rather than publish a new personal-namespace artifact. Existing historical `ghcr.io/imadjinasi/...` packages are not migrated by repository transfer and do not count as organization-package evidence.
+
+The API publisher continues to derive its namespace from the active repository owner. Its active Compose/default reference is organization-owned; API runtime deployment is outside the current visual deployment scope.
+
+Each newly published image records `org.opencontainers.image.source=https://github.com/sabilulquran/SQ-Hub` for the pinned Web/Keycloak publishers.
 
 ## Workflows
 
-- `.github/workflows/publish-keycloak-staging-image.yml` owns `${repository_owner}/sq-hub-keycloak`.
-- `.github/workflows/publish-api-staging-image.yml` owns `${repository_owner}/sq-hub-api`.
-- `.github/workflows/publish-web-staging-image.yml` owns `${repository_owner}/sq-hub-web`.
+- `.github/workflows/publish-keycloak-staging-image.yml` owns `sabilulquran/sq-hub-keycloak`.
+- `.github/workflows/publish-api-staging-image.yml` owns the API image for the active repository owner.
+- `.github/workflows/publish-web-staging-image.yml` owns `sabilulquran/sq-hub-web`.
 
 The former combined `publish-staging-images.yml` workflow is intentionally removed to eliminate cross-service publishing coupling.
+
+Web and Keycloak publisher workflow files include themselves in their `main` path filters. Therefore a reviewed publisher migration/fix can produce a fresh organization-owned immutable image after merge even when application/theme source is unchanged.
 
 ## Immutable candidate images
 
@@ -33,48 +40,38 @@ For pre-merge validation, manually dispatch only the workflow for the service be
 The workflow checks out that source ref, resolves the actual commit SHA, and publishes only:
 
 ```text
-ghcr.io/<repository-owner>/<image>:sha-<resolved-commit-sha>
+ghcr.io/sabilulquran/<image>:sha-<resolved-commit-sha>
 ```
 
-Manual dispatch does **not** move a shared staging alias.
-
-Example with GitHub CLI for an SQ Identity candidate:
-
-```bash
-gh workflow run publish-keycloak-staging-image.yml \
-  --ref main \
-  -f source_ref=<exact-commit-sha>
-```
-
-Use the resulting immutable `sha-...` tag explicitly for staging deployment and evidence capture.
+Manual dispatch does not move a shared staging alias.
 
 ## Main-branch staging aliases
 
 A push to `main` publishes only the image whose source paths changed:
 
-- Keycloak changes under `infra/keycloak/**` publish the immutable commit tag plus `26.7.2-staging`.
+- Keycloak changes under `infra/keycloak/**`, or its publisher workflow, publish the immutable commit tag plus `26.7.2-staging`.
 - API changes under `apps/api/**` or its root package lock inputs publish the immutable commit tag plus `staging`.
-- web changes under `apps/web/**` or its root package lock inputs publish the immutable commit tag plus `staging`.
+- Web changes under `apps/web/**`, root package lock inputs, or its publisher workflow publish the immutable commit tag plus `staging`.
 
-The moving staging aliases are therefore main-branch outputs, not pre-merge candidate aliases.
+The moving staging aliases are therefore main-branch outputs, not controlled deployment targets.
 
-## Repository-transfer sequence
+## Organization-package verification
 
-Before changing staging runtime references after a repository transfer:
+Before a staging runtime change:
 
-1. confirm the transferred repository can publish all three images into the organization GHCR namespace;
-2. confirm each organization package has the expected immutable source tag and repository source metadata;
-3. verify GitHub Actions package permissions from the transferred repository;
-4. change Compose/environment defaults to `ghcr.io/sabilulquran/...` in a separate reviewed change;
-5. deploy the new immutable organization-owned tags through the normal controlled staging process;
-6. verify health and rollback capability before retiring reliance on the old personal-package namespace.
+1. confirm the relevant publisher ran in `sabilulquran/SQ-Hub` context;
+2. confirm its immutable `sha-...` tag exists under `ghcr.io/sabilulquran/...`;
+3. confirm the publisher's post-build image inspection passed;
+4. use that immutable tag with `docs/operations/staging-service-deployment.md`;
+5. do not infer organization-package availability from a historical `imadjinasi/SQ-Hub` workflow run.
 
 ## Deployment guardrails
 
-- Deploy immutable `sha-...` tags for controlled UAT whenever practical.
+- Routine staging upgrades use `infra/scripts/deploy-staging-service.sh`; older full-project `pull`/`up` examples are initial-bootstrap references, not the routine deployment path.
+- Deploy organization-owned immutable `sha-...` tags for controlled UAT.
 - Do not build source on the constrained shared staging VPS.
 - Do not use a Keycloak candidate publish to move or rebuild the SQ Hub API/web images.
-- Do not use an API/web candidate publish to move or rebuild the Keycloak image.
+- Do not use a Web candidate publish to move or rebuild the API/Keycloak images.
 - Publishing an image is not permission to deploy it to production.
 - Repository transfer is not permission to mutate the staging runtime.
 - Production images/cutover remain a separate reviewed activity.
@@ -82,10 +79,12 @@ Before changing staging runtime references after a repository transfer:
 
 ## Verification
 
-Before using a manually published candidate image:
+Before using a published candidate image:
 
 1. confirm the workflow resolved the expected source commit SHA;
-2. confirm the package exists with the matching immutable `sha-...` tag;
-3. deploy only the intended service;
+2. confirm the organization package exists with the matching immutable `sha-...` tag;
+3. deploy only the intended service through the service-scoped wrapper;
 4. record the exact deployed image/tag and affected container;
-5. verify unrelated services were not restarted or retagged.
+5. require automatic health/OIDC checks to pass;
+6. verify unrelated services were not restarted or retagged;
+7. complete the task-specific browser/UAT checklist before declaring acceptance.
