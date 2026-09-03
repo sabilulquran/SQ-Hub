@@ -1,0 +1,50 @@
+name: HCIS Login Parity Contract
+
+on:
+  pull_request:
+    paths:
+      - "infra/keycloak/themes/sq-hub/login/**"
+      - ".github/workflows/hcis-login-parity-contract.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "infra/keycloak/themes/sq-hub/login/**"
+      - ".github/workflows/hcis-login-parity-contract.yml"
+
+jobs:
+  contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Verify HCIS source-mapped composition
+        shell: bash
+        run: |
+          css='infra/keycloak/themes/sq-hub/login/resources/css/sq-account-hcis-f7a4c91d2e36.css'
+          theme='infra/keycloak/themes/sq-hub/login/theme.properties'
+
+          test -s "$css"
+          grep -Fq 'grid-template-columns: minmax(0, 3fr) minmax(0, 2fr)' "$css"
+          grep -Fq 'max-width: 36rem' "$css"
+          grep -Fq 'border-radius: 2rem' "$css"
+          grep -Fq 'background: var(--hcis-slate-100)' "$css"
+          grep -Fq 'font-size: 1.25rem' "$css"
+          grep -Fq 'background: linear-gradient(135deg, var(--hcis-teal-700), var(--hcis-teal-500))' "$css"
+          grep -Fq 'background-size: 32px 32px' "$css"
+          grep -Fq 'min-height: 0 !important' "$css"
+          grep -Fq 'sq-account-hcis-f7a4c91d2e36.css' "$theme"
+
+          echo 'HCIS_LOGIN_PARITY_CONTRACT_PASS'
+
+      - name: Reject the rejected desktop composition in the parity layer
+        shell: bash
+        run: |
+          css='infra/keycloak/themes/sq-hub/login/resources/css/sq-account-hcis-f7a4c91d2e36.css'
+
+          ! grep -Fq 'grid-template-columns: minmax(0, 56fr) minmax(27rem, 44fr)' "$css"
+          ! grep -Fq 'font-size: clamp(2.35rem, 3.2vw, 3.15rem)' "$css"
+          ! grep -Fq 'radial-gradient(circle at 90% 7%' "$css"
+
+          echo 'REJECTED_LOGIN_COMPOSITION_ABSENT_PASS'
