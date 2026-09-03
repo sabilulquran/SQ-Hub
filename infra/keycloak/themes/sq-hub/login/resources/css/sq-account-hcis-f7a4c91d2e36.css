@@ -1,0 +1,641 @@
+/*
+ * HUB-IMPL-010 Akun SQ login parity layer.
+ *
+ * Visual baseline copied from HCIS:
+ *   hcysq/hcis-ysq resources/views/auth/login.blade.php
+ *   hcysq/hcis-ysq resources/css/login.css
+ *
+ * The Keycloak-native authentication DOM and flows remain unchanged. This
+ * stylesheet only maps that DOM onto the frozen HCIS login composition.
+ */
+
+:root {
+  --hcis-teal-700: #0f766e;
+  --hcis-teal-600: #0d9488;
+  --hcis-teal-500: #14b8a6;
+  --hcis-teal-50: #f0fdfa;
+  --hcis-slate-900: #0f172a;
+  --hcis-slate-700: #334155;
+  --hcis-slate-500: #64748b;
+  --hcis-slate-300: #cbd5e1;
+  --hcis-slate-200: #e2e8f0;
+  --hcis-slate-100: #f1f5f9;
+  --hcis-white: #ffffff;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body,
+.login-pf,
+.login-pf body,
+#keycloak-bg,
+.pf-v5-c-login {
+  width: 100%;
+  min-width: 0;
+  min-height: 100%;
+  margin: 0 !important;
+  padding: 0 !important;
+  color: var(--hcis-slate-900);
+  background: var(--hcis-slate-100) !important;
+  font-family: "Inter", "Segoe UI", Tahoma, Geneva, Verdana, sans-serif !important;
+}
+
+body {
+  min-width: 320px;
+  min-height: 100vh;
+  min-height: 100dvh;
+  overflow-x: clip;
+}
+
+/* HCIS desktop: section.grid.min-h-screen.md:grid-cols-[3fr_2fr] */
+.pf-v5-c-login__container {
+  display: grid !important;
+  grid-template-columns: minmax(0, 3fr) minmax(0, 2fr) !important;
+  grid-template-rows: minmax(100vh, auto) !important;
+  grid-template-rows: minmax(100dvh, auto) !important;
+  grid-template-areas: none !important;
+  align-items: stretch !important;
+  width: 100% !important;
+  max-width: none !important;
+  min-height: 100vh !important;
+  min-height: 100dvh !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  background: var(--hcis-slate-100) !important;
+}
+
+/* HCIS left panel: bg-gradient-to-br from-teal-700 to-teal-500. */
+#kc-header {
+  position: relative !important;
+  isolation: isolate;
+  grid-column: 1 !important;
+  grid-row: 1 !important;
+  align-self: stretch !important;
+  display: flex !important;
+  min-width: 0 !important;
+  min-height: 100vh !important;
+  min-height: 100dvh !important;
+  height: 100% !important;
+  align-items: center !important;
+  overflow: hidden !important;
+  margin: 0 !important;
+  padding: 4rem 3.5rem !important;
+  color: var(--hcis-white) !important;
+  background: linear-gradient(135deg, var(--hcis-teal-700), var(--hcis-teal-500)) !important;
+}
+
+/* Exact HCIS login-page-pattern asset, plus the 32px grid-line layer. */
+#kc-header::before {
+  content: "" !important;
+  position: absolute !important;
+  inset: 0 !important;
+  z-index: -2 !important;
+  opacity: 1 !important;
+  pointer-events: none !important;
+  background-image:
+    url("data:image/svg+xml,%3Csvg width='180' height='180' viewBox='0 0 180 180' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cg opacity='0.06' stroke='white' stroke-width='1.4'%3E%3Cpath d='M90 18L104 40L130 40L112 58L120 84L90 70L60 84L68 58L50 40L76 40L90 18Z'/%3E%3Cpath d='M90 108L101 126L122 126L108 140L114 160L90 148L66 160L72 140L58 126L79 126L90 108Z'/%3E%3Cpath d='M18 90L32 112L58 112L40 130L48 156L18 142L-12 156L-4 130L-22 112L4 112L18 90Z'/%3E%3Cpath d='M162 90L176 112L202 112L184 130L192 156L162 142L132 156L140 130L122 112L148 112L162 90Z'/%3E%3C/g%3E%3C/svg%3E");
+  background-size: 180px 180px !important;
+  background-repeat: repeat !important;
+  -webkit-mask-image: none !important;
+  mask-image: none !important;
+}
+
+#kc-header::after {
+  content: "" !important;
+  position: absolute !important;
+  inset: 0 !important;
+  z-index: -1 !important;
+  width: auto !important;
+  height: auto !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  pointer-events: none !important;
+  background-image:
+    linear-gradient(rgba(255,255,255,0.07) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255,255,255,0.07) 1px, transparent 1px) !important;
+  background-size: 32px 32px !important;
+  background-color: transparent !important;
+}
+
+/* HCIS hero copy uses text-xl (20px), not a display-sized heading. */
+#kc-header-wrapper {
+  position: relative !important;
+  z-index: 2 !important;
+  display: block !important;
+  width: min(100%, 42rem) !important;
+  min-height: 0 !important;
+  margin: -5rem 0 0 !important;
+  padding: 0 !important;
+  color: var(--hcis-white) !important;
+  font-family: "Inter", "Segoe UI", Tahoma, Geneva, Verdana, sans-serif !important;
+  font-size: 1.25rem !important;
+  font-weight: 800 !important;
+  line-height: 1.25 !important;
+  letter-spacing: 0 !important;
+  text-transform: none !important;
+  text-shadow: none !important;
+}
+
+#kc-header-wrapper::after {
+  content: "Satu akun untuk layanan digital Sabilul Qur'an." !important;
+  display: block !important;
+  max-width: 40rem !important;
+  margin-top: 1.25rem !important;
+  color: rgba(240,253,250,.9) !important;
+  font-family: "Inter", "Segoe UI", Tahoma, Geneva, Verdana, sans-serif !important;
+  font-size: .875rem !important;
+  font-weight: 400 !important;
+  line-height: 1.5 !important;
+  letter-spacing: 0 !important;
+}
+
+html[lang^="en"] #kc-header-wrapper::after {
+  content: "One account for Sabilul Qur'an digital services." !important;
+}
+
+/* HCIS logo scale: h-14 / md:h-16. The Keycloak theme keeps the YSQ mark + wordmark. */
+.sq-brand-lockup {
+  position: fixed !important;
+  z-index: 5 !important;
+  top: 4rem !important;
+  left: 3.5rem !important;
+  display: flex !important;
+  max-width: calc(60vw - 7rem) !important;
+  align-items: center !important;
+  gap: 1rem !important;
+  color: var(--hcis-white) !important;
+  pointer-events: none !important;
+}
+
+.sq-brand-lockup__mark {
+  display: block !important;
+  width: 4rem !important;
+  height: 4rem !important;
+  flex: 0 0 4rem !important;
+  background: var(--hcis-white) !important;
+}
+
+.sq-brand-lockup__text strong {
+  color: var(--hcis-white) !important;
+  font-family: "Inter", "Segoe UI", Tahoma, Geneva, Verdana, sans-serif !important;
+  font-size: 1.55rem !important;
+  font-weight: 800 !important;
+  line-height: 1.05 !important;
+  letter-spacing: -.02em !important;
+}
+
+.sq-brand-lockup__text small {
+  margin-top: .3rem !important;
+  color: rgba(240,253,250,.9) !important;
+  font-size: .7rem !important;
+  font-weight: 700 !important;
+  letter-spacing: .08em !important;
+  text-transform: uppercase !important;
+}
+
+/* HCIS values: mt-16, pill eyebrow, 3-column cards, p-4, 44px icons. */
+.sq-brand-values {
+  position: fixed !important;
+  z-index: 5 !important;
+  left: 3.5rem !important;
+  bottom: 4rem !important;
+  width: min(calc(60vw - 7rem), 48rem) !important;
+  color: var(--hcis-white) !important;
+  pointer-events: none !important;
+}
+
+.sq-brand-values__eyebrow {
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 0 !important;
+  margin: 0 0 1.5rem !important;
+  padding: .375rem 1rem !important;
+  border: 1px solid rgba(255,255,255,.20) !important;
+  border-radius: 999px !important;
+  background: rgba(255,255,255,.10) !important;
+  color: rgba(240,253,250,.95) !important;
+  font-size: .75rem !important;
+  font-weight: 700 !important;
+  letter-spacing: .1em !important;
+  text-transform: uppercase !important;
+  backdrop-filter: blur(16px) !important;
+}
+
+.sq-brand-values__eyebrow::before {
+  display: none !important;
+}
+
+.sq-brand-values__grid {
+  display: grid !important;
+  grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+  gap: 1rem !important;
+}
+
+.sq-brand-value {
+  display: block !important;
+  min-width: 0 !important;
+  min-height: 7.3rem !important;
+  padding: 1rem !important;
+  border: 1px solid rgba(255,255,255,.20) !important;
+  border-radius: .75rem !important;
+  background: rgba(255,255,255,.10) !important;
+  box-shadow: none !important;
+  color: var(--hcis-white) !important;
+  backdrop-filter: blur(16px) !important;
+}
+
+.sq-brand-value__icon {
+  display: flex !important;
+  width: 2.75rem !important;
+  height: 2.75rem !important;
+  margin-bottom: .75rem !important;
+  align-items: center !important;
+  justify-content: center !important;
+  border-radius: .75rem !important;
+  box-shadow: none !important;
+  font-size: .9rem !important;
+  font-weight: 800 !important;
+}
+
+.sq-brand-value strong {
+  display: block !important;
+  color: var(--hcis-white) !important;
+  font-size: 1rem !important;
+  font-weight: 700 !important;
+  line-height: 1.25 !important;
+}
+
+.sq-brand-value small {
+  display: block !important;
+  margin-top: .5rem !important;
+  color: rgba(240,253,250,.80) !important;
+  font-size: .75rem !important;
+  line-height: 1.25 !important;
+}
+
+/* Not present in the HCIS login composition; remove the invented extra line. */
+.sq-brand-security {
+  display: none !important;
+}
+
+/*
+ * HCIS right panel:
+ *   bg-slate-100 px-4/6/8/10
+ *   login-panel-shadow w-full max-w-xl rounded-[2rem] bg-white p-5/8/9
+ */
+.pf-v5-c-login__main,
+.card-pf {
+  border: 0 !important;
+}
+
+.pf-v5-c-login__main {
+  position: relative !important;
+  grid-column: 2 !important;
+  grid-row: 1 !important;
+  align-self: center !important;
+  justify-self: center !important;
+  display: flex !important;
+  width: calc(100% - 5rem) !important;
+  max-width: 36rem !important;
+  min-width: 0 !important;
+  min-height: 0 !important;
+  height: auto !important;
+  flex-direction: column !important;
+  justify-content: flex-start !important;
+  margin: 2rem auto !important;
+  padding: 2.25rem !important;
+  overflow: visible !important;
+  border-radius: 2rem !important;
+  background: var(--hcis-white) !important;
+  box-shadow: 0 30px 80px rgba(15,23,42,.18) !important;
+}
+
+.pf-v5-c-login__main::before,
+.pf-v5-c-login__main::after,
+.card-pf::before,
+.card-pf::after {
+  display: none !important;
+  content: none !important;
+}
+
+.pf-v5-c-login__main-header,
+.pf-v5-c-login__main-body,
+.pf-v5-c-login__main-footer {
+  width: 100% !important;
+  max-width: none !important;
+  margin: 0 !important;
+}
+
+.pf-v5-c-login__main-header {
+  padding: 0 0 1.5rem !important;
+}
+
+/* HCIS badge above the 20px "Masuk" heading. */
+#kc-page-title,
+.pf-v5-c-title {
+  margin: 0 !important;
+  color: var(--hcis-slate-900) !important;
+  font-family: "Inter", "Segoe UI", Tahoma, Geneva, Verdana, sans-serif !important;
+  font-size: 1.25rem !important;
+  font-weight: 800 !important;
+  line-height: 1.25 !important;
+  letter-spacing: -.02em !important;
+}
+
+#kc-page-title::before,
+.pf-v5-c-title::before {
+  content: "AKSES AKUN SABILUL QUR'AN" !important;
+  display: table !important;
+  width: auto !important;
+  height: auto !important;
+  margin: 0 0 .75rem !important;
+  padding: .25rem .75rem !important;
+  border-radius: 999px !important;
+  background: var(--hcis-teal-50) !important;
+  color: var(--hcis-teal-700) !important;
+  font-family: "Inter", "Segoe UI", Tahoma, Geneva, Verdana, sans-serif !important;
+  font-size: .75rem !important;
+  font-weight: 800 !important;
+  line-height: 1.4 !important;
+  letter-spacing: .1em !important;
+  text-transform: uppercase !important;
+}
+
+#kc-page-title::after,
+.pf-v5-c-title::after,
+body[data-page-id="login-login"] #kc-page-title::after {
+  display: none !important;
+  content: none !important;
+}
+
+#kc-form,
+#kc-form-wrapper,
+.pf-v5-c-form {
+  width: 100% !important;
+}
+
+.pf-v5-c-form__group {
+  margin-bottom: 1.25rem !important;
+}
+
+.pf-v5-c-form__label,
+.pf-v5-c-form__label-text,
+label {
+  color: var(--hcis-slate-700) !important;
+  font-family: "Inter", "Segoe UI", Tahoma, Geneva, Verdana, sans-serif !important;
+  font-size: .875rem !important;
+  font-weight: 600 !important;
+}
+
+/* HCIS rounded-2xl controls: 48px tall, 16px radius, slate-50 fill. */
+.pf-v5-c-form-control,
+.form-control,
+input[type="text"],
+input[type="email"],
+input[type="password"],
+input[type="number"],
+select,
+textarea {
+  min-height: 3rem !important;
+  border: 1px solid var(--hcis-slate-200) !important;
+  border-radius: 1rem !important;
+  background: #f8fafc !important;
+  color: var(--hcis-slate-900) !important;
+  box-shadow: none !important;
+}
+
+.pf-v5-c-form-control::before,
+.pf-v5-c-form-control::after {
+  display: none !important;
+  border: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.pf-v5-c-form-control input,
+.pf-v5-c-form-control select,
+.pf-v5-c-form-control textarea {
+  min-height: 2.95rem !important;
+  padding-inline: 1rem !important;
+  border: 0 !important;
+  background: transparent !important;
+  color: var(--hcis-slate-900) !important;
+  font-size: .875rem !important;
+  box-shadow: none !important;
+}
+
+.pf-v5-c-form-control:focus-within,
+.form-control:focus,
+input:focus,
+select:focus,
+textarea:focus {
+  border-color: var(--hcis-teal-500) !important;
+  background: var(--hcis-white) !important;
+  outline: 0 !important;
+  box-shadow: 0 0 0 4px rgba(20,184,166,.14) !important;
+}
+
+.pf-v5-c-input-group,
+.pf-v5-c-input-group__item {
+  border-radius: 1rem !important;
+}
+
+.pf-v5-c-input-group .pf-v5-c-form-control:first-child {
+  border-start-end-radius: 0 !important;
+  border-end-end-radius: 0 !important;
+}
+
+.pf-v5-c-button.pf-m-control,
+#reset-login {
+  min-height: 3rem !important;
+  border: 1px solid var(--hcis-slate-200) !important;
+  border-radius: 0 1rem 1rem 0 !important;
+  background: var(--hcis-white) !important;
+  color: var(--hcis-slate-500) !important;
+  box-shadow: none !important;
+}
+
+.pf-v5-c-button.pf-m-primary,
+#kc-login,
+input[type="submit"].btn-primary {
+  min-height: 3rem !important;
+  border: 0 !important;
+  border-radius: 1rem !important;
+  background: var(--hcis-teal-600) !important;
+  color: var(--hcis-white) !important;
+  font-family: "Inter", "Segoe UI", Tahoma, Geneva, Verdana, sans-serif !important;
+  font-size: .875rem !important;
+  font-weight: 700 !important;
+  box-shadow: none !important;
+}
+
+.pf-v5-c-button.pf-m-primary:hover,
+#kc-login:hover,
+input[type="submit"].btn-primary:hover {
+  background: var(--hcis-teal-700) !important;
+  color: var(--hcis-white) !important;
+  transform: none !important;
+}
+
+#kc-info,
+#kc-form-options,
+.pf-v5-c-form__helper-text,
+.instruction,
+.subtitle {
+  color: var(--hcis-slate-500) !important;
+  font-size: .75rem !important;
+  line-height: 1.5 !important;
+}
+
+.sq-login-footer {
+  width: 100% !important;
+  margin: 1.5rem 0 0 !important;
+  color: var(--hcis-slate-500) !important;
+  font-size: .75rem !important;
+  line-height: 1.5 !important;
+}
+
+/* Preserve existing native MFA/recovery/action surfaces inside the HCIS card. */
+#kc-recovery-codes-list,
+.kc-recovery-codes-list {
+  width: 100% !important;
+  max-width: 100% !important;
+  border-radius: 1rem !important;
+}
+
+/* Medium desktop: HCIS still keeps the 3:2 split; reduce only inner padding. */
+@media (max-width: 1180px) and (min-width: 768px) {
+  #kc-header {
+    padding-inline: 2.5rem !important;
+  }
+  .sq-brand-lockup {
+    left: 2.5rem !important;
+    max-width: calc(60vw - 5rem) !important;
+  }
+  .sq-brand-values {
+    left: 2.5rem !important;
+    bottom: 2.5rem !important;
+    width: calc(60vw - 5rem) !important;
+  }
+  .sq-brand-values__grid {
+    gap: .75rem !important;
+  }
+  .sq-brand-value {
+    min-height: 6.4rem !important;
+    padding: .8rem !important;
+  }
+  .sq-brand-value__icon {
+    width: 2.25rem !important;
+    height: 2.25rem !important;
+    margin-bottom: .5rem !important;
+  }
+  .sq-brand-value strong {
+    font-size: .82rem !important;
+  }
+  .sq-brand-value small {
+    margin-top: .25rem !important;
+    font-size: .66rem !important;
+  }
+  .pf-v5-c-login__main {
+    width: calc(100% - 4rem) !important;
+    padding: 2rem !important;
+  }
+}
+
+/* Mobile/tablet: keep authentication usable without introducing an extra page tail. */
+@media (max-width: 767px) {
+  .pf-v5-c-login__container {
+    display: block !important;
+    min-height: 100vh !important;
+    min-height: 100dvh !important;
+    background: var(--hcis-slate-100) !important;
+  }
+
+  #kc-header {
+    display: flex !important;
+    min-height: 13.5rem !important;
+    height: 13.5rem !important;
+    padding: 1.5rem !important;
+    align-items: flex-end !important;
+  }
+
+  #kc-header-wrapper {
+    width: 100% !important;
+    margin: 0 !important;
+    padding: 0 0 .5rem !important;
+    font-size: 1.25rem !important;
+  }
+
+  #kc-header-wrapper::after {
+    margin-top: .5rem !important;
+    font-size: .75rem !important;
+  }
+
+  .sq-brand-lockup {
+    position: absolute !important;
+    top: 1.25rem !important;
+    left: 1.5rem !important;
+    max-width: calc(100vw - 3rem) !important;
+  }
+
+  .sq-brand-lockup__mark {
+    width: 2.75rem !important;
+    height: 2.75rem !important;
+    flex-basis: 2.75rem !important;
+  }
+
+  .sq-brand-lockup__text strong {
+    font-size: 1.15rem !important;
+  }
+
+  .sq-brand-lockup__text small {
+    font-size: .55rem !important;
+  }
+
+  .sq-brand-values,
+  .sq-brand-security {
+    display: none !important;
+  }
+
+  .pf-v5-c-login__main {
+    width: calc(100% - 2rem) !important;
+    max-width: 36rem !important;
+    min-height: 0 !important;
+    margin: -1.25rem auto 1rem !important;
+    padding: 1.5rem !important;
+    border-radius: 1.5rem !important;
+  }
+
+  .pf-v5-c-login__main-header {
+    padding-bottom: 1.25rem !important;
+  }
+
+  #kc-page-title,
+  .pf-v5-c-title {
+    font-size: 1.25rem !important;
+  }
+}
+
+@media (max-width: 420px) {
+  #kc-header {
+    min-height: 12.5rem !important;
+    height: 12.5rem !important;
+  }
+
+  .pf-v5-c-login__main {
+    width: calc(100% - 1.5rem) !important;
+    margin-top: -1rem !important;
+    padding: 1.25rem !important;
+  }
+
+  #kc-page-title::before,
+  .pf-v5-c-title::before {
+    font-size: .625rem !important;
+  }
+}
