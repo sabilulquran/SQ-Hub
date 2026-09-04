@@ -101,7 +101,8 @@ jobs:
           grep -Fxq 'loginTitle=Akun SQ' "$messages"
           grep -Fxq 'loginTitleHtml=Akun SQ' "$messages"
           grep -Fq 'logoutConfirmTitle=Keluar dari Akun SQ?' "$messages"
-          grep -Fq 'Akun SQ' "$footer"
+          grep -Fq 'sqIdentityFooter=Akun SQ' "$messages"
+          grep -Fq '${msg("sqIdentityFooter")}' "$footer"
 
           echo 'KEYCLOAK_NATIVE_AUTH_BOUNDARY_PASS'
 
