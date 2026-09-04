@@ -4,26 +4,50 @@ on:
   pull_request:
     paths:
       - "infra/keycloak/themes/sq-hub/login/**"
+      - "docs/design/hcis-baseline.md"
+      - "docs/design/sq-identity-theme.md"
+      - "docs/specs/HUB-IMPL-010-akun-sq-ui-polish.md"
+      - "docs/operations/HUB-IMPL-010*"
       - ".github/workflows/hcis-login-parity-contract.yml"
   push:
     branches:
       - main
     paths:
       - "infra/keycloak/themes/sq-hub/login/**"
+      - "docs/design/hcis-baseline.md"
+      - "docs/design/sq-identity-theme.md"
+      - "docs/specs/HUB-IMPL-010-akun-sq-ui-polish.md"
+      - "docs/operations/HUB-IMPL-010*"
       - ".github/workflows/hcis-login-parity-contract.yml"
 
 jobs:
   contract:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 8
     steps:
       - uses: actions/checkout@v4
+
+      - name: Verify active stylesheet stack
+        shell: bash
+        run: |
+          theme='infra/keycloak/themes/sq-hub/login/theme.properties'
+          expected='css/styles.css css/sq-account-hcis-f7a4c91d2e36.css css/hcis-logo-assets-294b82789923.css'
+          active="$(sed -n 's/^styles=//p' "$theme")"
+
+          test "$active" = "$expected"
+          grep -Fxq 'parent=keycloak.v2' "$theme"
+          grep -Fxq 'contentHashPattern=^css/(sq-account-hcis|hcis-logo-assets)-[0-9a-f]{12}[.]css$' "$theme"
+          ! grep -Fq 'sq-account-hcis-d8e0fab49a38.css' "$theme"
+          ! grep -Fq 'sq-account-41ad9ff20ec3.css' "$theme"
+          ! grep -Fq 'sq-identity-066c6982e041.css' "$theme"
+          ! grep -Fq 'sq-identity-615a8687ea40.css' "$theme"
+
+          echo 'AKUN_SQ_ACTIVE_STYLESHEET_STACK_PASS'
 
       - name: Verify HCIS source-mapped composition
         shell: bash
         run: |
           css='infra/keycloak/themes/sq-hub/login/resources/css/sq-account-hcis-f7a4c91d2e36.css'
-          theme='infra/keycloak/themes/sq-hub/login/theme.properties'
 
           test -s "$css"
           grep -Fq 'grid-template-columns: minmax(0, 3fr) minmax(0, 2fr)' "$css"
@@ -34,40 +58,158 @@ jobs:
           grep -Fq 'background: linear-gradient(135deg, var(--hcis-teal-700), var(--hcis-teal-500))' "$css"
           grep -Fq 'background-size: 32px 32px' "$css"
           grep -Fq 'min-height: 0 !important' "$css"
-          grep -Fq 'sq-account-hcis-f7a4c91d2e36.css' "$theme"
+          ! grep -Fq 'overflow-y: hidden' "$css"
 
           echo 'HCIS_LOGIN_PARITY_CONTRACT_PASS'
 
-      - name: Verify exact HCIS logo assets and markup
+      - name: Verify exact HCIS logo assets and rendered references
         shell: bash
         run: |
           footer='infra/keycloak/themes/sq-hub/login/footer.ftl'
-          logo_css='infra/keycloak/themes/sq-hub/login/resources/css/hcis-logo-assets.css'
+          logo_css='infra/keycloak/themes/sq-hub/login/resources/css/hcis-logo-assets-294b82789923.css'
           logo='infra/keycloak/themes/sq-hub/login/resources/img/logo.png'
           logo_white='infra/keycloak/themes/sq-hub/login/resources/img/logo-white.png'
-          theme='infra/keycloak/themes/sq-hub/login/theme.properties'
 
           test -s "$logo"
           test -s "$logo_white"
+          test -s "$logo_css"
           test "$(git hash-object "$logo")" = '9c738fe89212ec5f107c0dd6fe738bbf42ae94c1'
           test "$(git hash-object "$logo_white")" = '6c71fddbba785a167b965901d400fd1559a41e50'
+          test "$(git hash-object "$logo_css")" = '294b82789923dd3ae9ef9066543854aa32652186'
           grep -Fq '${url.resourcesPath}/img/logo.png' "$footer"
           grep -Fq '${url.resourcesPath}/img/logo-white.png' "$footer"
-          grep -Fq 'hcis-logo-assets.css' "$theme"
           grep -Fq 'height: 3.5rem !important' "$logo_css"
           grep -Fq 'height: 4rem !important' "$logo_css"
           ! grep -Fq 'sq-brand-lockup__mark' "$footer"
           ! grep -Fq 'sq-brand-lockup__text' "$footer"
+          ! grep -Fq 'ysq-mark.svg' "$footer"
 
           echo 'HCIS_EXACT_LOGO_ASSET_CONTRACT_PASS'
 
-      - name: Reject the rejected desktop composition in the parity layer
+      - name: Preserve Keycloak-native auth boundary and Akun SQ wording
+        shell: bash
+        run: |
+          theme_dir='infra/keycloak/themes/sq-hub/login'
+          messages="$theme_dir/messages/messages_id.properties"
+          footer="$theme_dir/footer.ftl"
+
+          test ! -e "$theme_dir/template.ftl"
+          test ! -e "$theme_dir/login.ftl"
+          test ! -e "$theme_dir/login-otp.ftl"
+          test ! -e "$theme_dir/login-recovery-authn-code.ftl"
+          test ! -e "$theme_dir/login-config-totp.ftl"
+          grep -Fxq 'loginTitle=Akun SQ' "$messages"
+          grep -Fxq 'loginTitleHtml=Akun SQ' "$messages"
+          grep -Fq 'logoutConfirmTitle=Keluar dari Akun SQ?' "$messages"
+          grep -Fq 'Akun SQ' "$footer"
+
+          echo 'KEYCLOAK_NATIVE_AUTH_BOUNDARY_PASS'
+
+      - name: Reject rejected or placeholder composition
         shell: bash
         run: |
           css='infra/keycloak/themes/sq-hub/login/resources/css/sq-account-hcis-f7a4c91d2e36.css'
+          footer='infra/keycloak/themes/sq-hub/login/footer.ftl'
 
           ! grep -Fq 'grid-template-columns: minmax(0, 56fr) minmax(27rem, 44fr)' "$css"
           ! grep -Fq 'font-size: clamp(2.35rem, 3.2vw, 3.15rem)' "$css"
           ! grep -Fq 'radial-gradient(circle at 90% 7%' "$css"
+          ! grep -Fq 'sq-brand-lockup__mark' "$footer"
+          ! grep -Fq 'sq-brand-lockup__text' "$footer"
 
           echo 'REJECTED_LOGIN_COMPOSITION_ABSENT_PASS'
+
+      - name: Verify desktop scroll and mobile overflow regression
+        shell: bash
+        run: |
+          theme_dir='infra/keycloak/themes/sq-hub/login'
+          fixture="$theme_dir/.hcis-layout-smoke.html"
+          chrome="$(command -v google-chrome || command -v chromium || command -v chromium-browser || true)"
+          test -n "$chrome"
+
+          cat > "$fixture" <<'HTML'
+          <!doctype html>
+          <html lang="id">
+          <head>
+            <meta charset="utf-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1">
+            <link rel="stylesheet" href="resources/css/sq-account-hcis-f7a4c91d2e36.css">
+            <link rel="stylesheet" href="resources/css/hcis-logo-assets-294b82789923.css">
+          </head>
+          <body class="login-pf">
+            <div class="pf-v5-c-login">
+              <div class="pf-v5-c-login__container">
+                <header id="kc-header"><div id="kc-header-wrapper">Akun SQ</div></header>
+                <main class="pf-v5-c-login__main">
+                  <header class="pf-v5-c-login__main-header"><h1 id="kc-page-title" class="pf-v5-c-title">Selamat datang kembali</h1></header>
+                  <div class="pf-v5-c-login__main-body">
+                    <form id="kc-form" class="pf-v5-c-form" action="/native-keycloak-action" method="post">
+                      <div class="pf-v5-c-form__group"><label for="username">NIP atau email</label><input id="username" type="text"></div>
+                      <div class="pf-v5-c-form__group"><label for="password">Kata sandi</label><input id="password" type="password"></div>
+                      <input id="kc-login" class="btn-primary" type="submit" value="Masuk">
+                    </form>
+                  </div>
+                  <footer class="pf-v5-c-login__main-footer"><p class="sq-login-footer">Akun SQ digunakan untuk masuk dan menjaga keamanan akun.</p></footer>
+                </main>
+              </div>
+            </div>
+            <div class="sq-brand-lockup"><img class="sq-brand-lockup__logo sq-brand-lockup__logo--light" src="resources/img/logo.png" alt="Sabilul Qur'an"><img class="sq-brand-lockup__logo sq-brand-lockup__logo--dark" src="resources/img/logo-white.png" alt="Sabilul Qur'an"></div>
+            <div class="sq-brand-values"><div class="sq-brand-values__eyebrow">Nilai Utsman</div><div class="sq-brand-values__grid"><article class="sq-brand-value">A</article><article class="sq-brand-value">B</article><article class="sq-brand-value">C</article><article class="sq-brand-value">D</article><article class="sq-brand-value">E</article><article class="sq-brand-value">F</article></div></div>
+            <script>
+              const params = new URLSearchParams(location.search);
+              if (params.get('mode') === 'long') {
+                const tall = document.createElement('div');
+                tall.style.height = '1200px';
+                tall.style.width = '1px';
+                tall.setAttribute('data-long-state-content', 'true');
+                document.querySelector('.pf-v5-c-login__main-body').appendChild(tall);
+              }
+              const root = document.documentElement;
+              const body = document.body;
+              const vertical = Math.max(root.scrollHeight, body.scrollHeight) > window.innerHeight + 1;
+              const horizontal = Math.max(root.scrollWidth, body.scrollWidth) > window.innerWidth + 1;
+              const selectors = ['.pf-v5-c-login__container', '#kc-header', '.pf-v5-c-login__main', '#kc-form', '.sq-brand-lockup'];
+              const layoutOverflow = selectors.some((selector) => {
+                const element = document.querySelector(selector);
+                if (!element) return true;
+                const rect = element.getBoundingClientRect();
+                return rect.left < -1 || rect.right > window.innerWidth + 1;
+              });
+              body.setAttribute('data-vertical-overflow', String(vertical));
+              body.setAttribute('data-horizontal-overflow', String(horizontal));
+              body.setAttribute('data-layout-overflow', String(layoutOverflow));
+              body.setAttribute('data-inner-size', `${window.innerWidth}x${window.innerHeight}`);
+            </script>
+          </body>
+          </html>
+          HTML
+
+          run_layout() {
+            width="$1"
+            height="$2"
+            mode="$3"
+            expected_vertical="$4"
+            expected_horizontal="$5"
+            expected_layout="$6"
+            output="/tmp/hcis-layout-${width}x${height}-${mode}.html"
+
+            "$chrome" \
+              --headless=new \
+              --no-sandbox \
+              --disable-gpu \
+              --allow-file-access-from-files \
+              --window-size="${width},${height}" \
+              --dump-dom "file://$PWD/$fixture?mode=$mode" > "$output"
+
+            grep -Fq "data-vertical-overflow=\"$expected_vertical\"" "$output"
+            grep -Fq "data-horizontal-overflow=\"$expected_horizontal\"" "$output"
+            grep -Fq "data-layout-overflow=\"$expected_layout\"" "$output"
+          }
+
+          run_layout 1440 900 normal false false false
+          run_layout 1280 720 normal false false false
+          run_layout 390 844 normal false false false
+          run_layout 1440 900 long true false false
+
+          rm -f "$fixture"
+          echo 'AKUN_SQ_LAYOUT_SCROLL_OVERFLOW_CONTRACT_PASS'
