@@ -71,11 +71,15 @@ The HCIS `AppShell` is the visual reference for:
 Do not copy HCIS navigation labels or capability checks into shared components. Shared shell owns structure/appearance; each application supplies its own navigation model and authorization result.
 
 ## Authentication baseline
-The frozen HCIS `AuthLayout.tsx` reference records a responsive large-screen `56fr / 44fr` source composition. That is a historical/source fact about the immutable HCIS snapshot.
+The HCIS `AuthLayout` is the visual starting point for `login.sabilulquran.or.id`:
+- responsive split layout, approximately 56/44 on large screens;
+- dedicated brand panel;
+- warm clean form surface;
+- controlled decorative brand-accent glows;
+- constrained form width;
+- consistent SQ typography/colors/footer language.
 
-For **Akun SQ HUB-IMPL-010**, subsequent visual acceptance correction established the current implementation contract as **3fr / 2fr (approximately 60/40)** with the accepted HCIS visual family: teal brand panel, HCIS slate right panel, centered constrained white auth card, matching typography hierarchy, spacing, radii/shadows, and compact mobile treatment. Current Akun SQ implementation/UAT must follow that 3:2 contract; the source snapshot's 56/44 value must not be reintroduced as the accepted Akun SQ geometry.
-
-Keycloak must remain themed to the HCIS/SQ language without reproducing HCIS-specific product wording such as "Human Capital Information System" on the shared authentication surface.
+Keycloak must be themed to this language. Do not reproduce HCIS-specific product wording such as "Human Capital Information System" on the global SQ Identity login page.
 
 ## Candidate shared components
 Existing HCIS components should be reviewed and generalized before extraction, including:
@@ -90,7 +94,7 @@ A component becomes shared because its semantics and API are useful across appli
 ## Extraction order
 1. normalize semantic tokens from HCIS into SQ design-token documentation/package;
 2. define shared typography/elevation/radius conventions;
-3. generalize Auth layout for SQ Identity/Akun SQ;
+3. generalize Auth layout for SQ Identity;
 4. generalize app shell without HCIS business navigation;
 5. extract common form/status components only when SPMB/SQ Hub creates the second concrete consumer;
 6. migrate HCIS to consume/alignment with SQ shared primitives after those primitives stabilize.
