@@ -21,7 +21,7 @@ cleanup() {
 }
 trap cleanup EXIT
 
-curl --fail --silent --show-error \
+curl --fail --silent --show-error --connect-timeout 10 --max-time 30 \
   "$ISSUER/.well-known/openid-configuration" > "$work_dir/discovery.json"
 jq -e --arg issuer "$EXPECTED_ISSUER" '.issuer == $issuer' "$work_dir/discovery.json" >/dev/null
 echo "WAVE1_EXACT_ISSUER_PASS"
@@ -29,7 +29,7 @@ echo "WAVE1_EXACT_ISSUER_PASS"
 jq -e '.end_session_endpoint | type == "string" and length > 0' "$work_dir/discovery.json" >/dev/null
 echo "WAVE1_LOGOUT_METADATA_PASS"
 
-status="$(curl --silent --show-error --output "$work_dir/hcis-root.html" --write-out '%{http_code}' "$HCIS_ORIGIN/")"
+status="$(curl --silent --show-error --connect-timeout 10 --max-time 30 --output "$work_dir/hcis-root.html" --write-out '%{http_code}' "$HCIS_ORIGIN/")"
 test "$status" = "200"
 grep -Fq 'SQ Identity' "$work_dir/hcis-root.html"
 echo "WAVE1_HCIS_OIDC_ENTRY_PASS"
@@ -42,6 +42,8 @@ paths=(
 )
 for path in "${paths[@]}"; do
   status="$(curl --silent --show-error \
+    --connect-timeout 10 \
+    --max-time 30 \
     --output "$work_dir/local-auth-response" \
     --write-out '%{http_code}' \
     --header 'Content-Type: application/json' \

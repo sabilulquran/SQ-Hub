@@ -57,7 +57,7 @@ echo "WAVE1_KEYCLOAK_DISPOSABLE_RESTORE_PASS"
 
 # Verify public discovery after the disposable DB restore check. The live staging DB
 # was never replaced by restore-check.sh.
-curl --fail --silent --show-error \
+curl --fail --silent --show-error --connect-timeout 10 --max-time 30 \
   "$ISSUER/.well-known/openid-configuration" \
   | jq -e --arg issuer "$EXPECTED_ISSUER" '.issuer == $issuer' >/dev/null
 echo "WAVE1_KEYCLOAK_POST_RESTORE_DISCOVERY_PASS"
