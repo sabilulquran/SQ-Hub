@@ -9,8 +9,11 @@ import { PgHubAuthRepository } from "./modules/hub-auth/repository.js";
 import { HubAuthService } from "./modules/hub-auth/service.js";
 import { PgHubWorkspaceRepository } from "./modules/hub-auth/workspace-repository.js";
 import { KeycloakIdentityDirectory } from "./modules/identity-directory/client.js";
+import { KeycloakIdentityManagement } from "./modules/identity-management/client.js";
 import { PgPlatformAdminRepository } from "./modules/platform-admin/repository.js";
 import { PlatformAdminService } from "./modules/platform-admin/service.js";
+import { PgLifecycleAuditWriter } from "./modules/staff-lifecycle/audit.js";
+import { StaffLifecycleService } from "./modules/staff-lifecycle/service.js";
 
 const config = loadConfig();
 const pool = createPool(config.databaseUrl);
@@ -24,6 +27,20 @@ const identityDirectory = new KeycloakIdentityDirectory({
   clientId: config.keycloakDirectoryClientId,
   clientSecret: config.keycloakDirectoryClientSecret,
 });
+const staffLifecycle = config.keycloakIdentityManagementClientId && config.keycloakIdentityManagementClientSecret
+  ? new StaffLifecycleService(
+      new KeycloakIdentityManagement({
+        baseUrl: config.keycloakDirectoryBaseUrl,
+        realm: config.keycloakDirectoryRealm,
+        issuer: config.keycloakIssuer,
+        clientId: config.keycloakIdentityManagementClientId,
+        clientSecret: config.keycloakIdentityManagementClientSecret,
+      }),
+      accessService,
+      platformAdmin,
+      new PgLifecycleAuditWriter(pool),
+    )
+  : undefined;
 const verifyMachineToken = createKeycloakMachineTokenVerifier({
   issuer: config.keycloakIssuer,
   audience: config.machineTokenAudience,
@@ -60,6 +77,7 @@ const app = buildApp({
   adminApplicationRegistry: accessService,
   adminApplicationAccess: accessService,
   identityDirectory,
+  ...(staffLifecycle ? { staffLifecycle } : {}),
   logger: true,
 });
 
