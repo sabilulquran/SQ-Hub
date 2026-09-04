@@ -52,7 +52,19 @@ YAML
 restore_oidc() {
   docker compose -p "$PROJECT" --env-file "$HCIS_ENV_FILE" -f "$COMPOSE" up -d --no-build >/dev/null
 }
-trap 'restore_oidc >/dev/null 2>&1 || true; cleanup' EXIT
+
+restore_oidc_after_failure() {
+  exit_status=$?
+  trap - EXIT
+
+  if ! restore_oidc >/dev/null 2>&1; then
+    echo "WAVE1_ROLLBACK_REHEARSAL_FAIL reason=OIDC_FAILSAFE_RESTORE_FAILED" >&2
+  fi
+
+  cleanup
+  exit "$exit_status"
+}
+trap restore_oidc_after_failure EXIT
 
 # Configuration-first rollback. The database volume and schema are preserved.
 docker compose -p "$PROJECT" --env-file "$HCIS_ENV_FILE" -f "$COMPOSE" stop api web >/dev/null
