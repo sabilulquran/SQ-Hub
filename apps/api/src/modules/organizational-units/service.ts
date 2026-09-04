@@ -239,7 +239,11 @@ export class OrganizationalUnitService {
   async applyImport(input: unknown, actor: ActorRef) {
     actorSchema.parse(actor);
     const parsed = applyImportSchema.parse(input);
-    const preview = await this.previewImport(parsed);
+    const preview = await this.previewImport({
+      sourceSystem: parsed.sourceSystem,
+      rows: parsed.rows,
+      mappings: parsed.mappings,
+    });
     if (!preview.valid) throw new OrganizationalUnitValidationError(preview.issues);
     return this.repository.applyImport({
       sourceSystem: parsed.sourceSystem,

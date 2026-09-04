@@ -1,5 +1,5 @@
 import { Network, Plus, RefreshCcw } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 import { AccountMenu } from "@/components/AccountMenu";
 import { BrandLockup } from "@/components/BrandLockup";
@@ -15,16 +15,16 @@ export function OrganizationalUnitsPage({ workspace, onLogout, onAuthorizationDe
   const [snapshotText, setSnapshotText] = useState('[{"sourceRef":"HCIS-REF-1","sourceCode":"UNIT-001","name":"Contoh Unit","parentSourceRef":null,"active":true}]');
   const [mappingText, setMappingText] = useState('[{"sourceRef":"HCIS-REF-1","unitKey":"contoh-unit"}]'); const [preview, setPreview] = useState<Preview | null>(null);
 
-  const request = async <T,>(url: string, init?: RequestInit): Promise<T> => {
+  const request = useCallback(async <T,>(url: string, init?: RequestInit): Promise<T> => {
     const response = await fetch(url, { credentials: "same-origin", ...init, headers: init?.body ? { Accept: "application/json", "Content-Type": "application/json" } : { Accept: "application/json" } });
     const body = (await response.json().catch(() => ({}))) as T & { error?: string };
     if (response.status === 401) { window.location.assign("/api/auth/oidc/start"); throw new Error("redirecting"); }
     if (response.status === 403) onAuthorizationDenied?.(body.error === "ADMIN_REAUTH_REQUIRED" ? "reauth" : "forbidden");
     if (!response.ok) throw new Error(body.error ?? `HTTP_${response.status}`); return body;
-  };
-  const run = async (task: () => Promise<void>) => { setBusy(true); setMessage(null); try { await task(); } catch { setMessage("Tindakan gagal dengan aman. Tidak ada cutover atau penghapusan implisit yang dijalankan."); } finally { setBusy(false); } };
-  const load = async () => { const result = await request<{ units: Unit[] }>("/api/admin/organizational-units"); setUnits(result.units); };
-  useEffect(() => { void run(load); }, []);
+  }, [onAuthorizationDenied]);
+  const run = useCallback(async (task: () => Promise<void>) => { setBusy(true); setMessage(null); try { await task(); } catch { setMessage("Tindakan gagal dengan aman. Tidak ada cutover atau penghapusan implisit yang dijalankan."); } finally { setBusy(false); } }, []);
+  const load = useCallback(async () => { const result = await request<{ units: Unit[] }>("/api/admin/organizational-units"); setUnits(result.units); }, [request]);
+  useEffect(() => { void run(load); }, [load, run]);
 
   const create = () => run(async () => {
     await request("/api/admin/organizational-units", { method: "POST", body: JSON.stringify({ unitKey: form.unitKey.trim(), name: form.name.trim(), parentId: form.parentId || null, active: true, reason: form.reason.trim() }) });
