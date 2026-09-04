@@ -14,6 +14,8 @@ import {
 import { registerHubAuthRoutes } from "./modules/hub-auth/routes.js";
 import type { HubAuthRuntime } from "./modules/hub-auth/service.js";
 import type { IdentityDirectory } from "./modules/identity-directory/client.js";
+import { registerOrganizationalUnitRoutes } from "./modules/organizational-units/routes.js";
+import type { OrganizationalUnitService } from "./modules/organizational-units/service.js";
 import { registerPlatformAdminRoutes } from "./modules/platform-admin/routes.js";
 import type { PlatformAdminService } from "./modules/platform-admin/service.js";
 import { registerStaffLifecycleRoutes } from "./modules/staff-lifecycle/routes.js";
@@ -40,6 +42,7 @@ export function buildApp(input: {
   >;
   identityDirectory?: IdentityDirectory;
   staffLifecycle?: StaffLifecycleService;
+  organizationalUnits?: OrganizationalUnitService;
   logger?: boolean;
 }) {
   const app = Fastify({ logger: input.logger ?? false });
@@ -97,6 +100,15 @@ export function buildApp(input: {
       hubAuth: input.hubAuth,
       platformAdmin: input.platformAdmin,
       service: input.staffLifecycle,
+      ...(input.adminAllowedOrigin ? { allowedOrigin: input.adminAllowedOrigin } : {}),
+    });
+  }
+
+  if (input.hubAuth && input.platformAdmin && input.organizationalUnits) {
+    registerOrganizationalUnitRoutes(app, {
+      hubAuth: input.hubAuth,
+      platformAdmin: input.platformAdmin,
+      service: input.organizationalUnits,
       ...(input.adminAllowedOrigin ? { allowedOrigin: input.adminAllowedOrigin } : {}),
     });
   }
