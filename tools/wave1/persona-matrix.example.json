@@ -1,0 +1,60 @@
+{
+  "issuer": "https://login.sabilulquran.or.id/realms/sq-staff-staging",
+  "personas": [
+    {
+      "key": "ordinary_employee",
+      "synthetic_identifier": "wave1.employee@example.invalid",
+      "expected": "SSO succeeds and resolves the explicitly mapped HCIS local principal",
+      "result": "MANUAL_STAGING_REQUIRED"
+    },
+    {
+      "key": "manager",
+      "synthetic_identifier": "wave1.manager@example.invalid",
+      "expected": "SSO succeeds and existing manager role/scope remains HCIS-local",
+      "result": "MANUAL_STAGING_REQUIRED"
+    },
+    {
+      "key": "human_capital_admin",
+      "synthetic_identifier": "wave1.hc-admin@example.invalid",
+      "expected": "SSO succeeds and Human Capital authorization remains HCIS-local",
+      "result": "MANUAL_STAGING_REQUIRED"
+    },
+    {
+      "key": "privileged_super_admin",
+      "synthetic_identifier": "wave1.super-admin@example.invalid",
+      "expected": "Privileged identity is forced through policy-required TOTP and can exercise recovery authentication",
+      "result": "MANUAL_STAGING_REQUIRED"
+    },
+    {
+      "key": "non_employee_staff",
+      "synthetic_identifier": "wave1.non-employee@example.invalid",
+      "expected": "SSO resolves the intended non-Employee HCIS local principal and local authorization",
+      "result": "MANUAL_STAGING_REQUIRED"
+    },
+    {
+      "key": "hcis_local_suspended",
+      "synthetic_identifier": "wave1.suspended@example.invalid",
+      "expected": "HCIS denies the local suspended principal without globally disabling the SQ Identity",
+      "result": "MANUAL_STAGING_REQUIRED"
+    },
+    {
+      "key": "globally_disabled_keycloak",
+      "synthetic_identifier": "wave1.global-disabled@example.invalid",
+      "expected": "Globally disabled SQ Identity cannot create a new HCIS session",
+      "result": "MANUAL_STAGING_REQUIRED"
+    },
+    {
+      "key": "revoked_application_access",
+      "synthetic_identifier": "wave1.revoked-access@example.invalid",
+      "expected": "Missing or revoked HCIS Application Access fails closed for new session creation",
+      "result": "PASS",
+      "notes": "The live negative case is already evidence-backed in the accepted staging UAT; do not treat this fixture as the evidence itself."
+    },
+    {
+      "key": "wrong_unknown_mapping",
+      "synthetic_identifier": "wave1.unknown-mapping@example.invalid",
+      "expected": "Unknown or wrong issuer+subject fails closed with no email/NIP fallback",
+      "result": "MANUAL_STAGING_REQUIRED"
+    }
+  ]
+}
