@@ -12,20 +12,17 @@ if [[ ! -f "${ENV_FILE}" ]]; then
   exit 1
 fi
 
-set -a
-# shellcheck disable=SC1090
-source "${ENV_FILE}"
-set +a
-
 mkdir -p "$(dirname "${OUTPUT}")"
 
 docker compose --env-file "${ENV_FILE}" -f "${COMPOSE_FILE}" exec -T keycloak-db \
-  pg_dump \
-  --username "${KEYCLOAK_DB_USERNAME:-keycloak}" \
-  --dbname "${KEYCLOAK_DB_NAME:-keycloak_staging}" \
-  --format custom \
-  --no-owner \
-  --no-privileges > "${OUTPUT}"
+  sh -ceu '
+    pg_dump \
+      --username "$POSTGRES_USER" \
+      --dbname "$POSTGRES_DB" \
+      --format custom \
+      --no-owner \
+      --no-privileges
+  ' > "${OUTPUT}"
 
 chmod 600 "${OUTPUT}"
 echo "Backup written: ${OUTPUT}"
