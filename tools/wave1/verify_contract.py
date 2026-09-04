@@ -37,7 +37,7 @@ def main() -> None:
         require(path.exists(), f"required Wave 1 closure file missing: {path.relative_to(ROOT)}")
 
     closure = (ROOT / "docs/operations/HUB-IMPL-003-wave1-closure.md").read_text(encoding="utf-8")
-    require("Issue #9 remains authoritative and OPEN" in closure, "closure doc must preserve issue #9 authority")
+    require("#9 remains authoritative and OPEN" in closure, "closure doc must preserve issue #9 authority")
     require("HUMAN_BROWSER_UAT" in closure, "closure doc must distinguish human/browser UAT")
     require("OPERATOR_SECRET_CONTROL" in closure, "closure doc must distinguish secret-control checks")
     require("PRODUCTION_AUTHORIZATION" in closure, "closure doc must distinguish production authorization")
