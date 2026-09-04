@@ -81,6 +81,8 @@ def main() -> None:
         helper = (ROOT / "infra/keycloak/scripts" / helper_name).read_text(encoding="utf-8")
         require('source "${ENV_FILE}"' not in helper, f"{helper_name} must not execute Docker env files as shell code")
         require("$POSTGRES_USER" in helper, f"{helper_name} must use the database identity from inside the target container")
+    backup_helper = (ROOT / "infra/keycloak/scripts/backup.sh").read_text(encoding="utf-8")
+    require("umask 077" in backup_helper, "Keycloak backup must be private from the moment the dump file is created")
 
     persona_tool = (ROOT / "tools/wave1/persona-matrix.py").read_text(encoding="utf-8")
     require(EXPECTED_ISSUER in persona_tool, "persona tool must enforce the exact staging issuer")
