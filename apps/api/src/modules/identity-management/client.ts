@@ -211,7 +211,9 @@ export class KeycloakIdentityManagement implements IdentityManagement {
     if (!response.ok) this.unavailable("authentication", response.status);
     const body = (await response.json()) as TokenResponse;
     if (!body.access_token) this.unavailable("authentication-token", 502);
-    const lifetime = Math.max(30, body.expires_in ?? 60);
+    const lifetime = typeof body.expires_in === "number" && body.expires_in > 0
+      ? body.expires_in
+      : 60;
     this.token = { value: body.access_token, expiresAt: now + lifetime * 1000 };
     return body.access_token;
   }
