@@ -1,0 +1,53 @@
+name: Wave 1 Acceptance Contract
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/wave1-acceptance-contract.yml"
+      - "tools/wave1/**"
+      - "docs/operations/HUB-IMPL-003*"
+      - "docs/migration/hcis-auth-cutover-plan.md"
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/wave1-acceptance-contract.yml"
+      - "tools/wave1/**"
+      - "docs/operations/HUB-IMPL-003*"
+      - "docs/migration/hcis-auth-cutover-plan.md"
+
+permissions:
+  contents: read
+
+jobs:
+  contract:
+    name: Wave 1 acceptance contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate offline closure contract
+        run: python3 tools/wave1/verify_contract.py
+
+      - name: Validate synthetic persona fixture sanitization
+        run: |
+          python3 tools/wave1/persona-matrix.py \
+            tools/wave1/persona-matrix.example.json \
+            --output /tmp/wave1-personas-sanitized.json
+          test -s /tmp/wave1-personas-sanitized.json
+          ! grep -Fq 'runtime_subject' /tmp/wave1-personas-sanitized.json
+
+      - name: Validate staging script syntax
+        run: |
+          for script in tools/wave1/*.sh; do
+            bash -n "$script"
+          done
+
+      - name: Assert no live acceptance is inferred
+        run: |
+          grep -Fq 'MANUAL_STAGING_REQUIRED' docs/operations/HUB-IMPL-003-wave1-closure.md
+          grep -Fq 'HUMAN_BROWSER_UAT' docs/operations/HUB-IMPL-003-wave1-closure.md
+          grep -Fq 'CUTOVER_BLOCKED' docs/operations/HUB-IMPL-003-production-cutover.md
+          echo 'WAVE1_CI_CONTRACT_ONLY_PASS'
