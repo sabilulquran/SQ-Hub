@@ -1,6 +1,7 @@
 {
   "name": "sq-hub",
   "private": true,
+  "packageManager": "npm@10.9.8",
   "workspaces": [
     "apps/*",
     "packages/*"

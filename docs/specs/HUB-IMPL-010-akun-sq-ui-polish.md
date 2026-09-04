@@ -68,7 +68,7 @@ Required direction:
 The Keycloak `sq-hub` login theme remains based on `keycloak.v2` and must reproduce the frozen HCIS AuthLayout/HcisBrandPanel composition closely while preserving native Keycloak authentication surfaces.
 
 Required direction:
-- retain the approximately 56/44 desktop authentication composition and compact mobile header;
+- use the accepted `3fr / 2fr` desktop authentication composition (approximately 60/40) and compact mobile header; this current Akun SQ correction supersedes the earlier approximately 56/44 implementation wording, while the frozen HCIS source geometry remains a historical baseline fact;
 - restore a proper Sabilul Qur'an organizational lockup at the upper-left of the turquoise panel; do not let a giant `Akun SQ` wordmark replace organizational branding;
 - keep `Akun SQ` as the application-neutral authentication product headline and use application-neutral Sabilul Qur'an digital-service copy;
 - render the six UTSMAN values as a 3×2 card grid on desktop, with icon tile, label, and short description;

@@ -1,12 +1,12 @@
 # syntax=docker/dockerfile:1
 
-FROM node:22-alpine AS build
+FROM node:22.23.2-alpine AS build
 WORKDIR /app
 
-COPY package.json ./
+COPY package.json package-lock.json ./
 COPY apps/api/package.json apps/api/package.json
 COPY apps/web/package.json apps/web/package.json
-RUN npm install
+RUN npm ci
 
 COPY apps/web apps/web
 ARG VITE_SQ_HUB_PREVIEW=0

@@ -56,10 +56,10 @@ jobs:
       - name: Set up Node for workspace lockfile
         uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 22.23.2
 
-      - name: Generate workspace lockfile for Docker build context
-        run: npm install --package-lock-only --ignore-scripts
+      - name: Validate committed workspace lockfile
+        run: npm ci --ignore-scripts
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
