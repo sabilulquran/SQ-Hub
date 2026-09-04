@@ -5,6 +5,7 @@ SQ_HUB_DIR="${WAVE1_SQ_HUB_DIR:-$PWD}"
 KEYCLOAK_DIR="$SQ_HUB_DIR/infra/keycloak"
 ENV_FILE="${WAVE1_KEYCLOAK_ENV_FILE:-$KEYCLOAK_DIR/.env.staging}"
 COMPOSE_FILE="$KEYCLOAK_DIR/docker-compose.staging.yml"
+PROJECT="${WAVE1_KEYCLOAK_PROJECT:-sq-hub-keycloak-staging}"
 RESTORE_DB="keycloak_wave1_restore_check"
 ISSUER="${WAVE1_ISSUER:-https://login.sabilulquran.or.id/realms/sq-staff-staging}"
 EXPECTED_ISSUER="https://login.sabilulquran.or.id/realms/sq-staff-staging"
@@ -15,6 +16,7 @@ fail() {
 }
 
 [[ "$ISSUER" == "$EXPECTED_ISSUER" ]] || fail STAGING_ISSUER_REQUIRED
+[[ "$PROJECT" == "sq-hub-keycloak-staging" ]] || fail STAGING_KEYCLOAK_PROJECT_REQUIRED
 [[ -f "$ENV_FILE" ]] || fail STAGING_ENV_FILE_REQUIRED
 [[ -f "$COMPOSE_FILE" ]] || fail STAGING_COMPOSE_REQUIRED
 [[ -x "$KEYCLOAK_DIR/scripts/backup.sh" ]] || fail BACKUP_SCRIPT_REQUIRED
@@ -28,7 +30,7 @@ fi
 
 # The lower-level restore check drops/recreates its target. Refuse to call it
 # unless the fixed disposable name differs from the active database name.
-if ! docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" exec -T keycloak-db \
+if ! docker compose -p "$PROJECT" --env-file "$ENV_FILE" -f "$COMPOSE_FILE" exec -T keycloak-db \
   sh -ceu 'test "$POSTGRES_DB" != "$1"' sh "$RESTORE_DB"; then
   fail RESTORE_DB_COLLIDES_WITH_ACTIVE_DB
 fi
@@ -42,6 +44,7 @@ trap cleanup EXIT
 # Existing scripts own the backup/restore mechanics. Suppress their path-bearing output;
 # this wrapper emits only sanitized acceptance markers.
 if ! KEYCLOAK_ENV_FILE="$ENV_FILE" \
+  COMPOSE_PROJECT_NAME="$PROJECT" \
   "$KEYCLOAK_DIR/scripts/backup.sh" "$backup_file" >/dev/null; then
   fail BACKUP_FAILED
 fi
@@ -49,6 +52,7 @@ fi
 echo "WAVE1_KEYCLOAK_BACKUP_PASS"
 
 if ! KEYCLOAK_ENV_FILE="$ENV_FILE" \
+  COMPOSE_PROJECT_NAME="$PROJECT" \
   KEYCLOAK_RESTORE_CHECK_DB="$RESTORE_DB" \
   "$KEYCLOAK_DIR/scripts/restore-check.sh" "$backup_file" >/dev/null; then
   fail DISPOSABLE_RESTORE_FAILED
