@@ -33,7 +33,7 @@ esac
 
 # Do not report the configured constant as runtime evidence. Prove that the
 # reachable provider advertises the exact accepted staging issuer first.
-curl --fail --silent --show-error \
+curl --fail --silent --show-error --connect-timeout 10 --max-time 30 \
   "$ISSUER/.well-known/openid-configuration" \
   | jq -e --arg issuer "$ISSUER" '.issuer == $issuer' >/dev/null
 
