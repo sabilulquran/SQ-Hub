@@ -1,6 +1,7 @@
 # Organizational Unit Migration / Cutover Proposal
 
-**Status:** DRAFT / PROPOSED — PRE-CUTOVER ONLY  
+**Status:** DRAFT / PROPOSED — PRE-CUTOVER ONLY
+
 **Related:** HUB-IMPL-012, Foundation PRD, HCIS organization architecture evidence
 
 ## Purpose

@@ -68,6 +68,7 @@ export class KeycloakIdentityManagement implements IdentityManagement {
       issuer: string;
       clientId: string;
       clientSecret: string;
+      requestTimeoutMs?: number;
     },
   ) {
     this.issuer = config.issuer.replace(/\/$/, "");
@@ -180,6 +181,7 @@ export class KeycloakIdentityManagement implements IdentityManagement {
       `${this.config.baseUrl.replace(/\/$/, "")}/admin/realms/${encodeURIComponent(this.config.realm)}/${path}`,
       {
         ...init,
+        signal: init.signal ?? AbortSignal.timeout(this.config.requestTimeoutMs ?? 10_000),
         headers: {
           Authorization: `Bearer ${token}`,
           Accept: "application/json",
@@ -201,6 +203,7 @@ export class KeycloakIdentityManagement implements IdentityManagement {
       `${this.config.baseUrl.replace(/\/$/, "")}/realms/${encodeURIComponent(this.config.realm)}/protocol/openid-connect/token`,
       {
         method: "POST",
+        signal: AbortSignal.timeout(this.config.requestTimeoutMs ?? 10_000),
         headers: { "Content-Type": "application/x-www-form-urlencoded" },
         body: form,
       },

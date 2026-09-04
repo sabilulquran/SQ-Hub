@@ -27,6 +27,7 @@ describe("KeycloakIdentityManagement", () => {
     const result = await client.createStaff({ username: "19870001", email: "staff@example.test", emailVerified: true, firstName: "Synthetic", lastName: "Staff", enabled: true });
     const createCall = calls.find((call) => call.url.endsWith("/admin/realms/staff/users") && call.init?.method === "POST");
     const payload = JSON.parse(String(createCall?.init?.body)) as Record<string, unknown>;
+    expect(calls.every((call) => call.init?.signal instanceof AbortSignal)).toBe(true);
     expect(payload.requiredActions).toEqual(["UPDATE_PASSWORD"]);
     expect(payload).not.toHaveProperty("credentials");
     expect(JSON.stringify(result)).not.toContain("opaque-admin-token");

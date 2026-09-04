@@ -1,7 +1,9 @@
 # HUB-IMPL-012 — Organizational Unit Master Foundation
 
-**Status:** DRAFT / PROPOSED  
-**Scope:** SQ Hub Organizational Unit target-model foundation and HCIS migration preparation  
+**Status:** DRAFT / PROPOSED
+
+**Scope:** SQ Hub Organizational Unit target-model foundation and HCIS migration preparation
+
 **Not authorized by this document:** HCIS cutover, dual-write, production import, live HCIS writes, staging/production deployment
 
 ## 1. Intent and ownership boundary
