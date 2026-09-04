@@ -58,6 +58,8 @@ def main() -> None:
     require("WAVE1_LOCAL_AUTH_PROBE" in rollback and "WAVE1_OIDC_SSO_PROBE" in rollback, "rollback must require real operator probes")
     require("WAVE1_STAGING_MUTATION_CONFIRMATION" in rollback, "rollback must require explicit staging mutation confirmation")
     require("identity_issuer" in rollback and "identity_subject" in rollback, "rollback must prove identity schema preservation")
+    require("OIDC_FAILSAFE_RESTORE_FAILED" in rollback, "rollback must report a failed OIDC failsafe restore")
+    require("restore_oidc >/dev/null 2>&1 || true" not in rollback, "rollback must not swallow a failed OIDC restore")
 
     snapshot = (ROOT / "tools/wave1/final-snapshot.sh").read_text(encoding="utf-8")
     require(".well-known/openid-configuration" in snapshot, "snapshot must verify runtime OIDC discovery before PASS")
