@@ -22,14 +22,18 @@ Use only synthetic staging identities. Do not capture or paste passwords, cookie
 
 ## Akun SQ
 
-11. Desktop around 1440x900: Akun SQ retains the accepted approximately 56/44 composition with a calmer brand panel and the form as the primary focus.
-12. Mobile around 390x844: compact brand header, full-width form controls, and no horizontal overflow.
-13. Login, invalid credential, TOTP/alternate method, recovery authentication, required action when intentionally triggered, and logout confirmation retain standard Keycloak behavior.
-14. UTSMAN values remain visible as supporting brand material on desktop without dominating the authentication task.
-15. Recovery-code layout remains separated/non-colliding. Do not capture generated or entered recovery codes.
-16. Returning-browser/cache check loads the new `sq-account-*.css` resource and does not load the retired `sq-identity-615a8687ea40.css` overlay.
-17. OIDC issuer/realm key and application behavior remain unchanged.
-18. Production remains untouched.
+11. Desktop around 1440x900: Akun SQ uses the accepted **3fr / 2fr (approximately 60/40)** composition with HCIS teal brand panel, HCIS slate right panel, and centered constrained white auth card.
+12. At 1440x900, normal login content that fits must not produce unnecessary vertical scroll, white page tail, or avoidable extra document height.
+13. Repeat the normal-login scroll check at one shorter desktop viewport (recommended 1280x720). If the normal login content fits, unnecessary vertical scrolling is a failure.
+14. Intentionally long recovery/required-action/error content must remain scrollable. Do not accept a fix that globally hides vertical overflow or clips legitimate auth content.
+15. Mobile around 390x844: compact brand header, full-width form controls, and no horizontal overflow.
+16. Login, invalid credential, TOTP/alternate method, recovery authentication, recovery setup, required action when intentionally triggered, error, and logout confirmation retain standard Keycloak behavior.
+17. UTSMAN values remain visible as supporting brand material on desktop without dominating the authentication task.
+18. Recovery-code layout remains separated/non-colliding. Do not capture generated or entered recovery codes.
+19. Exact Sabilul Qur'an organizational logo is rendered from the approved `logo.png` / `logo-white.png` theme assets; no synthetic CSS mark/placeholder is visible.
+20. Returning-browser/cache check loads the accepted `sq-account-hcis-<hash>.css` composition and versioned `hcis-logo-assets-<hash>.css` helper, and does not load retired conflicting Akun SQ/SQ Identity overlays.
+21. User-facing wording remains **Akun SQ** while OIDC issuer, realm key (`sq-staff-staging`), client IDs, and native Keycloak auth semantics remain unchanged.
+22. Production remains untouched.
 
 ## Sanitized evidence markers
 
@@ -39,7 +43,13 @@ Use only synthetic staging identities. Do not capture or paste passwords, cookie
 - `ADMIN_POLISH_BOUNDARY_PASS`
 - `AKUN_SQ_NAMING_PASS`
 - `AKUN_SQ_DESKTOP_PASS`
+- `AKUN_SQ_DESKTOP_SCROLL_PASS`
+- `AKUN_SQ_SHORT_DESKTOP_SCROLL_PASS`
+- `AKUN_SQ_LONG_STATE_SCROLL_PASS`
 - `AKUN_SQ_MOBILE_PASS`
 - `AKUN_SQ_AUTH_SURFACES_PASS`
+- `AKUN_SQ_EXACT_LOGO_PASS`
 - `AKUN_SQ_CACHE_VERSION_PASS`
 - `HUB_IMPL_010_STAGING_ONLY_PASS`
+
+These markers are for future runtime evidence only. Repository CI/source checks do **not** by themselves mark HUB-IMPL-010 visual UAT as passed.

@@ -22,29 +22,24 @@ if [[ ! -f "${BACKUP_FILE}" ]]; then
   exit 1
 fi
 
-set -a
-# shellcheck disable=SC1090
-source "${ENV_FILE}"
-set +a
-
-DB_USER="${KEYCLOAK_DB_USERNAME:-keycloak}"
-
 # Restore only into a disposable verification database, never over the live staging DB.
 docker compose --env-file "${ENV_FILE}" -f "${COMPOSE_FILE}" exec -T keycloak-db \
-  dropdb --username "${DB_USER}" --if-exists "${RESTORE_DB}"
+  sh -ceu 'dropdb --username "$POSTGRES_USER" --if-exists "$1"' sh "${RESTORE_DB}"
 docker compose --env-file "${ENV_FILE}" -f "${COMPOSE_FILE}" exec -T keycloak-db \
-  createdb --username "${DB_USER}" "${RESTORE_DB}"
+  sh -ceu 'createdb --username "$POSTGRES_USER" "$1"' sh "${RESTORE_DB}"
 
 cat "${BACKUP_FILE}" | docker compose --env-file "${ENV_FILE}" -f "${COMPOSE_FILE}" exec -T keycloak-db \
-  pg_restore \
-  --username "${DB_USER}" \
-  --dbname "${RESTORE_DB}" \
-  --no-owner \
-  --no-privileges
+  sh -ceu '
+    pg_restore \
+      --username "$POSTGRES_USER" \
+      --dbname "$1" \
+      --no-owner \
+      --no-privileges
+  ' sh "${RESTORE_DB}"
 
 REALM_COUNT="$(docker compose --env-file "${ENV_FILE}" -f "${COMPOSE_FILE}" exec -T keycloak-db \
-  psql --username "${DB_USER}" --dbname "${RESTORE_DB}" --tuples-only --no-align \
-  --command "SELECT count(*) FROM realm WHERE name = 'sq-staff-staging';")"
+  sh -ceu 'psql --username "$POSTGRES_USER" --dbname "$1" --tuples-only --no-align \
+    --command "SELECT count(*) FROM realm WHERE name = '\''sq-staff-staging'\'';"' sh "${RESTORE_DB}")"
 
 if [[ "${REALM_COUNT}" != "1" ]]; then
   echo "Restore verification failed: expected one sq-staff-staging realm, found ${REALM_COUNT}" >&2
