@@ -578,7 +578,12 @@ input[type="submit"].btn-primary:hover {
   }
 
   .sq-brand-lockup {
-    position: absolute !important;
+    /*
+     * footer.ftl is rendered inside .pf-v5-c-login__main. Keeping this
+     * lockup absolute would therefore anchor it to the raised auth card.
+     * A viewport-safe position keeps the real HCIS asset in the teal header.
+     */
+    position: fixed !important;
     top: 1.25rem !important;
     left: 1.5rem !important;
     max-width: calc(100vw - 3rem) !important;
