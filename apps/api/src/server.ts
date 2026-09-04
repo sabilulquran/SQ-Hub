@@ -9,6 +9,8 @@ import { PgHubAuthRepository } from "./modules/hub-auth/repository.js";
 import { HubAuthService } from "./modules/hub-auth/service.js";
 import { PgHubWorkspaceRepository } from "./modules/hub-auth/workspace-repository.js";
 import { KeycloakIdentityDirectory } from "./modules/identity-directory/client.js";
+import { PgOrganizationalUnitRepository } from "./modules/organizational-units/repository.js";
+import { OrganizationalUnitService } from "./modules/organizational-units/service.js";
 import { PgPlatformAdminRepository } from "./modules/platform-admin/repository.js";
 import { PlatformAdminService } from "./modules/platform-admin/service.js";
 
@@ -17,6 +19,9 @@ const pool = createPool(config.databaseUrl);
 const repository = new PgApplicationAccessRepository(pool);
 const accessService = new ApplicationAccessService(repository);
 const platformAdmin = new PlatformAdminService(new PgPlatformAdminRepository(pool));
+const organizationalUnits = new OrganizationalUnitService(
+  new PgOrganizationalUnitRepository(pool),
+);
 const identityDirectory = new KeycloakIdentityDirectory({
   baseUrl: config.keycloakDirectoryBaseUrl,
   realm: config.keycloakDirectoryRealm,
@@ -60,6 +65,7 @@ const app = buildApp({
   adminApplicationRegistry: accessService,
   adminApplicationAccess: accessService,
   identityDirectory,
+  organizationalUnits,
   logger: true,
 });
 
