@@ -66,11 +66,14 @@ def main() -> None:
     require(".well-known/openid-configuration" in snapshot, "snapshot must verify runtime OIDC discovery before PASS")
     require("PRODUCTION_ENV_REFUSED" in snapshot, "snapshot must reject production-looking env paths")
     require("--connect-timeout" in snapshot and "--max-time" in snapshot, "snapshot discovery probe must be bounded")
+    require("STAGING_KEYCLOAK_PROJECT_REQUIRED" in snapshot and '-p "$KEYCLOAK_PROJECT"' in snapshot, "snapshot must pin the staging Keycloak Compose project")
 
     backup_restore = (ROOT / "tools/wave1/keycloak-backup-restore.sh").read_text(encoding="utf-8")
     require("RESTORE_DB_OVERRIDE_REFUSED" in backup_restore, "backup/restore wrapper must refuse arbitrary restore databases")
     require("RESTORE_DB_COLLIDES_WITH_ACTIVE_DB" in backup_restore, "backup/restore wrapper must reject the active database")
     require("--connect-timeout" in backup_restore and "--max-time" in backup_restore, "post-restore discovery probe must be bounded")
+    require("STAGING_KEYCLOAK_PROJECT_REQUIRED" in backup_restore, "backup/restore wrapper must pin the staging Keycloak Compose project")
+    require('COMPOSE_PROJECT_NAME="$PROJECT"' in backup_restore, "backup/restore wrapper must pass the staging project to lower-level scripts")
 
     persona_tool = (ROOT / "tools/wave1/persona-matrix.py").read_text(encoding="utf-8")
     require(EXPECTED_ISSUER in persona_tool, "persona tool must enforce the exact staging issuer")

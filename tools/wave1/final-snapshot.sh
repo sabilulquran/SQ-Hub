@@ -5,6 +5,7 @@ SQ_HUB_DIR="${WAVE1_SQ_HUB_DIR:-$PWD}"
 HCIS_DIR="${WAVE1_HCIS_DIR:-}"
 KEYCLOAK_COMPOSE="${WAVE1_KEYCLOAK_COMPOSE:-$SQ_HUB_DIR/infra/keycloak/docker-compose.staging.yml}"
 KEYCLOAK_ENV_FILE="${WAVE1_KEYCLOAK_ENV_FILE:-$SQ_HUB_DIR/infra/keycloak/.env.staging}"
+KEYCLOAK_PROJECT="${WAVE1_KEYCLOAK_PROJECT:-sq-hub-keycloak-staging}"
 REALM_FILE="${WAVE1_REALM_FILE:-$SQ_HUB_DIR/infra/keycloak/realm/sq-staff-staging-realm.json}"
 ISSUER="https://login.sabilulquran.or.id/realms/sq-staff-staging"
 
@@ -22,6 +23,10 @@ if [[ ! -f "$REALM_FILE" ]]; then
 fi
 if [[ ! -f "$KEYCLOAK_ENV_FILE" ]]; then
   echo "WAVE1_SNAPSHOT_FAIL reason=KEYCLOAK_ENV_FILE_MISSING"
+  exit 1
+fi
+if [[ "$KEYCLOAK_PROJECT" != "sq-hub-keycloak-staging" ]]; then
+  echo "WAVE1_SNAPSHOT_FAIL reason=STAGING_KEYCLOAK_PROJECT_REQUIRED"
   exit 1
 fi
 case "${KEYCLOAK_ENV_FILE,,}" in
@@ -42,7 +47,7 @@ hcis_sha="$(git -C "$HCIS_DIR" rev-parse HEAD)"
 realm_sha256="$(sha256sum "$REALM_FILE" | awk '{print $1}')"
 
 # Runtime image reference and image ID are non-secret deployment facts.
-keycloak_container="$(docker compose --env-file "$KEYCLOAK_ENV_FILE" -f "$KEYCLOAK_COMPOSE" ps -q keycloak)"
+keycloak_container="$(docker compose -p "$KEYCLOAK_PROJECT" --env-file "$KEYCLOAK_ENV_FILE" -f "$KEYCLOAK_COMPOSE" ps -q keycloak)"
 if [[ -z "$keycloak_container" ]]; then
   echo "WAVE1_SNAPSHOT_FAIL reason=KEYCLOAK_NOT_RUNNING"
   exit 1
