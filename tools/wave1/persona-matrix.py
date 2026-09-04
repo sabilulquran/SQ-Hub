@@ -18,6 +18,7 @@ REQUIRED = {
 }
 
 ALLOWED_OUTCOMES = {"PENDING", "PASS", "FAIL", "MANUAL_STAGING_REQUIRED"}
+EXPECTED_ISSUER = "https://login.sabilulquran.or.id/realms/sq-staff-staging"
 
 
 def subject_handle(value: str) -> str:
@@ -34,6 +35,8 @@ def sanitize_persona(persona: dict) -> dict:
         raise ValueError(f"persona {persona['key']} has invalid result {persona['result']}")
     if not persona["synthetic_identifier"]:
         raise ValueError(f"persona {persona['key']} requires a synthetic_identifier")
+    if not persona["synthetic_identifier"].endswith(".invalid"):
+        raise ValueError(f"persona {persona['key']} must use a synthetic .invalid identifier")
     out = {
         "key": persona["key"],
         "synthetic_identifier": persona["synthetic_identifier"],
@@ -59,8 +62,12 @@ def main() -> int:
     if not isinstance(personas, list):
         raise ValueError("input must contain a personas array")
 
+    if data.get("issuer") != EXPECTED_ISSUER:
+        raise ValueError("input must use the exact accepted staging issuer")
     sanitized = [sanitize_persona(p) for p in personas]
     keys = {p["key"] for p in sanitized}
+    if len(keys) != len(sanitized):
+        raise ValueError("persona keys must be unique")
     missing = REQUIRED - keys
     extras = keys - REQUIRED
     if missing:
@@ -70,7 +77,7 @@ def main() -> int:
 
     report = {
         "schema": "sq-hub-wave1-persona-matrix-v1",
-        "issuer": data.get("issuer"),
+        "issuer": EXPECTED_ISSUER,
         "personas": sanitized,
     }
     encoded = json.dumps(report, indent=2, sort_keys=True) + "\n"

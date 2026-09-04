@@ -49,13 +49,27 @@ def main() -> None:
 
     preflight = (ROOT / "tools/wave1/staging-preflight.sh").read_text(encoding="utf-8")
     require(EXPECTED_ISSUER in preflight, "staging preflight must pin exact issuer")
+    require("EXPECTED_HCIS_ORIGIN" in preflight and "WAVE1_STAGING_ORIGIN_FAIL" in preflight, "staging preflight must refuse non-staging HCIS origins")
     require("/api/auth/login" in preflight and "/auth/login" in preflight, "preflight must probe known local-auth public paths")
 
     rollback = (ROOT / "tools/wave1/rollback-rehearsal.sh").read_text(encoding="utf-8")
     require('[[ "$PROJECT" == "hcis-staging" ]]' in rollback, "rollback must guard the staging project")
     require("PRODUCTION_ENV_REFUSED" in rollback, "rollback must reject production-looking env paths")
     require("WAVE1_LOCAL_AUTH_PROBE" in rollback and "WAVE1_OIDC_SSO_PROBE" in rollback, "rollback must require real operator probes")
+    require("WAVE1_STAGING_MUTATION_CONFIRMATION" in rollback, "rollback must require explicit staging mutation confirmation")
     require("identity_issuer" in rollback and "identity_subject" in rollback, "rollback must prove identity schema preservation")
+
+    snapshot = (ROOT / "tools/wave1/final-snapshot.sh").read_text(encoding="utf-8")
+    require(".well-known/openid-configuration" in snapshot, "snapshot must verify runtime OIDC discovery before PASS")
+    require("PRODUCTION_ENV_REFUSED" in snapshot, "snapshot must reject production-looking env paths")
+
+    backup_restore = (ROOT / "tools/wave1/keycloak-backup-restore.sh").read_text(encoding="utf-8")
+    require("RESTORE_DB_OVERRIDE_REFUSED" in backup_restore, "backup/restore wrapper must refuse arbitrary restore databases")
+    require("RESTORE_DB_COLLIDES_WITH_ACTIVE_DB" in backup_restore, "backup/restore wrapper must reject the active database")
+
+    persona_tool = (ROOT / "tools/wave1/persona-matrix.py").read_text(encoding="utf-8")
+    require(EXPECTED_ISSUER in persona_tool, "persona tool must enforce the exact staging issuer")
+    require("persona keys must be unique" in persona_tool, "persona tool must reject duplicate personas")
 
     cutover = (ROOT / "docs/operations/HUB-IMPL-003-production-cutover.md").read_text(encoding="utf-8")
     require("CUTOVER_BLOCKED" in cutover, "production runbook must fail closed while Wave 1 is incomplete")

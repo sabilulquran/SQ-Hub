@@ -24,6 +24,18 @@ if [[ ! -f "$KEYCLOAK_ENV_FILE" ]]; then
   echo "WAVE1_SNAPSHOT_FAIL reason=KEYCLOAK_ENV_FILE_MISSING"
   exit 1
 fi
+case "${KEYCLOAK_ENV_FILE,,}" in
+  *production*|*prod.env*|*.env.prod*)
+    echo "WAVE1_SNAPSHOT_FAIL reason=PRODUCTION_ENV_REFUSED"
+    exit 1
+    ;;
+esac
+
+# Do not report the configured constant as runtime evidence. Prove that the
+# reachable provider advertises the exact accepted staging issuer first.
+curl --fail --silent --show-error \
+  "$ISSUER/.well-known/openid-configuration" \
+  | jq -e --arg issuer "$ISSUER" '.issuer == $issuer' >/dev/null
 
 sq_hub_sha="$(git -C "$SQ_HUB_DIR" rev-parse HEAD)"
 hcis_sha="$(git -C "$HCIS_DIR" rev-parse HEAD)"

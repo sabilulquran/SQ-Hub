@@ -5,7 +5,7 @@ SQ_HUB_DIR="${WAVE1_SQ_HUB_DIR:-$PWD}"
 KEYCLOAK_DIR="$SQ_HUB_DIR/infra/keycloak"
 ENV_FILE="${WAVE1_KEYCLOAK_ENV_FILE:-$KEYCLOAK_DIR/.env.staging}"
 COMPOSE_FILE="$KEYCLOAK_DIR/docker-compose.staging.yml"
-RESTORE_DB="${WAVE1_KEYCLOAK_RESTORE_DB:-keycloak_wave1_restore_check}"
+RESTORE_DB="keycloak_wave1_restore_check"
 ISSUER="${WAVE1_ISSUER:-https://login.sabilulquran.or.id/realms/sq-staff-staging}"
 EXPECTED_ISSUER="https://login.sabilulquran.or.id/realms/sq-staff-staging"
 
@@ -22,6 +22,16 @@ fail() {
 case "$ENV_FILE" in
   *production*|*prod.env*|*.env.prod*) fail PRODUCTION_ENV_REFUSED ;;
 esac
+if [[ -n "${WAVE1_KEYCLOAK_RESTORE_DB:-}" && "$WAVE1_KEYCLOAK_RESTORE_DB" != "$RESTORE_DB" ]]; then
+  fail RESTORE_DB_OVERRIDE_REFUSED
+fi
+
+# The lower-level restore check drops/recreates its target. Refuse to call it
+# unless the fixed disposable name differs from the active database name.
+if ! docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" exec -T keycloak-db \
+  sh -ceu 'test "$POSTGRES_DB" != "$1"' sh "$RESTORE_DB"; then
+  fail RESTORE_DB_COLLIDES_WITH_ACTIVE_DB
+fi
 
 backup_file="$(mktemp /tmp/keycloak-wave1-backup.XXXXXX.dump)"
 cleanup() {
