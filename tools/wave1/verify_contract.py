@@ -17,6 +17,8 @@ REQUIRED_FILES = [
     ROOT / "tools/wave1/final-snapshot.sh",
     ROOT / "tools/wave1/rollback-rehearsal.sh",
     ROOT / "tools/wave1/keycloak-backup-restore.sh",
+    ROOT / "infra/keycloak/scripts/backup.sh",
+    ROOT / "infra/keycloak/scripts/restore-check.sh",
 ]
 
 FORBIDDEN_PATTERNS = [
@@ -74,6 +76,11 @@ def main() -> None:
     require("--connect-timeout" in backup_restore and "--max-time" in backup_restore, "post-restore discovery probe must be bounded")
     require("STAGING_KEYCLOAK_PROJECT_REQUIRED" in backup_restore, "backup/restore wrapper must pin the staging Keycloak Compose project")
     require('COMPOSE_PROJECT_NAME="$PROJECT"' in backup_restore, "backup/restore wrapper must pass the staging project to lower-level scripts")
+
+    for helper_name in ("backup.sh", "restore-check.sh"):
+        helper = (ROOT / "infra/keycloak/scripts" / helper_name).read_text(encoding="utf-8")
+        require('source "${ENV_FILE}"' not in helper, f"{helper_name} must not execute Docker env files as shell code")
+        require("$POSTGRES_USER" in helper, f"{helper_name} must use the database identity from inside the target container")
 
     persona_tool = (ROOT / "tools/wave1/persona-matrix.py").read_text(encoding="utf-8")
     require(EXPECTED_ISSUER in persona_tool, "persona tool must enforce the exact staging issuer")
