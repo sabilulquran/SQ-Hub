@@ -31,7 +31,7 @@ jobs:
         shell: bash
         run: |
           theme='infra/keycloak/themes/sq-hub/login/theme.properties'
-          expected='css/styles.css css/sq-account-hcis-f7a4c91d2e36.css css/hcis-logo-assets-294b82789923.css'
+          expected='css/styles.css css/sq-account-hcis-5ae1544133ef.css css/hcis-logo-assets-294b82789923.css'
           active="$(sed -n 's/^styles=//p' "$theme")"
 
           test "$active" = "$expected"
@@ -47,7 +47,7 @@ jobs:
       - name: Verify HCIS source-mapped composition
         shell: bash
         run: |
-          css='infra/keycloak/themes/sq-hub/login/resources/css/sq-account-hcis-f7a4c91d2e36.css'
+          css='infra/keycloak/themes/sq-hub/login/resources/css/sq-account-hcis-5ae1544133ef.css'
 
           test -s "$css"
           grep -Fq 'grid-template-columns: minmax(0, 3fr) minmax(0, 2fr)' "$css"
@@ -109,7 +109,7 @@ jobs:
       - name: Reject rejected or placeholder composition
         shell: bash
         run: |
-          css='infra/keycloak/themes/sq-hub/login/resources/css/sq-account-hcis-f7a4c91d2e36.css'
+          css='infra/keycloak/themes/sq-hub/login/resources/css/sq-account-hcis-5ae1544133ef.css'
           footer='infra/keycloak/themes/sq-hub/login/footer.ftl'
 
           ! grep -Fq 'grid-template-columns: minmax(0, 56fr) minmax(27rem, 44fr)' "$css"
@@ -134,7 +134,7 @@ jobs:
           <head>
             <meta charset="utf-8">
             <meta name="viewport" content="width=device-width, initial-scale=1">
-            <link rel="stylesheet" href="resources/css/sq-account-hcis-f7a4c91d2e36.css">
+            <link rel="stylesheet" href="resources/css/sq-account-hcis-5ae1544133ef.css">
             <link rel="stylesheet" href="resources/css/hcis-logo-assets-294b82789923.css">
           </head>
           <body class="login-pf">
@@ -150,12 +150,14 @@ jobs:
                       <input id="kc-login" class="btn-primary" type="submit" value="Masuk">
                     </form>
                   </div>
-                  <footer class="pf-v5-c-login__main-footer"><p class="sq-login-footer">Akun SQ digunakan untuk masuk dan menjaga keamanan akun.</p></footer>
+                  <footer class="pf-v5-c-login__main-footer">
+                    <div class="sq-brand-lockup"><img class="sq-brand-lockup__logo sq-brand-lockup__logo--light" src="resources/img/logo.png" alt="Sabilul Qur'an"><img class="sq-brand-lockup__logo sq-brand-lockup__logo--dark" src="resources/img/logo-white.png" alt="Sabilul Qur'an"></div>
+                    <div class="sq-brand-values"><div class="sq-brand-values__eyebrow">Nilai Utsman</div><div class="sq-brand-values__grid"><article class="sq-brand-value">A</article><article class="sq-brand-value">B</article><article class="sq-brand-value">C</article><article class="sq-brand-value">D</article><article class="sq-brand-value">E</article><article class="sq-brand-value">F</article></div></div>
+                    <p class="sq-login-footer">Akun SQ digunakan untuk masuk dan menjaga keamanan akun.</p>
+                  </footer>
                 </main>
               </div>
             </div>
-            <div class="sq-brand-lockup"><img class="sq-brand-lockup__logo sq-brand-lockup__logo--light" src="resources/img/logo.png" alt="Sabilul Qur'an"><img class="sq-brand-lockup__logo sq-brand-lockup__logo--dark" src="resources/img/logo-white.png" alt="Sabilul Qur'an"></div>
-            <div class="sq-brand-values"><div class="sq-brand-values__eyebrow">Nilai Utsman</div><div class="sq-brand-values__grid"><article class="sq-brand-value">A</article><article class="sq-brand-value">B</article><article class="sq-brand-value">C</article><article class="sq-brand-value">D</article><article class="sq-brand-value">E</article><article class="sq-brand-value">F</article></div></div>
             <script>
               const params = new URLSearchParams(location.search);
               if (params.get('mode') === 'long') {
@@ -169,6 +171,18 @@ jobs:
               const body = document.body;
               const vertical = Math.max(root.scrollHeight, body.scrollHeight) > window.innerHeight + 1;
               const horizontal = Math.max(root.scrollWidth, body.scrollWidth) > window.innerWidth + 1;
+              const logo = document.querySelector('.sq-brand-lockup');
+              const title = document.querySelector('#kc-page-title');
+              const header = document.querySelector('#kc-header');
+              const logoRect = logo.getBoundingClientRect();
+              const titleRect = title.getBoundingClientRect();
+              const headerRect = header.getBoundingClientRect();
+              const logoIntersectsTitle =
+                logoRect.left < titleRect.right && logoRect.right > titleRect.left &&
+                logoRect.top < titleRect.bottom && logoRect.bottom > titleRect.top;
+              const logoInBrandedHeader =
+                logoRect.left >= -1 && logoRect.right <= window.innerWidth + 1 &&
+                logoRect.top >= -1 && logoRect.bottom <= headerRect.bottom + 1;
               const selectors = ['.pf-v5-c-login__container', '#kc-header', '.pf-v5-c-login__main', '#kc-form', '.sq-brand-lockup'];
               const layoutOverflow = selectors.some((selector) => {
                 const element = document.querySelector(selector);
@@ -179,6 +193,8 @@ jobs:
               body.setAttribute('data-vertical-overflow', String(vertical));
               body.setAttribute('data-horizontal-overflow', String(horizontal));
               body.setAttribute('data-layout-overflow', String(layoutOverflow));
+              body.setAttribute('data-logo-intersects-title', String(logoIntersectsTitle));
+              body.setAttribute('data-logo-in-branded-header', String(logoInBrandedHeader));
               body.setAttribute('data-inner-size', `${window.innerWidth}x${window.innerHeight}`);
             </script>
           </body>
@@ -192,6 +208,8 @@ jobs:
             expected_vertical="$4"
             expected_horizontal="$5"
             expected_layout="$6"
+            expected_logo_intersection="$7"
+            expected_logo_header="$8"
             output="/tmp/hcis-layout-${width}x${height}-${mode}.html"
 
             "$chrome" \
@@ -205,12 +223,14 @@ jobs:
             grep -Fq "data-vertical-overflow=\"$expected_vertical\"" "$output"
             grep -Fq "data-horizontal-overflow=\"$expected_horizontal\"" "$output"
             grep -Fq "data-layout-overflow=\"$expected_layout\"" "$output"
+            grep -Fq "data-logo-intersects-title=\"$expected_logo_intersection\"" "$output"
+            grep -Fq "data-logo-in-branded-header=\"$expected_logo_header\"" "$output"
           }
 
-          run_layout 1440 900 normal false false false
-          run_layout 1280 720 normal false false false
-          run_layout 390 844 normal false false false
-          run_layout 1440 900 long true false false
+          run_layout 1440 900 normal false false false false true
+          run_layout 1280 720 normal false false false false true
+          run_layout 390 844 normal false false false false true
+          run_layout 1440 900 long true false false false true
 
           rm -f "$fixture"
           echo 'AKUN_SQ_LAYOUT_SCROLL_OVERFLOW_CONTRACT_PASS'

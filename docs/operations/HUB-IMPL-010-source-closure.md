@@ -19,7 +19,7 @@ At the base candidate, `theme.properties` still loaded both `sq-account-hcis-d8e
 The final active custom stack is:
 
 1. Keycloak parent `css/styles.css`;
-2. `css/sq-account-hcis-f7a4c91d2e36.css`;
+2. `css/sq-account-hcis-5ae1544133ef.css`;
 3. `css/hcis-logo-assets-294b82789923.css`.
 
 The logo helper is content-versioned without changing the approved binary assets. Expected Git blob identities remain:
@@ -42,6 +42,7 @@ The identity parity workflow now protects:
 - normal desktop layout at 1440x900 and 1280x720 has no unnecessary vertical overflow in the representative native-login DOM;
 - mobile 390x844 has no horizontal/layout overflow;
 - an intentionally long authentication state remains vertically scrollable;
+- at 390x844, the exact logo remains in the compact teal header and does not intersect the auth-card title;
 - no global `overflow-y: hidden` workaround is accepted.
 
 The browser-layout check is a repository regression smoke, not a screenshot-diff suite and not a substitute for staging visual UAT.
