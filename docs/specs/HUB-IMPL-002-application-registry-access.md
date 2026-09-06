@@ -137,6 +137,26 @@ Requirements:
 - machine identity does not receive broad Keycloak admin rights;
 - using Keycloak for machine authentication does not move Application Access ownership into Keycloak.
 
+Machine verification has an application-owned 3000 ms deadline, below the HCIS
+5000 ms access-check caller budget. Remote JWKS transport has a 2500 ms timeout.
+On deadline or transport failure, discard the affected resolver generation and
+cancel its transport where supported; subsequent requests use clean resolver
+state. Each concurrent verification has its own deadline, and late work from an
+old generation must not invalidate a newer generation. JWT signature, configured
+public issuer, audience, and client allowlist validation remain mandatory.
+Invalid claims and unknown keys retain normal JOSE cache/cooldown behavior.
+
+Verifier unavailability fails closed through the existing `401 INVALID_TOKEN`
+wire contract; it does not authorize access or reach body validation/database
+work. This category does not prove that a presented token is cryptographically
+invalid. Deadlines bound asynchronous verifier waits while the Node event loop
+is responsive; they are not a total database/request deadline. Late successful
+verification is rejected if its elapsed budget has already expired.
+
+This is defensive reliability hardening for the observed process-local >15 s
+stall and restart recovery. The exact historical JOSE trigger remains unknown;
+tests of a transport ignoring cancellation are explicit fault injection.
+
 ## Runtime dependency rule
 Application Access is checked when HCIS creates a **new** authenticated application session.
 

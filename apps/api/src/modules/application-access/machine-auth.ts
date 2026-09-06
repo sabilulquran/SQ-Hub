@@ -1,4 +1,12 @@
-import { createRemoteJWKSet, jwtVerify } from "jose";
+import { createRemoteJWKSet, customFetch, errors, jwtVerify } from "jose";
+
+export const MACHINE_VERIFICATION_DEADLINE_MS = 3_000;
+const JWKS_TRANSPORT_TIMEOUT_MS = 2_500;
+
+interface ResolverGeneration {
+  jwks: ReturnType<typeof createRemoteJWKSet>;
+  abort: AbortController;
+}
 
 export interface MachinePrincipal {
   clientId: string;
@@ -22,16 +30,54 @@ export function createKeycloakMachineTokenVerifier(input: {
   allowedClients: ReadonlySet<string>;
 }): VerifyMachineToken {
   const issuer = input.issuer.replace(/\/$/, "");
-  const jwks = createRemoteJWKSet(
-    new URL(`${issuer}/protocol/openid-connect/certs`),
-  );
+  const jwksUrl = new URL(`${issuer}/protocol/openid-connect/certs`);
+  let current: ResolverGeneration | undefined;
+
+  function generation(): ResolverGeneration {
+    if (current) return current;
+    const abort = new AbortController();
+    current = {
+      abort,
+      jwks: createRemoteJWKSet(jwksUrl, {
+        timeoutDuration: JWKS_TRANSPORT_TIMEOUT_MS,
+        [customFetch]: (url, options) => fetch(url, {
+          ...options,
+          signal: AbortSignal.any([
+            abort.signal,
+            ...(options.signal ? [options.signal] : []),
+          ]),
+        }),
+      }),
+    };
+    return current;
+  }
+
+  function discard(active: ResolverGeneration) {
+    // An old timeout/completion must never discard a newer healthy generation.
+    if (current === active) current = undefined;
+    active.abort.abort();
+  }
 
   return async (token: string) => {
+    const active = generation();
+    const started = performance.now();
+    const deadlineError = new MachineAuthError("INVALID_TOKEN", "machine verification unavailable");
+    let timer: ReturnType<typeof setTimeout> | undefined;
     try {
-      const { payload } = await jwtVerify(token, jwks, {
-        issuer,
-        audience: input.audience,
-      });
+      const { payload } = await Promise.race([
+        jwtVerify(token, active.jwks, { issuer, audience: input.audience }),
+        new Promise<never>((_resolve, reject) => {
+          timer = setTimeout(() => {
+            discard(active);
+            reject(deadlineError);
+          }, MACHINE_VERIFICATION_DEADLINE_MS);
+        }),
+      ]);
+      // Do not accept late work if the event loop delayed delivery of the timer.
+      if (performance.now() - started >= MACHINE_VERIFICATION_DEADLINE_MS) {
+        discard(active);
+        throw deadlineError;
+      }
 
       const clientId =
         typeof payload.azp === "string"
@@ -46,8 +92,19 @@ export function createKeycloakMachineTokenVerifier(input: {
 
       return { clientId };
     } catch (error) {
+      if (
+        error instanceof errors.JWKSTimeout ||
+        error instanceof errors.JWKSInvalid ||
+        (error instanceof errors.JOSEError && error.code === "ERR_JOSE_GENERIC") ||
+        error instanceof TypeError ||
+        (error instanceof Error && ["AbortError", "TimeoutError"].includes(error.name))
+      ) {
+        discard(active);
+      }
       if (error instanceof MachineAuthError) throw error;
       throw new MachineAuthError("INVALID_TOKEN", "machine token is invalid");
+    } finally {
+      clearTimeout(timer);
     }
   };
 }
