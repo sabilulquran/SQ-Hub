@@ -4,6 +4,12 @@
 **Production authorization:** NOT GRANTED by this document  
 **Execution owner:** designated production change owner after explicit approval
 
+See [2026-09-06 staging evidence](HUB-IMPL-003-production-readiness-2026-09-06.md)
+for the deployed verifier repair and current gate results. Technical acceptance
+is still incomplete; this runbook remains blocked. Issue #17 long-state visual
+UAT is not a production cutover hard gate. Technical staging acceptance and
+human production authorization/window/owners must be reported separately.
+
 This runbook prepares the production migration from HCIS-owned password authentication to SQ Identity. It does not authorize a production realm, production secret mutation, HCIS auth-mode switch, DNS change, deployment, or legacy-credential deletion.
 
 ## Hard gate

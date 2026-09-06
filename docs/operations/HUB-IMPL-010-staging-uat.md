@@ -2,6 +2,12 @@
 
 **Scope:** SQ Hub, Administrasi SQ, and Akun SQ polish on staging only.
 
+See [2026-09-06 readiness evidence](HUB-IMPL-003-production-readiness-2026-09-06.md)
+for the current functional/authentication status. Remaining recovery/alternate
+method UAT is not marked PASS by verifier CI. Issue #17's genuine long-state
+visual evidence remains a separate UX follow-up, not a production cutover hard
+gate; the visual acceptance requirement itself is not weakened.
+
 Use only synthetic staging identities. Do not capture or paste passwords, cookies, access/refresh tokens, raw OIDC subjects, client secrets, TOTP values, recovery codes, or other credential material in evidence.
 
 ## SQ Hub

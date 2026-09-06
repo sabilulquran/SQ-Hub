@@ -5,6 +5,13 @@
 **Production cutover:** NOT AUTHORIZED  
 **Canonical staging issuer:** `https://login.sabilulquran.or.id/realms/sq-staff-staging`
 
+Executed 2026-09-06 repair deployment, live verifier probes, backup/restore,
+secret-control checks and remaining gates are recorded in the
+[current readiness evidence](HUB-IMPL-003-production-readiness-2026-09-06.md).
+The original map below describes prepared closure paths, not blanket PASS
+results. Issue #9 remains open. Issue #17 long-state visual UAT is a separate,
+non-blocking UX follow-up for production readiness.
+
 This document maps every unchecked checkbox currently present in issue #9 to the evidence already available, the part that can be automated, and the part that still requires live staging, browser/human UAT, or production authorization. It must not be used to mark an issue checkbox complete merely because an offline test or this runbook is green.
 
 ## Evidence classes

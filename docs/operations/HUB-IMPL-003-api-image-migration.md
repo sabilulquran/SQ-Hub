@@ -3,6 +3,13 @@
 **Status:** PREPARED ONLY — DO NOT DEPLOY from this change  
 **Scope:** SQ Hub API staging image provenance/verification
 
+**Execution update — 2026-09-06:** a separately authorized API-only staging
+deployment now runs the organization-owned immutable verifier repair image from
+PR #47. Provenance, digest, preserved environment/non-target IDs and live access
+probes are in the [execution evidence](HUB-IMPL-003-production-readiness-2026-09-06.md).
+The prepared procedure below is retained as historical/runbook context; no
+production deployment has occurred.
+
 ## Finding
 
 The repository already has an organization-owned publisher in `.github/workflows/publish-api-staging-image.yml`.
