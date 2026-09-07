@@ -24,6 +24,8 @@ jobs:
       KEYCLOAK_BOOTSTRAP_ADMIN_USERNAME: ci-bootstrap-admin
       KEYCLOAK_BOOTSTRAP_ADMIN_PASSWORD: ci-bootstrap-admin-password-only
       KEYCLOAK_DIRECTORY_CLIENT_SECRET: ci-directory-client-secret-only
+      GOOGLE_CLIENT_ID: ci-google-client-id-only
+      GOOGLE_CLIENT_SECRET: ci-google-client-secret-only
       KEYCLOAK_HOSTNAME: http://127.0.0.1:8080
       KEYCLOAK_HTTP_PORT: "8080"
       KEYCLOAK_MANAGEMENT_PORT: "9000"
@@ -54,6 +56,8 @@ jobs:
           KEYCLOAK_BOOTSTRAP_ADMIN_USERNAME=$KEYCLOAK_BOOTSTRAP_ADMIN_USERNAME
           KEYCLOAK_BOOTSTRAP_ADMIN_PASSWORD=$KEYCLOAK_BOOTSTRAP_ADMIN_PASSWORD
           KEYCLOAK_DIRECTORY_CLIENT_SECRET=$KEYCLOAK_DIRECTORY_CLIENT_SECRET
+          GOOGLE_CLIENT_ID=$GOOGLE_CLIENT_ID
+          GOOGLE_CLIENT_SECRET=$GOOGLE_CLIENT_SECRET
           EOF
           chmod 600 "$KEYCLOAK_ENV_FILE"
 
@@ -157,6 +161,8 @@ jobs:
             .displayName == "SQ Identity Staging" and
             .registrationAllowed == false and
             .rememberMe == false and
+            .resetPasswordAllowed == true and
+            .loginWithEmailAllowed == true and
             .duplicateEmailsAllowed == false and
             .internationalizationEnabled == true and
             .defaultLocale == "id" and
@@ -183,6 +189,83 @@ jobs:
           jq -e '.[0].bearerOnly == true' /tmp/client-sq-hub-api-staging.json
           jq -e '.[0].serviceAccountsEnabled == true and .[0].directAccessGrantsEnabled == false' \
             /tmp/client-hcis-api-staging.json
+
+      - name: Reconcile and verify recovery and Google broker safety
+        shell: bash
+        run: |
+          kcadm_config=/tmp/sq-hub-identity-ux-ci.kcadm
+
+          docker compose \
+            --env-file "$KEYCLOAK_ENV_FILE" \
+            -f infra/keycloak/docker-compose.staging.yml \
+            -f infra/keycloak/docker-compose.bootstrap.yml \
+            exec -T keycloak \
+            sh -ceu '
+              /opt/keycloak/bin/kcadm.sh config credentials \
+                --config "$1" \
+                --server http://127.0.0.1:8080 \
+                --realm master \
+                --user "$KC_BOOTSTRAP_ADMIN_USERNAME" \
+                --password "$KC_BOOTSTRAP_ADMIN_PASSWORD" >/dev/null
+            ' sh "$kcadm_config"
+
+          expected_output="$(printf '%s\n' \
+            FORGOT_PASSWORD_CONFIGURATION_PASS \
+            EMAIL_ALTERNATE_LOGIN_CONFIGURATION_PASS \
+            GOOGLE_EXISTING_ACCOUNT_LINK_ONLY_PASS \
+            GOOGLE_CONDITIONAL_MFA_PASS \
+            GOOGLE_PROVIDER_CONFIGURATION_PASS)"
+
+          for pass in first second; do
+            output="$(
+              KEYCLOAK_REALM=sq-staff-staging \
+              KEYCLOAK_KCADM_CONFIG="$kcadm_config" \
+                bash infra/keycloak/scripts/reconcile-identity-recovery-google.sh
+            )"
+            printf '%s\n' "$output"
+            test "$output" = "$expected_output"
+          done
+
+          curl --fail --silent \
+            --get \
+            --data-urlencode 'client_id=hcis-staging' \
+            --data-urlencode 'response_type=code' \
+            --data-urlencode 'scope=openid' \
+            --data-urlencode 'redirect_uri=https://hcis-staging.sabilulquran.or.id/auth/callback' \
+            --data-urlencode 'code_challenge=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA' \
+            --data-urlencode 'code_challenge_method=S256' \
+            http://127.0.0.1:8080/realms/sq-staff-staging/protocol/openid-connect/auth \
+            > /tmp/akun-sq-identity-ux.html
+
+          grep -Fq 'Lupa kata sandi?' /tmp/akun-sq-identity-ux.html
+          grep -Fq 'Masuk dengan Google' /tmp/akun-sq-identity-ux.html
+          ! grep -Fq "$GOOGLE_CLIENT_SECRET" /tmp/akun-sq-identity-ux.html
+
+          first_flow="$({
+            docker compose --env-file "$KEYCLOAK_ENV_FILE" -f infra/keycloak/docker-compose.staging.yml \
+              exec -T keycloak /opt/keycloak/bin/kcadm.sh get \
+              'authentication/flows/Akun SQ Google existing-account link/executions' \
+              -r sq-staff-staging --config "$kcadm_config"
+          })"
+          jq -e '
+            length == 3 and
+            ([.[] | select(.providerId == "idp-create-user-if-unique" or .providerId == "idp-auto-link")] | length) == 0
+          ' >/dev/null <<<"$first_flow"
+
+          google_provider="$({
+            docker compose --env-file "$KEYCLOAK_ENV_FILE" -f infra/keycloak/docker-compose.staging.yml \
+              exec -T keycloak /opt/keycloak/bin/kcadm.sh get identity-provider/instances/google \
+              -r sq-staff-staging --config "$kcadm_config"
+          })"
+          jq -e '
+            .storeToken == false and .addReadTokenRoleOnCreate == false and
+            .config.syncMode == "IMPORT"
+          ' >/dev/null <<<"$google_provider"
+
+          unset first_flow google_provider output
+          rm -f /tmp/akun-sq-identity-ux.html
+          docker compose --env-file "$KEYCLOAK_ENV_FILE" -f infra/keycloak/docker-compose.staging.yml \
+            exec -T keycloak rm -f "$kcadm_config"
 
       - name: Reconcile and verify recovery-code prerequisites
         shell: bash
