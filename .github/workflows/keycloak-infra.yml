@@ -234,7 +234,7 @@ jobs:
             http://127.0.0.1:8080/realms/sq-staff-staging/protocol/openid-connect/auth \
             > /tmp/akun-sq-identity-ux.html
 
-          grep -Fq 'Lupa kata sandi?' /tmp/akun-sq-identity-ux.html
+          grep -Fq 'Lupa password?' /tmp/akun-sq-identity-ux.html
           grep -Fq 'Masuk dengan Google' /tmp/akun-sq-identity-ux.html
           ! grep -Fq "$GOOGLE_CLIENT_SECRET" /tmp/akun-sq-identity-ux.html
 
