@@ -48,10 +48,15 @@ jq -e --arg realm "${REALM}" '.realm == $realm' >/dev/null <<<"${realm_json}" \
   || fail "authenticated endpoint did not return the expected realm"
 
 browser_flow="$(jq -er '.browserFlow | select(type == "string" and length > 0)' <<<"${realm_json}")"
-browser_model="$(kcadm get "authentication/flows/${browser_flow}" -r "${REALM}")"
+browser_model="$(kcadm get authentication/flows -r "${REALM}" \
+  | jq -er --arg alias "${browser_flow}" '.[] | select(.alias == $alias)')"
 
 if jq -e '.builtIn == true' >/dev/null <<<"${browser_model}"; then
-  if ! kcadm get "authentication/flows/${COPIED_BROWSER_FLOW}" -r "${REALM}" >/dev/null 2>&1; then
+  copied_count="$(kcadm get authentication/flows -r "${REALM}" \
+    | jq --arg alias "${COPIED_BROWSER_FLOW}" '[.[] | select(.alias == $alias)] | length')"
+  [[ "${copied_count}" == "0" || "${copied_count}" == "1" ]] \
+    || fail "ambiguous copied Browser flow"
+  if [[ "${copied_count}" == "0" ]]; then
     kcadm create "authentication/flows/${browser_flow}/copy" -r "${REALM}" \
       -s "newName=${COPIED_BROWSER_FLOW}" >/dev/null
   fi
