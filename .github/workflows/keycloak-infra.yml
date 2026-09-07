@@ -24,6 +24,7 @@ jobs:
       KEYCLOAK_BOOTSTRAP_ADMIN_USERNAME: ci-bootstrap-admin
       KEYCLOAK_BOOTSTRAP_ADMIN_PASSWORD: ci-bootstrap-admin-password-only
       KEYCLOAK_DIRECTORY_CLIENT_SECRET: ci-directory-client-secret-only
+      SQ_TRUSTED_DEVICE_SIGNING_KEY: MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=
       KEYCLOAK_HOSTNAME: http://127.0.0.1:8080
       KEYCLOAK_HTTP_PORT: "8080"
       KEYCLOAK_MANAGEMENT_PORT: "9000"
@@ -54,6 +55,7 @@ jobs:
           KEYCLOAK_BOOTSTRAP_ADMIN_USERNAME=$KEYCLOAK_BOOTSTRAP_ADMIN_USERNAME
           KEYCLOAK_BOOTSTRAP_ADMIN_PASSWORD=$KEYCLOAK_BOOTSTRAP_ADMIN_PASSWORD
           KEYCLOAK_DIRECTORY_CLIENT_SECRET=$KEYCLOAK_DIRECTORY_CLIENT_SECRET
+          SQ_TRUSTED_DEVICE_SIGNING_KEY=$SQ_TRUSTED_DEVICE_SIGNING_KEY
           EOF
           chmod 600 "$KEYCLOAK_ENV_FILE"
 
@@ -244,6 +246,75 @@ jobs:
             ([.[] | select(.providerId == "auth-otp-form" and .requirement == "ALTERNATIVE")] | length) == 1
           ' >/dev/null <<<"$executions_json"
 
+          docker compose --env-file "$KEYCLOAK_ENV_FILE" -f infra/keycloak/docker-compose.staging.yml \
+            exec -T keycloak rm -f "$kcadm_config"
+
+      - name: Reconcile and verify trusted-device authentication flows
+        shell: bash
+        run: |
+          kcadm_config=/tmp/sq-hub-trusted-device-ci.kcadm
+          google_post_flow='CI Google conditional MFA'
+
+          docker compose \
+            --env-file "$KEYCLOAK_ENV_FILE" \
+            -f infra/keycloak/docker-compose.staging.yml \
+            -f infra/keycloak/docker-compose.bootstrap.yml \
+            exec -T keycloak \
+            sh -ceu '
+              /opt/keycloak/bin/kcadm.sh config credentials \
+                --config "$1" \
+                --server http://127.0.0.1:8080 \
+                --realm master \
+                --user "$KC_BOOTSTRAP_ADMIN_USERNAME" \
+                --password "$KC_BOOTSTRAP_ADMIN_PASSWORD" >/dev/null
+            ' sh "$kcadm_config"
+
+          providers="$({
+            docker compose --env-file "$KEYCLOAK_ENV_FILE" -f infra/keycloak/docker-compose.staging.yml \
+              exec -T keycloak /opt/keycloak/bin/kcadm.sh get authentication/authenticator-providers \
+              -r sq-staff-staging --config "$kcadm_config"
+          })"
+          jq -e '([.[] | select(.id == "sq-trusted-device-otp")] | length) == 1' \
+            >/dev/null <<<"$providers"
+
+          docker compose --env-file "$KEYCLOAK_ENV_FILE" -f infra/keycloak/docker-compose.staging.yml \
+            exec -T keycloak /opt/keycloak/bin/kcadm.sh create authentication/flows \
+            -r sq-staff-staging -s "alias=$google_post_flow" -s providerId=basic-flow \
+            -s topLevel=true -s builtIn=false --config "$kcadm_config" >/dev/null
+          docker compose --env-file "$KEYCLOAK_ENV_FILE" -f infra/keycloak/docker-compose.staging.yml \
+            exec -T keycloak /opt/keycloak/bin/kcadm.sh create \
+            "authentication/flows/$google_post_flow/executions/execution" \
+            -r sq-staff-staging -s provider=auth-otp-form --config "$kcadm_config" >/dev/null
+
+          google_executions="$({
+            docker compose --env-file "$KEYCLOAK_ENV_FILE" -f infra/keycloak/docker-compose.staging.yml \
+              exec -T keycloak /opt/keycloak/bin/kcadm.sh get \
+              "authentication/flows/$google_post_flow/executions" \
+              -r sq-staff-staging --config "$kcadm_config"
+          })"
+          google_otp="$(jq '.[] | select(.providerId == "auth-otp-form") | .requirement = "REQUIRED"' \
+            <<<"$google_executions")"
+          printf '%s' "$google_otp" | docker compose --env-file "$KEYCLOAK_ENV_FILE" \
+            -f infra/keycloak/docker-compose.staging.yml exec -T keycloak \
+            /opt/keycloak/bin/kcadm.sh update "authentication/flows/$google_post_flow/executions" \
+            -r sq-staff-staging -n -f - --config "$kcadm_config" >/dev/null
+
+          expected_output="$(printf '%s\n' \
+            TRUSTED_DEVICE_BROWSER_FLOW_PASS \
+            TRUSTED_DEVICE_GOOGLE_POST_FLOW_PASS \
+            TRUSTED_DEVICE_RECONCILE_IDEMPOTENT_PASS)"
+          for pass in first second; do
+            output="$(
+              KEYCLOAK_REALM=sq-staff-staging \
+              KEYCLOAK_KCADM_CONFIG="$kcadm_config" \
+              KEYCLOAK_GOOGLE_POST_FLOW_ALIAS="$google_post_flow" \
+                bash infra/keycloak/scripts/reconcile-trusted-device.sh
+            )"
+            printf '%s\n' "$output"
+            test "$output" = "$expected_output"
+          done
+
+          unset providers google_executions google_otp output
           docker compose --env-file "$KEYCLOAK_ENV_FILE" -f infra/keycloak/docker-compose.staging.yml \
             exec -T keycloak rm -f "$kcadm_config"
 

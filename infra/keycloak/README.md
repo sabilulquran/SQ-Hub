@@ -36,6 +36,8 @@ The YSQ VPS topology uses the shared Caddy Docker network. A host-Nginx example 
 - `themes/sq-hub/` — SQ login theme derived from the accepted HCIS design baseline; no font files are bundled.
 - `scripts/backup.sh` — PostgreSQL custom-format backup.
 - `scripts/reconcile-recovery-codes.sh` — idempotent staging-only recovery-code convergence through authenticated `kcadm`.
+- `providers/trusted-device/` — internally maintained, pinned-version Keycloak authenticator for optional 30-day TOTP device trust.
+- `scripts/reconcile-trusted-device.sh` — copies the bound built-in Browser flow when necessary and replaces only its OTP execution (plus the Google post-broker OTP execution when configured).
 - `scripts/restore-check.sh` — restores a backup to a disposable verification database and checks that the staging realm exists.
 - `../../docs/operations/staff-identity-provisioning.md` — minimum profile-complete provisioning contract for manual staging and future automation.
 

@@ -40,6 +40,7 @@ services:
       KC_HEALTH_ENABLED: "true"
       KC_METRICS_ENABLED: "true"
       KC_SPI_REQUIRED_ACTION__CONFIGURE_TOTP__ADD_RECOVERY_CODES: "true"
+      SQ_TRUSTED_DEVICE_SIGNING_KEY: ${SQ_TRUSTED_DEVICE_SIGNING_KEY:-}
     command:
       - start
       - --optimized

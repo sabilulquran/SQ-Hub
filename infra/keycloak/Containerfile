@@ -1,3 +1,11 @@
+FROM maven:3.9.11-eclipse-temurin-21-alpine AS trusted-device-builder
+
+WORKDIR /workspace
+COPY infra/keycloak/providers/trusted-device/pom.xml ./pom.xml
+RUN mvn --batch-mode --no-transfer-progress dependency:go-offline
+COPY infra/keycloak/providers/trusted-device/src ./src
+RUN mvn --batch-mode --no-transfer-progress verify
+
 FROM quay.io/keycloak/keycloak:26.7.2 AS builder
 
 ENV KC_DB=postgres
@@ -6,6 +14,7 @@ ENV KC_METRICS_ENABLED=true
 
 WORKDIR /opt/keycloak
 COPY infra/keycloak/themes/sq-hub /opt/keycloak/themes/sq-hub
+COPY --from=trusted-device-builder /workspace/target/sq-trusted-device-1.0.0.jar /opt/keycloak/providers/sq-trusted-device.jar
 RUN /opt/keycloak/bin/kc.sh build
 
 FROM quay.io/keycloak/keycloak:26.7.2
