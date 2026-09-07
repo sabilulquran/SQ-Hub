@@ -7,9 +7,9 @@ ENV_FILE="${KEYCLOAK_ENV_FILE:-${KEYCLOAK_DIR}/.env.staging}"
 COMPOSE_FILE="${KEYCLOAK_COMPOSE_FILE:-${KEYCLOAK_DIR}/docker-compose.staging.yml}"
 REALM="${KEYCLOAK_REALM:?set KEYCLOAK_REALM to sq-staff or sq-staff-staging}"
 KCADM_CONFIG="${KEYCLOAK_KCADM_CONFIG:-/tmp/sq-hub-identity-ux.kcadm}"
-FIRST_FLOW="Akun SQ Google existing-account link"
-POST_FLOW="Akun SQ Google conditional MFA"
-POST_SUBFLOW="Akun SQ Google user-configured TOTP"
+FIRST_FLOW="akun-sq-google-existing-account-link"
+POST_FLOW="akun-sq-google-conditional-mfa"
+POST_SUBFLOW="akun-sq-google-user-configured-totp"
 
 fail() {
   echo "Identity UX reconciliation failed: $1" >&2

@@ -244,7 +244,7 @@ jobs:
           first_flow="$({
             docker compose --env-file "$KEYCLOAK_ENV_FILE" -f infra/keycloak/docker-compose.staging.yml \
               exec -T keycloak /opt/keycloak/bin/kcadm.sh get \
-              'authentication/flows/Akun SQ Google existing-account link/executions' \
+              'authentication/flows/akun-sq-google-existing-account-link/executions' \
               -r sq-staff-staging --config "$kcadm_config"
           })"
           jq -e '
