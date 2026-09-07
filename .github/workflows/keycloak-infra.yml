@@ -253,7 +253,7 @@ jobs:
         shell: bash
         run: |
           kcadm_config=/tmp/sq-hub-trusted-device-ci.kcadm
-          google_post_flow='CI Google conditional MFA'
+          google_post_flow='ci-google-conditional-mfa'
 
           docker compose \
             --env-file "$KEYCLOAK_ENV_FILE" \

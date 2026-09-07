@@ -8,7 +8,7 @@ COMPOSE_FILE="${KEYCLOAK_COMPOSE_FILE:-${KEYCLOAK_DIR}/docker-compose.staging.ym
 REALM="${KEYCLOAK_REALM:?set KEYCLOAK_REALM to sq-staff or sq-staff-staging}"
 KCADM_CONFIG="${KEYCLOAK_KCADM_CONFIG:-/tmp/sq-hub-trusted-device.kcadm}"
 TRUSTED_PROVIDER="sq-trusted-device-otp"
-COPIED_BROWSER_FLOW="Akun SQ browser trusted device"
+COPIED_BROWSER_FLOW="akun-sq-browser-trusted-device"
 
 fail() {
   echo "Trusted-device reconciliation failed: $1" >&2
