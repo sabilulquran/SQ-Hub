@@ -56,7 +56,11 @@ realm_update="$(jq '
 printf '%s' "${realm_update}" | kcadm update "realms/${REALM}" -n -f - >/dev/null
 
 flow_exists() {
-  kcadm get "authentication/flows/$1" -r "${REALM}" >/dev/null 2>&1
+  local count
+  count="$(kcadm get authentication/flows -r "${REALM}" \
+    | jq --arg alias "$1" '[.[] | select(.alias == $alias)] | length')"
+  [[ "${count}" == "0" || "${count}" == "1" ]] || fail "ambiguous authentication flow alias: $1"
+  [[ "${count}" == "1" ]]
 }
 
 create_top_flow() {
