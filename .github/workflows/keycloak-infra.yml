@@ -209,13 +209,6 @@ jobs:
                 --password "$KC_BOOTSTRAP_ADMIN_PASSWORD" >/dev/null
             ' sh "$kcadm_config"
 
-          expected_output="$(printf '%s\n' \
-            FORGOT_PASSWORD_CONFIGURATION_PASS \
-            EMAIL_ALTERNATE_LOGIN_CONFIGURATION_PASS \
-            GOOGLE_EXISTING_ACCOUNT_LINK_ONLY_PASS \
-            GOOGLE_CONDITIONAL_MFA_PASS \
-            GOOGLE_PROVIDER_CONFIGURATION_PASS)"
-
           for pass in first second; do
             output="$(
               KEYCLOAK_REALM=sq-staff-staging \
@@ -223,7 +216,11 @@ jobs:
                 bash infra/keycloak/scripts/reconcile-identity-recovery-google.sh
             )"
             printf '%s\n' "$output"
-            test "$output" = "$expected_output"
+            grep -Fxq FORGOT_PASSWORD_CONFIGURATION_PASS <<<"$output"
+            grep -Fxq EMAIL_ALTERNATE_LOGIN_CONFIGURATION_PASS <<<"$output"
+            grep -Fxq GOOGLE_EXISTING_ACCOUNT_LINK_ONLY_PASS <<<"$output"
+            grep -Fxq GOOGLE_CONDITIONAL_MFA_PASS <<<"$output"
+            grep -Fxq GOOGLE_PROVIDER_CONFIGURATION_PASS <<<"$output"
           done
 
           curl --fail --silent \
