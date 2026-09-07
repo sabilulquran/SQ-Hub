@@ -68,39 +68,56 @@ fi
 replace_otp_in_flow() {
   local top_flow="$1"
   local expected_requirement="$2"
-  local executions otp_count otp_id otp_detail parent_id parent_alias parent_executions trusted_count trusted_update otp_update
+  local executions otp_count otp_id otp_detail parent_id parent_alias parent_path otp_position otp_level parent_executions trusted_count trusted_update otp_update
 
   executions="$(kcadm get "authentication/flows/${top_flow}/executions" -r "${REALM}")"
   otp_count="$(jq '[.[] | select(.providerId == "auth-otp-form")] | length' <<<"${executions}")"
   [[ "${otp_count}" == "1" ]] || fail "expected exactly one built-in OTP execution under ${top_flow}"
   otp_id="$(jq -er '.[] | select(.providerId == "auth-otp-form") | .id' <<<"${executions}")"
   otp_detail="$(kcadm get "authentication/executions/${otp_id}" -r "${REALM}")"
-  parent_id="$(jq -er '.parentFlow' <<<"${otp_detail}")"
-  parent_alias="$(kcadm get authentication/flows -r "${REALM}" \
-    | jq -er --arg id "${parent_id}" '.[] | select(.id == $id) | .alias')"
+  parent_id="$(jq -r '.parentFlow // empty' <<<"${otp_detail}")"
+  if [[ -n "${parent_id}" ]]; then
+    parent_alias="$(kcadm get authentication/flows -r "${REALM}" \
+      | jq -er --arg id "${parent_id}" '.[] | select(.id == $id) | .alias')"
+  else
+    otp_position="$(jq -er 'to_entries[] | select(.value.providerId == "auth-otp-form") | .key' <<<"${executions}")"
+    otp_level="$(jq -er '.[] | select(.providerId == "auth-otp-form") | .level' <<<"${executions}")"
+    if [[ "${otp_level}" == "0" ]]; then
+      parent_alias="${top_flow}"
+    else
+      parent_id="$(jq -er --argjson position "${otp_position}" --argjson level "${otp_level}" '
+        [to_entries[] |
+          select(.key < $position and .value.authenticationFlow == true and .value.level == ($level - 1))] |
+        last.value.flowId
+      ' <<<"${executions}")"
+      parent_alias="$(kcadm get authentication/flows -r "${REALM}" \
+        | jq -er --arg id "${parent_id}" '.[] | select(.id == $id) | .alias')"
+    fi
+  fi
+  parent_path="${parent_alias// /%20}"
 
-  parent_executions="$(kcadm get "authentication/flows/${parent_alias}/executions" -r "${REALM}")"
+  parent_executions="$(kcadm get "authentication/flows/${parent_path}/executions" -r "${REALM}")"
   trusted_count="$(jq --arg provider "${TRUSTED_PROVIDER}" '[.[] | select(.providerId == $provider)] | length' <<<"${parent_executions}")"
   [[ "${trusted_count}" == "0" || "${trusted_count}" == "1" ]] \
     || fail "ambiguous trusted-device execution under ${parent_alias}"
 
   if [[ "${trusted_count}" == "0" ]]; then
-    kcadm create "authentication/flows/${parent_alias}/executions/execution" -r "${REALM}" \
+    kcadm create "authentication/flows/${parent_path}/executions/execution" -r "${REALM}" \
       -s "provider=${TRUSTED_PROVIDER}" >/dev/null
-    parent_executions="$(kcadm get "authentication/flows/${parent_alias}/executions" -r "${REALM}")"
+    parent_executions="$(kcadm get "authentication/flows/${parent_path}/executions" -r "${REALM}")"
   fi
 
   trusted_update="$(jq --arg provider "${TRUSTED_PROVIDER}" --arg requirement "${expected_requirement}" \
     '.[] | select(.providerId == $provider) | .requirement = $requirement' <<<"${parent_executions}")"
-  printf '%s' "${trusted_update}" | kcadm update "authentication/flows/${parent_alias}/executions" \
+  printf '%s' "${trusted_update}" | kcadm update "authentication/flows/${parent_path}/executions" \
     -r "${REALM}" -n -f - >/dev/null
 
-  parent_executions="$(kcadm get "authentication/flows/${parent_alias}/executions" -r "${REALM}")"
+  parent_executions="$(kcadm get "authentication/flows/${parent_path}/executions" -r "${REALM}")"
   otp_update="$(jq '.[] | select(.providerId == "auth-otp-form") | .requirement = "DISABLED"' <<<"${parent_executions}")"
-  printf '%s' "${otp_update}" | kcadm update "authentication/flows/${parent_alias}/executions" \
+  printf '%s' "${otp_update}" | kcadm update "authentication/flows/${parent_path}/executions" \
     -r "${REALM}" -n -f - >/dev/null
 
-  parent_executions="$(kcadm get "authentication/flows/${parent_alias}/executions" -r "${REALM}")"
+  parent_executions="$(kcadm get "authentication/flows/${parent_path}/executions" -r "${REALM}")"
   jq -e --arg provider "${TRUSTED_PROVIDER}" --arg requirement "${expected_requirement}" '
     ([.[] | select(.providerId == $provider and .requirement == $requirement)] | length) == 1 and
     ([.[] | select(.providerId == "auth-otp-form" and .requirement == "DISABLED")] | length) == 1

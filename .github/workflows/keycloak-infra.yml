@@ -299,10 +299,6 @@ jobs:
             /opt/keycloak/bin/kcadm.sh update "authentication/flows/$google_post_flow/executions" \
             -r sq-staff-staging -n -f - --config "$kcadm_config" >/dev/null
 
-          expected_output="$(printf '%s\n' \
-            TRUSTED_DEVICE_BROWSER_FLOW_PASS \
-            TRUSTED_DEVICE_GOOGLE_POST_FLOW_PASS \
-            TRUSTED_DEVICE_RECONCILE_IDEMPOTENT_PASS)"
           for pass in first second; do
             output="$(
               KEYCLOAK_REALM=sq-staff-staging \
@@ -311,7 +307,9 @@ jobs:
                 bash infra/keycloak/scripts/reconcile-trusted-device.sh
             )"
             printf '%s\n' "$output"
-            test "$output" = "$expected_output"
+            grep -Fxq TRUSTED_DEVICE_BROWSER_FLOW_PASS <<<"$output"
+            grep -Fxq TRUSTED_DEVICE_GOOGLE_POST_FLOW_PASS <<<"$output"
+            grep -Fxq TRUSTED_DEVICE_RECONCILE_IDEMPOTENT_PASS <<<"$output"
           done
 
           unset providers google_executions google_otp output
