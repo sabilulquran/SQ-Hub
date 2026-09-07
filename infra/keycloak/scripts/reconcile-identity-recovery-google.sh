@@ -155,7 +155,7 @@ if kcadm get identity-provider/instances/google -r "${REALM}" >/dev/null 2>&1; t
     -r "${REALM}" -n -f - >/dev/null
 else
   printf '%s' "${google_json}" | kcadm create identity-provider/instances \
-    -r "${REALM}" -n -f - >/dev/null
+    -r "${REALM}" -f - >/dev/null
 fi
 
 realm_verify="$(kcadm get "realms/${REALM}")"
