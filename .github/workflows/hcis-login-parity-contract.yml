@@ -100,7 +100,7 @@ jobs:
           test ! -e "$theme_dir/login-config-totp.ftl"
           grep -Fxq 'loginTitle=Akun SQ' "$messages"
           grep -Fxq 'loginTitleHtml=Akun SQ' "$messages"
-          grep -Fxq 'forgotPassword=Lupa password?' "$messages"
+          grep -Fxq 'doForgotPassword=Lupa password?' "$messages"
           grep -Fq 'logoutConfirmTitle=Keluar dari Akun SQ?' "$messages"
           grep -Fq 'sqIdentityFooter=Akun SQ' "$messages"
           grep -Fq '${msg("sqIdentityFooter")}' "$footer"
