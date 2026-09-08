@@ -68,31 +68,26 @@ fi
 replace_otp_in_flow() {
   local top_flow="$1"
   local expected_requirement="$2"
-  local executions otp_count otp_id otp_detail parent_id parent_alias parent_path otp_position otp_level parent_executions trusted_count trusted_update otp_update
+  local executions otp_count parent_id parent_alias parent_path otp_position otp_level parent_executions trusted_count trusted_update otp_update flows
 
   executions="$(kcadm get "authentication/flows/${top_flow}/executions" -r "${REALM}")"
   otp_count="$(jq '[.[] | select(.providerId == "auth-otp-form")] | length' <<<"${executions}")"
   [[ "${otp_count}" == "1" ]] || fail "expected exactly one built-in OTP execution under ${top_flow}"
-  otp_id="$(jq -er '.[] | select(.providerId == "auth-otp-form") | .id' <<<"${executions}")"
-  otp_detail="$(kcadm get "authentication/executions/${otp_id}" -r "${REALM}")"
-  parent_id="$(jq -r '.parentFlow // empty' <<<"${otp_detail}")"
-  if [[ -n "${parent_id}" ]]; then
-    parent_alias="$(kcadm get authentication/flows -r "${REALM}" \
-      | jq -er --arg id "${parent_id}" '.[] | select(.id == $id) | .alias')"
+  otp_position="$(jq -er 'to_entries[] | select(.value.providerId == "auth-otp-form") | .key' <<<"${executions}")" \
+    || fail "unable to locate built-in OTP position under ${top_flow}"
+  otp_level="$(jq -er '.[] | select(.providerId == "auth-otp-form") | .level' <<<"${executions}")" \
+    || fail "unable to locate built-in OTP level under ${top_flow}"
+  if [[ "${otp_level}" == "0" ]]; then
+    parent_alias="${top_flow}"
   else
-    otp_position="$(jq -er 'to_entries[] | select(.value.providerId == "auth-otp-form") | .key' <<<"${executions}")"
-    otp_level="$(jq -er '.[] | select(.providerId == "auth-otp-form") | .level' <<<"${executions}")"
-    if [[ "${otp_level}" == "0" ]]; then
-      parent_alias="${top_flow}"
-    else
-      parent_id="$(jq -er --argjson position "${otp_position}" --argjson level "${otp_level}" '
-        [to_entries[] |
-          select(.key < $position and .value.authenticationFlow == true and .value.level == ($level - 1))] |
-        last.value.flowId
-      ' <<<"${executions}")"
-      parent_alias="$(kcadm get authentication/flows -r "${REALM}" \
-        | jq -er --arg id "${parent_id}" '.[] | select(.id == $id) | .alias')"
-    fi
+    parent_id="$(jq -er --argjson position "${otp_position}" --argjson level "${otp_level}" '
+      [to_entries[] |
+        select(.key < $position and .value.authenticationFlow == true and .value.level == ($level - 1))] |
+      last | .value.flowId
+    ' <<<"${executions}")" || fail "unable to resolve OTP parent flow under ${top_flow}"
+    flows="$(kcadm get authentication/flows -r "${REALM}")"
+    parent_alias="$(jq -er --arg id "${parent_id}" '.[] | select(.id == $id) | .alias' <<<"${flows}")" \
+      || fail "unable to resolve OTP parent alias under ${top_flow}"
   fi
   parent_path="${parent_alias// /%20}"
 
