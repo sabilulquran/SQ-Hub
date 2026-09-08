@@ -104,6 +104,7 @@ jobs:
           grep -Fxq 'trustedDeviceLabel=Percayai perangkat ini selama 30 hari' "$messages"
           grep -Fxq 'loginTitle=Akun SQ' "$messages"
           grep -Fxq 'loginTitleHtml=Akun SQ' "$messages"
+          grep -Fxq 'doForgotPassword=Lupa password?' "$messages"
           grep -Fq 'logoutConfirmTitle=Keluar dari Akun SQ?' "$messages"
           grep -Fq 'sqIdentityFooter=Akun SQ' "$messages"
           grep -Fq '${msg("sqIdentityFooter")}' "$footer"

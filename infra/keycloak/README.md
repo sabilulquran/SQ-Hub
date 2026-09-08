@@ -36,6 +36,7 @@ The YSQ VPS topology uses the shared Caddy Docker network. A host-Nginx example 
 - `themes/sq-hub/` — SQ login theme derived from the accepted HCIS design baseline; no font files are bundled.
 - `scripts/backup.sh` — PostgreSQL custom-format backup.
 - `scripts/reconcile-recovery-codes.sh` — idempotent staging-only recovery-code convergence through authenticated `kcadm`.
+- `scripts/reconcile-identity-recovery-google.sh` — idempotent, secret-injected Forgot Password, email-login, and safe existing-account Google broker convergence for an explicitly selected Staff realm.
 - `scripts/restore-check.sh` — restores a backup to a disposable verification database and checks that the staging realm exists.
 - `../../docs/operations/staff-identity-provisioning.md` — minimum profile-complete provisioning contract for manual staging and future automation.
 
@@ -128,6 +129,8 @@ The imported staging realm is `sq-staff-staging` and currently establishes:
 - SQ login theme.
 
 Email login is only acceptable for identities provisioned with a verified/controlled email according to the Staff Authentication Policy. Self-registration is disabled, so provisioning must enforce that invariant.
+
+Native Forgot Password is enabled in the reproducible realm baseline. Delivery still depends on the separately configured realm SMTP service; no SMTP credential is stored here. Google sign-in is intentionally absent from the import JSON because its client credentials are production-only runtime inputs. See `docs/operations/HUB-IMPL-011-production-handoff.md` for the controlled reconciliation and exact redirect URI.
 
 ## Staff profile completeness
 
