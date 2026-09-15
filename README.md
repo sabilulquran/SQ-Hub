@@ -7,12 +7,18 @@ SQ Hub menyediakan fondasi lintas aplikasi untuk identity/SSO staf, Organization
 SQ Hub **bukan ERP monolith**. Business logic HCIS, SPMB, Finance, Workspace, Academic, dan aplikasi domain lain tetap dimiliki aplikasi masing-masing.
 
 ## Status
-Foundation documentation accepted. Wave 1 implementation is in progress.
+Foundation documentation accepted. Implementasi utama Wave 1 sudah berada di `main`, tetapi status deployment, UAT, dan acceptance tidak boleh disimpulkan hanya dari status specification atau merge.
 
-Current runtime status:
-- `HUB-IMPL-002` Application Registry + Application Access — implemented in the SQ Hub API foundation and protected by CI;
-- `HUB-IMPL-001` Keycloak staging foundation — next infrastructure implementation;
-- `HUB-IMPL-003` HCIS OIDC consumer — follows after the identity/access foundations are available.
+Ringkasan status terbaru yang merekonsiliasi bukti GitHub dengan hasil audit VPS read-only yang diberikan pengguna pada 15 September 2026 tersedia di:
+
+- [`docs/operations/project-status-2026-09-15.md`](docs/operations/project-status-2026-09-15.md)
+
+Kondisi yang dapat dinyatakan dari sumber yang diperiksa:
+- `main` berada di `347bc06cfe3af96b12106e7737fe7aa7cd799e4b` (8 September 2026), termasuk PR #49 recovery/Google login dan PR #50 trusted-device TOTP;
+- CI `main` untuk commit tersebut berhasil;
+- audit VPS yang diberikan pengguna pada 15 September 2026 melaporkan HCIS production sudah berjalan dengan OIDC, SQ Identity/Keycloak production sehat, dan SQ Hub API production sehat;
+- audit tersebut juga melaporkan staging Hub/HCIS yang diperiksa berhenti/502, `hub.sabilulquran.or.id` belum memiliki DNS/route yang ditemukan, dan beberapa kontrol backup/logging/provenance masih belum terverifikasi;
+- `docs/operations/HUB-IMPL-003-production-cutover.md` tetap `CUTOVER_BLOCKED`: deployment yang teramati tidak menggantikan bukti approval, acceptance, rollback rehearsal, atau UAT yang masih disyaratkan.
 
 Keputusan foundation yang sudah dikunci:
 - **SQ Identity menggunakan Keycloak** sebagai self-hosted Identity Provider engine.
@@ -49,7 +55,7 @@ Implementation order:
 2. `HUB-IMPL-002` — Application Registry + Application Access.
 3. `HUB-IMPL-003` — HCIS OIDC consumer integration.
 
-Wave 1 intentionally does not include production auth cutover, Organization migration, full launcher/admin UI, or SPMB implementation.
+Wave 1 intentionally does not include production auth cutover, Organization migration, full launcher/admin UI, or SPMB implementation. Production deployment yang kemudian teramati harus direkonsiliasi sebagai operational evidence terpisah; hal itu tidak mengubah non-goal historis atau acceptance criteria secara retrospektif.
 
 ## URLs
 Production target:
