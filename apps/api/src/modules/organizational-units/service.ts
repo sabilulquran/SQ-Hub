@@ -180,21 +180,11 @@ export class OrganizationalUnitService {
     for (const mapping of mappings) {
       const existingMapped = existingMappings.get(mapping.sourceRef);
       if (existingMapped && existingMapped.unitKey !== mapping.unitKey) {
-        issues.push({
-          code: "SOURCE_MAPPING_CONFLICT",
-          sourceRef: mapping.sourceRef,
-          unitKey: mapping.unitKey,
-          message: `Source reference is already mapped to ${existingMapped.unitKey}.`,
-        });
+        issues.push({ code: "SOURCE_MAPPING_CONFLICT", sourceRef: mapping.sourceRef, unitKey: mapping.unitKey, message: `Source reference is already mapped to ${existingMapped.unitKey}.` });
       }
       const existingSource = existingSourceByKey.get(mapping.unitKey);
       if (existingSource && existingSource !== mapping.sourceRef) {
-        issues.push({
-          code: "UNIT_KEY_MAPPING_CONFLICT",
-          sourceRef: mapping.sourceRef,
-          unitKey: mapping.unitKey,
-          message: `Unit key is already mapped from source reference ${existingSource}.`,
-        });
+        issues.push({ code: "UNIT_KEY_MAPPING_CONFLICT", sourceRef: mapping.sourceRef, unitKey: mapping.unitKey, message: `Unit key is already mapped from source reference ${existingSource}.` });
       }
     }
 
@@ -207,15 +197,7 @@ export class OrganizationalUnitService {
         const existing = existingMappings.get(row.sourceRef) ?? existingByKey.get(unitKey);
         if (!existing) {
           creates.push({ sourceRef: row.sourceRef, unitKey, name: row.name });
-        } else if (
-          existing.name !== row.name ||
-          existing.active !== row.active ||
-          parentKey(existing, existingByKey) !== (
-            row.parentSourceRef
-              ? mappingByRef.get(row.parentSourceRef) ?? null
-              : null
-          )
-        ) {
+        } else if (existing.name !== row.name || existing.active !== row.active || parentKey(existing, existingByKey) !== (row.parentSourceRef ? mappingByRef.get(row.parentSourceRef) ?? null : null)) {
           updates.push({ sourceRef: row.sourceRef, unitKey, name: row.name });
         } else {
           unchanged.push({ sourceRef: row.sourceRef, unitKey });
@@ -239,7 +221,11 @@ export class OrganizationalUnitService {
   async applyImport(input: unknown, actor: ActorRef) {
     actorSchema.parse(actor);
     const parsed = applyImportSchema.parse(input);
-    const preview = await this.previewImport(parsed);
+    const preview = await this.previewImport({
+      sourceSystem: parsed.sourceSystem,
+      rows: parsed.rows,
+      mappings: parsed.mappings,
+    });
     if (!preview.valid) throw new OrganizationalUnitValidationError(preview.issues);
     return this.repository.applyImport({
       sourceSystem: parsed.sourceSystem,
@@ -269,21 +255,11 @@ export function buildHierarchy(units: OrganizationalUnit[]) {
     list.push(unit);
     children.set(unit.parentId, list);
   }
-  for (const list of children.values()) {
-    list.sort((a, b) => a.unitKey.localeCompare(b.unitKey));
-  }
+  for (const list of children.values()) list.sort((a, b) => a.unitKey.localeCompare(b.unitKey));
   const visit = (unit: OrganizationalUnit, path: Set<string>): unknown => {
-    if (path.has(unit.id)) {
-      throw new OrganizationalUnitValidationError([
-        { code: "HIERARCHY_CYCLE", message: "Stored hierarchy contains a cycle." },
-      ]);
-    }
-    const next = new Set(path);
-    next.add(unit.id);
-    return {
-      ...unit,
-      children: (children.get(unit.id) ?? []).map((child) => visit(child, next)),
-    };
+    if (path.has(unit.id)) throw new OrganizationalUnitValidationError([{ code: "HIERARCHY_CYCLE", message: "Stored hierarchy contains a cycle." }]);
+    const next = new Set(path); next.add(unit.id);
+    return { ...unit, children: (children.get(unit.id) ?? []).map((child) => visit(child, next)) };
   };
   return (children.get(null) ?? []).map((root) => visit(root, new Set()));
 }
@@ -292,144 +268,55 @@ function validateSnapshot(rows: ImportSnapshotRow[]): ImportIssue[] {
   const issues: ImportIssue[] = [];
   const refs = new Set<string>();
   for (const row of rows) {
-    if (refs.has(row.sourceRef)) {
-      issues.push({
-        code: "DUPLICATE_SOURCE_REF",
-        sourceRef: row.sourceRef,
-        message: "Duplicate source reference.",
-      });
-    }
+    if (refs.has(row.sourceRef)) issues.push({ code: "DUPLICATE_SOURCE_REF", sourceRef: row.sourceRef, message: "Duplicate source reference." });
     refs.add(row.sourceRef);
-    if (row.parentSourceRef === row.sourceRef) {
-      issues.push({
-        code: "SELF_PARENT",
-        sourceRef: row.sourceRef,
-        message: "Source row cannot parent itself.",
-      });
-    }
+    if (row.parentSourceRef === row.sourceRef) issues.push({ code: "SELF_PARENT", sourceRef: row.sourceRef, message: "Source row cannot parent itself." });
   }
-  for (const row of rows) {
-    if (row.parentSourceRef && !refs.has(row.parentSourceRef)) {
-      issues.push({
-        code: "MISSING_PARENT_SOURCE",
-        sourceRef: row.sourceRef,
-        message: `Parent source reference ${row.parentSourceRef} is missing.`,
-      });
-    }
-  }
-  if (!issues.some((issue) =>
-    issue.code === "DUPLICATE_SOURCE_REF" || issue.code === "MISSING_PARENT_SOURCE"
-  )) {
+  for (const row of rows) if (row.parentSourceRef && !refs.has(row.parentSourceRef)) issues.push({ code: "MISSING_PARENT_SOURCE", sourceRef: row.sourceRef, message: `Parent source reference ${row.parentSourceRef} is missing.` });
+  if (!issues.some((issue) => issue.code === "DUPLICATE_SOURCE_REF" || issue.code === "MISSING_PARENT_SOURCE")) {
     const parent = new Map(rows.map((row) => [row.sourceRef, row.parentSourceRef]));
     for (const row of rows) {
-      const seen = new Set<string>();
-      let cursor: string | null = row.sourceRef;
+      const seen = new Set<string>(); let cursor: string | null = row.sourceRef;
       while (cursor) {
-        if (seen.has(cursor)) {
-          issues.push({
-            code: "HIERARCHY_CYCLE",
-            sourceRef: row.sourceRef,
-            message: "Source hierarchy contains a cycle.",
-          });
-          break;
-        }
-        seen.add(cursor);
-        cursor = parent.get(cursor) ?? null;
+        if (seen.has(cursor)) { issues.push({ code: "HIERARCHY_CYCLE", sourceRef: row.sourceRef, message: "Source hierarchy contains a cycle." }); break; }
+        seen.add(cursor); cursor = parent.get(cursor) ?? null;
       }
     }
   }
   return dedupeIssues(issues);
 }
 
-function validateMappings(
-  rows: ImportSnapshotRow[],
-  mappings: ImportMapping[],
-): ImportIssue[] {
+function validateMappings(rows: ImportSnapshotRow[], mappings: ImportMapping[]): ImportIssue[] {
   const issues: ImportIssue[] = [];
-  const rowRefs = new Set(rows.map((row) => row.sourceRef));
-  const mappedRefs = new Set<string>();
-  const keys = new Set<string>();
+  const rowRefs = new Set(rows.map((row) => row.sourceRef)); const mappedRefs = new Set<string>(); const keys = new Set<string>();
   for (const mapping of mappings) {
-    if (!rowRefs.has(mapping.sourceRef)) {
-      issues.push({
-        code: "UNKNOWN_MAPPING_SOURCE",
-        sourceRef: mapping.sourceRef,
-        unitKey: mapping.unitKey,
-        message: "Mapping source is absent from snapshot.",
-      });
-    }
-    if (mappedRefs.has(mapping.sourceRef)) {
-      issues.push({
-        code: "DUPLICATE_MAPPING_SOURCE",
-        sourceRef: mapping.sourceRef,
-        message: "Source reference has multiple mappings.",
-      });
-    }
-    if (keys.has(mapping.unitKey)) {
-      issues.push({
-        code: "DUPLICATE_UNIT_KEY",
-        sourceRef: mapping.sourceRef,
-        unitKey: mapping.unitKey,
-        message: "One unit key cannot map multiple source rows.",
-      });
-    }
-    mappedRefs.add(mapping.sourceRef);
-    keys.add(mapping.unitKey);
+    if (!rowRefs.has(mapping.sourceRef)) issues.push({ code: "UNKNOWN_MAPPING_SOURCE", sourceRef: mapping.sourceRef, unitKey: mapping.unitKey, message: "Mapping source is absent from snapshot." });
+    if (mappedRefs.has(mapping.sourceRef)) issues.push({ code: "DUPLICATE_MAPPING_SOURCE", sourceRef: mapping.sourceRef, message: "Source reference has multiple mappings." });
+    if (keys.has(mapping.unitKey)) issues.push({ code: "DUPLICATE_UNIT_KEY", sourceRef: mapping.sourceRef, unitKey: mapping.unitKey, message: "One unit key cannot map multiple source rows." });
+    mappedRefs.add(mapping.sourceRef); keys.add(mapping.unitKey);
   }
-  for (const row of rows) {
-    if (!mappedRefs.has(row.sourceRef)) {
-      issues.push({
-        code: "MISSING_MAPPING",
-        sourceRef: row.sourceRef,
-        message: "Every source row requires an explicit SQ Hub unit key mapping.",
-      });
-    }
-  }
+  for (const row of rows) if (!mappedRefs.has(row.sourceRef)) issues.push({ code: "MISSING_MAPPING", sourceRef: row.sourceRef, message: "Every source row requires an explicit SQ Hub unit key mapping." });
   return issues;
 }
 
-function wouldCreateCycle(
-  units: OrganizationalUnit[],
-  unitId: string,
-  proposedParentId: string,
-) {
-  const byId = new Map(units.map((unit) => [unit.id, unit]));
-  let cursor: string | null = proposedParentId;
-  const seen = new Set<string>();
-  while (cursor) {
-    if (cursor === unitId) return true;
-    if (seen.has(cursor)) return true;
-    seen.add(cursor);
-    cursor = byId.get(cursor)?.parentId ?? null;
-  }
+function wouldCreateCycle(units: OrganizationalUnit[], unitId: string, proposedParentId: string) {
+  const byId = new Map(units.map((unit) => [unit.id, unit])); let cursor: string | null = proposedParentId; const seen = new Set<string>();
+  while (cursor) { if (cursor === unitId || seen.has(cursor)) return true; seen.add(cursor); cursor = byId.get(cursor)?.parentId ?? null; }
   return false;
 }
 
-function parentKey(
-  unit: OrganizationalUnit,
-  existingByKey: Map<string, OrganizationalUnit>,
-) {
+function parentKey(unit: OrganizationalUnit, existingByKey: Map<string, OrganizationalUnit>) {
   if (!unit.parentId) return null;
-  for (const candidate of existingByKey.values()) {
-    if (candidate.id === unit.parentId) return candidate.unitKey;
-  }
+  for (const candidate of existingByKey.values()) if (candidate.id === unit.parentId) return candidate.unitKey;
   return null;
 }
 
 function fingerprint(rows: ImportSnapshotRow[], mappings: ImportMapping[]) {
-  const normalized = {
-    rows: [...rows].sort((a, b) => a.sourceRef.localeCompare(b.sourceRef)),
-    mappings: [...mappings].sort((a, b) => a.sourceRef.localeCompare(b.sourceRef)),
-  };
+  const normalized = { rows: [...rows].sort((a, b) => a.sourceRef.localeCompare(b.sourceRef)), mappings: [...mappings].sort((a, b) => a.sourceRef.localeCompare(b.sourceRef)) };
   return createHash("sha256").update(JSON.stringify(normalized)).digest("hex");
 }
 
 function dedupeIssues(issues: ImportIssue[]) {
   const seen = new Set<string>();
-  return issues.filter((issue) => {
-    const key = `${issue.code}:${issue.sourceRef ?? ""}:${issue.unitKey ?? ""}`;
-    if (seen.has(key)) return false;
-    seen.add(key);
-    return true;
-  });
+  return issues.filter((issue) => { const key = `${issue.code}:${issue.sourceRef ?? ""}:${issue.unitKey ?? ""}`; if (seen.has(key)) return false; seen.add(key); return true; });
 }
