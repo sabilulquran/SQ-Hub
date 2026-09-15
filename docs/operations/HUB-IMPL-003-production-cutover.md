@@ -4,7 +4,9 @@
 **Production authorization:** NOT GRANTED by this document  
 **Execution owner:** designated production change owner after explicit approval
 
-This runbook prepares the production migration from HCIS-owned password authentication to SQ Identity. It does not authorize a production realm, production secret mutation, HCIS auth-mode switch, DNS change, deployment, or legacy-credential deletion.
+> **Runtime reconciliation — 2026-09-15:** a read-only VPS audit supplied by the user reports HCIS production healthy with `AUTH_MODE=oidc`, SQ Identity/Keycloak production healthy, and SQ Hub API production healthy. This is evidence that production runtime has moved beyond the last repository cutover-preparation record. It is **not** evidence that every hard gate below was completed, that an approval/window/owner record exists, or that post-cutover acceptance was formally signed off. Until those records are available, this document remains `CUTOVER_BLOCKED`. See [`project-status-2026-09-15.md`](project-status-2026-09-15.md) for the evidence reconciliation.
+
+This runbook prepares the production migration from HCIS-owned password authentication to SQ Identity. It does not itself authorize a production realm, production secret mutation, HCIS auth-mode switch, DNS change, deployment, or legacy-credential deletion. A later runtime observation that such changes are already active must be documented as observed state, not converted into retrospective authorization.
 
 ## Hard gate
 
@@ -14,7 +16,7 @@ The default state is:
 CUTOVER_BLOCKED
 ```
 
-The change owner must not schedule or execute production auth cutover until all of the following are true and independently evidenced:
+The change owner must not schedule or execute production auth cutover until all of the following are true and independently evidenced. If production has already been changed, use the same list to reconstruct the missing change/acceptance record without inventing retrospective approval:
 
 - issue #9 Wave 1 acceptance gates are complete based on actual live staging/browser/operator evidence, not code tests alone;
 - final Wave 1 snapshot records deployed SQ Hub SHA, authoritative HCIS SHA, Keycloak image identity, realm/config identity, and exact staging issuer;
@@ -137,7 +139,7 @@ After production acceptance and no later than the 14-day deadline, execute a sep
 - verify local auth cannot reappear after cleanup through an alternate route;
 - update HCIS source-of-truth documentation in the same reviewed cleanup change.
 
-Cleanup is not performed by this Agent 2 branch.
+Cleanup is not performed by this documentation branch.
 
 ## Evidence retention
 
