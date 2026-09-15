@@ -14,6 +14,8 @@ import {
 import { registerHubAuthRoutes } from "./modules/hub-auth/routes.js";
 import type { HubAuthRuntime } from "./modules/hub-auth/service.js";
 import type { IdentityDirectory } from "./modules/identity-directory/client.js";
+import { registerOrganizationalUnitRoutes } from "./modules/organizational-units/routes.js";
+import type { OrganizationalUnitService } from "./modules/organizational-units/service.js";
 import { registerPlatformAdminRoutes } from "./modules/platform-admin/routes.js";
 import type { PlatformAdminService } from "./modules/platform-admin/service.js";
 
@@ -37,6 +39,7 @@ export function buildApp(input: {
     "listApplications" | "getAccess" | "grant" | "revoke" | "listAudit"
   >;
   identityDirectory?: IdentityDirectory;
+  organizationalUnits?: OrganizationalUnitService;
   logger?: boolean;
 }) {
   const app = Fastify({ logger: input.logger ?? false });
@@ -86,6 +89,15 @@ export function buildApp(input: {
       ...(input.adminAllowedOrigin ? { allowedOrigin: input.adminAllowedOrigin } : {}),
       ...(input.adminApplicationAccess ? { applicationAccess: input.adminApplicationAccess } : {}),
       ...(input.identityDirectory ? { identityDirectory: input.identityDirectory } : {}),
+    });
+  }
+
+  if (input.hubAuth && input.platformAdmin && input.organizationalUnits) {
+    registerOrganizationalUnitRoutes(app, {
+      hubAuth: input.hubAuth,
+      platformAdmin: input.platformAdmin,
+      service: input.organizationalUnits,
+      ...(input.adminAllowedOrigin ? { allowedOrigin: input.adminAllowedOrigin } : {}),
     });
   }
 
