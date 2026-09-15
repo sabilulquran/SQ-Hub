@@ -26,6 +26,10 @@ const serverConfigSchema = foundationConfigSchema.extend({
   KEYCLOAK_DIRECTORY_REALM: z.string().trim().min(1).default("sq-staff-staging"),
   KEYCLOAK_DIRECTORY_CLIENT_ID: z.string().trim().min(1).default("sq-hub-directory-staging"),
   KEYCLOAK_DIRECTORY_CLIENT_SECRET: z.string().min(1),
+  // Go 5C deliberately uses a separate service principal. Leaving both values
+  // unset keeps the proposal disabled until central integration supplies them.
+  KEYCLOAK_IDENTITY_MANAGEMENT_CLIENT_ID: z.string().trim().min(1).optional(),
+  KEYCLOAK_IDENTITY_MANAGEMENT_CLIENT_SECRET: z.string().min(1).optional(),
 });
 
 export interface FoundationConfig {
@@ -50,6 +54,8 @@ export interface AppConfig extends FoundationConfig {
   keycloakDirectoryRealm: string;
   keycloakDirectoryClientId: string;
   keycloakDirectoryClientSecret: string;
+  keycloakIdentityManagementClientId?: string;
+  keycloakIdentityManagementClientSecret?: string;
 }
 
 function foundationConfig(parsed: z.infer<typeof foundationConfigSchema>): FoundationConfig {
@@ -81,6 +87,18 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
   if (parsed.HUB_SESSION_IDLE_HOURS > parsed.HUB_SESSION_MAX_HOURS) {
     throw new Error("HUB_SESSION_IDLE_HOURS cannot exceed HUB_SESSION_MAX_HOURS");
   }
+  const managementConfigured = Boolean(
+    parsed.KEYCLOAK_IDENTITY_MANAGEMENT_CLIENT_ID && parsed.KEYCLOAK_IDENTITY_MANAGEMENT_CLIENT_SECRET,
+  );
+  if (Boolean(parsed.KEYCLOAK_IDENTITY_MANAGEMENT_CLIENT_ID) !== Boolean(parsed.KEYCLOAK_IDENTITY_MANAGEMENT_CLIENT_SECRET)) {
+    throw new Error("KEYCLOAK_IDENTITY_MANAGEMENT_CLIENT_ID and secret must be configured together");
+  }
+  if (
+    managementConfigured &&
+    parsed.KEYCLOAK_IDENTITY_MANAGEMENT_CLIENT_ID === parsed.KEYCLOAK_DIRECTORY_CLIENT_ID
+  ) {
+    throw new Error("Go 5C identity management must use a service principal distinct from the read-only directory client");
+  }
 
   return {
     ...foundationConfig(parsed),
@@ -96,5 +114,11 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     keycloakDirectoryRealm: parsed.KEYCLOAK_DIRECTORY_REALM,
     keycloakDirectoryClientId: parsed.KEYCLOAK_DIRECTORY_CLIENT_ID,
     keycloakDirectoryClientSecret: parsed.KEYCLOAK_DIRECTORY_CLIENT_SECRET,
+    ...(managementConfigured
+      ? {
+          keycloakIdentityManagementClientId: parsed.KEYCLOAK_IDENTITY_MANAGEMENT_CLIENT_ID!,
+          keycloakIdentityManagementClientSecret: parsed.KEYCLOAK_IDENTITY_MANAGEMENT_CLIENT_SECRET!,
+        }
+      : {}),
   };
 }
