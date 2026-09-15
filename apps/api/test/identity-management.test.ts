@@ -10,7 +10,10 @@ const config = {
   clientSecret: "never-browser-secret",
 };
 
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => {
+  vi.unstubAllGlobals();
+  vi.restoreAllMocks();
+});
 
 describe("KeycloakIdentityManagement", () => {
   it("creates a profile-complete Staff identity with required action and no credential value", async () => {
@@ -27,6 +30,7 @@ describe("KeycloakIdentityManagement", () => {
     const result = await client.createStaff({ username: "19870001", email: "staff@example.test", emailVerified: true, firstName: "Synthetic", lastName: "Staff", enabled: true });
     const createCall = calls.find((call) => call.url.endsWith("/admin/realms/staff/users") && call.init?.method === "POST");
     const payload = JSON.parse(String(createCall?.init?.body)) as Record<string, unknown>;
+    expect(calls.every((call) => call.init?.signal instanceof AbortSignal)).toBe(true);
     expect(payload.requiredActions).toEqual(["UPDATE_PASSWORD"]);
     expect(payload).not.toHaveProperty("credentials");
     expect(JSON.stringify(result)).not.toContain("opaque-admin-token");
@@ -72,5 +76,29 @@ describe("KeycloakIdentityManagement", () => {
     }));
     const result = await new KeycloakIdentityManagement(config).setEnabled("subject-001", false);
     expect(result.changed).toBe(false); expect(putCount).toBe(0);
+  });
+
+  it("does not reuse a token beyond the expiry reported by Keycloak", async () => {
+    let now = 0;
+    let tokenCount = 0;
+    vi.spyOn(Date, "now").mockImplementation(() => now);
+    vi.stubGlobal("fetch", vi.fn(async (url: string | URL | Request) => {
+      const target = String(url);
+      if (target.endsWith("/protocol/openid-connect/token")) {
+        tokenCount += 1;
+        return new Response(JSON.stringify({ access_token: `opaque-${tokenCount}`, expires_in: 5 }), { status: 200 });
+      }
+      if (target.endsWith("/users/subject-001")) {
+        return new Response(JSON.stringify({ id: "subject-001", username: "19870001", email: "staff@example.test", emailVerified: true, firstName: "Synthetic", lastName: "Staff", enabled: true }), { status: 200 });
+      }
+      throw new Error(`unexpected request ${target}`);
+    }));
+
+    const client = new KeycloakIdentityManagement(config);
+    await client.inspect("subject-001");
+    now = 6_000;
+    await client.inspect("subject-001");
+
+    expect(tokenCount).toBe(2);
   });
 });
