@@ -1,7 +1,7 @@
 # Organizational Unit Migration / Cutover Proposal
 
 **Status:** DRAFT / PROPOSED — PRE-CUTOVER ONLY  
-**Related:** HUB-IMPL-012, Foundation PRD, HCIS organization architecture evidence
+**Related:** HUB-IMPL-014, Foundation PRD, HCIS organization architecture evidence
 
 ## Purpose
 
@@ -11,7 +11,7 @@ Define the migration boundary without declaring that Organizational Unit ownersh
 
 HCIS has both an earlier current-state organization mapping and a richer dynamic organization structure implementation. The richer model includes organizational nodes plus positions, incumbencies, authority bindings, reporting overrides, rollout modes, and workflow-resolution semantics. Those concepts prove that HCIS organization data is not merely a flat unit table.
 
-SQ Hub HUB-IMPL-012 deliberately proposes only the shared Organizational Unit master: stable unit identity, name, parent, and active state. It does not absorb HCIS authority/workflow semantics.
+SQ Hub HUB-IMPL-014 deliberately proposes only the shared Organizational Unit master: stable unit identity, name, parent, and active state. It does not absorb HCIS authority/workflow semantics.
 
 ## Identity mapping rule
 
@@ -35,8 +35,8 @@ An HCIS UUID may be retained as `source_ref` for traceability. It must not becom
 8. Compare HCIS consumer requirements and define the post-cutover read/integration contract.
 9. Obtain separate cutover approval before changing system-of-record behavior anywhere.
 
-## Cutover is not part of HUB-IMPL-012
+## Cutover is not part of HUB-IMPL-014
 
-HUB-IMPL-012 does not switch HCIS reads to SQ Hub, write HCIS tables, turn on dual-write, deactivate/delete HCIS units, migrate positions/incumbencies/authority bindings, alter HCIS approval routing, or promote foundation state to `CUTOVER_ACCEPTED`.
+HUB-IMPL-014 does not switch HCIS reads to SQ Hub, write HCIS tables, turn on dual-write, deactivate/delete HCIS units, migrate positions/incumbencies/authority bindings, alter HCIS approval routing, or promote foundation state to `CUTOVER_ACCEPTED`.
 
 Those are separate reviewed operations with rollback and reconciliation requirements.
