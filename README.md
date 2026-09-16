@@ -9,15 +9,15 @@ SQ Hub **bukan ERP monolith**. Business logic HCIS, SPMB, Finance, Workspace, Ac
 ## Status
 Foundation documentation accepted. Implementasi utama Wave 1 sudah berada di `main`, tetapi status deployment, UAT, dan acceptance tidak boleh disimpulkan hanya dari status specification atau merge.
 
-Ringkasan status terbaru yang merekonsiliasi bukti GitHub dengan hasil audit VPS read-only yang diberikan pengguna pada 15 September 2026 tersedia di:
+Ringkasan status terbaru yang merekonsiliasi checkout lokal, GitHub, dan audit VPS langsung pada 16 September 2026 tersedia di:
 
-- [`docs/operations/project-status-2026-09-15.md`](docs/operations/project-status-2026-09-15.md)
+- [`docs/operations/project-status-2026-09-16.md`](docs/operations/project-status-2026-09-16.md)
 
 Kondisi yang dapat dinyatakan dari sumber yang diperiksa:
-- `main` berada di `347bc06cfe3af96b12106e7737fe7aa7cd799e4b` (8 September 2026), termasuk PR #49 recovery/Google login dan PR #50 trusted-device TOTP;
-- CI `main` untuk commit tersebut berhasil;
-- audit VPS yang diberikan pengguna pada 15 September 2026 melaporkan HCIS production sudah berjalan dengan OIDC, SQ Identity/Keycloak production sehat, dan SQ Hub API production sehat;
-- audit tersebut juga melaporkan staging Hub/HCIS yang diperiksa berhenti/502, `hub.sabilulquran.or.id` belum memiliki DNS/route yang ditemukan, dan beberapa kontrol backup/logging/provenance masih belum terverifikasi;
+- `main` berada di `a09886a6e02a699bb77fd18bf9262a07f48dbda4`; CI dan Wave 1 Acceptance Contract untuk commit tersebut berhasil;
+- audit langsung 16 September 2026 mengonfirmasi HCIS production berjalan dengan OIDC, SQ Identity/Keycloak production sehat, dan SQ Hub API production sehat;
+- recovery/email login, Google provider, dan trusted-device flow terpasang pada production, tetapi acceptance pengguna end-to-end masih belum lengkap;
+- staging Hub/HCIS/Keycloak berhenti, `hub.sabilulquran.or.id` belum memiliki DNS/route/web production, dan backup terjadwal, restore, audit event, serta log rotation masih menjadi gap;
 - `docs/operations/HUB-IMPL-003-production-cutover.md` tetap `CUTOVER_BLOCKED`: deployment yang teramati tidak menggantikan bukti approval, acceptance, rollback rehearsal, atau UAT yang masih disyaratkan.
 
 Keputusan foundation yang sudah dikunci:
