@@ -144,3 +144,205 @@ Cleanup is not performed by this documentation branch.
 ## Evidence retention
 
 Retain only non-secret acceptance evidence: source/image pins, timestamps, health/result markers, persona handles, audit/event references, and approval identifiers. Never retain credential values or raw live OIDC subjects in the repository.
+
+---
+
+## Production identity UAT closure packet — 2026-09-16
+
+**Repository source snapshot:** `e73a79b85f44b844a544fddd0705586be517fa2d`  
+**Specs covered:** `HUB-IMPL-003`, `HUB-IMPL-011`, `HUB-IMPL-012`  
+**Authoritative HUB-IMPL-003 acceptance issue:** [#9](https://github.com/sabilulquran/SQ-Hub/issues/9)  
+**Runtime mutation by this packet:** none  
+**Overall state:** `CUTOVER_BLOCKED`
+
+This packet is an execution plan and evidence ledger for closing production login UAT after production was observed running HCIS through SQ Identity/OIDC. It does not reinterpret an observed healthy deployment as acceptance. Repository source, tests, configuration, CI, and prior staging evidence may prove prerequisites or contracts, but they are not reused as proof that a production browser scenario was executed.
+
+### Result and classification vocabulary
+
+Use only these result values in the execution record:
+
+- `PASS`: the scenario was actually executed at the required layer and met the expected result;
+- `FAIL`: the scenario was actually executed and did not meet the expected result;
+- `NOT_RUN`: no qualifying execution evidence exists yet;
+- `BLOCKED`: a concrete dependency or approval prevents execution.
+
+Classification may contain more than one of:
+
+- `GITHUB_EVIDENCED`: source, test, workflow, accepted specification, or a previously executed result recorded in GitHub establishes a prerequisite/contract;
+- `USER_BROWSER_REQUIRED`: the production user-facing result must be exercised in a browser by the product owner or approved tester;
+- `CODEX_VPS_REQUIRED`: the check requires local/VPS/runtime inspection or a controlled runtime action by Codex;
+- `OWNER_DECISION_REQUIRED`: explicit product/change-owner approval or acceptance is required.
+
+`GITHUB_EVIDENCED` never upgrades a `NOT_RUN` browser/VPS scenario to `PASS`.
+
+### GitHub evidence already available
+
+- The accepted Foundation product/domain boundary keeps Staff global identity in SQ Identity, Application Access in SQ Hub, and HCIS domain roles/permissions in HCIS.
+- `HUB-IMPL-003` requires exact `issuer + sub` mapping, preservation of local `accounts.id`, no email/NIP callback join, fail-closed behavior, server-side OIDC exchange, application-scoped sessions, and no browser OIDC-token storage.
+- `HUB-IMPL-011` requires native password recovery, unique verified email alternate login, Google link-only-existing behavior with local-password proof, conditional TOTP, no upstream-token storage, and no privilege mapper.
+- `HUB-IMPL-012` requires trusted-device proof only after valid checked TOTP, maximum 30-day lifetime, same-user/same-realm binding, expiry/tamper/replay/credential-reset failure, disabled-user denial, realm-scoped `HttpOnly`/`Secure`/`SameSite=Lax` cookie, and Google post-broker participation.
+- Keycloak CI verifies the recovery/Google reconciliation contract, recovery-code prerequisites, trusted-device provider discovery/flow reconciliation, and backup/disposable-restore mechanics. Trusted-device unit tests cover unchecked/wrong OTP issue rules, rotation/replay, other user/realm/browser, expiry/tamper/credential change, and minimum signing-key strength.
+- The Wave 1 workflow explicitly asserts that its CI is contract-only and that manual/browser gates remain manual.
+- Issue #9 records historical staging evidence for missing/revoked Application Access, SQ Hub API outage behavior, local-login-route denial, and logout. Those historical staging results are not silently reused as production PASS results below.
+
+### Execution matrix — 58 scenarios
+
+| ID | Scenario | Preconditions / persona | Langkah ringkas | Expected result | Evidence aman | Status | Classification | Execution owner |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 1.1 | Login dengan NIP/employee number | Synthetic ordinary Employee; NIP known to tester; HCIS access active | Open HCIS production in fresh browser; sign in with NIP | Authentication succeeds and HCIS opens | Timestamp, synthetic handle, `NIP_LOGIN=PASS`; no credential | NOT_RUN | GITHUB_EVIDENCED + USER_BROWSER_REQUIRED | Product owner/tester |
+| 1.2 | Login dengan verified unique email | Same synthetic Employee; verified unique email | Repeat fresh login using email instead of NIP | Same identity authenticates successfully | Timestamp, synthetic handle, `EMAIL_LOGIN=PASS` | NOT_RUN | GITHUB_EVIDENCED + USER_BROWSER_REQUIRED | Product owner/tester |
+| 1.3 | NIP/email resolve to same HCIS `accounts.id` | Persona has pre-recorded synthetic expected local-principal handle | Compare sanitized local-principal result for 1.1 and 1.2 | Both logins resolve to the same existing HCIS principal | Synthetic account handle or non-sensitive `accounts.id`; no raw `sub` | NOT_RUN | GITHUB_EVIDENCED + USER_BROWSER_REQUIRED + CODEX_VPS_REQUIRED | Product owner + Codex |
+| 1.4 | non-Employee Staff mapping | Synthetic Staff without NIP; verified unique email; explicit mapping/access | Login with approved email and open HCIS | Intended existing local Staff principal is used | Synthetic handle + expected local-principal marker | NOT_RUN | GITHUB_EVIDENCED + USER_BROWSER_REQUIRED | Product owner/tester |
+| 1.5 | Technical mapping remains exact `issuer + sub` | Synthetic unmapped/wrong-mapping case available | Attempt login for identity that must not match by email/NIP | Access denied; no silent email/NIP technical remap | `UNKNOWN_MAPPING_DENIED=PASS`; no raw `sub` | NOT_RUN | GITHUB_EVIDENCED + USER_BROWSER_REQUIRED | Product owner/tester |
+| 2.1 | Ordinary Employee authorization continuity | Ordinary Employee with known normal HCIS capability | Login and open representative Employee-only page/action | Expected access works; no extra privilege | Synthetic handle + named capability + PASS/FAIL | NOT_RUN | GITHUB_EVIDENCED + USER_BROWSER_REQUIRED | Product owner/tester |
+| 2.2 | Manager role/scope continuity | Synthetic manager with known local role/scope | Login; exercise one manager-only and one prohibited capability | Existing HCIS manager scope is unchanged | Capability names + boolean results | NOT_RUN | GITHUB_EVIDENCED + USER_BROWSER_REQUIRED | Product owner/tester |
+| 2.3 | Human Capital administrator continuity | Synthetic HC admin with accepted local permissions | Login; exercise representative HC admin capability | Expected HCIS-local permission remains available | Capability name + boolean result | NOT_RUN | GITHUB_EVIDENCED + USER_BROWSER_REQUIRED | Product owner/tester |
+| 2.4 | Privileged/Super Admin local authorization | Synthetic privileged HCIS principal; MFA ready | Complete MFA; exercise representative privileged HCIS capability | Local privileged authorization is preserved | Synthetic handle + capability marker; no OTP | NOT_RUN | GITHUB_EVIDENCED + USER_BROWSER_REQUIRED | Product owner/tester |
+| 2.5 | Domain roles remain HCIS-owned, not Keycloak-owned | Review accepted product/domain/ADR/spec and broker config | Verify no acceptance step relies on Keycloak realm/client role to grant HCIS business permission | Ownership remains HCIS; Application Access remains entry gate only | Links to accepted docs + reconciliation markers | PASS | GITHUB_EVIDENCED | GitHub reviewer |
+| 3.1 | Privileged user is required to complete TOTP | Synthetic privileged identity with TOTP enrolled | Fresh login; stop before OTP, then complete OTP | No HCIS session before TOTP; session after valid TOTP | `PRIVILEGED_TOTP_REQUIRED=PASS`; no OTP/seed | NOT_RUN | GITHUB_EVIDENCED + USER_BROWSER_REQUIRED | Product owner/tester |
+| 3.2 | Recovery Authentication Code is one-time | Same synthetic privileged identity; operator-held code | Use one recovery code; then attempt same code again in a fresh auth attempt | First accepted; reuse denied | Availability/exercised/reuse-denied booleans only | NOT_RUN | GITHUB_EVIDENCED + USER_BROWSER_REQUIRED | Product owner/tester |
+| 3.3 | Forgot Password sends through production sender | Synthetic account with controlled mailbox | Use `Lupa password?`; inspect received mail | Mail arrives from approved production sender/route | Timestamp, recipient synthetic handle, sender display/address if non-secret | NOT_RUN | GITHUB_EVIDENCED + USER_BROWSER_REQUIRED | Product owner/tester |
+| 3.4 | Password-reset link is single-use | Synthetic account; reset email received | Complete reset once, then reuse same link | First reset succeeds; second use rejected | `RESET_SINGLE_USE=PASS`; no URL/token | NOT_RUN | GITHUB_EVIDENCED + USER_BROWSER_REQUIRED | Product owner/tester |
+| 3.5 | Expired reset link is rejected | Synthetic account; owner-approved way to obtain an expired test link | Open expired action link | Reset is rejected without session creation | `RESET_EXPIRED_DENIED=PASS`; no URL/token | NOT_RUN | GITHUB_EVIDENCED + USER_BROWSER_REQUIRED | Product owner/tester |
+| 3.6 | Disabled user cannot recover into a new session | Synthetic globally disabled identity; controlled mailbox | Attempt recovery/reset and then protected-page access | No new authenticated HCIS session is created | Disabled persona handle + denial marker | NOT_RUN | GITHUB_EVIDENCED + USER_BROWSER_REQUIRED + OWNER_DECISION_REQUIRED | Product owner/change owner |
+| 4.1 | Unknown Google account is rejected; no user created | Approved synthetic Google account with no existing Akun SQ match | Choose Google login and authenticate upstream | Link/login is rejected; no new Akun SQ user appears | Synthetic Google handle + `NO_AUTO_CREATE=PASS` | NOT_RUN | GITHUB_EVIDENCED + USER_BROWSER_REQUIRED | Product owner/tester |
+| 4.2 | First Google link requires confirmation and local-password proof | Existing synthetic Akun SQ user and matching Google email, not yet linked | Start first Google login and follow linking flow | Explicit confirmation and local password proof are required before link | Boolean step markers; no password | NOT_RUN | GITHUB_EVIDENCED + USER_BROWSER_REQUIRED | Product owner/tester |
+| 4.3 | TOTP user still receives challenge during Google linking/login | Existing synthetic TOTP user | Start Google login after link precondition | TOTP challenge appears where policy requires it | `GOOGLE_TOTP_CHALLENGE=PASS`; no OTP | NOT_RUN | GITHUB_EVIDENCED + USER_BROWSER_REQUIRED | Product owner/tester |
+| 4.4 | Subsequent Google login returns to same Keycloak/HCIS principal | Synthetic linked user with prior baseline local principal | Fresh browser Google login; compare sanitized principal result | Same Keycloak identity mapping and same HCIS local principal are reached | Synthetic account handle + local-principal marker | NOT_RUN | GITHUB_EVIDENCED + USER_BROWSER_REQUIRED | Product owner/tester |
+| 4.5 | Google login adds no privilege/access/domain role | Same linked synthetic user; baseline role/access snapshot available | Compare authorized capabilities before/after link/login | No new realm/client role, Application Access, Platform Administrator, or HCIS role is granted | Boolean unchanged markers; no raw role dump containing PII | NOT_RUN | GITHUB_EVIDENCED + USER_BROWSER_REQUIRED | Product owner/tester |
+| 5.1 | Login without trusted-device checkbox | Synthetic TOTP user; fresh browser/profile | Login with valid TOTP leaving checkbox off; log out; fresh login | No trusted-device bypass is created | `TRUST_UNCHECKED_NO_ISSUE=PASS` | NOT_RUN | GITHUB_EVIDENCED + USER_BROWSER_REQUIRED | Product owner/tester |
+| 5.2 | Wrong OTP is rejected | Synthetic TOTP user | Enter an intentionally wrong OTP | Authentication fails; trusted state is not created | `WRONG_OTP_DENIED=PASS`; no OTP value | NOT_RUN | GITHUB_EVIDENCED + USER_BROWSER_REQUIRED | Product owner/tester |
+| 5.3 | Checked + valid OTP creates trusted state | Synthetic TOTP user; fresh browser | Check trust option and submit valid OTP | Login succeeds and trusted-device cookie/state is created | Cookie name/presence + attributes only; never value | NOT_RUN | GITHUB_EVIDENCED + USER_BROWSER_REQUIRED | Product owner/tester |
+| 5.4 | Same browser follows trusted-device policy | Persona from 5.3; same profile | Log out/end app session as agreed; start new login within trust lifetime | TOTP is skipped only as specified; first factor/session rules still apply | Boolean `SAME_BROWSER_TRUST=PASS` | NOT_RUN | GITHUB_EVIDENCED + USER_BROWSER_REQUIRED | Product owner/tester |
+| 5.5 | Different browser/profile still requires TOTP | Same user; second clean browser profile | Start login in second profile | TOTP is required | `OTHER_BROWSER_TOTP_REQUIRED=PASS` | NOT_RUN | GITHUB_EVIDENCED + USER_BROWSER_REQUIRED | Product owner/tester |
+| 5.6 | Expired trusted state is rejected | Synthetic user with owner-approved expired proof/test timing | Attempt login with expired trust state | TOTP is required; expired proof not accepted | Expiry/denial boolean only | NOT_RUN | GITHUB_EVIDENCED + USER_BROWSER_REQUIRED | Product owner/tester |
+| 5.7 | Tampered trusted cookie is rejected | Synthetic user; test browser; cookie value must not be recorded | Alter the test cookie locally, then authenticate | Tampered proof is rejected and TOTP is required | `TRUST_TAMPER_DENIED=PASS`; no cookie value/screenshot | NOT_RUN | GITHUB_EVIDENCED + USER_BROWSER_REQUIRED | Product owner/tester |
+| 5.8 | Password reset invalidates prior trusted state | Synthetic TOTP user with trusted state | Reset password through supported flow, then retry same browser | Prior trusted state no longer skips TOTP | `PASSWORD_RESET_INVALIDATES_TRUST=PASS` | NOT_RUN | GITHUB_EVIDENCED + USER_BROWSER_REQUIRED | Product owner/tester |
+| 5.9 | TOTP credential replacement invalidates prior trusted state | Synthetic TOTP user with trusted state | Replace TOTP credential through approved flow; retry same browser | Prior trusted state is invalidated | `TOTP_REPLACE_INVALIDATES_TRUST=PASS` | NOT_RUN | GITHUB_EVIDENCED + USER_BROWSER_REQUIRED | Product owner/tester |
+| 5.10 | Disabled user remains denied despite trusted state | Synthetic trusted user that is then disabled under approved test plan | Attempt new login from previously trusted browser | User is denied; trust cookie cannot bypass disablement | Disabled synthetic handle + denial marker | NOT_RUN | GITHUB_EVIDENCED + USER_BROWSER_REQUIRED + OWNER_DECISION_REQUIRED | Product owner/change owner |
+| 5.11 | Ordinary vs privileged MFA policy remains correct | One ordinary and one privileged synthetic persona | Compare login challenges/enforcement | Ordinary policy remains optional unless enrolled/risk policy says otherwise; privileged remains mandatory | Persona class + boolean policy result | NOT_RUN | GITHUB_EVIDENCED + USER_BROWSER_REQUIRED | Product owner/tester |
+| 5.12 | Google path follows same trusted-device/MFA policy | Synthetic Google-linked TOTP user | Execute Google login with/without valid trusted proof | Google is only first factor; trusted-device/TOTP rules match browser flow | `GOOGLE_TRUSTED_DEVICE_POLICY=PASS` | NOT_RUN | GITHUB_EVIDENCED + USER_BROWSER_REQUIRED | Product owner/tester |
+| 6.1 | HCIS-local suspended account is denied without global disable | Synthetic HCIS-local suspended persona; global identity intentionally enabled | Attempt HCIS login; separately verify global identity remains enabled/usable as approved | HCIS denied; global identity not disabled as side effect | Synthetic handle + HCIS denial + global-enabled boolean | NOT_RUN | GITHUB_EVIDENCED + USER_BROWSER_REQUIRED + CODEX_VPS_REQUIRED + OWNER_DECISION_REQUIRED | Product owner + Codex/change owner |
+| 6.2 | Globally disabled Keycloak identity gets no new session | Synthetic identity approved for disable test | Disable/confirm disabled state under change plan; attempt HCIS login | No new HCIS session | Synthetic handle + disabled boolean + denial marker | NOT_RUN | GITHUB_EVIDENCED + USER_BROWSER_REQUIRED + CODEX_VPS_REQUIRED + OWNER_DECISION_REQUIRED | Product owner + Codex/change owner |
+| 6.3 | Identity without HCIS Application Access is denied | Synthetic mapped identity with no HCIS grant | Attempt fresh HCIS login | No HCIS session is created | Synthetic handle + `NO_APP_ACCESS_DENIED=PASS` | NOT_RUN | GITHUB_EVIDENCED + USER_BROWSER_REQUIRED | Product owner/tester |
+| 6.4 | Revoked Application Access is denied on next login | Synthetic user initially granted HCIS access | Establish baseline; revoke via approved operator path; attempt fresh login; restore only if approved | Existing-session timing follows contract; new login denied | Revocation timestamp + boolean result; no token | NOT_RUN | GITHUB_EVIDENCED + USER_BROWSER_REQUIRED + CODEX_VPS_REQUIRED + OWNER_DECISION_REQUIRED | Product owner + Codex/change owner |
+| 6.5 | Unknown/wrong `issuer + sub` is denied | Synthetic unmapped identity; wrong-pair cases remain covered by regression tests | Perform one live unknown-mapping login; retain wrong-pair automated evidence | Live unknown mapping denied; no fallback; wrong-pair regression remains green | Live denial marker + test/workflow link; no raw `sub` | NOT_RUN | GITHUB_EVIDENCED + USER_BROWSER_REQUIRED | Product owner/tester |
+| 6.6 | No silent fallback to local password, email, or NIP mapping | OIDC mode; synthetic unmapped/denied case | After identity/access failure, inspect user-visible route behavior and retry direct local-login URL inventory | No local-auth screen/session or heuristic remap becomes available | Route/status markers only; no headers/cookies | NOT_RUN | GITHUB_EVIDENCED + USER_BROWSER_REQUIRED + CODEX_VPS_REQUIRED | Product owner + Codex |
+| 7.1 | `localStorage` contains no access/refresh/ID token | Any successful synthetic login | Open browser devtools after callback; inspect keys/values locally without copying secrets | No OIDC access/refresh/ID token persisted | Key names or `NO_OIDC_TOKEN_IN_LOCALSTORAGE=PASS`; no values | NOT_RUN | GITHUB_EVIDENCED + USER_BROWSER_REQUIRED | Product owner/tester |
+| 7.2 | `sessionStorage` contains no access/refresh/ID token | Same session as 7.1 | Inspect sessionStorage | No OIDC access/refresh/ID token persisted | Key names or pass marker; no values | NOT_RUN | GITHUB_EVIDENCED + USER_BROWSER_REQUIRED | Product owner/tester |
+| 7.3 | Session/trusted-device cookie attributes are correct | Successful HCIS session; trusted-device test session | Inspect browser cookie metadata only | Session/trust cookies have expected `Secure`, `HttpOnly`, `SameSite`, path/domain/expiry behavior | Cookie name + attributes; never cookie value | NOT_RUN | GITHUB_EVIDENCED + USER_BROWSER_REQUIRED | Product owner/tester |
+| 7.4 | No wildcard/shared auth cookie across all subdomains | Same cookie inspection | Check Domain/Path scopes for HCIS and trusted-device cookies | No broad `*.sabilulquran.or.id` shared auth cookie; trusted-device remains realm-scoped | Cookie name + Domain/Path only | NOT_RUN | GITHUB_EVIDENCED + USER_BROWSER_REQUIRED | Product owner/tester |
+| 8.1 | Logout ends HCIS application session | Successful synthetic HCIS login | Click HCIS logout; immediately revisit protected HCIS URL | Previous application session no longer grants access | Logout/revisit timestamps + boolean result | NOT_RUN | GITHUB_EVIDENCED + USER_BROWSER_REQUIRED | Product owner/tester |
+| 8.2 | Logout initiates agreed SQ Identity logout | Same logout flow | Observe redirect/Keycloak logout UI/flow | Agreed IdP logout flow starts | Sanitized destination host/path + boolean result | NOT_RUN | GITHUB_EVIDENCED + USER_BROWSER_REQUIRED | Product owner/tester |
+| 8.3 | Protected page requires appropriate authentication after logout | Completed 8.1/8.2 | Navigate directly to protected HCIS URL | User must authenticate according to remaining global-session semantics | `POST_LOGOUT_REAUTH=PASS` + note whether IdP session remained by design | NOT_RUN | GITHUB_EVIDENCED + USER_BROWSER_REQUIRED | Product owner/tester |
+| 8.4 | Existing-session behavior is recorded without identifiers | One active session; accepted session policy known | Observe expected continuation/expiry conditions during normal use | Behavior matches contract; no session ID/cookie recorded | Time window + boolean outcome only | NOT_RUN | GITHUB_EVIDENCED + USER_BROWSER_REQUIRED | Product owner/tester |
+| 9.1 | Keycloak unavailable => new login fails closed | Safe rehearsal environment/window and owner approval | Codex stops/isolates only approved Keycloak target; tester attempts new login; restore | No new login/session is created | Start/end time, service state, HTTP/result marker; no logs with tokens | BLOCKED | GITHUB_EVIDENCED + CODEX_VPS_REQUIRED + OWNER_DECISION_REQUIRED + USER_BROWSER_REQUIRED | Change owner + Codex + tester |
+| 9.2 | Keycloak outage has no fallback to local login | Same controlled outage as 9.1 | During outage, inspect HCIS login/direct-local route behavior | No local-password fallback appears | Sanitized route/status markers | BLOCKED | GITHUB_EVIDENCED + CODEX_VPS_REQUIRED + OWNER_DECISION_REQUIRED + USER_BROWSER_REQUIRED | Change owner + Codex + tester |
+| 9.3 | Existing HCIS session follows accepted expiry/invalidation during Keycloak outage | Pre-existing synthetic HCIS session; same controlled outage | Keep existing session active while IdP is isolated; observe accepted behavior; restore | Existing session follows local contract, not arbitrary immediate/fallback behavior | Time/result marker; no session ID/cookie | BLOCKED | GITHUB_EVIDENCED + CODEX_VPS_REQUIRED + OWNER_DECISION_REQUIRED + USER_BROWSER_REQUIRED | Change owner + Codex + tester |
+| 9.4 | Application Access check failure does not open access | Safe rehearsal environment/window; existing historical staging evidence noted | Under explicit approval, isolate/fail access-check path for a fresh login; restore | New session is denied; no bypass | Sanitized service state + denial marker | BLOCKED | GITHUB_EVIDENCED + CODEX_VPS_REQUIRED + OWNER_DECISION_REQUIRED + USER_BROWSER_REQUIRED | Change owner + Codex + tester |
+| 9.5 | Alternate public local-login routes remain unavailable in OIDC mode | Current production route inventory | Codex read-only enumerates known/historical public auth routes and probes without credentials | Every local-password entry route is unavailable/disabled in OIDC mode | See C5 evidence below: canonical POST returns `404 LOCAL_AUTH_DISABLED`; unprefixed backend path returns 405; production mode reports `oidc` | PASS | GITHUB_EVIDENCED + CODEX_VPS_REQUIRED | Codex |
+| 10.1 | Record source SHA, image/digest, issuer, execution time | Running HCIS, Keycloak, SQ Hub API production | Record GitHub source SHA; Codex read-only records immutable runtime refs and issuer; tester records execution time | Complete non-secret provenance set exists | See C1 evidence below: source/image refs, immutable digests, issuer, timestamp | PASS | GITHUB_EVIDENCED + CODEX_VPS_REQUIRED | Codex + GitHub reviewer |
+| 10.2 | Complete persona matrix using synthetic/redacted handles | Owner-approved test identities for all required persona classes | Assign stable redacted handle, expected principal/access, and scenario coverage | Every required persona has an owner and expected outcome | Redacted handle table; no raw `sub`/PII | NOT_RUN | USER_BROWSER_REQUIRED + OWNER_DECISION_REQUIRED | Product owner |
+| 10.3 | Record each scenario as PASS/FAIL/BLOCKED/NOT_RUN | This matrix exists | Update only after evidence is produced; do not infer PASS | Every scenario has one explicit result | This matrix + evidence reference | PASS | GITHUB_EVIDENCED | GitHub reviewer |
+| 10.4 | Name acceptance owner and executor for every check | Named acceptance owner not present in repository | Owner assigns acceptance owner and approved tester/Codex operator identities by role/name | Accountability is explicit before final acceptance | Names/roles only; no credentials | BLOCKED | OWNER_DECISION_REQUIRED | Product/change owner |
+| 10.5 | Map results to issue #9 and accepted specs | Matrix + mapping section below | For each completed scenario, add evidence reference to issue/PR and relevant spec gate | No orphan evidence or double-counted gate | GitHub links/anchors only | PASS | GITHUB_EVIDENCED | GitHub reviewer |
+| 10.6 | Keep issue #9 open until all required gates have evidence | Issue #9 currently open | Do not close while any required row is NOT_RUN/BLOCKED/FAIL or owner acceptance missing | Issue remains open until real closure | Issue state + final acceptance comment | PASS | GITHUB_EVIDENCED + OWNER_DECISION_REQUIRED | Product owner/GitHub maintainer |
+
+### Mapping back to issue #9 and accepted specs
+
+| Matrix group | Primary source-of-truth / issue gate |
+| --- | --- |
+| 1. Login and identity mapping | `HUB-IMPL-003` OIDC flow, provisioning/mapping, acceptance; issue #9 synthetic personas + Browser UAT |
+| 2. HCIS authorization continuity | Foundation PRD HUB-FND-005/HUB-FND-010, domain ownership, ADR-0005, `HUB-IMPL-003` authorization invariants; issue #9 manager/HC admin/browser UAT |
+| 3. MFA and password recovery | Staff authentication policy, `HUB-IMPL-003` privileged/recovery UAT, `HUB-IMPL-011` password recovery; issue #9 privileged/MFA/recovery gates |
+| 4. Google account linking | `HUB-IMPL-011` Google sign-in acceptance and production handoff |
+| 5. Trusted device | `HUB-IMPL-012` behavior/security/acceptance and production handoff |
+| 6. Negative access/fail-closed identity | `HUB-IMPL-003` lifecycle/failure/tests; issue #9 suspended/disabled/access/mapping gates |
+| 7. Browser storage/cookie security | Staff authentication policy, security baseline, `HUB-IMPL-003` browser/session rules, `HUB-IMPL-012` cookie contract; issue #9 storage gate |
+| 8. Logout/session behavior | Staff authentication policy + `HUB-IMPL-003` logout; issue #9 logout/storage evidence |
+| 9. Failure behavior | `HUB-IMPL-003` failure behavior + Wave 1 closure additional gates; issue #9 outage/session evidence where already executed on staging |
+| 10. Evidence/acceptance closure | Issue #9 evidence/exit criteria + this production-cutover hard gate |
+
+A single historical staging result must not be counted as a production browser result for another row. Likewise, one browser happy-path login must not be reused as proof of manager, HC admin, privileged MFA, storage, Google, trusted-device, or outage behavior unless the recorded execution actually covered that distinct gate.
+
+### Codex read-only evidence — 2026-09-16
+
+The following observations were executed directly against production at `2026-09-16T05:08:07Z` (`12:08:07 WIB`). No container, database, realm, secret, DNS record, reverse-proxy rule, access grant, or user state was changed.
+
+#### C1 — runtime provenance (`10.1`)
+
+| Runtime | Source/image reference | Immutable image digest | Observed state |
+| --- | --- | --- | --- |
+| HCIS web | `ghcr.io/sabilulquran/hcisysq-web:sha-9e9098c5bd8579ae9ec36dc1f698c03a064c66ab` | `sha256:8a12529a74f8ed2970226cf188ac11abe00f12cda82efa3a52b22d265582cea5` | healthy; OCI revision matches source SHA |
+| HCIS API | `ghcr.io/sabilulquran/hcisysq-api:sha-9e9098c5bd8579ae9ec36dc1f698c03a064c66ab` | `sha256:867185fe85b44068d443e59105edd9238bbdd5036d684be2391c0683c337beb4` | healthy; `AUTH_MODE=oidc`; OCI revision matches source SHA |
+| SQ Identity / Keycloak | `ghcr.io/sabilulquran/sq-hub-keycloak:sha-347bc06cfe3af96b12106e7737fe7aa7cd799e4b` | `sha256:38405c96e88ba2f9779bbcdd50780dd02a393ebe15c34425ddd51dd327a5afee` | healthy; the digest-pinned container matches, but the OCI revision label remains the known mismatched `df15afa5a3a8a2b10021f879ffa93b30fb36c73a` |
+| SQ Hub API | `ghcr.io/sabilulquran/sq-hub-api:sha-07961141815e5f0c0f3818ad10ae454d3477fce4` | `sha256:b272495a4de18ae0c037bf046093a089ea1a2fe1ee628e80abf0eda35d49761f` | healthy; image has no OCI revision label |
+
+The public production issuer returned by OIDC discovery was exactly `https://login.sabilulquran.or.id/realms/sq-staff`. The source/image mismatch is recorded rather than guessed: Keycloak's immutable digest and local source tag are known, while its OCI revision label is stale. This completes the non-secret runtime snapshot but does not prove any browser scenario.
+
+#### C5 — public local-auth route inventory (`9.5`, partial support for `6.6`)
+
+The current HCIS source defines the password endpoint at `POST /auth/login`; the public edge exposes the API under `/api`, while the public host reverse-proxies the HCIS web service. Read-only probes using an obviously synthetic invalid payload produced:
+
+| Public route | Result |
+| --- | --- |
+| `GET /api/auth/mode` | HTTP 200 with `mode=oidc` |
+| `POST /api/auth/login` | HTTP 404 with stable code `LOCAL_AUTH_DISABLED` |
+| `POST /auth/login` | HTTP 405; the unprefixed backend route is not exposed as a password API |
+| `GET /login` | HTTP 200 web shell; current source renders the SQ Identity entry path when runtime mode is OIDC |
+| `GET /api/auth/oidc/start` | HTTP 302 to the production SQ Identity issuer; query parameters were not retained |
+
+This is sufficient evidence for `9.5`. Row `6.6` remains `NOT_RUN`: route denial alone does not prove the distinct negative browser case after a failed identity mapping or access decision.
+
+### Browser handoff for the product owner
+
+Use only approved synthetic/production test identities. Do not send passwords, OTPs, recovery codes, reset links, tokens, cookie values, Google secrets, or raw OIDC subjects through chat or GitHub.
+
+- [ ] Prepare one redacted handle for ordinary Employee, manager, Human Capital admin, privileged/Super Admin, non-Employee Staff, suspended HCIS account, globally disabled identity, no-access identity, and Google-link test users.
+- [ ] Test NIP and verified-email login and confirm they reach the same expected HCIS user.
+- [ ] Verify Employee, manager, HC admin, and privileged HCIS permissions using one representative capability each; confirm no unexpected extra permission.
+- [ ] Test privileged TOTP, one recovery authentication code plus denied reuse, Forgot Password delivery, single-use reset, expired reset, and disabled-user recovery denial.
+- [ ] Test Google: unknown account rejected, first link asks for confirmation + Akun SQ password, TOTP still appears when required, later Google login returns to the same HCIS user, and no new privilege appears.
+- [ ] Test trusted device with checkbox off, wrong OTP, checked+valid OTP, same browser, different browser/profile, expiry, tampering, password reset, TOTP replacement, disabled user, ordinary/privileged policy, and Google login.
+- [ ] In browser developer tools, verify localStorage/sessionStorage contain no access/refresh/ID token. Record cookie names and security attributes only, never values.
+- [ ] Test logout and direct revisit of a protected HCIS page; record whether reauthentication is required under the agreed IdP session behavior.
+- [ ] Run negative access tests for suspended local account, globally disabled identity, missing/revoked Application Access, and unknown mapping. Coordinate any state change with the approved operator; do not change production roles/access casually.
+- [ ] For each row, record only `PASS`, `FAIL`, `BLOCKED`, or `NOT_RUN` plus timestamp, redacted persona handle, and a short non-secret observation.
+
+### Codex local/VPS handoff
+
+Codex must not execute production mutations until the product/change owner explicitly authorizes the exact target and window. Read-only checks may proceed under the normal approved access path. If a command might print a secret, token, cookie, raw OIDC subject, personal data, or production dump, change the command/output before running it.
+
+| Handoff | What to inspect / scenario rows | Host/service | Mode | Safe output to retain | Never retain | Risk and rollback if mutation is later approved |
+| --- | --- | --- | --- | --- | --- | --- |
+| C1 Runtime provenance | 10.1: deployed source/image refs for HCIS, Keycloak/SQ Identity, SQ Hub API; production issuer; execution timestamp | Production VPS; HCIS web/API, Keycloak, SQ Hub API | Read-only | Container/service name, source SHA if exposed, immutable image ref/digest, exact issuer URL, UTC/WIB timestamp | Env contents, secrets, tokens, DB data, raw `sub` | Low read-only risk; no rollback. If metadata label conflicts with source tag, record both rather than guessing provenance. |
+| C2 HCIS local-principal continuity | 1.3: prove NIP and email logins for the same synthetic persona resolve to the same pre-existing local principal | HCIS production API/DB or accepted HCIS operator CLI on VPS | Read-only | Synthetic persona handle + non-sensitive `accounts.id` or a stable hash of it; before/after equality marker | Email/NIP if not synthetic, password, session IDs, raw OIDC subject, production row dump | Read-only query only; no rollback. Stop if only broad production dumps can produce the answer. |
+| C3 Lifecycle state boundary | 6.1/6.2: verify HCIS-local suspended vs global Keycloak enabled/disabled state for synthetic personas | HCIS production + Keycloak production | Read-only if personas already exist; otherwise mutation requires owner approval | Redacted handle + `HCIS_LOCAL_STATUS=<state>` + `GLOBAL_IDENTITY_ENABLED=<true/false>` | Keycloak user ID/raw `sub`, credentials, personal attributes, full user export | If owner approves state mutation, change only the synthetic persona; record prior state first and restore exactly after test unless the fixture is intentionally retained. |
+| C4 Application Access revoke fixture | 6.4: create/confirm a synthetic revoked-access condition and later restore only if approved | SQ Hub API/operator path + HCIS production | Mutation only with owner approval | Redacted handle, grant state before/after, revoke/restore timestamps, fresh-login result | Service tokens, client secrets, raw API payloads containing identity identifiers | Risk: accidental user lockout. Restrict to synthetic persona, record prior grant, revoke once, test, then restore the exact prior grant if the approved plan requires restoration. |
+| C5 Public local-auth route inventory | 6.6/9.5: enumerate known/current/historical HCIS login endpoints and edge routes while `AUTH_MODE=oidc` | HCIS production + reverse proxy/Caddy | Read-only | Route/path, HTTP status, stable application error code/body fragment that contains no sensitive data | Authorization headers, cookies, response tokens, full proxy config with secrets | Low read-only risk; no rollback. Do not brute-force or probe unrelated paths. |
+| C6 Keycloak outage rehearsal | 9.1-9.3: fail-closed new login, no local fallback, existing-session behavior | Prefer restored staging/isolated production-like target; production only in an explicitly approved maintenance window | Mutation: stop/isolate Keycloak target; restore after observation | Target name, start/end time, health state, browser PASS/FAIL markers, restore health marker | Container env, admin credentials, tokens, cookies, session IDs, verbose auth logs | High availability risk. Pre-record running state; isolate only the approved Keycloak service/network path; restore immediately; verify health/discovery; invoke rollback/incident owner if restore fails. |
+| C7 Application Access failure rehearsal | 9.4: fail access-check closed for a fresh login; historical staging evidence exists but is not production PASS | Prefer staging/isolated target; production only with explicit owner approval | Mutation: isolate SQ Hub access-check path/service; restore after observation | Target name, start/end time, service health state, fresh-login denial marker, restore marker | Machine token/client secret, request authorization headers, production DB data | Risk: new HCIS logins may fail. Restrict window/target, restore service/network path immediately, confirm health and successful fresh login after restoration if authorized. |
+
+For C6/C7, the repository currently provides no authorization to stop production services. Until the owner chooses a safe rehearsal target/window, rows 9.1-9.4 remain `BLOCKED`. The earlier staging SQ Hub outage evidence in issue #9 may be referenced as historical evidence but does not automatically satisfy the distinct pending Keycloak-outage gate or production UAT.
+
+### Owner decisions still required
+
+The product/change owner must explicitly provide or approve all of the following before final closure:
+
+1. the named acceptance owner who may sign off production login UAT;
+2. the approved synthetic/production test persona set and who may hold/use each credential through the normal secure channel;
+3. whether outage/failure rehearsals C6/C7 will run on restored staging/isolated production-like infrastructure or in a production maintenance window;
+4. if production mutation is authorized for disabled/suspended/revoked fixtures, the exact synthetic identities, operator, window, and restoration expectation;
+5. whether any historical staging evidence is accepted only as regression/supporting evidence or must be repeated in production; no decision may convert an unexecuted production browser scenario into PASS;
+6. the incident/rollback decision-maker and the final acceptance/issue-closure decision after all required evidence exists.
+
+### Consistency and invented-requirement audit
+
+No new authentication or authorization behavior is introduced by this packet. The scenarios above are direct operationalization of the accepted product/domain boundary, ADR-0003, ADR-0005, `HUB-IMPL-003`, `HUB-IMPL-011`, `HUB-IMPL-012`, Staff authentication policy, security baseline, issue #9 gates, and the requested production UAT scope.
+
+No normative conflict was found between the accepted domain ownership document, accepted ADRs, and the three accepted implementation specs for these scenarios. Two temporal/status differences must remain explicit rather than be “fixed” by inference:
+
+- ADR-0005 describes the pre-cutover HCIS context, while the 2026-09-16 runtime audit observes production already running OIDC. That is a historical-context difference, not permission to infer that acceptance or authorization was complete.
+- `HUB-IMPL-003` is a staging implementation/rehearsal spec and explicitly does not authorize production cutover. The observed production runtime therefore does not supersede the hard gates in this runbook; missing approval, rollback rehearsal, browser evidence, and owner acceptance keep `CUTOVER_BLOCKED`.
+
+The Foundation PRD and security baseline are marked DRAFT, so accepted ADR/spec/policy text is used where a binding decision is required. The accepted Staff authentication policy and accepted implementation specs are consistent with the matrix. Repository tests and workflows are treated as contract evidence only; they are not substituted for production browser execution. No PASS above depends solely on a health check. No production secret, credential, token, cookie value, raw OIDC subject, personal-data dump, or production database dump is requested as evidence.
