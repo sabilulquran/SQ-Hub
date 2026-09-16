@@ -318,6 +318,18 @@ A read-only production query at `2026-09-16T05:50:06Z` used only short one-way h
 
 This proves that the existing exact mapping and access records agree structurally, but it does not prove NIP/email browser login. Because the email is not verified and the identity is not proven synthetic, it must not be used for C2 email-login evidence or any C3/C4 mutation. C2 browser execution remains `NOT_RUN`; C3/C4 cannot begin until the acceptance owner designates or provisions clearly marked synthetic personas through the approved secure path. No user state was changed by this discovery.
 
+#### Controlled production UAT persona provisioning
+
+At `2026-09-16T07:10:55Z`, the owner-authorized synthetic persona `UAT-HCIS-001` was provisioned for C2-C4. The operation used a dedicated Gmail plus-address alias that was unused in HCIS and Keycloak; the already-used base HCIS email was not reused. Retained evidence is limited to the synthetic handle and non-secret state:
+
+- Keycloak contains one enabled ordinary Staff identity with complete first/last name fields, `emailVerified=false`, required actions `VERIFY_EMAIL` and `UPDATE_PASSWORD`, no credential yet, no group membership, and no privileged role match;
+- HCIS contains one active synthetic Employee and one active `EMPLOYEE` account with no local password and no HCIS role assignment;
+- the HCIS operator CLI returned `would_map` in preview and `mapped` on apply, followed by an exact issuer/subject equality check; the raw subject was not retained in this document;
+- SQ Hub contains one active `hcis` Application Access grant, created by the supported operator CLI with actor `codex-vps` and an audit event;
+- Keycloak accepted dispatch of a 24-hour action email for email verification and password creation. The first attempt with an unregistered root redirect URI was rejected before dispatch; the successful attempt omitted the application redirect.
+
+This establishes the authorized baseline but is not browser evidence. Rows `1.1`-`1.3` and C2-C4 remain `NOT_RUN` until the mailbox custodian completes the required actions and the tester executes the serial browser scenarios. The current baseline must not be mutated for C3/C4 before successful NIP/email login and local-principal continuity are recorded.
+
 ### Browser handoff for the product owner
 
 Use only approved synthetic/production test identities. Do not send passwords, OTPs, recovery codes, reset links, tokens, cookie values, Google secrets, or raw OIDC subjects through chat or GitHub.
@@ -351,13 +363,12 @@ For C6/C7, the repository currently provides no authorization to stop production
 
 ### Owner decisions and remaining inputs
 
-The owner role, bounded C3/C4 authorization, production prohibition for C6/C7, rollback escalation, and final owner-only acceptance are recorded above. The following inputs remain required before execution can continue:
+The owner role, bounded C3/C4 authorization, production prohibition for C6/C7, rollback escalation, synthetic C2-C4 persona, mapping, and active-access baseline are recorded above. The following inputs remain required before execution can continue:
 
-1. clearly designated synthetic production persona handles for C2/C3/C4, including an ordinary Employee with a controlled verified email, a lifecycle-state persona, and a revoke/restore persona;
-2. the approved browser tester and secure credential custodian for each persona; credentials must not enter GitHub or chat;
-3. a provisioning record showing complete required profile fields, verified-email state where used, explicit HCIS `issuer + sub` mapping, and intended Application Access baseline;
-4. an isolated/production-like target with sufficient capacity for C6/C7;
-5. the final acceptance/issue-closure decision after all required evidence exists.
+1. the mailbox custodian completes `VERIFY_EMAIL` and `UPDATE_PASSWORD` through the dispatched Keycloak link; credentials must not enter GitHub or chat;
+2. the approved browser tester executes C2, followed serially by C3 and C4 with the required snapshot, evidence, rollback, and rollback verification;
+3. an isolated/production-like target with sufficient capacity for C6/C7;
+4. the final acceptance/issue-closure decision after all required evidence exists.
 
 ### Consistency and invented-requirement audit
 
