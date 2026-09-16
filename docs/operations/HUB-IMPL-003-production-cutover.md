@@ -240,8 +240,8 @@ Classification may contain more than one of:
 | 9.2 | Keycloak outage has no fallback to local login | Same controlled outage as 9.1 | During outage, inspect HCIS login/direct-local route behavior | No local-password fallback appears | Sanitized route/status markers | BLOCKED | GITHUB_EVIDENCED + CODEX_VPS_REQUIRED + OWNER_DECISION_REQUIRED + USER_BROWSER_REQUIRED | Change owner + Codex + tester |
 | 9.3 | Existing HCIS session follows accepted expiry/invalidation during Keycloak outage | Pre-existing synthetic HCIS session; same controlled outage | Keep existing session active while IdP is isolated; observe accepted behavior; restore | Existing session follows local contract, not arbitrary immediate/fallback behavior | Time/result marker; no session ID/cookie | BLOCKED | GITHUB_EVIDENCED + CODEX_VPS_REQUIRED + OWNER_DECISION_REQUIRED + USER_BROWSER_REQUIRED | Change owner + Codex + tester |
 | 9.4 | Application Access check failure does not open access | Safe rehearsal environment/window; existing historical staging evidence noted | Under explicit approval, isolate/fail access-check path for a fresh login; restore | New session is denied; no bypass | Sanitized service state + denial marker | BLOCKED | GITHUB_EVIDENCED + CODEX_VPS_REQUIRED + OWNER_DECISION_REQUIRED + USER_BROWSER_REQUIRED | Change owner + Codex + tester |
-| 9.5 | Alternate public local-login routes remain unavailable in OIDC mode | Current production route inventory | Codex read-only enumerates known/historical public auth routes and probes without credentials | Every local-password entry route is unavailable/disabled in OIDC mode | Path + HTTP status/app error code only | NOT_RUN | GITHUB_EVIDENCED + CODEX_VPS_REQUIRED | Codex |
-| 10.1 | Record source SHA, image/digest, issuer, execution time | Running HCIS, Keycloak, SQ Hub API production | Record GitHub source SHA; Codex read-only records immutable runtime refs and issuer; tester records execution time | Complete non-secret provenance set exists | SHAs/digests/image refs/issuer/timestamps only | NOT_RUN | GITHUB_EVIDENCED + CODEX_VPS_REQUIRED | Codex + GitHub reviewer |
+| 9.5 | Alternate public local-login routes remain unavailable in OIDC mode | Current production route inventory | Codex read-only enumerates known/historical public auth routes and probes without credentials | Every local-password entry route is unavailable/disabled in OIDC mode | See C5 evidence below: canonical POST returns `404 LOCAL_AUTH_DISABLED`; unprefixed backend path returns 405; production mode reports `oidc` | PASS | GITHUB_EVIDENCED + CODEX_VPS_REQUIRED | Codex |
+| 10.1 | Record source SHA, image/digest, issuer, execution time | Running HCIS, Keycloak, SQ Hub API production | Record GitHub source SHA; Codex read-only records immutable runtime refs and issuer; tester records execution time | Complete non-secret provenance set exists | See C1 evidence below: source/image refs, immutable digests, issuer, timestamp | PASS | GITHUB_EVIDENCED + CODEX_VPS_REQUIRED | Codex + GitHub reviewer |
 | 10.2 | Complete persona matrix using synthetic/redacted handles | Owner-approved test identities for all required persona classes | Assign stable redacted handle, expected principal/access, and scenario coverage | Every required persona has an owner and expected outcome | Redacted handle table; no raw `sub`/PII | NOT_RUN | USER_BROWSER_REQUIRED + OWNER_DECISION_REQUIRED | Product owner |
 | 10.3 | Record each scenario as PASS/FAIL/BLOCKED/NOT_RUN | This matrix exists | Update only after evidence is produced; do not infer PASS | Every scenario has one explicit result | This matrix + evidence reference | PASS | GITHUB_EVIDENCED | GitHub reviewer |
 | 10.4 | Name acceptance owner and executor for every check | Named acceptance owner not present in repository | Owner assigns acceptance owner and approved tester/Codex operator identities by role/name | Accountability is explicit before final acceptance | Names/roles only; no credentials | BLOCKED | OWNER_DECISION_REQUIRED | Product/change owner |
@@ -264,6 +264,35 @@ Classification may contain more than one of:
 | 10. Evidence/acceptance closure | Issue #9 evidence/exit criteria + this production-cutover hard gate |
 
 A single historical staging result must not be counted as a production browser result for another row. Likewise, one browser happy-path login must not be reused as proof of manager, HC admin, privileged MFA, storage, Google, trusted-device, or outage behavior unless the recorded execution actually covered that distinct gate.
+
+### Codex read-only evidence — 2026-09-16
+
+The following observations were executed directly against production at `2026-09-16T05:08:07Z` (`12:08:07 WIB`). No container, database, realm, secret, DNS record, reverse-proxy rule, access grant, or user state was changed.
+
+#### C1 — runtime provenance (`10.1`)
+
+| Runtime | Source/image reference | Immutable image digest | Observed state |
+| --- | --- | --- | --- |
+| HCIS web | `ghcr.io/sabilulquran/hcisysq-web:sha-9e9098c5bd8579ae9ec36dc1f698c03a064c66ab` | `sha256:8a12529a74f8ed2970226cf188ac11abe00f12cda82efa3a52b22d265582cea5` | healthy; OCI revision matches source SHA |
+| HCIS API | `ghcr.io/sabilulquran/hcisysq-api:sha-9e9098c5bd8579ae9ec36dc1f698c03a064c66ab` | `sha256:867185fe85b44068d443e59105edd9238bbdd5036d684be2391c0683c337beb4` | healthy; `AUTH_MODE=oidc`; OCI revision matches source SHA |
+| SQ Identity / Keycloak | `ghcr.io/sabilulquran/sq-hub-keycloak:sha-347bc06cfe3af96b12106e7737fe7aa7cd799e4b` | `sha256:38405c96e88ba2f9779bbcdd50780dd02a393ebe15c34425ddd51dd327a5afee` | healthy; the digest-pinned container matches, but the OCI revision label remains the known mismatched `df15afa5a3a8a2b10021f879ffa93b30fb36c73a` |
+| SQ Hub API | `ghcr.io/sabilulquran/sq-hub-api:sha-07961141815e5f0c0f3818ad10ae454d3477fce4` | `sha256:b272495a4de18ae0c037bf046093a089ea1a2fe1ee628e80abf0eda35d49761f` | healthy; image has no OCI revision label |
+
+The public production issuer returned by OIDC discovery was exactly `https://login.sabilulquran.or.id/realms/sq-staff`. The source/image mismatch is recorded rather than guessed: Keycloak's immutable digest and local source tag are known, while its OCI revision label is stale. This completes the non-secret runtime snapshot but does not prove any browser scenario.
+
+#### C5 — public local-auth route inventory (`9.5`, partial support for `6.6`)
+
+The current HCIS source defines the password endpoint at `POST /auth/login`; the public edge exposes the API under `/api`, while the public host reverse-proxies the HCIS web service. Read-only probes using an obviously synthetic invalid payload produced:
+
+| Public route | Result |
+| --- | --- |
+| `GET /api/auth/mode` | HTTP 200 with `mode=oidc` |
+| `POST /api/auth/login` | HTTP 404 with stable code `LOCAL_AUTH_DISABLED` |
+| `POST /auth/login` | HTTP 405; the unprefixed backend route is not exposed as a password API |
+| `GET /login` | HTTP 200 web shell; current source renders the SQ Identity entry path when runtime mode is OIDC |
+| `GET /api/auth/oidc/start` | HTTP 302 to the production SQ Identity issuer; query parameters were not retained |
+
+This is sufficient evidence for `9.5`. Row `6.6` remains `NOT_RUN`: route denial alone does not prove the distinct negative browser case after a failed identity mapping or access decision.
 
 ### Browser handoff for the product owner
 
