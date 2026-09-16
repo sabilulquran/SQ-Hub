@@ -294,6 +294,30 @@ The current HCIS source defines the password endpoint at `POST /auth/login`; the
 
 This is sufficient evidence for `9.5`. Row `6.6` remains `NOT_RUN`: route denial alone does not prove the distinct negative browser case after a failed identity mapping or access decision.
 
+### Production Identity UAT Owner Authorization — 2026-09-16
+
+The acceptance owner is assigned by role as **Product Owner SQ Hub/HCIS — Human Capital YSQ**. Codex/engineering acts as executor and evidence collector; it does not declare final acceptance.
+
+The owner authorizes the following bounded execution:
+
+1. C2 may run read-only to prove that NIP and verified unique email login reach the same HCIS local principal.
+2. C3/C4 mutation is permitted only for explicitly designated synthetic UAT personas and only for HCIS local suspend/restore, SQ Identity/Keycloak disable/restore, and HCIS Application Access revoke/restore.
+3. Every C3/C4 scenario must run serially as `snapshot state -> mutation -> browser test -> evidence -> rollback -> verify rollback`. A rollback failure stops all subsequent mutation and is escalated to the acceptance owner.
+4. No real Staff account may be mutated. Credential/password/OTP/TOTP/recovery material, HCIS roles, Keycloak realm/client roles, Platform Administrator, `issuer + sub` mapping, and unrelated production configuration are outside the authorization.
+5. Evidence is limited to a synthetic/redacted handle, timestamps, non-secret before/after state, PASS/FAIL result, and rollback verification. Secrets, tokens, cookie values, client secrets, raw OIDC subjects, and production data dumps are prohibited.
+6. C6/C7 must not stop or isolate production services. Those rehearsals require a separate isolated/production-like target.
+7. Final acceptance remains owner-only after every required gate has qualifying evidence. Source/configuration/health evidence cannot upgrade an unexecuted browser scenario to PASS.
+
+#### C2/C3/C4 execution-readiness discovery
+
+A read-only production query at `2026-09-16T05:50:06Z` used only short one-way handles and boolean/non-secret state. It found no Keycloak or HCIS account carrying the repository's explicit synthetic/UAT/test markers. It did find one currently mapped production identity, but it is not treated as synthetic:
+
+- identity handle `a52f72ffcc95` is enabled in Keycloak, has a non-email username distinct from its email, and has an email present but `emailVerified=false`;
+- the same identity handle maps through the exact production issuer to HCIS account handle `c07612fa55d1`, which is an active Employee-linked principal;
+- the same identity handle has active `hcis` Application Access.
+
+This proves that the existing exact mapping and access records agree structurally, but it does not prove NIP/email browser login. Because the email is not verified and the identity is not proven synthetic, it must not be used for C2 email-login evidence or any C3/C4 mutation. C2 browser execution remains `NOT_RUN`; C3/C4 cannot begin until the acceptance owner designates or provisions clearly marked synthetic personas through the approved secure path. No user state was changed by this discovery.
+
 ### Browser handoff for the product owner
 
 Use only approved synthetic/production test identities. Do not send passwords, OTPs, recovery codes, reset links, tokens, cookie values, Google secrets, or raw OIDC subjects through chat or GitHub.
@@ -325,16 +349,15 @@ Codex must not execute production mutations until the product/change owner expli
 
 For C6/C7, the repository currently provides no authorization to stop production services. Until the owner chooses a safe rehearsal target/window, rows 9.1-9.4 remain `BLOCKED`. The earlier staging SQ Hub outage evidence in issue #9 may be referenced as historical evidence but does not automatically satisfy the distinct pending Keycloak-outage gate or production UAT.
 
-### Owner decisions still required
+### Owner decisions and remaining inputs
 
-The product/change owner must explicitly provide or approve all of the following before final closure:
+The owner role, bounded C3/C4 authorization, production prohibition for C6/C7, rollback escalation, and final owner-only acceptance are recorded above. The following inputs remain required before execution can continue:
 
-1. the named acceptance owner who may sign off production login UAT;
-2. the approved synthetic/production test persona set and who may hold/use each credential through the normal secure channel;
-3. whether outage/failure rehearsals C6/C7 will run on restored staging/isolated production-like infrastructure or in a production maintenance window;
-4. if production mutation is authorized for disabled/suspended/revoked fixtures, the exact synthetic identities, operator, window, and restoration expectation;
-5. whether any historical staging evidence is accepted only as regression/supporting evidence or must be repeated in production; no decision may convert an unexecuted production browser scenario into PASS;
-6. the incident/rollback decision-maker and the final acceptance/issue-closure decision after all required evidence exists.
+1. clearly designated synthetic production persona handles for C2/C3/C4, including an ordinary Employee with a controlled verified email, a lifecycle-state persona, and a revoke/restore persona;
+2. the approved browser tester and secure credential custodian for each persona; credentials must not enter GitHub or chat;
+3. a provisioning record showing complete required profile fields, verified-email state where used, explicit HCIS `issuer + sub` mapping, and intended Application Access baseline;
+4. an isolated/production-like target with sufficient capacity for C6/C7;
+5. the final acceptance/issue-closure decision after all required evidence exists.
 
 ### Consistency and invented-requirement audit
 
