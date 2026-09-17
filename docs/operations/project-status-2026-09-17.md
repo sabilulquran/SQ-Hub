@@ -42,10 +42,25 @@ Bukti tersebut tetap dilabeli sebagai staging evidence. Dokumen tidak mengklaim 
 
 Keadaan akhir persona sintetis telah diverifikasi aman: akun HCIS dan Employee aktif, Keycloak enabled dan email verified, exact OIDC mapping tersedia, serta Application Access aktif. Tidak ada mutation yang masih tertinggal.
 
+## Rencana tindak lanjut pengalaman Akun SQ
+
+**Status: DISCOVERY — belum menjadi scope implementasi pada UAT ini.** Pemilik produk mencatat bahwa pengalaman login dan pengaturan akun Keycloak masih terasa seperti antarmuka provider dan membutuhkan perbaikan produk. Pekerjaan ini harus diberi specification ID tersendiri sebelum implementasi dan tidak boleh mengubah protokol OIDC, kebijakan MFA, atau hasil gate keamanan.
+
+Rencana discovery mencakup:
+
+- audit visual dan usability untuk login, recovery, OTP/TOTP, error, logout, serta Account Console pada desktop dan mobile;
+- penyatuan bahasa, hierarki, navigasi, brand, dan bantuan kontekstual antara halaman login dengan pengaturan akun;
+- pengurangan istilah teknis Keycloak/credential yang terlihat pengguna, tanpa menyembunyikan keputusan keamanan;
+- pemeriksaan aksesibilitas keyboard, focus state, label, error feedback, dan responsive overflow;
+- pilihan implementasi melalui theme, message bundle, dan extension point resmi terlebih dahulu; template fork atau penggantian Account Console memerlukan alasan, risiko upgrade, serta specification/ADR yang sesuai;
+- visual UAT manusia untuk seluruh state autentikasi yang sudah menjadi gate, agar perbaikan tampilan tidak melemahkan alur recovery, Google, TOTP, atau trusted device.
+
+Temuan ini tidak mengubah status ledger saat ini. UAT keamanan tetap dilanjutkan pada runtime yang ada, sedangkan redesign harus dikerjakan dalam task terpisah agar bukti acceptance tidak tercampur dengan perubahan visual baru.
+
 ## Langkah berikutnya
 
 1. **Siapkan fixture Google yang benar-benar terpisah.** Akun Google tanpa pasangan dapat dipakai untuk membuktikan penolakan `4.1`. Untuk linking `4.2`-`4.5`, email yang diklaim Google harus sama dengan verified unique email Akun SQ yang memang dimiliki persona sintetis. Alias Gmail bertanda `+` tidak cukup bila Google mengklaim alamat dasar. Credential tetap dipegang tester dan tidak dicatat.
-2. **Daftarkan TOTP pada persona sintetis yang disetujui.** Gunakan satu persona TOTP non-privileged untuk sebagian besar matriks trusted-device. Persona privileged terpisah tetap diperlukan untuk policy comparison, TOTP wajib, dan recovery authentication code. Secret, QR, OTP, dan recovery code tidak boleh dicatat.
+2. **Gunakan TOTP persona sintetis yang sudah didaftarkan.** Pada 17 September 2026, read-only production inventory memverifikasi `UAT-HCIS-001` memiliki credential `otp` dan `password`. Persona ini dapat dipakai untuk sebagian besar matriks trusted-device. Persona privileged terpisah tetap diperlukan untuk policy comparison, TOTP wajib, dan recovery authentication code. Secret, QR, OTP, dan recovery code tidak boleh dicatat.
 3. **Eksekusi dalam urutan yang menjaga state.** Jalankan baseline storage/cookie, unchecked dan wrong OTP, checked+valid, same/other browser, Google linking/login, password-reset invalidation, TOTP replacement invalidation, lalu disabled-user denial. Catat state awal dan rollback untuk setiap mutation.
 4. **Jalankan hanya negative case lain yang masih berbeda bila diwajibkan.** Yang tersisa antara lain global Keycloak disable melalui browser, missing Application Access yang berbeda dari revoked access, dan unknown `issuer + sub` mapping. Pengujian revoke/restore dan tautan reset tidak perlu diulang.
 5. **Jalankan Keycloak outage hanya di target terisolasi bila tetap menjadi gate.** Jangan menghentikan Keycloak production. Tiga baris outage ini tetap `BLOCKED` sampai target aman tersedia atau pemilik produk mengeluarkannya dari scope rilis.
