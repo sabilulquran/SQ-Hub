@@ -11,7 +11,7 @@ Menyatukan seluruh permukaan autentikasi dan pengaturan akun dengan nama **Akun 
 ## Keputusan
 
 - Nama produk yang terlihat pengguna adalah **Akun SQ**. Istilah `SQ Identity` tidak boleh muncul pada UI aktif.
-- Login memakai komposisi satu kartu terpusat dengan latar terang, aksen turquoise, dan identitas organisasi yang ringkas. Panel HCIS, grid dekoratif, serta materi Nilai Utsman tidak digunakan pada layar login.
+- Login memakai komposisi satu kartu terpusat dengan latar terang, aksen turquoise, dan identitas organisasi yang ringkas. Masuk dengan Google ditempatkan sebagai opsi pertama, diikuti pemisah dan form NIP/email. Panel HCIS, grid dekoratif, serta materi Nilai Utsman tidak digunakan pada layar login.
 - Account Console memakai child theme resmi `keycloak.v3` dengan bahasa visual yang sama. Fitur keamanan, sesi, credential, dan linked account tetap berasal dari Keycloak.
 - Realm key, issuer, client ID, nama jaringan, dan identifier teknis lain tidak diubah oleh pekerjaan visual ini.
 - Struktur form, action URL, protokol OIDC, MFA, recovery, trusted device, dan kebijakan akses tidak diimplementasikan ulang.
@@ -25,7 +25,8 @@ Menyatukan seluruh permukaan autentikasi dan pengaturan akun dengan nama **Akun 
 
 ## Acceptance criteria
 
-- Login normal terpusat, terbaca, tanpa overflow pada 1440×900, 1280×720, dan 390×844.
+- Login normal terpusat, terbaca, tanpa overflow pada 1440×900, 1280×720, dan 390×844. Tidak ada garis atau ornamen bawaan provider yang mengganggu kartu.
+- Logo Akun SQ tetap tajam pada layar desktop dan mobile, termasuk saat browser mengisi form otomatis.
 - Konten panjang tetap dapat di-scroll.
 - `Akun SQ` tampil sebagai nama produk; `SQ Identity`, panel HCIS, dan Nilai Utsman tidak tampil pada theme aktif.
 - Realm memakai `loginTheme` dan `accountTheme` bernama `sq-hub` tanpa mengubah issuer.
