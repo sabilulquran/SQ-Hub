@@ -52,22 +52,24 @@ Bukti tersebut tetap dilabeli sebagai staging evidence. Dokumen tidak mengklaim 
 
 Keadaan akhir persona sintetis telah diverifikasi aman: akun HCIS dan Employee aktif, Keycloak enabled dan email verified, exact OIDC mapping tersedia, serta Application Access aktif. Tidak ada mutation yang masih tertinggal.
 
-## Rencana tindak lanjut pengalaman Akun SQ
+## Implementasi dan rollout pengalaman Akun SQ
 
-**Status: DISCOVERY — belum menjadi scope implementasi pada UAT ini.** Pemilik produk mencatat bahwa pengalaman login dan pengaturan akun Keycloak masih terasa seperti antarmuka provider dan membutuhkan perbaikan produk. Pekerjaan ini harus diberi specification ID tersendiri sebelum implementasi dan tidak boleh mengubah protokol OIDC, kebijakan MFA, atau hasil gate keamanan.
+**Status: LOGIN PRODUCTION DEPLOYED; ACCOUNT CONSOLE RUNTIME ACTIVATION PENDING.** Redesign dilaksanakan melalui `HUB-IMPL-015` dan PR #69, lalu di-merge sebagai commit `ada8a0b952effe7ec228f0b4072f15551ec3d0bc` pada 17 September 2026.
 
-Inventaris awal halaman dan keputusan penggunaan nama tersedia di [`akun-sq-gui-inventory-2026-09-17.md`](./akun-sq-gui-inventory-2026-09-17.md). Inventaris tersebut membedakan login-flow yang sudah memakai theme Akun SQ dari Account Console yang masih memakai UI Keycloak bawaan.
+Hasil repository dan CI:
 
-Rencana discovery mencakup:
+- login memakai satu kartu Akun SQ yang terpusat dan responsif; komposisi HCIS, Nilai Utsman, dan stylesheet bernama produk lama dihapus;
+- Account Console child theme berbasis `keycloak.v3` tersedia di image yang sama;
+- issuer, realm key, client, form action, MFA, recovery, trusted device, dan kebijakan akses tidak diubah;
+- contract, application CI, dan full Keycloak smoke lulus.
 
-- audit visual dan usability untuk login, recovery, OTP/TOTP, error, logout, serta Account Console pada desktop dan mobile;
-- penyatuan bahasa, hierarki, navigasi, brand, dan bantuan kontekstual antara halaman login dengan pengaturan akun;
-- pengurangan istilah teknis Keycloak/credential yang terlihat pengguna, tanpa menyembunyikan keputusan keamanan;
-- pemeriksaan aksesibilitas keyboard, focus state, label, error feedback, dan responsive overflow;
-- pilihan implementasi melalui theme, message bundle, dan extension point resmi terlebih dahulu; template fork atau penggantian Account Console memerlukan alasan, risiko upgrade, serta specification/ADR yang sesuai;
-- visual UAT manusia untuk seluruh state autentikasi yang sudah menjadi gate, agar perbaikan tampilan tidak melemahkan alur recovery, Google, TOTP, atau trusted device.
+Rollout production menggunakan image immutable `sha256:7b2117eb25cbc121b99b35812eec7886be13a827a8fc36e10446f0f649a87149`. Verifikasi sesudah rollout membuktikan Keycloak `healthy`, restart count 0, issuer production tetap `https://login.sabilulquran.or.id/realms/sq-staff`, halaman login publik memuat stylesheet `akun-sq-login-b24d22d27e5a.css` dan teks `Masuk ke Akun SQ`, serta container/database PostgreSQL tidak direcreate atau restart.
 
-Temuan ini tidak mengubah status ledger saat ini. UAT keamanan tetap dilanjutkan pada runtime yang ada, sedangkan redesign harus dikerjakan dalam task terpisah agar bukti acceptance tidak tercampur dengan perubahan visual baru.
+Compose sebelum rollout disimpan pada VPS sebagai `compose.identity.json.before-akun-sq-20260917T141945Z`; image sebelumnya adalah `sha256:38405c96e88ba2f9779bbcdd50780dd02a393ebe15c34425ddd51dd327a5afee`.
+
+Realm production masih melaporkan `loginTheme=sq-hub` dan `accountTheme` kosong. Theme Account Console sudah berada di image, tetapi belum diaktifkan karena tidak tersedia sesi Keycloak administrator yang aman pada saat rollout. Jangan mengubah database Keycloak secara langsung untuk menutup gap ini. Tindak lanjut yang tepat adalah menetapkan `accountTheme=sq-hub` melalui Admin Console/Admin API yang terautentikasi, lalu menjalankan visual smoke untuk Info pribadi, Keamanan, Sesi, dan tampilan mobile.
+
+Inventaris halaman dan batas penamaan tetap tersedia di [`akun-sq-gui-inventory-2026-09-17.md`](./akun-sq-gui-inventory-2026-09-17.md). Bukti deployment ini tidak menggantikan visual UAT manusia untuk recovery, Google, TOTP, trusted device, atau Account Console.
 
 ## Backlog setelah rilis
 
