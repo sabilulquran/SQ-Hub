@@ -14,9 +14,9 @@ Karena itu, pekerjaan berikutnya bukan mengulang seluruh UAT. Permintaan Forgot 
 
 | Hasil | Jumlah | Makna |
 | --- | ---: | --- |
-| `PASS` | 26 | Memiliki bukti yang memenuhi gate, termasuk penolakan OTP salah, penerbitan trusted state setelah centang + OTP valid, bypass TOTP hanya pada browser yang sama setelah first factor, dan kewajiban TOTP pada profil browser lain. |
+| `PASS` | 27 | Memiliki bukti yang memenuhi gate, termasuk continuity akses pegawai biasa tanpa hak Human Capital, penolakan OTP salah, penerbitan trusted state setelah centang + OTP valid, bypass TOTP hanya pada browser yang sama setelah first factor, dan kewajiban TOTP pada profil browser lain. |
 | `FAIL` | 0 | Tidak ada kegagalan aktif yang sudah dibuktikan pada ledger. |
-| `NOT_RUN` | 29 | Skenario berbeda yang belum dijalankan, terutama persona/otorisasi, recovery lain dan Google, sisa trusted device, serta pemeriksaan browser storage/cookie. Ini bukan pengulangan otomatis dari UAT inti. |
+| `NOT_RUN` | 28 | Skenario berbeda yang belum dijalankan, terutama persona/otorisasi, recovery lain dan Google, sisa trusted device, serta pemeriksaan browser storage/cookie. Ini bukan pengulangan otomatis dari UAT inti. |
 | `BLOCKED` | 3 | Rehearsal gangguan Keycloak yang hanya boleh dilakukan di lingkungan terisolasi atau production-like. |
 | **Total** | **58** | Seluruh baris pada ledger production-cutover. |
 
@@ -38,6 +38,7 @@ Bukti tersebut tetap dilabeli sebagai staging evidence. Dokumen tidak mengklaim 
 - Kedua cara login menuju principal HCIS lokal yang sama: `PASS`.
 - Expired reset/action link ditolak tanpa membuat sesi: `PASS`.
 - HCIS-local suspended ditolak tanpa menonaktifkan identity global, kemudian berhasil dipulihkan: `PASS`.
+- Persona pegawai biasa dapat membuka modul Kehadiran dan ditolak dari antrean administrasi Human Capital: `PASS`.
 - Profil browser kedua tetap meminta TOTP dan tidak memperoleh trusted state ketika opsi trust dibiarkan kosong: `PASS`.
 - Keycloak identity sempat dinonaktifkan untuk persiapan skenario, tetapi browser denial tidak dijalankan; state sudah dipulihkan sehingga baris ini tetap `NOT_RUN`.
 
