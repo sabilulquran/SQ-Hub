@@ -15,7 +15,7 @@ Karena itu, pekerjaan berikutnya bukan mengulang seluruh UAT. Fokus berikutnya a
 | Hasil | Jumlah | Makna |
 | --- | ---: | --- |
 | `PASS` | 19 | Memiliki bukti yang memenuhi gate, termasuk accepted staging evidence yang ruang lingkupnya dicatat secara eksplisit. |
-| `FAIL` | 1 | Forgot Password production kadang menampilkan respons berhasil tetapi email baru tidak diterima. |
+| `FAIL` | 1 | Server pengirim menerima beberapa email Forgot Password, tetapi tester belum menemukan pesan baru yang terpisah di Gmail. |
 | `NOT_RUN` | 35 | Skenario berbeda yang belum dijalankan, terutama persona/otorisasi, recovery dan Google, trusted device, serta pemeriksaan browser storage/cookie. Ini bukan pengulangan otomatis dari UAT inti. |
 | `BLOCKED` | 3 | Rehearsal gangguan Keycloak yang hanya boleh dilakukan di lingkungan terisolasi atau production-like. |
 | **Total** | **58** | Seluruh baris pada ledger production-cutover. |
@@ -44,7 +44,7 @@ Keadaan akhir persona sintetis telah diverifikasi aman: akun HCIS dan Employee a
 
 ## Langkah berikutnya
 
-1. **Perbaiki pengiriman Forgot Password production.** Periksa konfigurasi/antrean/log pengiriman secara aman tanpa menyalin token atau data pribadi. Setelah diperbaiki, ulangi hanya delivery, single-use link, dan expired-link bila perubahan dapat memengaruhinya.
+1. **Selesaikan pemeriksaan sisi Gmail.** Diagnosis read-only membuktikan konfigurasi SMTP lengkap, endpoint dapat dijangkau, dan cPanel menerima beberapa pengiriman ke alias sintetis sebagai berhasil. Cari dengan `in:anywhere` berdasarkan pengirim dan tanggal karena Gmail dapat menggabungkan beberapa reset ke satu percakapan. Jika tetap tidak ditemukan, lakukan satu permintaan baru dan cocokkan waktunya dengan Track Delivery sebelum mengubah konfigurasi.
 2. **Tetapkan scope rilis fitur tambahan.** Putuskan apakah recovery/Google (`HUB-IMPL-011`) dan trusted device (`HUB-IMPL-012`) menjadi syarat penerimaan rilis sekarang atau paket UAT terpisah. Jangan menyebut 35 `NOT_RUN` sebagai kegagalan proyek sebelum scope ini diputuskan.
 3. **Jalankan hanya negative case yang masih berbeda bila diwajibkan.** Yang tersisa antara lain global Keycloak disable melalui browser, missing Application Access yang berbeda dari revoked access, dan unknown `issuer + sub` mapping. Pengujian revoke/restore tidak perlu diulang.
 4. **Jalankan Keycloak outage hanya di target terisolasi bila tetap menjadi gate.** Jangan menghentikan Keycloak production. Tiga baris outage ini tetap `BLOCKED` sampai target aman tersedia atau pemilik produk mengeluarkannya dari scope rilis.
