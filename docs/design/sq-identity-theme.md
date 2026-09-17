@@ -56,3 +56,5 @@ Repository and image smoke checks must prove:
 6. no secret or production identity data is committed.
 
 CI is structural evidence. Staging visual UAT must still inspect login, invalid credentials, password reset, TOTP/trusted device, recovery, logout, personal information, security, sessions, and mobile behavior before production rollout.
+
+Brand assets must reuse the existing official Sabilul Qur'an mark (ysq-mark.svg) and favicon.svg. The generic SQ hexagon from the mockup is a placeholder and is not an approved replacement for the organization logo.

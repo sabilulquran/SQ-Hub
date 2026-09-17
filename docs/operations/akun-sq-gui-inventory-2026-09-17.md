@@ -43,3 +43,25 @@ Perubahan nama yang sudah termasuk `HUB-IMPL-010` dan disempurnakan `HUB-IMPL-01
 - seluruh state pengguna menyebut `Akun SQ`.
 
 HUB-IMPL-015 memilih extension point resmi `keycloak.v3` untuk Account Console. Implementasi menyatukan Info pribadi, Keamanan akun, dan Aplikasi dengan bahasa visual Akun SQ tanpa mengubah OIDC issuer, realm key, MFA/recovery, atau hak akses aplikasi.
+
+## URL dan routing production — 18 September 2026
+
+Host aktif adalah `https://login.sabilulquran.or.id`; `akun.sq.or.id` pada mockup bukan alamat deployment. Base Account Console adalah `/realms/sq-staff/account/`.
+
+| Halaman | URL/path |
+| --- | --- |
+| Akun / informasi pribadi | `/realms/sq-staff/account/` |
+| Kata sandi, autentikator, metode masuk | `/realms/sq-staff/account/#/account-security/signing-in` |
+| Perangkat dan sesi aktif | `/realms/sq-staff/account/#/account-security/device-activity` |
+| Akun terhubung | `/realms/sq-staff/account/#/account-security/linked-accounts` |
+| Aplikasi | `/realms/sq-staff/account/#/applications` |
+| Login OIDC | `/realms/sq-staff/protocol/openid-connect/auth` dengan parameter yang dibuat aplikasi |
+| Logout OIDC | `/realms/sq-staff/protocol/openid-connect/logout` dengan parameter logout yang sesuai |
+| Pemulihan | `/realms/sq-staff/login-actions/reset-credentials` melalui tautan dalam sesi login |
+| TOTP, required actions, verifikasi email, reset kata sandi | URL `login-actions/*` yang dihasilkan Keycloak; bukan tautan statis untuk dibookmark |
+
+Rute Account Console diverifikasi dari bundle production `keycloak.v3`. Rute yang membutuhkan autentikasi belum merupakan bukti UAT halaman tersebut. Gunakan base Account Console sebagai tautan publik utama; jangan menyalin URL berisi session code atau action token.
+
+## Koreksi identitas visual
+
+Pemilik menegaskan penggunaan logo dan favicon resmi yang sudah tersedia. Mark heksagon SQ generik dibatalkan. Gunakan aset repository `ysq-mark.svg` (lambang resmi) untuk login dan Account Console, serta `favicon.svg` resmi yang dipulihkan dari versi sebelum PR #71. Jangan membuat ulang atau mengganti lambang organisasi hanya karena mockup memakai placeholder. Nama produk tetap **Akun SQ**.
