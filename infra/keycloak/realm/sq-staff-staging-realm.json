@@ -1,6 +1,6 @@
 {
   "realm": "sq-staff-staging",
-  "displayName": "Akun SQ Staging",
+  "displayName": "Akun SQ",
   "enabled": true,
   "sslRequired": "external",
   "registrationAllowed": false,
@@ -34,6 +34,7 @@
   "otpPolicyLookAheadWindow": 1,
   "otpPolicyPeriod": 30,
   "loginTheme": "sq-hub",
+  "accountTheme": "sq-hub",
   "clients": [
     {
       "clientId": "hcis-staging",
