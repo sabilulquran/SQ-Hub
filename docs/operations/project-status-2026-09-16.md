@@ -1,5 +1,7 @@
 # Status proyek SQ Hub — 2026-09-16
 
+> Dokumen ini adalah snapshot audit 16 September 2026. Status UAT terbaru dan aturan agar pengujian yang sudah diterima tidak diulang tersedia di [`project-status-2026-09-17.md`](./project-status-2026-09-17.md).
+
 Dokumen ini menyelaraskan keadaan checkout lokal, GitHub, dan audit langsung VPS pada 16 September 2026 sekitar 10:36 WIB. Pemeriksaan VPS bersifat read-only: tidak ada container, database, DNS, secret, atau konfigurasi production yang diubah.
 
 ## Ringkasan untuk pembaca non-engineer
