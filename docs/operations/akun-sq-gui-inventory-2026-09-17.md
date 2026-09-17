@@ -18,11 +18,11 @@ Ada **15 jenis layar** yang perlu diperlakukan sebagai satu perjalanan Akun SQ:
 | Aktivasi | verifikasi email, update password, update profil | Mewarisi theme Akun SQ dari Keycloak |
 | Keamanan | konfigurasi TOTP dan tampilan recovery code | Mewarisi theme Akun SQ dari Keycloak |
 | Keluar | konfirmasi logout dan kembali setelah logout | Mewarisi theme Akun SQ dari Keycloak |
-| Pengaturan akun | Info pribadi | **Masih Account Console Keycloak bawaan** |
-| Pengaturan akun | Keamanan akun | **Masih Account Console Keycloak bawaan** |
-| Pengaturan akun | Aplikasi/sesi | **Masih Account Console Keycloak bawaan** |
+| Pengaturan akun | Info pribadi | Target theme Akun SQ `keycloak.v3` pada HUB-IMPL-015 |
+| Pengaturan akun | Keamanan akun | Target theme Akun SQ `keycloak.v3` pada HUB-IMPL-015 |
+| Pengaturan akun | Aplikasi/sesi | Target theme Akun SQ `keycloak.v3` pada HUB-IMPL-015 |
 
-Theme repository hanya memiliki dua override halaman: `footer.ftl` untuk panel identitas bersama dan `login-otp.ftl` untuk TOTP/trusted device. Halaman autentikasi lain mewarisi struktur `keycloak.v2`, sehingga masih dapat diberi bahasa Akun SQ melalui message bundle dan stylesheet. Account Console adalah aplikasi Keycloak yang terpisah; login theme tidak mengubahnya.
+Theme login hanya mengubah `footer.ftl` untuk identitas Akun SQ dan `login-otp.ftl` untuk TOTP/trusted device. Halaman autentikasi lain mewarisi struktur `keycloak.v2`. HUB-IMPL-015 menambahkan child theme Account Console berbasis `keycloak.v3`, sehingga pengaturan akun memakai bahasa visual yang sama tanpa menyalin logika credential atau sesi Keycloak.
 
 ## Aturan nama produk
 
@@ -31,15 +31,15 @@ Theme repository hanya memiliki dua override halaman: `footer.ftl` untuk panel i
 | Login, pemulihan, TOTP, logout, email, dan pengaturan keamanan pengguna | **Akun SQ** |
 | Workspace/launcher dan Administrasi SQ | **SQ Hub** / **Administrasi SQ** |
 | Aplikasi kepegawaian | **HCIS** |
-| Engine, issuer, realm key, client ID, kode, dan dokumentasi arsitektur | **Keycloak** atau **SQ Identity** bila istilah teknis diperlukan |
+| Engine, issuer, realm key, client ID, kode, dan dokumentasi arsitektur historis | **Keycloak** atau identifier teknis yang sudah ada |
 
 Pengguna tidak perlu melihat `SQ Identity` sebagai nama produk. Nama itu tetap sah pada identifier teknis dan dokumen arsitektur agar issuer, realm, dan integrasi tidak berubah.
 
 ## Temuan dan arah berikutnya
 
-Perubahan nama kecil yang sudah termasuk `HUB-IMPL-010` adalah:
+Perubahan nama yang sudah termasuk `HUB-IMPL-010` dan disempurnakan `HUB-IMPL-015` adalah:
 
-- display name realm staging memakai `Akun SQ Staging`;
-- state menunggu di SQ Hub menyebut `Akun SQ`, bukan `SQ Identity`.
+- display name realm staging memakai `Akun SQ`;
+- seluruh state pengguna menyebut `Akun SQ`.
 
-Pekerjaan berikutnya yang memerlukan specification terpisah adalah Account Console. Scope-nya harus menentukan apakah cukup memakai extension point/theme resmi Keycloak atau membutuhkan pendekatan lain untuk menyatukan Info pribadi, Keamanan akun, dan Aplikasi dengan bahasa visual Akun SQ. Implementasi tidak boleh mengubah OIDC issuer, realm key, MFA/recovery, atau hak akses aplikasi.
+HUB-IMPL-015 memilih extension point resmi `keycloak.v3` untuk Account Console. Implementasi menyatukan Info pribadi, Keamanan akun, dan Aplikasi dengan bahasa visual Akun SQ tanpa mengubah OIDC issuer, realm key, MFA/recovery, atau hak akses aplikasi.
