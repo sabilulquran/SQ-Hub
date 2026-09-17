@@ -8,7 +8,7 @@ Pengujian inti login HCIS melalui Akun SQ sebenarnya sudah selesai dan diterima 
 
 Pada 16–17 September 2026, production hanya diuji untuk perbedaan yang memang khusus production menggunakan persona sintetis `UAT-HCIS-001`. Login dengan NIP dan email terverifikasi berhasil menuju akun HCIS yang sama. Akun HCIS yang dibuat `suspended` ditolak dengan benar, identitas Akun SQ tetap aktif, dan akun HCIS berhasil dikembalikan ke keadaan normal. Semua perubahan sementara sudah dipulihkan.
 
-Karena itu, pekerjaan berikutnya bukan mengulang seluruh UAT. Permintaan Forgot Password baru pada 17 September 2026 pukul 11.33 WIB berhasil dicocokkan dari layar sukses Akun SQ, cPanel Track Delivery berstatus `Accepted`, hingga pesan baru di Inbox Gmail. Tester kemudian menyelesaikan reset dan penggunaan ulang tautan yang sama langsung ditolak, sehingga pengiriman serta sifat sekali pakai sudah terbukti. Pengujian recovery/Google dan trusted device adalah fitur tambahan yang belum tercakup dalam UAT inti lama; pemilik produk perlu menetapkan apakah fitur tersebut harus selesai sebelum penerimaan rilis sekarang atau dikelola sebagai paket UAT terpisah.
+Karena itu, pekerjaan berikutnya bukan mengulang seluruh UAT. Permintaan Forgot Password baru pada 17 September 2026 pukul 11.33 WIB berhasil dicocokkan dari layar sukses Akun SQ, cPanel Track Delivery berstatus `Accepted`, hingga pesan baru di Inbox Gmail. Tester kemudian menyelesaikan reset dan penggunaan ulang tautan yang sama langsung ditolak, sehingga pengiriman serta sifat sekali pakai sudah terbukti. Pada 17 September 2026, pemilik produk menetapkan recovery/Google (`HUB-IMPL-011`) dan trusted device (`HUB-IMPL-012`) sebagai gate wajib rilis ini. Status `NOT_RUN` pada skenario fitur tersebut sekarang memblokir final acceptance sampai memiliki bukti yang sesuai.
 
 ## Status yang telah direkonsiliasi
 
@@ -44,10 +44,12 @@ Keadaan akhir persona sintetis telah diverifikasi aman: akun HCIS dan Employee a
 
 ## Langkah berikutnya
 
-1. **Tetapkan scope rilis fitur tambahan.** Putuskan apakah recovery/Google (`HUB-IMPL-011`) dan trusted device (`HUB-IMPL-012`) menjadi syarat penerimaan rilis sekarang atau paket UAT terpisah. Jangan menyebut 34 `NOT_RUN` sebagai kegagalan proyek sebelum scope ini diputuskan.
-2. **Jalankan hanya negative case yang masih berbeda bila diwajibkan.** Yang tersisa antara lain global Keycloak disable melalui browser, missing Application Access yang berbeda dari revoked access, dan unknown `issuer + sub` mapping. Pengujian revoke/restore dan tautan reset tidak perlu diulang.
-3. **Jalankan Keycloak outage hanya di target terisolasi bila tetap menjadi gate.** Jangan menghentikan Keycloak production. Tiga baris outage ini tetap `BLOCKED` sampai target aman tersedia atau pemilik produk mengeluarkannya dari scope rilis.
-5. **Berikan final acceptance setelah scope dipilih dan delta wajib selesai.** Issue #9 tetap terbuka selama masih ada gate yang dipilih untuk rilis dengan status `FAIL`, `NOT_RUN`, atau `BLOCKED`.
+1. **Siapkan fixture Google yang benar-benar terpisah.** Akun Google tanpa pasangan dapat dipakai untuk membuktikan penolakan `4.1`. Untuk linking `4.2`-`4.5`, email yang diklaim Google harus sama dengan verified unique email Akun SQ yang memang dimiliki persona sintetis. Alias Gmail bertanda `+` tidak cukup bila Google mengklaim alamat dasar. Credential tetap dipegang tester dan tidak dicatat.
+2. **Daftarkan TOTP pada persona sintetis yang disetujui.** Gunakan satu persona TOTP non-privileged untuk sebagian besar matriks trusted-device. Persona privileged terpisah tetap diperlukan untuk policy comparison, TOTP wajib, dan recovery authentication code. Secret, QR, OTP, dan recovery code tidak boleh dicatat.
+3. **Eksekusi dalam urutan yang menjaga state.** Jalankan baseline storage/cookie, unchecked dan wrong OTP, checked+valid, same/other browser, Google linking/login, password-reset invalidation, TOTP replacement invalidation, lalu disabled-user denial. Catat state awal dan rollback untuk setiap mutation.
+4. **Jalankan hanya negative case lain yang masih berbeda bila diwajibkan.** Yang tersisa antara lain global Keycloak disable melalui browser, missing Application Access yang berbeda dari revoked access, dan unknown `issuer + sub` mapping. Pengujian revoke/restore dan tautan reset tidak perlu diulang.
+5. **Jalankan Keycloak outage hanya di target terisolasi bila tetap menjadi gate.** Jangan menghentikan Keycloak production. Tiga baris outage ini tetap `BLOCKED` sampai target aman tersedia atau pemilik produk mengeluarkannya dari scope rilis.
+6. **Berikan final acceptance setelah seluruh gate wajib selesai.** Issue #9 tetap terbuka selama recovery/Google atau trusted-device masih `NOT_RUN`, atau gate wajib lain masih `FAIL`/`BLOCKED`.
 
 ## Aturan pencatatan selanjutnya
 
