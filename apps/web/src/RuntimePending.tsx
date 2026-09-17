@@ -13,7 +13,7 @@ export function RuntimePending() {
           <LockKeyhole className="h-5 w-5" aria-hidden="true" />
         </div>
         <h1 className="mt-5 font-display text-2xl font-bold tracking-[-0.025em] text-brand-heading sm:text-3xl">
-          Workspace sedang disambungkan ke SQ Identity
+          Workspace sedang disambungkan ke Akun SQ
         </h1>
         <p className="mx-auto mt-3 max-w-md text-sm leading-6 text-muted-foreground">
           Visual foundation SQ Hub sudah tersedia. Launcher staf baru akan diaktifkan setelah sesi OIDC server-side dan Application Access terverifikasi di staging.

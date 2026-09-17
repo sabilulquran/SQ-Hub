@@ -1,6 +1,6 @@
 {
   "realm": "sq-staff-staging",
-  "displayName": "SQ Identity Staging",
+  "displayName": "Akun SQ Staging",
   "enabled": true,
   "sslRequired": "external",
   "registrationAllowed": false,
