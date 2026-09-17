@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64" role="img" aria-label="Akun SQ">
+  <defs>
+    <linearGradient id="sq" x1="12" y1="8" x2="51" y2="56" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#0bb4aa"/>
+      <stop offset="1" stop-color="#087f7a"/>
+    </linearGradient>
+  </defs>
+  <path fill="url(#sq)" d="M32 3.5 56.7 17.75v28.5L32 60.5 7.3 46.25v-28.5L32 3.5Z"/>
+  <path fill="none" stroke="#fff" stroke-opacity=".2" d="m32 7.2 21.5 12.4v24.8L32 56.8 10.5 44.4V19.6L32 7.2Z"/>
+  <text x="32" y="39.5" fill="#fff" font-family="Arial, sans-serif" font-size="21" font-weight="700" text-anchor="middle">SQ</text>
+</svg>

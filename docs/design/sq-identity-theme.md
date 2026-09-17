@@ -18,11 +18,13 @@ The accepted composition is:
 
 - one centered white account card on a quiet light-gray canvas;
 - compact Akun SQ mark and Yayasan Sabilul Qur'an label;
+- Google sign-in first, followed by a quiet divider and the NIP/email form;
 - direct headings, short supporting text, and full-width controls;
 - turquoise primary/focus states, dark navy text, and low-contrast borders;
 - no split-screen hero, HCIS panel, pattern grid, or Nilai Utsman content;
 - on small screens, a white edge-to-edge surface with comfortable padding;
 - normal states fit common desktop/mobile viewports and long states remain scrollable.
+- browser autofill retains the same white field surface and readable navy text.
 
 Only `footer.ftl` and the existing trusted-device `login-otp.ftl` are overridden. Shared `template.ftl`, login form, recovery form, and protocol behavior remain owned by the pinned Keycloak release.
 
