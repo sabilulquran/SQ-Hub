@@ -14,9 +14,9 @@ Karena itu, pekerjaan berikutnya bukan mengulang seluruh UAT. Permintaan Forgot 
 
 | Hasil | Jumlah | Makna |
 | --- | ---: | --- |
-| `PASS` | 21 | Memiliki bukti yang memenuhi gate, termasuk pengiriman Forgot Password dan penolakan penggunaan ulang tautan reset. |
+| `PASS` | 22 | Memiliki bukti yang memenuhi gate, termasuk pengiriman/reset password dan login TOTP tanpa menerbitkan trusted-device state saat opsi trust tidak dicentang. |
 | `FAIL` | 0 | Tidak ada kegagalan aktif yang sudah dibuktikan pada ledger. |
-| `NOT_RUN` | 34 | Skenario berbeda yang belum dijalankan, terutama persona/otorisasi, recovery lain dan Google, trusted device, serta pemeriksaan browser storage/cookie. Ini bukan pengulangan otomatis dari UAT inti. |
+| `NOT_RUN` | 33 | Skenario berbeda yang belum dijalankan, terutama persona/otorisasi, recovery lain dan Google, sisa trusted device, serta pemeriksaan browser storage/cookie. Ini bukan pengulangan otomatis dari UAT inti. |
 | `BLOCKED` | 3 | Rehearsal gangguan Keycloak yang hanya boleh dilakukan di lingkungan terisolasi atau production-like. |
 | **Total** | **58** | Seluruh baris pada ledger production-cutover. |
 
