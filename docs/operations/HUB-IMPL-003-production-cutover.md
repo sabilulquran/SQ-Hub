@@ -217,7 +217,7 @@ Under this rule, the accepted staging Application Access revoke/restore, SQ Hub 
 | 2.5 | Domain roles remain HCIS-owned, not Keycloak-owned | Review accepted product/domain/ADR/spec and broker config | Verify no acceptance step relies on Keycloak realm/client role to grant HCIS business permission | Ownership remains HCIS; Application Access remains entry gate only | Links to accepted docs + reconciliation markers | PASS | GITHUB_EVIDENCED | GitHub reviewer |
 | 3.1 | Privileged user is required to complete TOTP | Synthetic privileged identity with TOTP enrolled | Fresh login; stop before OTP, then complete OTP | No HCIS session before TOTP; session after valid TOTP | `PRIVILEGED_TOTP_REQUIRED=PASS`; no OTP/seed | NOT_RUN | GITHUB_EVIDENCED + USER_BROWSER_REQUIRED | Product owner/tester |
 | 3.2 | Recovery Authentication Code is one-time | Same synthetic privileged identity; operator-held code | Use one recovery code; then attempt same code again in a fresh auth attempt | First accepted; reuse denied | Availability/exercised/reuse-denied booleans only | NOT_RUN | GITHUB_EVIDENCED + USER_BROWSER_REQUIRED | Product owner/tester |
-| 3.3 | Forgot Password sends through production sender | Synthetic account with controlled mailbox | Use `Lupa password?`; inspect received mail | Mail arrives from approved production sender/route | Initial production reset message arrived, but later reset requests displayed success without a new message; controlled mailbox checked directly | FAIL | GITHUB_EVIDENCED + USER_BROWSER_REQUIRED + PRODUCTION_DELTA_REQUIRED | Product owner/tester |
+| 3.3 | Forgot Password sends through production sender | Synthetic account with controlled mailbox | Use `Lupa password?`; inspect received mail | Mail arrives from approved production sender/route | Initial message arrived; cPanel Track Delivery records multiple later messages to the same synthetic alias as successfully accepted, but the tester has not located a distinct newer message in Gmail | FAIL | GITHUB_EVIDENCED + USER_BROWSER_REQUIRED + CODEX_VPS_REQUIRED + PRODUCTION_DELTA_REQUIRED | Product owner/tester |
 | 3.4 | Password-reset link is single-use | Synthetic account; reset email received | Complete reset once, then reuse same link | First reset succeeds; second use rejected | `RESET_SINGLE_USE=PASS`; no URL/token | NOT_RUN | GITHUB_EVIDENCED + USER_BROWSER_REQUIRED | Product owner/tester |
 | 3.5 | Expired reset link is rejected | Synthetic account; owner-approved way to obtain an expired test link | Open expired action link | Reset is rejected without session creation | Production browser displayed expired-login/reset state and created no session; no URL/token retained | PASS | GITHUB_EVIDENCED + USER_BROWSER_REQUIRED + PRODUCTION_DELTA_REQUIRED | Product owner/tester |
 | 3.6 | Disabled user cannot recover into a new session | Synthetic globally disabled identity; controlled mailbox | Attempt recovery/reset and then protected-page access | No new authenticated HCIS session is created | Disabled persona handle + denial marker | NOT_RUN | GITHUB_EVIDENCED + USER_BROWSER_REQUIRED + OWNER_DECISION_REQUIRED | Product owner/change owner |
@@ -351,12 +351,25 @@ This established the authorized baseline but was not browser evidence at provisi
 The mailbox custodian completed email verification and credential creation without retaining credential material. The following production deltas were then executed with the synthetic persona `UAT-HCIS-001`:
 
 - NIP login and verified-email alternate login both opened HCIS; a read-only comparison resolved both journeys to stable HCIS account handle `61e09f4fbaca` with the exact production OIDC mapping still present (`1.1`-`1.3`: `PASS`);
-- an initial Forgot Password message arrived from the production sender, but later reset requests displayed a success response without producing a new mailbox message; direct mailbox inspection confirmed only the earlier message (`3.3`: `FAIL` until delivery is diagnosed);
+- an initial Forgot Password message arrived from the production sender, but the tester did not see a distinct newer Gmail message after later reset requests (`3.3`: remains `FAIL` pending receiver-side confirmation);
 - an expired reset/action journey was rejected and created no authenticated session (`3.5`: `PASS`);
 - the HCIS local account was snapshotted as active, changed only to `suspended`, and denied login with the controlled inactive-account message while the global Keycloak identity remained enabled; the account was restored to active, both mutation events were audited, and a fresh login succeeded (`6.1`: `PASS`);
 - the global Keycloak identity was temporarily disabled and its disabled state was verified, but the browser-denial step was not executed. The identity was restored to enabled and verified before the test window ended (`6.2`: `NOT_RUN`, safe rollback confirmed).
 
 Final retained state after the controlled execution: HCIS account `active`, Employee `active`, Keycloak identity `enabled` and email verified, exact OIDC mapping present, and Application Access active. No password, reset URL, token, cookie value, raw OIDC subject, client secret, or production data dump is retained.
+
+#### Forgot Password delivery diagnosis — 2026-09-17
+
+The read-only diagnosis found no production mutation to apply:
+
+- the Keycloak container was healthy and had not restarted during the test window;
+- the `sq-staff` realm had a complete SMTP configuration with authentication enabled, SSL on port 465, an organization-domain sender, and credential fields present; secret values were not read or retained;
+- the Keycloak container could establish a TCP connection to the configured SMTP endpoint;
+- Keycloak logs contained no SMTP/email exception for the relevant period, although successful send events cannot be reconstructed from those logs because realm success-event auditing was not enabled;
+- cPanel Track Delivery retained multiple Akun SQ messages to the synthetic Gmail alias during the reported test window and marked each one `Accepted` / delivered successfully;
+- public DNS exposed SPF and DKIM records, and DMARC was present with policy `reject`.
+
+This narrows the unresolved boundary to Gmail presentation/delivery after the hosting mail server accepted the messages. Likely explanations include Gmail conversation grouping, filtering, or recipient-side suppression. The evidence does not justify changing the SMTP credential, restarting Keycloak, or resending repeatedly. Row `3.3` remains `FAIL` because its user-facing expected result is visible mailbox arrival, not sender-side acceptance alone.
 
 ### Browser handoff for the product owner
 
@@ -397,7 +410,7 @@ The owner role, bounded C3/C4 authorization, production prohibition for C6/C7, r
 
 The remaining work is limited to real deltas:
 
-1. diagnose and fix the inconsistent production Forgot Password delivery before repeating only the affected recovery rows;
+1. inspect the existing Gmail conversation with an `in:anywhere` sender-and-date search; if the later messages still cannot be located, perform one controlled fresh Forgot Password request and correlate its time with cPanel Track Delivery and Gmail before changing any configuration;
 2. decide whether recovery/Google and trusted-device features are release gates now or separate feature acceptance work; execute them only with the required synthetic MFA/Google fixtures;
 3. execute the globally-disabled identity browser denial (`6.2`) only if the owner still requires a production-specific lifecycle check; the attempted state change was safely rolled back without browser evidence and therefore is not marked `PASS`;
 4. use an isolated/production-like target only if Keycloak outage rows `9.1`-`9.3` remain mandatory after scope review;
