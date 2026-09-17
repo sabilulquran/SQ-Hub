@@ -83,3 +83,15 @@ Inventaris halaman dan batas penamaan tetap tersedia di [`akun-sq-gui-inventory-
 ## Aturan pencatatan selanjutnya
 
 Setiap hasil harus menyebutkan skenario, lingkungan asal bukti, waktu, persona sintetis/redacted, dan hasilnya. Source code, konfigurasi, atau health check saja tidak boleh menggantikan bukti browser. Sebaliknya, bukti live yang sudah diterima tidak boleh dihapus atau direset menjadi `NOT_RUN` tanpa alasan perubahan material yang terdokumentasi.
+
+## Native browser visual refinement — 17 September 2026, 16:15 UTC
+
+PR #71 and #72 are merged. Native Edge review identified the provider header line, oversized composition, raster logo, mismatched autofill surface, and Google option placement. The login theme now uses a crisp Akun SQ SVG mark, Google before the form, neutral autofill, and a centered responsive card. A follow-up review caught and corrected a social-divider style leaking into recovery instructions.
+
+Verification: layout preview at 1440x900, 1280x720, and 390x844 showed no normal-state overflow; native Edge production review confirmed the refined login and recovery page. No login submission or reset email was required for this visual inspection. Both PRs passed contract, foundation, and full Keycloak smoke checks.
+
+Current production image: `ghcr.io/sabilulquran/sq-hub-keycloak@sha256:9dd0d098fc192780246bbb20c44312afaa85e8c7d53d5347afa3fd63f8e5189a`, built from reviewed PR head `07404d9fc745c00a79f8107736e686d5ff3443de` (merged as `71d289d`). Current stylesheet: `akun-sq-login-2629a2861483.css`. Runtime is healthy, restart count 0, and database container ID/start time were unchanged across rollout.
+
+Rollback configuration: `/var/www/sq-hub-production/compose.identity.json.before-divider-fix-20260917T161418Z`; previous image digest `80bf6f4c8d72be49018a2f74f2e6fac2dcf4099c2a3547214953676f45353fe7`. The earlier full-polish backup is `compose.identity.json.before-polish-20260917T160254Z`.
+
+Remaining: activate the Account Console theme through authenticated administrator access and inspect its pages. This visual review does not claim completion of authenticated MFA, linking, recovery execution, or all UAT scenarios. Do not repeat the completed login/recovery visual checks unless the theme changes materially.
