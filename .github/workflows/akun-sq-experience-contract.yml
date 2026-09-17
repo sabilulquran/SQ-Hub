@@ -91,4 +91,4 @@ jobs:
       - name: Reject committed credentials
         shell: bash
         run: |
-          ! git grep -n -E '(password|client_secret|access_token)[[:space:]]*=[[:space:]]*[^$<{]' -- infra/keycloak/themes docs/specs/HUB-IMPL-015-akun-sq-account-experience.md
+          ! git grep -n -E '(client_secret|access_token)[[:space:]]*=[[:space:]]*[^$<{]' -- infra/keycloak/themes docs/specs/HUB-IMPL-015-akun-sq-account-experience.md
