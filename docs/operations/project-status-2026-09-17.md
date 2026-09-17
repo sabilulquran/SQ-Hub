@@ -14,9 +14,9 @@ Karena itu, pekerjaan berikutnya bukan mengulang seluruh UAT. Permintaan Forgot 
 
 | Hasil | Jumlah | Makna |
 | --- | ---: | --- |
-| `PASS` | 25 | Memiliki bukti yang memenuhi gate, termasuk penolakan OTP salah, penerbitan trusted state setelah centang + OTP valid, dan bypass TOTP hanya pada browser yang sama setelah first factor. |
+| `PASS` | 26 | Memiliki bukti yang memenuhi gate, termasuk penolakan OTP salah, penerbitan trusted state setelah centang + OTP valid, bypass TOTP hanya pada browser yang sama setelah first factor, dan kewajiban TOTP pada profil browser lain. |
 | `FAIL` | 0 | Tidak ada kegagalan aktif yang sudah dibuktikan pada ledger. |
-| `NOT_RUN` | 30 | Skenario berbeda yang belum dijalankan, terutama persona/otorisasi, recovery lain dan Google, sisa trusted device, serta pemeriksaan browser storage/cookie. Ini bukan pengulangan otomatis dari UAT inti. |
+| `NOT_RUN` | 29 | Skenario berbeda yang belum dijalankan, terutama persona/otorisasi, recovery lain dan Google, sisa trusted device, serta pemeriksaan browser storage/cookie. Ini bukan pengulangan otomatis dari UAT inti. |
 | `BLOCKED` | 3 | Rehearsal gangguan Keycloak yang hanya boleh dilakukan di lingkungan terisolasi atau production-like. |
 | **Total** | **58** | Seluruh baris pada ledger production-cutover. |
 
@@ -38,6 +38,7 @@ Bukti tersebut tetap dilabeli sebagai staging evidence. Dokumen tidak mengklaim 
 - Kedua cara login menuju principal HCIS lokal yang sama: `PASS`.
 - Expired reset/action link ditolak tanpa membuat sesi: `PASS`.
 - HCIS-local suspended ditolak tanpa menonaktifkan identity global, kemudian berhasil dipulihkan: `PASS`.
+- Profil browser kedua tetap meminta TOTP dan tidak memperoleh trusted state ketika opsi trust dibiarkan kosong: `PASS`.
 - Keycloak identity sempat dinonaktifkan untuk persiapan skenario, tetapi browser denial tidak dijalankan; state sudah dipulihkan sehingga baris ini tetap `NOT_RUN`.
 
 Keadaan akhir persona sintetis telah diverifikasi aman: akun HCIS dan Employee aktif, Keycloak enabled dan email verified, exact OIDC mapping tersedia, serta Application Access aktif. Tidak ada mutation yang masih tertinggal.
@@ -61,7 +62,7 @@ Temuan ini tidak mengubah status ledger saat ini. UAT keamanan tetap dilanjutkan
 
 1. **Siapkan fixture Google yang benar-benar terpisah.** Akun Google tanpa pasangan dapat dipakai untuk membuktikan penolakan `4.1`. Untuk linking `4.2`-`4.5`, email yang diklaim Google harus sama dengan verified unique email Akun SQ yang memang dimiliki persona sintetis. Alias Gmail bertanda `+` tidak cukup bila Google mengklaim alamat dasar. Credential tetap dipegang tester dan tidak dicatat.
 2. **Gunakan TOTP persona sintetis yang sudah didaftarkan.** Pada 17 September 2026, read-only production inventory memverifikasi `UAT-HCIS-001` memiliki credential `otp` dan `password`. Persona ini dapat dipakai untuk sebagian besar matriks trusted-device. Persona privileged terpisah tetap diperlukan untuk policy comparison, TOTP wajib, dan recovery authentication code. Secret, QR, OTP, dan recovery code tidak boleh dicatat.
-3. **Eksekusi dalam urutan yang menjaga state.** Jalankan baseline storage/cookie, unchecked dan wrong OTP, checked+valid, same/other browser, Google linking/login, password-reset invalidation, TOTP replacement invalidation, lalu disabled-user denial. Catat state awal dan rollback untuk setiap mutation.
+3. **Eksekusi sisa skenario dalam urutan yang menjaga state.** Skenario unchecked, wrong OTP, checked+valid, same browser, dan other browser sudah selesai. Berikutnya jalankan baseline storage/cookie, Google linking/login, password-reset invalidation, TOTP replacement invalidation, lalu disabled-user denial. Catat state awal dan rollback untuk setiap mutation.
 4. **Jalankan hanya negative case lain yang masih berbeda bila diwajibkan.** Yang tersisa antara lain global Keycloak disable melalui browser, missing Application Access yang berbeda dari revoked access, dan unknown `issuer + sub` mapping. Pengujian revoke/restore dan tautan reset tidak perlu diulang.
 5. **Jalankan Keycloak outage hanya di target terisolasi bila tetap menjadi gate.** Jangan menghentikan Keycloak production. Tiga baris outage ini tetap `BLOCKED` sampai target aman tersedia atau pemilik produk mengeluarkannya dari scope rilis.
 6. **Berikan final acceptance setelah seluruh gate wajib selesai.** Issue #9 tetap terbuka selama recovery/Google atau trusted-device masih `NOT_RUN`, atau gate wajib lain masih `FAIL`/`BLOCKED`.
