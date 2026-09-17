@@ -412,7 +412,7 @@ For C6/C7, the repository provides no authorization to stop production services.
 
 The owner role, bounded C3/C4 authorization, production prohibition for C6/C7, rollback escalation, synthetic persona, mapping, active-access baseline, completed C2, and completed HCIS-local part of C3 are recorded above. Do not repeat C4 in production: the exact revoke/new-login denial/existing-session/restore behavior is already covered by accepted live staging evidence.
 
-On 2026-09-17 the product owner declared recovery/Google (`HUB-IMPL-011`) and trusted device (`HUB-IMPL-012`) mandatory release gates. Their distinct browser scenarios may not be waived, inferred from configuration, or moved to a later feature-acceptance package. Final acceptance remains blocked until those selected rows have qualifying evidence.
+On 2026-09-17 the product owner initially declared recovery/Google (`HUB-IMPL-011`) and trusted device (`HUB-IMPL-012`) mandatory release gates. Later that day, the product owner issued a release exception: the distinct unexecuted Google, trusted-device, additional-persona, lifecycle, and browser-storage/cookie scenarios are deferred to a separately tracked acceptance backlog. Their rows remain `NOT_RUN`; they are not inferred from configuration or relabeled `PASS`. This exception accepts the missing-live-evidence risk for the current release and does not authorize use of real identities as UAT fixtures.
 
 The remaining work is limited to real deltas:
 
@@ -420,8 +420,8 @@ The remaining work is limited to real deltas:
 2. enroll approved synthetic ordinary and privileged TOTP fixtures without recording QR codes, seeds, OTP values, recovery codes, or credentials;
 3. execute the recovery/Google and trusted-device browser matrices in state-safe order, including password/TOTP replacement invalidation and bounded disabled-user rollback;
 4. execute the globally-disabled identity browser denial (`6.2`) as part of the approved synthetic lifecycle coverage; the earlier attempted state change was safely rolled back without browser evidence and therefore is not marked `PASS`;
-5. use an isolated/production-like target only if Keycloak outage rows `9.1`-`9.3` remain mandatory after scope review;
-6. make the final owner acceptance/issue-closure decision only after all mandatory recovery/Google and trusted-device rows have qualifying evidence.
+5. execute Keycloak outage rows `9.1`-`9.3` only in an isolated/production-like target; they are explicitly excluded from production execution;
+6. retain issue #9 as the backlog tracker until the deferred scenarios have qualifying evidence. It does not block the current release under the product-owner exception.
 
 ### Consistency and invented-requirement audit
 
