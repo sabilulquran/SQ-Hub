@@ -412,12 +412,16 @@ For C6/C7, the repository provides no authorization to stop production services.
 
 The owner role, bounded C3/C4 authorization, production prohibition for C6/C7, rollback escalation, synthetic persona, mapping, active-access baseline, completed C2, and completed HCIS-local part of C3 are recorded above. Do not repeat C4 in production: the exact revoke/new-login denial/existing-session/restore behavior is already covered by accepted live staging evidence.
 
+On 2026-09-17 the product owner declared recovery/Google (`HUB-IMPL-011`) and trusted device (`HUB-IMPL-012`) mandatory release gates. Their distinct browser scenarios may not be waived, inferred from configuration, or moved to a later feature-acceptance package. Final acceptance remains blocked until those selected rows have qualifying evidence.
+
 The remaining work is limited to real deltas:
 
-1. decide whether recovery/Google and trusted-device features are release gates now or separate feature acceptance work; execute them only with the required synthetic MFA/Google fixtures;
-2. execute the globally-disabled identity browser denial (`6.2`) only if the owner still requires a production-specific lifecycle check; the attempted state change was safely rolled back without browser evidence and therefore is not marked `PASS`;
-3. use an isolated/production-like target only if Keycloak outage rows `9.1`-`9.3` remain mandatory after scope review;
-5. make the final owner acceptance/issue-closure decision after the selected release gates have qualifying evidence.
+1. provision or designate an organization-controlled Google identity whose asserted email exactly matches a verified unique synthetic Akun SQ email for rows `4.2`-`4.5`; use a separate unmatched Google identity for `4.1`;
+2. enroll approved synthetic ordinary and privileged TOTP fixtures without recording QR codes, seeds, OTP values, recovery codes, or credentials;
+3. execute the recovery/Google and trusted-device browser matrices in state-safe order, including password/TOTP replacement invalidation and bounded disabled-user rollback;
+4. execute the globally-disabled identity browser denial (`6.2`) as part of the approved synthetic lifecycle coverage; the earlier attempted state change was safely rolled back without browser evidence and therefore is not marked `PASS`;
+5. use an isolated/production-like target only if Keycloak outage rows `9.1`-`9.3` remain mandatory after scope review;
+6. make the final owner acceptance/issue-closure decision only after all mandatory recovery/Google and trusted-device rows have qualifying evidence.
 
 ### Consistency and invented-requirement audit
 
