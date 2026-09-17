@@ -56,6 +56,8 @@ Keadaan akhir persona sintetis telah diverifikasi aman: akun HCIS dan Employee a
 
 **Status: DISCOVERY — belum menjadi scope implementasi pada UAT ini.** Pemilik produk mencatat bahwa pengalaman login dan pengaturan akun Keycloak masih terasa seperti antarmuka provider dan membutuhkan perbaikan produk. Pekerjaan ini harus diberi specification ID tersendiri sebelum implementasi dan tidak boleh mengubah protokol OIDC, kebijakan MFA, atau hasil gate keamanan.
 
+Inventaris awal halaman dan keputusan penggunaan nama tersedia di [`akun-sq-gui-inventory-2026-09-17.md`](./akun-sq-gui-inventory-2026-09-17.md). Inventaris tersebut membedakan login-flow yang sudah memakai theme Akun SQ dari Account Console yang masih memakai UI Keycloak bawaan.
+
 Rencana discovery mencakup:
 
 - audit visual dan usability untuk login, recovery, OTP/TOTP, error, logout, serta Account Console pada desktop dan mobile;

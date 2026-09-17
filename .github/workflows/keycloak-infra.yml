@@ -160,7 +160,7 @@ jobs:
 
           jq -e '
             .realm == "sq-staff-staging" and
-            .displayName == "SQ Identity Staging" and
+            .displayName == "Akun SQ Staging" and
             .registrationAllowed == false and
             .rememberMe == false and
             .resetPasswordAllowed == true and
