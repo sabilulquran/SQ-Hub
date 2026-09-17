@@ -218,7 +218,7 @@ body {
   flex: 0 0 auto;
 }
 
-.pf-v5-c-login__main-footer-band {
+.pf-v5-c-login__main-footer:has(#kc-social-providers) .pf-v5-c-login__main-footer-band {
   order: 2;
   display: flex !important;
   min-height: 1px !important;
@@ -231,8 +231,8 @@ body {
   box-shadow: none !important;
 }
 
-.pf-v5-c-login__main-footer-band::before,
-.pf-v5-c-login__main-footer-band::after {
+.pf-v5-c-login__main-footer:has(#kc-social-providers) .pf-v5-c-login__main-footer-band::before,
+.pf-v5-c-login__main-footer:has(#kc-social-providers) .pf-v5-c-login__main-footer-band::after {
   display: block;
   height: 1px;
   flex: 1;
@@ -240,14 +240,14 @@ body {
   content: "";
 }
 
-.pf-v5-c-login__main-footer-band-item {
+.pf-v5-c-login__main-footer:has(#kc-social-providers) .pf-v5-c-login__main-footer-band-item {
   padding: 0 !important;
   color: transparent !important;
   font-size: 0 !important;
   line-height: 1 !important;
 }
 
-.pf-v5-c-login__main-footer-band-item::after {
+.pf-v5-c-login__main-footer:has(#kc-social-providers) .pf-v5-c-login__main-footer-band-item::after {
   color: var(--sq-muted);
   content: "atau";
   font-size: .72rem;
@@ -435,3 +435,6 @@ a { color: var(--sq-primary-dark) !important; }
     transition-duration: .01ms !important;
   }
 }
+
+/* Recovery instructions use the native footer without the social divider. */
+#kc-info-wrapper { padding: 1rem 0 0 !important; background: transparent !important; color: var(--sq-muted); line-height: 1.5; }
