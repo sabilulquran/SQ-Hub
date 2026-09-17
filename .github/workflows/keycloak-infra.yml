@@ -138,7 +138,7 @@ jobs:
           ! grep -Fq 'css/sq-hub.css' /tmp/akun-sq-login.html
           ! grep -Fq 'css/sq-account-hcis-5ae1544133ef.css' /tmp/akun-sq-login.html
           ! grep -Fq 'css/hcis-logo-assets-294b82789923.css' /tmp/akun-sq-login.html
-          grep -Fq 'img/ysq-mark.svg' /tmp/akun-sq-login.html
+          grep -Fq 'img/favicon.svg' /tmp/akun-sq-login.html
 
       - name: Verify imported realm policy and clients
         shell: bash
