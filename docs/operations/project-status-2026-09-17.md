@@ -95,3 +95,11 @@ Current production image: `ghcr.io/sabilulquran/sq-hub-keycloak@sha256:9dd0d098f
 Rollback configuration: `/var/www/sq-hub-production/compose.identity.json.before-divider-fix-20260917T161418Z`; previous image digest `80bf6f4c8d72be49018a2f74f2e6fac2dcf4099c2a3547214953676f45353fe7`. The earlier full-polish backup is `compose.identity.json.before-polish-20260917T160254Z`.
 
 Remaining: activate the Account Console theme through authenticated administrator access and inspect its pages. This visual review does not claim completion of authenticated MFA, linking, recovery execution, or all UAT scenarios. Do not repeat the completed login/recovery visual checks unless the theme changes materially.
+
+## Official brand asset correction — 18 September 2026
+
+PR #74 restored the existing organization logo and favicon instead of the generic SQ placeholder. Native Edge verification then found that the historical `ysq-mark.svg` wrapper contained invalid embedded image data, so PR #75 changed the compact login and Account Console logo reference to the valid existing `favicon.svg` organization mark. Both PRs passed the experience contract, application CI, and full Keycloak smoke test.
+
+Production now runs `ghcr.io/sabilulquran/sq-hub-keycloak@sha256:dcccc600d2e61c6bb8f667f7c1ede5651f5314504e8f9ec60e0075023231866f`. Runtime verification showed Keycloak `healthy`, restart count 0, issuer discovery HTTP 200, and the database container retained its original start time (`2026-09-17T04:42:58Z`). The rollback configuration is `/var/www/sq-hub-production/compose.identity.json.before-valid-mark-20260917T234346Z`.
+
+Native Edge visual verification confirmed the official Sabilul Qur'an mark is visible on the production login card. The canonical user entry remains `https://login.sabilulquran.or.id/realms/sq-staff/account/`; route details are recorded in [`akun-sq-gui-inventory-2026-09-17.md`](./akun-sq-gui-inventory-2026-09-17.md).
