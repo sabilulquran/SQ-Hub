@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Akun SQ Account Console visual fixture</title>
+  <link rel="stylesheet" href="../../infra/keycloak/themes/sq-hub/account/resources/css/akun-sq-account-da37d0564c87.css">
+  <style>
+    .fixture-page { display: grid; grid-template-columns: 15rem minmax(0, 1fr); min-height: 100vh; }
+    .fixture-masthead { grid-column: 1 / -1; display: flex; align-items: center; gap: .75rem; }
+    .fixture-sidebar { padding: .75rem; }
+    .fixture-nav-link { display: block; padding: .7rem; text-decoration: none; }
+    .fixture-row { display: flex; justify-content: space-between; gap: 1rem; padding: 1rem; border-top: 1px solid var(--sq-line); }
+    @media (max-width: 768px) {
+      .fixture-page { display: block; }
+      .fixture-sidebar { display: flex; overflow-x: auto; border-right: 0; border-bottom: 1px solid var(--sq-line); }
+      .fixture-nav { display: flex; }
+      .fixture-nav-link { white-space: nowrap; }
+      .fixture-row { flex-direction: column; }
+    }
+  </style>
+</head>
+<body>
+  <div class="pf-v5-c-page fixture-page">
+    <header class="pf-v5-c-masthead fixture-masthead">
+      <img class="pf-v5-c-brand" src="../../infra/keycloak/themes/sq-hub/account/resources/img/ysq-mark.svg" alt="">
+      <strong>Akun SQ</strong>
+    </header>
+    <aside class="pf-v5-c-page__sidebar fixture-sidebar">
+      <nav class="pf-v5-c-nav fixture-nav">
+        <a class="pf-v5-c-nav__link fixture-nav-link pf-m-current" href="#">Ringkasan</a>
+        <a class="pf-v5-c-nav__link fixture-nav-link" href="#">Keamanan</a>
+        <a class="pf-v5-c-nav__link fixture-nav-link" href="#">Sesi</a>
+        <a class="pf-v5-c-nav__link fixture-nav-link" href="#">Aplikasi</a>
+        <a class="pf-v5-c-nav__link fixture-nav-link" href="#">Akun terhubung</a>
+      </nav>
+    </aside>
+    <main class="pf-v5-c-page__main">
+      <section class="pf-v5-c-page__main-section">
+        <h1 class="pf-v5-c-title" id="fixture-title">Akun SQ</h1>
+        <p>Kelola akun dan keamanan Anda.</p>
+        <div id="fixture-content"></div>
+      </section>
+    </main>
+  </div>
+  <script>
+    const mode = new URLSearchParams(location.search).get("mode") || "overview";
+    const title = document.querySelector("#fixture-title");
+    const content = document.querySelector("#fixture-content");
+    const card = (heading, body, action) =>
+      '<section class="pf-v5-c-card"><div class="pf-v5-c-card__body"><h2>' + heading + '</h2><p>' + body +
+      '</p><button class="pf-v5-c-button pf-m-secondary">' + (action || "Kelola") + '</button></div></section>';
+
+    if (mode === "security") {
+      title.textContent = "Keamanan akun";
+      content.innerHTML = card("Kata sandi", "Perbarui kata sandi Akun SQ.") +
+        card("Autentikator", "Autentikasi dua langkah aktif.") +
+        card("Kode pemulihan", "Simpan kode pemulihan di tempat aman.");
+    } else if (mode === "sessions") {
+      title.textContent = "Sesi";
+      content.innerHTML =
+        '<section class="pf-v5-c-card"><div class="pf-v5-c-card__body"><h2>Perangkat yang masuk</h2>' +
+        '<div class="fixture-row"><div><strong>Browser saat ini</strong><p>Perangkat sintetis · .example</p></div><button class="pf-v5-c-button pf-m-secondary">Keluar</button></div>' +
+        '<div class="fixture-row"><div><strong>Perangkat lain</strong><p>Sesi sintetis untuk preview</p></div><button class="pf-v5-c-button pf-m-danger">Akhiri sesi</button></div></div></section>';
+    } else {
+      content.innerHTML = card("Informasi pribadi", "Informasi dasar Akun SQ.") +
+        card("Keamanan", "Kata sandi, autentikator, dan pemulihan.") +
+        card("Aplikasi", "Aplikasi yang terhubung ke akun.");
+    }
+
+    requestAnimationFrame(() => {
+      const root = document.documentElement;
+      document.body.dataset.horizontal = String(root.scrollWidth > root.clientWidth + 1);
+    });
+  </script>
+</body>
+</html>
