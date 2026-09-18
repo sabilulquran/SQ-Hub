@@ -49,9 +49,7 @@ body {
   align-items: center !important;
   justify-content: safe center !important;
   padding: 1.5rem 1rem !important;
-  background:
-    radial-gradient(circle at 50% 0, rgba(7, 156, 150, .045), transparent 25rem),
-    var(--sq-canvas) !important;
+  background: var(--sq-canvas) !important;
 }
 
 #kc-header { display: none !important; }
@@ -438,3 +436,62 @@ a { color: var(--sq-primary-dark) !important; }
 
 /* Recovery instructions use the native footer without the social divider. */
 #kc-info-wrapper { padding: 1rem 0 0 !important; background: transparent !important; color: var(--sq-muted); line-height: 1.5; }
+
+
+/* HUB-IMPL-017: keep native Keycloak states inside the same quiet Akun SQ hierarchy. */
+.pf-v5-c-alert,
+.alert {
+  width: 100% !important;
+  margin: 0 0 1rem !important;
+  border: 1px solid var(--sq-line) !important;
+  border-radius: .7rem !important;
+  background: #f8fafb !important;
+  box-shadow: none !important;
+}
+
+.pf-v5-c-alert.pf-m-danger,
+.alert-error,
+[aria-invalid="true"] {
+  border-color: color-mix(in srgb, var(--sq-danger) 38%, var(--sq-line)) !important;
+}
+
+.pf-v5-c-form__helper-text.pf-m-error,
+.pf-v5-c-form__helper-text-icon,
+#input-error,
+[id$="-error"] {
+  color: var(--sq-danger) !important;
+}
+
+.pf-v5-c-check {
+  min-height: 2.75rem;
+  align-items: center;
+}
+
+.pf-v5-c-check__input,
+input[type="checkbox"] {
+  accent-color: var(--sq-primary);
+}
+
+#kc-form-buttons,
+.pf-v5-c-action-list {
+  width: 100%;
+}
+
+#kc-form-buttons .pf-v5-c-button,
+.pf-v5-c-action-list .pf-v5-c-button {
+  min-height: 3rem;
+}
+
+@media (max-width: 640px) {
+  .pf-v5-c-login__main-body,
+  #kc-form,
+  #kc-form-wrapper {
+    min-width: 0 !important;
+    overflow-wrap: anywhere;
+  }
+
+  .pf-v5-c-alert,
+  .alert {
+    text-align: left;
+  }
+}
