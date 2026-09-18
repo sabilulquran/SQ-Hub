@@ -164,6 +164,14 @@ body {
   margin-block: 0;
 }
 
+.pf-v5-c-masthead__content .pf-v5-c-menu-toggle {
+  color: var(--sq-ink);
+}
+
+.pf-v5-c-masthead__content .pf-v5-c-menu-toggle:not(.pf-m-plain) {
+  background: #fff;
+}
+
 .pf-v5-c-masthead__content .pf-v5-c-avatar {
   width: 2.25rem;
   height: 2.25rem;

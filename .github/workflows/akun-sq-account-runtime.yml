@@ -164,7 +164,7 @@ jobs:
 
           python3 tools/visual/akun-sq-account-runtime-smoke.py \
             --base-url http://127.0.0.1:8080/realms/sq-staff-staging/account/ \
-            --stylesheet akun-sq-account-126f6b841d90.css \
+            --stylesheet akun-sq-account-148467199d0b.css \
             --output-dir visual-account-runtime
 
           test "$(find visual-account-runtime -name '*.png' | wc -l)" -eq 11

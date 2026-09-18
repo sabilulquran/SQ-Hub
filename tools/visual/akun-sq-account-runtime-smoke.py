@@ -322,15 +322,21 @@ def assert_layout(
         )
 
 
-def sidebar_state(driver: Driver) -> str:
+def sidebar_state(driver: Driver) -> dict[str, Any]:
     return driver.execute(
         """
         const sidebar = document.querySelector(".pf-v5-c-page__sidebar");
         const toggle = document.querySelector(".pf-v5-c-masthead__toggle button");
-        if (!sidebar || !toggle) return "";
+        if (!sidebar || !toggle) return {};
         const box = sidebar.getBoundingClientRect();
         const style = getComputedStyle(sidebar);
-        return JSON.stringify({
+        const visibleLinks = [...sidebar.querySelectorAll("a[href]")].filter((link) => {
+          const rect = link.getBoundingClientRect();
+          const linkStyle = getComputedStyle(link);
+          return linkStyle.visibility !== "hidden" && linkStyle.display !== "none" &&
+            rect.width > 0 && rect.height > 0;
+        });
+        return {
           className: sidebar.className,
           display: style.display,
           visibility: style.visibility,
@@ -338,7 +344,12 @@ def sidebar_state(driver: Driver) -> str:
           x: Math.round(box.x),
           width: Math.round(box.width),
           expanded: toggle.getAttribute("aria-expanded"),
-        });
+          visibleLinks: visibleLinks.length,
+          linksContained: visibleLinks.every((link) => {
+            const rect = link.getBoundingClientRect();
+            return rect.left >= -1 && rect.right <= window.innerWidth + 1;
+          }),
+        };
         """
     )
 
@@ -352,11 +363,60 @@ def exercise_mobile_drawer(driver: Driver) -> None:
     after = before
     while time.monotonic() < deadline:
         after = sidebar_state(driver)
-        if after and after != before:
-            break
+        if (
+            after
+            and after != before
+            and after["x"] >= -1
+            and after["width"] >= 240
+            and after["visibleLinks"] >= 3
+            and after["linksContained"]
+        ):
+            time.sleep(0.2)
+            return
         time.sleep(0.1)
-    if not after or after == before:
-        raise WebDriverError("mobile navigation toggle did not change drawer state")
+    raise WebDriverError(f"mobile navigation drawer did not fully open: {after}")
+
+
+def exercise_account_menu(driver: Driver, selector: str, label: str) -> None:
+    state = driver.execute(
+        """
+        const button = document.querySelector(arguments[0]);
+        if (!button) return null;
+        const style = getComputedStyle(button);
+        const box = button.getBoundingClientRect();
+        return {
+          expanded: button.getAttribute("aria-expanded"),
+          text: button.textContent.trim(),
+          visible: style.display !== "none" && style.visibility !== "hidden" &&
+            box.width > 0 && box.height > 0,
+          color: style.color,
+        };
+        """,
+        [selector],
+    )
+    if not state or not state["visible"]:
+        raise WebDriverError(f"{label}: account menu toggle is not visible")
+    if selector == '[data-testid="options-toggle"]' and not state["text"]:
+        raise WebDriverError(f"{label}: account menu username is not visible")
+
+    driver.click(selector)
+    driver.wait(
+        """
+        const button = document.querySelector(arguments[0]);
+        return button && button.getAttribute("aria-expanded") === "true";
+        """,
+        f"{label} account menu open",
+        timeout=5,
+    )
+    driver.click(selector)
+    driver.wait(
+        """
+        const button = document.querySelector(arguments[0]);
+        return button && button.getAttribute("aria-expanded") !== "true";
+        """,
+        f"{label} account menu close",
+        timeout=5,
+    )
 
 
 def login(driver: Driver, base_url: str, username: str, password: str) -> None:
@@ -484,6 +544,9 @@ def main() -> int:
             driver.screenshot(output_dir / f"account-security-{key}.png")
 
             if width == 390:
+                exercise_account_menu(
+                    driver, '[data-testid="options-kebab-toggle"]', "mobile"
+                )
                 exercise_mobile_drawer(driver)
                 driver.screenshot(
                     output_dir / "account-security-navigation-mobile-390x844.png"
@@ -492,6 +555,7 @@ def main() -> int:
         driver.set_viewport(1440, 900)
         driver.goto(base_url)
         driver.wait(page_ready_script("Informasi pribadi"), "desktop personal information")
+        exercise_account_menu(driver, '[data-testid="options-toggle"]', "desktop")
         validate_native_navigation(driver, base_url)
 
         driver.set_viewport(390, 844)
