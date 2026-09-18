@@ -13,8 +13,8 @@
     .fixture-row { display: flex; justify-content: space-between; gap: 1rem; padding: 1rem; border-top: 1px solid var(--sq-line); }
     @media (max-width: 768px) {
       .fixture-page { display: block; }
-      .fixture-sidebar { display: flex; overflow-x: auto; border-right: 0; border-bottom: 1px solid var(--sq-line); }
-      .fixture-nav { display: flex; }
+      .fixture-sidebar { display: block; width: 100%; max-width: 100%; overflow: hidden; border-right: 0; border-bottom: 1px solid var(--sq-line); }
+      .fixture-nav { display: flex; width: 100%; max-width: 100%; overflow-x: auto; }
       .fixture-nav-link { white-space: nowrap; }
       .fixture-row { flex-direction: column; }
     }
