@@ -3,7 +3,7 @@
     <img class="sq-account-brand__logo" src="${url.resourcesPath}/img/ysq-mark.svg" alt="">
     <div class="sq-account-brand__copy">
       <strong>Akun SQ</strong>
-      <span>Yayasan Sabilul Qur'an</span>
+      <span>Yayasan Sabilul Qur&apos;an</span>
     </div>
   </div>
   <p class="sq-login-footer">${msg("akunSqFooter")}</p>
