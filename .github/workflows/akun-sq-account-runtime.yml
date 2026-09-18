@@ -1,0 +1,194 @@
+name: Akun SQ Account Runtime
+
+on:
+  pull_request:
+    paths:
+      - "infra/keycloak/themes/sq-hub/account/**"
+      - "infra/keycloak/Containerfile"
+      - "infra/keycloak/docker-compose.staging.yml"
+      - "infra/keycloak/docker-compose.bootstrap.yml"
+      - "infra/keycloak/realm/sq-staff-staging-realm.json"
+      - "tools/visual/akun-sq-account-runtime-smoke.py"
+      - ".github/workflows/akun-sq-account-runtime.yml"
+  push:
+    branches: [main]
+    paths:
+      - "infra/keycloak/themes/sq-hub/account/**"
+      - "infra/keycloak/Containerfile"
+      - "infra/keycloak/docker-compose.staging.yml"
+      - "infra/keycloak/docker-compose.bootstrap.yml"
+      - "infra/keycloak/realm/sq-staff-staging-realm.json"
+      - "tools/visual/akun-sq-account-runtime-smoke.py"
+      - ".github/workflows/akun-sq-account-runtime.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  runtime:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      KEYCLOAK_DB_NAME: keycloak_staging
+      KEYCLOAK_DB_USERNAME: keycloak
+      KEYCLOAK_DB_PASSWORD: ci-keycloak-db-password-only
+      KEYCLOAK_BOOTSTRAP_ADMIN_USERNAME: ci-bootstrap-admin
+      KEYCLOAK_BOOTSTRAP_ADMIN_PASSWORD: ci-bootstrap-admin-password-only
+      KEYCLOAK_DIRECTORY_CLIENT_SECRET: ci-directory-client-secret-only
+      GOOGLE_CLIENT_ID: ci-google-client-id-only
+      GOOGLE_CLIENT_SECRET: ci-google-client-secret-only
+      KEYCLOAK_HOSTNAME: http://127.0.0.1:8080
+      KEYCLOAK_HTTP_PORT: "8080"
+      KEYCLOAK_MANAGEMENT_PORT: "9000"
+      KEYCLOAK_MEMORY_LIMIT: 2g
+      SQ_HUB_KEYCLOAK_IMAGE: sq-hub-keycloak:account-runtime-ci
+      EDGE_NETWORK: edge_proxy
+      KEYCLOAK_ENV_FILE: /tmp/keycloak-account-runtime.env
+      SQ_TRUSTED_DEVICE_SIGNING_KEY: MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Write disposable runtime environment
+        shell: bash
+        run: |
+          cat > "$KEYCLOAK_ENV_FILE" <<EOF
+          KEYCLOAK_HOSTNAME=$KEYCLOAK_HOSTNAME
+          KEYCLOAK_HTTP_PORT=$KEYCLOAK_HTTP_PORT
+          KEYCLOAK_MANAGEMENT_PORT=$KEYCLOAK_MANAGEMENT_PORT
+          KEYCLOAK_MEMORY_LIMIT=$KEYCLOAK_MEMORY_LIMIT
+          SQ_HUB_KEYCLOAK_IMAGE=$SQ_HUB_KEYCLOAK_IMAGE
+          EDGE_NETWORK=$EDGE_NETWORK
+          SQ_TRUSTED_DEVICE_SIGNING_KEY=$SQ_TRUSTED_DEVICE_SIGNING_KEY
+          KEYCLOAK_DB_NAME=$KEYCLOAK_DB_NAME
+          KEYCLOAK_DB_USERNAME=$KEYCLOAK_DB_USERNAME
+          KEYCLOAK_DB_PASSWORD=$KEYCLOAK_DB_PASSWORD
+          KEYCLOAK_BOOTSTRAP_ADMIN_USERNAME=$KEYCLOAK_BOOTSTRAP_ADMIN_USERNAME
+          KEYCLOAK_BOOTSTRAP_ADMIN_PASSWORD=$KEYCLOAK_BOOTSTRAP_ADMIN_PASSWORD
+          KEYCLOAK_DIRECTORY_CLIENT_SECRET=$KEYCLOAK_DIRECTORY_CLIENT_SECRET
+          GOOGLE_CLIENT_ID=$GOOGLE_CLIENT_ID
+          GOOGLE_CLIENT_SECRET=$GOOGLE_CLIENT_SECRET
+          EOF
+          chmod 600 "$KEYCLOAK_ENV_FILE"
+
+      - name: Start disposable Keycloak
+        shell: bash
+        run: |
+          docker network inspect "$EDGE_NETWORK" >/dev/null 2>&1 || docker network create "$EDGE_NETWORK"
+          docker compose \
+            --env-file "$KEYCLOAK_ENV_FILE" \
+            -f infra/keycloak/docker-compose.staging.yml \
+            -f infra/keycloak/docker-compose.bootstrap.yml \
+            up -d --build
+
+          ready=0
+          for attempt in $(seq 1 60); do
+            if curl --fail --silent http://127.0.0.1:9000/health/ready > /tmp/keycloak-health.json; then
+              ready=1
+              break
+            fi
+            sleep 5
+          done
+          test "$ready" = "1"
+          jq -e '.status == "UP"' /tmp/keycloak-health.json
+
+      - name: Create synthetic Account Console persona
+        shell: bash
+        run: |
+          set -euo pipefail
+          runtime_password="$(openssl rand -hex 24)"
+          echo "::add-mask::$runtime_password"
+          echo "AKUN_SQ_UAT_PASSWORD=$runtime_password" >> "$GITHUB_ENV"
+
+          kcadm_config=/tmp/account-runtime.kcadm
+          docker compose \
+            --env-file "$KEYCLOAK_ENV_FILE" \
+            -f infra/keycloak/docker-compose.staging.yml \
+            -f infra/keycloak/docker-compose.bootstrap.yml \
+            exec -T keycloak \
+            sh -ceu '
+              /opt/keycloak/bin/kcadm.sh config credentials \
+                --config "$1" \
+                --server http://127.0.0.1:8080 \
+                --realm master \
+                --user "$KC_BOOTSTRAP_ADMIN_USERNAME" \
+                --password "$KC_BOOTSTRAP_ADMIN_PASSWORD" >/dev/null
+            ' sh "$kcadm_config"
+
+          synthetic_user_id="$(
+            docker compose \
+              --env-file "$KEYCLOAK_ENV_FILE" \
+              -f infra/keycloak/docker-compose.staging.yml \
+              exec -T keycloak \
+              /opt/keycloak/bin/kcadm.sh create users \
+              -r sq-staff-staging \
+              -s username=UAT-AKUN-UI-001 \
+              -s enabled=true \
+              -s firstName=UAT \
+              -s 'lastName=Akun UI' \
+              -s email=uat-akun-ui-001@example.invalid \
+              -s emailVerified=true \
+              -i --config "$kcadm_config"
+          )"
+          test -n "$synthetic_user_id"
+
+          docker compose \
+            --env-file "$KEYCLOAK_ENV_FILE" \
+            -f infra/keycloak/docker-compose.staging.yml \
+            exec -T keycloak \
+            /opt/keycloak/bin/kcadm.sh set-password \
+            -r sq-staff-staging \
+            --userid "$synthetic_user_id" \
+            --new-password "$runtime_password" \
+            --temporary=false \
+            --config "$kcadm_config" >/dev/null
+
+          echo "AKUN_SQ_UAT_USERNAME=UAT-AKUN-UI-001" >> "$GITHUB_ENV"
+
+      - name: Exercise real keycloak.v3 Account Console
+        shell: bash
+        run: |
+          set -euo pipefail
+          CHROMEDRIVER="$(command -v chromedriver || true)"
+          test -n "$CHROMEDRIVER"
+          "$CHROMEDRIVER" --port=9515 >/tmp/chromedriver-account-runtime.log 2>&1 &
+          webdriver_pid=$!
+          trap 'kill "$webdriver_pid" >/dev/null 2>&1 || true' EXIT
+
+          for attempt in $(seq 1 30); do
+            if curl --fail --silent http://127.0.0.1:9515/status >/dev/null; then
+              break
+            fi
+            sleep 1
+          done
+
+          python3 tools/visual/akun-sq-account-runtime-smoke.py \
+            --base-url http://127.0.0.1:8080/realms/sq-staff-staging/account/ \
+            --stylesheet akun-sq-account-148467199d0b.css \
+            --output-dir visual-account-runtime
+
+          test "$(find visual-account-runtime -name '*.png' | wc -l)" -eq 11
+          test -s visual-account-runtime/account-runtime-metrics.json
+          ! grep -R -a -F "$AKUN_SQ_UAT_PASSWORD" visual-account-runtime /tmp/chromedriver-account-runtime.log
+
+      - name: Upload actual Account Console screenshots
+        if: github.event_name == 'pull_request'
+        uses: actions/upload-artifact@v4
+        with:
+          name: akun-sq-account-runtime
+          path: |
+            visual-account-runtime/*.png
+            visual-account-runtime/account-runtime-metrics.json
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Tear down disposable Keycloak
+        if: always()
+        shell: bash
+        run: |
+          docker compose \
+            --env-file "$KEYCLOAK_ENV_FILE" \
+            -f infra/keycloak/docker-compose.staging.yml \
+            -f infra/keycloak/docker-compose.bootstrap.yml \
+            down -v || true
+          docker network rm "$EDGE_NETWORK" >/dev/null 2>&1 || true
