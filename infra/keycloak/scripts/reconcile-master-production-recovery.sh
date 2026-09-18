@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-DESIRED_STATE="${KEYCLOAK_MASTER_RECOVERY_DESIRED_STATE:-infra/keycloak/realm/master-production-recovery.json}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+KEYCLOAK_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
+DESIRED_STATE="${KEYCLOAK_MASTER_RECOVERY_DESIRED_STATE:-${KEYCLOAK_DIR}/realm/master-production-recovery.json}"
 SMTP_ENV_FILE="${KEYCLOAK_MASTER_SMTP_ENV_FILE:?set KEYCLOAK_MASTER_SMTP_ENV_FILE to the controlled runtime SMTP file}"
 KCADM="${KCADM_BIN:-/opt/keycloak/bin/kcadm.sh}"
 KCADM_CONFIG="${KEYCLOAK_KCADM_CONFIG:-/tmp/akun-sq-master-production.kcadm}"
