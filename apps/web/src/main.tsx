@@ -22,36 +22,6 @@ const previewMode =
     : params.get("preview") === "account-menu"
       ? "account-menu"
       : undefined;
-if (previewEnabled) {
-  window.requestAnimationFrame(() => {
-    window.requestAnimationFrame(() => {
-      document.body.dataset.previewHorizontalOverflow = String(
-        document.documentElement.scrollWidth > document.documentElement.clientWidth + 1,
-      );
-    });
-  });
-
-  if (params.get("exercise") === "escape") {
-    window.setTimeout(() => {
-      const selector =
-        previewMode === "launcher"
-          ? '[aria-label="Buka peluncur aplikasi"]'
-          : previewMode === "account-menu"
-            ? '[aria-label^="Menu akun "]'
-            : null;
-      const trigger = selector ? document.querySelector<HTMLButtonElement>(selector) : null;
-      document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
-      window.requestAnimationFrame(() => {
-        document.body.dataset.previewEscapeRestored = String(
-          Boolean(trigger) &&
-            trigger?.getAttribute("aria-expanded") === "false" &&
-            document.activeElement === trigger,
-        );
-      });
-    }, 120);
-  }
-}
-
 const fixture =
   params.get("state") === "empty"
     ? emptyWorkspaceFixture
@@ -90,3 +60,30 @@ function renderPreviewApp() {
 createRoot(document.getElementById("root")!).render(
   <StrictMode>{previewEnabled ? renderPreviewApp() : <WorkspaceApp />}</StrictMode>,
 );
+
+if (previewEnabled) {
+  window.setTimeout(() => {
+    document.body.dataset.previewHorizontalOverflow = String(
+      document.documentElement.scrollWidth > document.documentElement.clientWidth + 1,
+    );
+
+    if (params.get("exercise") !== "escape") return;
+
+    const selector =
+      previewMode === "launcher"
+        ? '[aria-label="Buka peluncur aplikasi"]'
+        : previewMode === "account-menu"
+          ? '[aria-label^="Menu akun "]'
+          : null;
+    const trigger = selector ? document.querySelector<HTMLButtonElement>(selector) : null;
+    document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+
+    window.setTimeout(() => {
+      document.body.dataset.previewEscapeRestored = String(
+        Boolean(trigger) &&
+          trigger?.getAttribute("aria-expanded") === "false" &&
+          document.activeElement === trigger,
+      );
+    }, 50);
+  }, 200);
+}
