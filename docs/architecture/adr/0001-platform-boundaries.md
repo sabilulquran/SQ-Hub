@@ -18,3 +18,15 @@ Aplikasi domain boleh berada pada repo, deployment, dan lifecycle maintenance ya
 - Satu aplikasi dapat maintenance/deploy tanpa mewajibkan aplikasi lain berhenti.
 - Integrasi lintas domain membutuhkan contract yang eksplisit.
 - Shared capability baru harus membuktikan kebutuhan lintas aplikasi; reuse hipotetis bukan alasan yang cukup.
+
+## Supersession note — 2026-09-18
+
+ADR-0007 supersedes **only** the part of this ADR that names `Organizational Unit master` as an SQ Hub-owned capability.
+
+The current boundary is:
+
+- workforce organization authoring/system of authority -> HCIS;
+- shared Organization Directory projection/distribution -> SQ Hub;
+- approval/workflow policy -> each domain application.
+
+All other platform-boundary decisions in ADR-0001 remain in force. The original decision text above is intentionally retained as architectural history.
