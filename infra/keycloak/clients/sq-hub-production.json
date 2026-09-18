@@ -1,0 +1,25 @@
+{
+  "clientId": "sq-hub",
+  "name": "SQ Hub Production",
+  "enabled": true,
+  "protocol": "openid-connect",
+  "clientAuthenticatorType": "client-secret",
+  "publicClient": false,
+  "bearerOnly": false,
+  "standardFlowEnabled": true,
+  "implicitFlowEnabled": false,
+  "directAccessGrantsEnabled": false,
+  "serviceAccountsEnabled": false,
+  "frontchannelLogout": true,
+  "fullScopeAllowed": false,
+  "redirectUris": [
+    "https://hub.sabilulquran.or.id/auth/callback"
+  ],
+  "webOrigins": [
+    "https://hub.sabilulquran.or.id"
+  ],
+  "attributes": {
+    "pkce.code.challenge.method": "S256",
+    "post.logout.redirect.uris": "https://hub.sabilulquran.or.id/"
+  }
+}
