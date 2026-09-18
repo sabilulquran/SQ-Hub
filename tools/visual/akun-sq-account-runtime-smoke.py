@@ -402,8 +402,12 @@ def exercise_account_menu(driver: Driver, selector: str, label: str) -> None:
     driver.click(selector)
     driver.wait(
         """
-        const button = document.querySelector(arguments[0]);
-        return button && button.getAttribute("aria-expanded") === "true";
+        return [...document.querySelectorAll(".pf-v5-c-menu")].some((menu) => {
+          const style = getComputedStyle(menu);
+          const box = menu.getBoundingClientRect();
+          return style.display !== "none" && style.visibility !== "hidden" &&
+            box.width > 0 && box.height > 0;
+        });
         """,
         f"{label} account menu open",
         timeout=5,
@@ -411,8 +415,12 @@ def exercise_account_menu(driver: Driver, selector: str, label: str) -> None:
     driver.click(selector)
     driver.wait(
         """
-        const button = document.querySelector(arguments[0]);
-        return button && button.getAttribute("aria-expanded") !== "true";
+        return ![...document.querySelectorAll(".pf-v5-c-menu")].some((menu) => {
+          const style = getComputedStyle(menu);
+          const box = menu.getBoundingClientRect();
+          return style.display !== "none" && style.visibility !== "hidden" &&
+            box.width > 0 && box.height > 0;
+        });
         """,
         f"{label} account menu close",
         timeout=5,
