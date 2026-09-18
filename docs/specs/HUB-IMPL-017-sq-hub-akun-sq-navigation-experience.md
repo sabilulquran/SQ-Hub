@@ -262,6 +262,8 @@ Presentation menggunakan mekanisme theme yang didukung:
 - navigation mobile mengikuti behavior native PatternFly/Keycloak, dengan styling yang tidak merusak drawer/toggle bawaan;
 - tidak ada generic Keycloak product branding pada journey yang dapat dikustom melalui theme.
 
+Visual contract Account Console wajib memeriksa DOM runtime `keycloak.v3` yang benar-benar dirender oleh disposable Keycloak 26.7.2. Fixture statis tetap berguna sebagai fast contract, tetapi tidak boleh menjadi satu-satunya bukti karena fixture dapat berbeda dari struktur native `.pf-v5-c-masthead__toggle`, `.pf-v5-c-masthead__brand`, `.pf-v5-c-masthead__content`, dan `.pf-v5-c-toolbar`. Browser smoke runtime minimal harus menguji 320×844, 360×844, 390×844, 412×844, dan 1440×900; membuktikan masthead content tetap berada di dalam masthead, judul dimulai setelah masthead, toolbar tidak gelap, logo dan teks Akun SQ terlihat, tidak ada horizontal overflow, drawer/toggle native tetap bekerja, dan surface security/session tetap usable.
+
 Jika CSS berubah, filename wajib memakai content-derived Git blob hash 12 karakter; `theme.properties`, `contentHashPattern`, dan contract test diperbarui pada commit yang sama. File hashed lama yang tidak lagi direferensikan dihapus.
 
 ## Accessibility
@@ -364,7 +366,7 @@ In scope:
 19. Theme stylesheet hash contract benar dan stale hashed file tidak aktif/tersisa.
 20. Production/staging issuer, callback, client separation, dan Admin Console boundary tidak berubah.
 21. API/web typecheck, lint, test, build dan repository contracts yang relevan lulus.
-22. Visual smoke menyediakan synthetic structural evidence untuk Hub desktop/mobile, launcher/menu/empty/admin visibility, Akun SQ login states, dan Account Console desktop/mobile.
+22. Visual smoke menyediakan synthetic structural evidence untuk Hub desktop/mobile, launcher/menu/empty/admin visibility, Akun SQ login states, dan Account Console desktop/mobile; Account Console wajib memiliki bukti tambahan dari disposable runtime Keycloak `keycloak.v3`, bukan hanya fixture statis.
 23. Tidak ada secret atau production personal data di diff.
 
 ## Deployment dan rollback boundary

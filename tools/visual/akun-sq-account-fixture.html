@@ -4,20 +4,22 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Akun SQ Account Console visual fixture</title>
-  <link rel="stylesheet" href="../../infra/keycloak/themes/sq-hub/account/resources/css/akun-sq-account-8af415711c7c.css">
+  <link rel="stylesheet" href="../../infra/keycloak/themes/sq-hub/account/resources/css/akun-sq-account-959eb4c77248.css">
   <style>
-    .fixture-page { display: grid; grid-template-columns: 15rem minmax(0, 1fr); min-height: 100vh; }
-    .fixture-masthead { grid-column: 1 / -1; display: flex; align-items: center; gap: .75rem; }
-    .fixture-brand-copy { display: flex; min-width: 0; flex-direction: column; }
-    .fixture-brand-copy strong { color: var(--sq-ink); font-size: .95rem; line-height: 1.2; }
-    .fixture-brand-copy span { margin-top: .12rem; color: var(--sq-muted); font-size: .7rem; line-height: 1.25; }
+    .fixture-page { display: grid; grid-template-columns: 15rem minmax(0, 1fr); grid-template-rows: auto 1fr; min-height: 100vh; }
+    .fixture-masthead { grid-column: 1 / -1; }
     .fixture-sidebar { min-width: 0; padding: .65rem .45rem; }
     .fixture-nav-link { display: flex; align-items: center; padding: .65rem .75rem; text-decoration: none; }
+    .fixture-account-name { color: var(--sq-ink); font-size: .85rem; font-weight: 650; white-space: nowrap; }
+    .fixture-kebab { display: none; }
+    .fixture-avatar { display: inline-flex; width: 2.25rem; height: 2.25rem; align-items: center; justify-content: center; border: 1px solid var(--sq-line); border-radius: 999px; background: #eefaf9; color: var(--sq-primary-dark); font-size: .75rem; font-weight: 750; }
     .fixture-row { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: .8rem 1rem; border-top: 1px solid var(--sq-line); }
     .fixture-row p { margin: .2rem 0 0; color: var(--sq-muted); font-size: .84rem; }
     .fixture-row .pf-v5-c-button { margin-top: 0; flex: 0 0 auto; }
     @media (max-width: 768px) {
       .fixture-page { display: block; }
+      .fixture-account-name { display: none; }
+      .fixture-kebab { display: inline-flex; }
       .fixture-sidebar { display: block; width: 100%; max-width: 100%; overflow: hidden; border-right: 0; border-bottom: 1px solid var(--sq-line); padding: .35rem .45rem .45rem; }
       .fixture-nav { display: flex; width: 100%; max-width: 100%; overflow-x: auto; overflow-y: hidden; padding: .15rem 0 .25rem; scrollbar-width: none; -ms-overflow-style: none; }
       .fixture-nav::-webkit-scrollbar { display: none; }
@@ -29,21 +31,35 @@
 </head>
 <body>
   <div class="pf-v5-c-page fixture-page">
-    <header class="pf-v5-c-masthead fixture-masthead">
-      <img
-        class="pf-v5-c-brand"
-        src="../../infra/keycloak/themes/sq-hub/account/resources/img/ysq-mark.png"
-        alt=""
-        aria-hidden="true"
-      >
-      <div class="fixture-brand-copy">
-        <strong>Akun SQ</strong>
-        <span>Yayasan Sabilul Qur'an</span>
+    <header class="pf-v5-c-masthead fixture-masthead" data-testid="page-header">
+      <div class="pf-v5-c-masthead__toggle">
+        <button class="pf-v5-c-button pf-m-plain" type="button" aria-label="Navigasi">☰</button>
+      </div>
+      <a class="pf-v5-c-masthead__brand" href="#" aria-label="Akun SQ">
+        <img
+          src="../../infra/keycloak/themes/sq-hub/account/resources/img/ysq-mark.png"
+          alt="Akun SQ"
+        >
+      </a>
+      <div class="pf-v5-c-masthead__content">
+        <div class="pf-v5-c-toolbar">
+          <div class="pf-v5-c-toolbar__content">
+            <div class="pf-v5-c-toolbar__content-section">
+              <div class="pf-v5-c-toolbar__item fixture-account-name">UAT Akun</div>
+              <div class="pf-v5-c-toolbar__item fixture-kebab">
+                <button class="pf-v5-c-button pf-m-plain" type="button" aria-label="Menu akun">⋮</button>
+              </div>
+              <div class="pf-v5-c-toolbar__item">
+                <span class="pf-v5-c-avatar fixture-avatar" aria-label="Avatar">UA</span>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
     </header>
     <aside class="pf-v5-c-page__sidebar fixture-sidebar">
       <nav class="pf-v5-c-nav fixture-nav" aria-label="Navigasi Akun SQ">
-        <a class="pf-v5-c-nav__link fixture-nav-link pf-m-current" href="#" aria-current="page">Ringkasan</a>
+        <a class="pf-v5-c-nav__link fixture-nav-link pf-m-current" href="#" aria-current="page">Informasi pribadi</a>
         <a class="pf-v5-c-nav__link fixture-nav-link" href="#">Keamanan</a>
         <a class="pf-v5-c-nav__link fixture-nav-link" href="#">Sesi</a>
         <a class="pf-v5-c-nav__link fixture-nav-link" href="#">Aplikasi</a>
@@ -52,8 +68,8 @@
     </aside>
     <main class="pf-v5-c-page__main">
       <section class="pf-v5-c-page__main-section">
-        <h1 class="pf-v5-c-title" id="fixture-title">Akun SQ</h1>
-        <p id="fixture-intro">Kelola akun dan keamanan Anda.</p>
+        <h1 class="pf-v5-c-title" id="fixture-title">Informasi pribadi</h1>
+        <p id="fixture-intro">Kelola informasi dasar akun Anda.</p>
         <div id="fixture-content"></div>
       </section>
     </main>
@@ -70,7 +86,7 @@
       '</section>';
 
     if (mode === "security") {
-      title.textContent = "Keamanan akun";
+      title.textContent = "Keamanan";
       intro.textContent = "Kelola cara Anda masuk dan memulihkan Akun SQ.";
       content.innerHTML =
         card("Kata sandi", "Perbarui kata sandi Akun SQ secara berkala.", "Ubah kata sandi") +
@@ -88,23 +104,47 @@
         '</div></section>';
     } else {
       content.innerHTML =
-        card("Informasi pribadi", "Tinjau informasi dasar yang digunakan Akun SQ.", "Lihat informasi") +
-        card("Keamanan", "Kelola kata sandi, autentikator, dan pemulihan.", "Kelola keamanan") +
+        card("Profil", "Tinjau informasi dasar yang digunakan Akun SQ.", "Simpan") +
         card("Aplikasi", "Tinjau aplikasi yang terhubung ke akun.", "Lihat aplikasi");
     }
 
+    function isDarkSurface(value) {
+      const match = value.match(/rgba?\((\d+)[, ]+(\d+)[, ]+(\d+)(?:[, /]+([\d.]+))?\)/);
+      if (!match) return false;
+      const alpha = match[4] === undefined ? 1 : Number(match[4]);
+      if (alpha < .2) return false;
+      return (Number(match[1]) + Number(match[2]) + Number(match[3])) / 3 < 80;
+    }
+
     function measureAccountLayout() {
-      const logo = document.querySelector(".pf-v5-c-brand");
+      const logo = document.querySelector(".pf-v5-c-masthead__brand img");
+      const brand = document.querySelector(".pf-v5-c-masthead__brand");
       const root = document.documentElement;
       const logoBox = logo.getBoundingClientRect();
-      const mastheadBox = document.querySelector(".pf-v5-c-masthead").getBoundingClientRect();
+      const masthead = document.querySelector(".pf-v5-c-masthead");
+      const mastheadContent = document.querySelector(".pf-v5-c-masthead__content");
+      const toolbar = document.querySelector(".pf-v5-c-toolbar");
+      const pageTitle = document.querySelector("#fixture-title");
+      const mastheadBox = masthead.getBoundingClientRect();
+      const contentBox = mastheadContent.getBoundingClientRect();
+      const titleBox = pageTitle.getBoundingClientRect();
+      const brandCopy = getComputedStyle(brand, "::after").content.replace(/^["']|["']$/g, "");
 
       document.body.dataset.horizontal = String(root.scrollWidth > root.clientWidth + 1);
       document.body.dataset.logoLoaded = String(logo.complete && logo.naturalWidth > 0 && logo.naturalHeight > 0);
       document.body.dataset.logoSize = String(
-        logoBox.width >= 36 && logoBox.width <= 44 && logoBox.height >= 36 && logoBox.height <= 44
+        logoBox.width >= 30 && logoBox.width <= 40 && logoBox.height >= 30 && logoBox.height <= 40
       );
-      document.body.dataset.mastheadCompact = String(mastheadBox.height >= 56 && mastheadBox.height <= 72);
+      document.body.dataset.brandText = String(brandCopy === "Akun SQ");
+      document.body.dataset.mastheadCompact = String(mastheadBox.height >= 60 && mastheadBox.height <= 68);
+      document.body.dataset.mastheadContained = String(
+        contentBox.top >= mastheadBox.top - 1 && contentBox.bottom <= mastheadBox.bottom + 1
+      );
+      document.body.dataset.titleAfterMasthead = String(titleBox.top >= mastheadBox.bottom + 12);
+      document.body.dataset.toolbarDark = String(
+        isDarkSurface(getComputedStyle(toolbar).backgroundColor) ||
+        isDarkSurface(getComputedStyle(mastheadContent).backgroundColor)
+      );
     }
 
     const scheduleAccountMeasurement = () => {

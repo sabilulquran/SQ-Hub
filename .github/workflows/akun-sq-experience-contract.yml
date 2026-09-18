@@ -9,6 +9,7 @@ on:
       - "docs/specs/HUB-IMPL-015-akun-sq-account-experience.md"
       - "docs/specs/HUB-IMPL-017-sq-hub-akun-sq-navigation-experience.md"
       - ".github/workflows/akun-sq-experience-contract.yml"
+      - "tools/visual/akun-sq-account-fixture.html"
   push:
     branches: [main]
     paths:
@@ -18,6 +19,7 @@ on:
       - "docs/specs/HUB-IMPL-015-akun-sq-account-experience.md"
       - "docs/specs/HUB-IMPL-017-sq-hub-akun-sq-navigation-experience.md"
       - ".github/workflows/akun-sq-experience-contract.yml"
+      - "tools/visual/akun-sq-account-fixture.html"
 
 jobs:
   contract:
@@ -35,7 +37,7 @@ jobs:
           grep -Fxq 'styles=css/styles.css css/akun-sq-login-be6b1a63ccf6.css' "$login/theme.properties"
           grep -Fxq 'contentHashPattern=^css/akun-sq-login-[0-9a-f]{12}[.]css$' "$login/theme.properties"
           grep -Fxq 'parent=keycloak.v3' "$account/theme.properties"
-          grep -Fxq 'styles=css/akun-sq-account-8af415711c7c.css' "$account/theme.properties"
+          grep -Fxq 'styles=css/akun-sq-account-959eb4c77248.css' "$account/theme.properties"
           grep -Fxq 'title=Akun SQ' "$account/theme.properties"
           grep -Fxq 'logo=img/ysq-mark.png' "$account/theme.properties"
           grep -Fq 'img/ysq-mark.png' "$login/footer.ftl"
@@ -45,7 +47,7 @@ jobs:
           cmp -s "$account/resources/img/ysq-mark.png" apps/web/src/assets/brand/ysq-mark.png
           test ! -e "$login/resources/img/ysq-mark.svg"
           test ! -e "$account/resources/img/ysq-mark.svg"
-          test "$(git hash-object "$account/resources/css/akun-sq-account-8af415711c7c.css" | cut -c1-12)" = 8af415711c7c
+          test "$(git hash-object "$account/resources/css/akun-sq-account-959eb4c77248.css" | cut -c1-12)" = 959eb4c77248
 
       - name: Preserve native authentication boundary
         shell: bash
@@ -125,7 +127,11 @@ jobs:
               'data-horizontal="false"' \
               'data-logo-loaded="true"' \
               'data-logo-size="true"' \
-              'data-masthead-compact="true"'; do
+              'data-brand-text="true"' \
+              'data-masthead-compact="true"' \
+              'data-masthead-contained="true"' \
+              'data-title-after-masthead="true"' \
+              'data-toolbar-dark="false"'; do
               grep -Fq "$expected" "$output" || {
                 echo "Missing $expected in $output" >&2
                 grep -oE 'data-[a-z-]+="[^"]*"' "$output" || true
