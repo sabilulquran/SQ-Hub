@@ -64,11 +64,18 @@ services:
       start_period: 5s
     networks:
       - hub_runtime
+      - web_edge
     mem_limit: ${SQ_HUB_WEB_MEMORY_LIMIT:?set reviewed production web memory limit}
 
 networks:
   hub_runtime:
     internal: true
+  # A container attached only to an internal Docker network does not receive a
+  # published loopback port on the production Docker Engine. Keep application
+  # traffic on hub_runtime and use this bridge only for the host-bound web port
+  # consumed by Caddy.
+  web_edge:
+    driver: bridge
   production_integration:
     external: true
     name: ${SQ_HUB_PRODUCTION_NETWORK:?set the existing SQ Hub production integration network}

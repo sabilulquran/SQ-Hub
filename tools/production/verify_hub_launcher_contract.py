@@ -49,6 +49,10 @@ def main() -> None:
     require("sq-staff-staging" not in compose, "production compose must not reuse staging realm")
     require("HUB_COOKIE_SECURE: \"true\"" in compose, "production cookies must be Secure")
     require("127.0.0.1" in compose, "production ports must default to loopback")
+    require("web_edge:" in compose and "driver: bridge" in compose,
+            "web must have a non-internal bridge for its loopback-published edge port")
+    require("- web_edge" in compose,
+            "production web service must attach to the loopback edge bridge")
     require("postgres:" not in compose and "keycloak:" not in compose and "hcis:" not in compose,
             "production launcher compose must not own database/Keycloak/HCIS services")
     require("image: ${SQ_HUB_API_IMAGE:" in compose and "image: ${SQ_HUB_WEB_IMAGE:" in compose,
