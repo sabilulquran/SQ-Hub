@@ -57,6 +57,17 @@ jobs:
           grep -Fxq "akunSqFooter=Satu akun untuk layanan digital Yayasan Sabilul Qur'an." "$theme/messages/messages_id.properties"
           grep -Fq '${msg("akunSqFooter")}' "$theme/footer.ftl"
 
+      - name: Reject legacy user-facing identity brand
+        shell: bash
+        run: |
+          ! git grep -n -I -F 'SQ Identity' -- \
+            apps/web \
+            infra/keycloak/themes/sq-hub \
+            infra/keycloak/realm/sq-staff-staging-realm.json \
+            infra/keycloak/realm/master-production-recovery.json \
+            docs/product \
+            docs/security
+
       - name: Reject legacy product composition from active theme
         shell: bash
         run: |
