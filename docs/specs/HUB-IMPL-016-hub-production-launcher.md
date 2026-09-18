@@ -24,7 +24,7 @@ Production uses the already accepted behavior from HUB-IMPL-005/007/009:
 - workspace visibility derived from active SQ Hub Application Access;
 - Platform Administrator and Admin Center authorization remain SQ Hub-owned and server-side;
 - domain roles/permissions remain owned by each domain application;
-- logout revokes the Hub session and continues through SQ Identity;
+- logout revokes the Hub session and continues through Akun SQ;
 - no custom OAuth/OIDC implementation;
 - no browser bearer-token storage.
 
@@ -206,7 +206,7 @@ Repository source may prepare non-secret master-realm Forgot Password and SMTP c
 9. CI runs production contract checks in addition to the existing typecheck, lint, test, and build gates.
 10. Operations documentation separates repository readiness, deployment, browser verification, and rollback.
 11. Contract checks reject shared-edge API alias collision, containerized-Caddy loopback upstreams, stale API secret state after rotation, and wrong production callback/logout URLs.
-12. Akun SQ account/login/account-console source uses the approved organization logo/favicon and contains no active user-facing "SQ Identity" branding.
+12. Akun SQ account/login/account-console source uses the approved organization logo/favicon and contains no active legacy identity-product branding.
 13. Non-secret master-realm branding/Forgot Password/SMTP shape exists without credentials and without claiming recovery delivery is active.
 14. Existing accepted staging UAT evidence is retained unchanged.
 15. No production runtime, DNS, Keycloak, HCIS, database, or secret is changed by the PR itself.
