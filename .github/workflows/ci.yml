@@ -35,6 +35,24 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Validate diff whitespace
+        run: git diff --check HEAD^1..HEAD
+
+      - name: Scoped secret scan
+        shell: bash
+        run: |
+          if git grep -n -I -E '(BEGIN (RSA|OPENSSH|EC|DSA) PRIVATE KEY|AKIA[0-9A-Z]{16}|client[_ -]?secret[[:space:]]*[:=][[:space:]]*[A-Za-z0-9+/=_-]{24,}|password[[:space:]]*[:=][[:space:]]*[A-Za-z0-9+/=_-]{24,})' -- \
+            apps/web \
+            apps/api \
+            docs/specs/HUB-IMPL-017-sq-hub-akun-sq-navigation-experience.md \
+            infra/keycloak/themes/sq-hub \
+            tools/visual; then
+            echo "Potential secret material detected in HUB-IMPL-017 scope" >&2
+            exit 1
+          fi
 
       - uses: actions/setup-node@v4
         with:
