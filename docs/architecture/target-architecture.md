@@ -3,26 +3,32 @@
 **Status:** DRAFT
 
 ## Context
-SQ Hub adalah shared foundation untuk ekosistem aplikasi Sabilul Qur'an. Aplikasi domain harus dapat berkembang dan dirawat secara independen, tetapi berbagi identity, organization master, app access, dan design language.
+SQ Hub adalah shared foundation untuk ekosistem aplikasi Sabilul Qur'an. Aplikasi domain harus dapat berkembang dan dirawat secara independen, tetapi berbagi identity, Organization Directory, app access, dan design language.
 
 ## Target logical architecture
 ```text
+                 HCIS workforce organization
+                 authoring / authority
+                           |
+             versioned authenticated contract
+                           v
                          SQ Hub
                            |
        +-------------------+-------------------+
        |                   |                   |
-   SQ Identity       Organization Master   App Registry/Access
-   (Keycloak)                                  |
-       |                                       |
-       +-------------------+-------------------+
+   SQ Identity       Organization Directory  App Registry/Access
+   (Keycloak)         projection/distribution     |
+       |                   |                       |
+       +-------------------+-----------------------+
                            |
                     Hub Launcher
                            |
        +-------------------+-------------------+
        |                   |                   |
       HCIS                SPMB             future apps
-       |                   |              Finance/Workspace/...
-       +--------- integration contracts --------+
+                                           Finance/Workspace/...
+
+Approval/workflow policy and transactions remain in each domain application.
 
 SQ Design System is extracted from the accepted HCIS visual baseline
 and applies across SQ Identity and all application frontends.
@@ -95,7 +101,16 @@ Credential migration is intentionally avoided:
 Users activate/create new SQ Identity credentials. Production cutover changes HCIS from local password auth to OIDC as a controlled switch, without a public dual-auth period. Legacy credential data is removed after a maximum 14-day rollback window.
 
 ## Organization
-Target ownership Organizational Unit is SQ Hub. HCIS remains operational with its current organization data until the explicit mapping/migration/cutover plan is completed.
+ADR-0007 defines the organization boundary:
+
+- HCIS is system of authority and authoring for workforce organization: organizational units, positions/jobs, employee placements, manager relationships, effective dates, and related employment facts.
+- SQ Hub owns the shared Organization Directory projection/distribution layer.
+- Hub ingests organization facts through an authenticated controlled contract and does not edit HCIS-owned facts.
+- Finance, Workspace, and other domain applications should consume the Hub read contract instead of coupling directly to the HCIS database.
+- Hub is not a central approval engine. Domain apps own approval policy, workflow state, delegation, escalation, authorization, and decision audit.
+- Domain transactions snapshot the resolved approver plus organization version/effective time; later organization changes do not silently rewrite in-flight approvals unless the domain has an explicit rule.
+- Hub may serve last-known-good organization projection during temporary HCIS unavailability, with source/version/as-of/staleness metadata.
+- SLA, global identifier, snapshot/delta, conflict handling, and retention remain DISCOVERY/TBD in HUB-IMPL-018.
 
 ## Data boundaries
 - Ownership is defined in `docs/domain/ownership-and-integration.md`.
@@ -148,6 +163,8 @@ See `docs/product/implementation-wave-1.md`.
 - Do not create an ERP monolith.
 - Do not build a universal Person Registry without proven need.
 - Do not create a central universal permission engine for all domain actions in Foundation v1.
+- Do not create a central approval engine in SQ Hub.
+- Do not create direct database coupling, dual-write, a parallel organization master, or a Keycloak organization master.
 - Do not move domain authorization to Keycloak only because Keycloak provides Authorization Services.
 - Do not require separate physical servers merely to preserve domain boundaries.
 - Do not introduce event bus/message broker before a concrete workflow requires it.
