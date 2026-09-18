@@ -1,9 +1,9 @@
 # HUB-IMPL-017 — SQ Hub + Akun SQ navigation experience
 
-**Status:** ACCEPTED  
-**Date:** 2026-09-18  
-**Owner:** Product Owner SQ Hub/HCIS — Human Capital YSQ  
-**Products:** SQ Hub + Akun SQ  
+**Status:** ACCEPTED
+**Date:** 2026-09-18
+**Owner:** Product Owner SQ Hub/HCIS — Human Capital YSQ
+**Products:** SQ Hub + Akun SQ
 **Depends on:** HUB-IMPL-004, HUB-IMPL-005, HUB-IMPL-007, HUB-IMPL-009, HUB-IMPL-015, HUB-IMPL-016, ADR-0003, ADR-0004, ADR-0006, staff authentication policy, security baseline
 
 ## Tujuan
