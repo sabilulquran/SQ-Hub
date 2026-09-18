@@ -364,7 +364,7 @@ Minimum production launcher delta:
 - only applications with active Application Access appear;
 - HCIS launcher opens the canonical production HCIS URL;
 - if the persona is an authorized Platform Administrator with accepted prerequisites, Administrasi SQ remains server-authorized; ordinary Staff must not gain admin access;
-- Hub logout clears the Hub session and continues through SQ Identity logout;
+- Hub logout clears the Hub session and continues through Akun SQ logout;
 - same-browser revisit after completed logout requires authentication;
 - desktop and approximately 390x844 mobile launcher remain usable;
 - browser localStorage/sessionStorage inspection shows no access token, refresh token, ID token, authorization code, state, nonce, or PKCE verifier;
