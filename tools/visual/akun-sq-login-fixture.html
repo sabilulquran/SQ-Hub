@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Akun SQ visual fixture</title>
-  <link rel="stylesheet" href="../../infra/keycloak/themes/sq-hub/login/resources/css/akun-sq-login-5b553ec5d46a.css">
+  <link rel="stylesheet" href="../../infra/keycloak/themes/sq-hub/login/resources/css/akun-sq-login-70c92532481a.css">
 </head>
 <body class="login-pf">
   <div class="pf-v5-c-login">
@@ -12,7 +12,12 @@
       <main class="pf-v5-c-login__main">
         <footer class="pf-v5-c-login__main-footer">
           <div class="sq-account-brand">
-            <img class="sq-account-brand__logo" src="../../infra/keycloak/themes/sq-hub/login/resources/img/ysq-mark.svg" alt="">
+            <img
+              class="sq-account-brand__logo"
+              src="../../infra/keycloak/themes/sq-hub/login/resources/img/ysq-mark.png"
+              alt=""
+              aria-hidden="true"
+            >
             <div class="sq-account-brand__copy">
               <strong>Akun SQ</strong>
               <span>Yayasan Sabilul Qur'an</span>
@@ -33,37 +38,86 @@
     const mode = new URLSearchParams(location.search).get("mode") || "login";
     const state = document.querySelector("#fixture-state");
     const title = document.querySelector("#kc-page-title");
-    const field = (label, type, value) =>
-      '<div class="pf-v5-c-form__group"><label>' + label + '</label><input class="form-control" type="' + (type || "text") + '" value="' + (value || "") + '"></div>';
+    const field = (label, type = "text", value = "", id = "") =>
+      '<div class="pf-v5-c-form__group"><label' + (id ? ' for="' + id + '"' : '') + '>' + label + '</label>' +
+      '<input class="form-control" ' + (id ? 'id="' + id + '" name="' + id + '" ' : '') +
+      'type="' + type + '" value="' + value + '"></div>';
     const submit = (label) =>
       '<button id="kc-login" class="pf-v5-c-button pf-m-primary" type="button">' + label + '</button>';
+    const form = (body, id = "kc-form-login") =>
+      '<form id="' + id + '" class="pf-v5-c-form">' + body + '</form>';
 
     if (mode === "invalid") {
-      state.innerHTML = '<div class="pf-v5-c-alert pf-m-danger">NIP/email atau kata sandi tidak sesuai.</div>' +
-        field("NIP atau email", "text", "UAT-HCIS-001") + field("Kata sandi", "password") + submit("Masuk");
+      state.innerHTML =
+        '<div class="pf-v5-c-alert pf-m-danger">NIP/email atau kata sandi tidak sesuai.</div>' +
+        form(field("NIP atau email", "text", "UAT-HCIS-001", "username") +
+          field("Kata sandi", "password", "", "password") +
+          '<div id="kc-form-buttons">' + submit("Masuk") + '</div>');
     } else if (mode === "totp") {
       title.textContent = "Verifikasi keamanan";
-      state.innerHTML = field("Kode autentikator") +
-        '<label class="pf-v5-c-check"><input type="checkbox"> Percayai perangkat ini selama 30 hari</label>' +
-        submit("Verifikasi");
+      state.innerHTML = form(
+        field("Kode autentikator", "text", "", "otp") +
+        '<div class="pf-v5-c-form__group"><label for="trustDevice">' +
+        '<input id="trustDevice" name="trustDevice" type="checkbox"> Percayai perangkat ini selama 30 hari' +
+        '</label></div>' +
+        '<div id="kc-form-buttons">' + submit("Verifikasi") + '</div>',
+        "kc-otp-login-form"
+      );
     } else if (mode === "forgot") {
       title.textContent = "Lupa password";
-      state.innerHTML = '<p class="instruction">Masukkan NIP atau email untuk melanjutkan pemulihan.</p>' +
-        field("NIP atau email") + submit("Kirim");
+      state.innerHTML =
+        '<p class="instruction">Masukkan NIP atau email untuk melanjutkan pemulihan.</p>' +
+        form(field("NIP atau email", "text", "", "username") +
+          '<div id="kc-form-buttons">' + submit("Kirim") + '</div>');
     } else if (mode === "reset") {
       title.textContent = "Buat kata sandi baru";
-      state.innerHTML = field("Kata sandi baru", "password") +
-        field("Ulangi kata sandi baru", "password") + submit("Simpan");
+      state.innerHTML = form(
+        field("Kata sandi baru", "password", "", "password-new") +
+        field("Ulangi kata sandi baru", "password", "", "password-confirm") +
+        '<div id="kc-form-buttons">' + submit("Simpan") + '</div>'
+      );
     } else {
       state.innerHTML =
-        '<div class="pf-v5-c-login__main-footer"><div id="kc-social-providers"><ul><li><a>Masuk dengan Google</a></li></ul></div>' +
-        '<div class="pf-v5-c-login__main-footer-band"><span class="pf-v5-c-login__main-footer-band-item">Atau</span></div></div>' +
-        '<div id="kc-form">' + field("NIP atau email") + submit("Berikutnya") + '</div>';
+        '<div class="pf-v5-c-login__main-footer">' +
+        '<div id="kc-social-providers"><ul><li><a id="social-google">Masuk dengan Google</a></li></ul></div>' +
+        '<div class="pf-v5-c-login__main-footer-band"><span class="pf-v5-c-login__main-footer-band-item">Atau</span></div>' +
+        '</div>' +
+        '<div id="kc-form">' +
+        form(field("NIP atau email", "text", "", "username") +
+          '<div id="kc-form-buttons">' + submit("Berikutnya") + '</div>') +
+        '</div>';
     }
 
-    requestAnimationFrame(() => {
-      const root = document.documentElement;
-      document.body.dataset.horizontal = String(root.scrollWidth > root.clientWidth + 1);
+    window.addEventListener("load", async () => {
+      const logo = document.querySelector(".sq-account-brand__logo");
+      try { await logo.decode(); } catch {}
+      requestAnimationFrame(() => {
+        const root = document.documentElement;
+        const card = document.querySelector(".pf-v5-c-login__main").getBoundingClientRect();
+        const logoBox = logo.getBoundingClientRect();
+        const primary = document.querySelector("#kc-login");
+        const formBox = primary.closest("form").getBoundingClientRect();
+        const primaryBox = primary.getBoundingClientRect();
+
+        document.body.dataset.horizontal = String(root.scrollWidth > root.clientWidth + 1);
+        document.body.dataset.logoLoaded = String(logo.complete && logo.naturalWidth > 0 && logo.naturalHeight > 0);
+        document.body.dataset.logoSize = String(
+          logoBox.width >= 48 && logoBox.width <= 56 && logoBox.height >= 48 && logoBox.height <= 56
+        );
+        document.body.dataset.primaryFull = String(primaryBox.width / formBox.width >= 0.96);
+        document.body.dataset.cardCompact = String(card.width <= 456 && card.height < Math.max(700, innerHeight - 8));
+
+        if (mode === "totp") {
+          const otpGroup = document.querySelector("#otp").closest(".pf-v5-c-form__group").getBoundingClientRect();
+          const trustGroup = document.querySelector("#trustDevice").closest(".pf-v5-c-form__group").getBoundingClientRect();
+          const buttonGroup = document.querySelector("#kc-form-buttons").getBoundingClientRect();
+          document.body.dataset.totpVertical = String(
+            otpGroup.bottom <= trustGroup.top + 1 &&
+            trustGroup.bottom <= buttonGroup.top + 1 &&
+            primaryBox.width / formBox.width >= 0.96
+          );
+        }
+      });
     });
   </script>
 </body>

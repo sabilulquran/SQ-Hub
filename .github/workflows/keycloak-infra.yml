@@ -130,7 +130,7 @@ jobs:
           test "$status" = "200"
           grep -Fq 'Akun SQ' /tmp/akun-sq-login.html
           grep -Fq 'Masuk ke Akun SQ' /tmp/akun-sq-login.html
-          grep -Fq 'css/akun-sq-login-5b553ec5d46a.css' /tmp/akun-sq-login.html
+          grep -Fq 'css/akun-sq-login-70c92532481a.css' /tmp/akun-sq-login.html
           ! grep -Fq 'css/sq-account-hcis-d8e0fab49a38.css' /tmp/akun-sq-login.html
           ! grep -Fq 'css/sq-identity-066c6982e041.css' /tmp/akun-sq-login.html
           ! grep -Fq 'css/sq-account-41ad9ff20ec3.css' /tmp/akun-sq-login.html
@@ -139,6 +139,28 @@ jobs:
           ! grep -Fq 'css/sq-account-hcis-5ae1544133ef.css' /tmp/akun-sq-login.html
           ! grep -Fq 'css/hcis-logo-assets-294b82789923.css' /tmp/akun-sq-login.html
           grep -Fq 'img/favicon.svg' /tmp/akun-sq-login.html
+          grep -Fq 'img/ysq-mark.png' /tmp/akun-sq-login.html
+
+          mark_src="$(grep -oE 'src="[^"]*img/ysq-mark[.]png"' /tmp/akun-sq-login.html | head -n 1 | cut -d'"' -f2)"
+          test -n "$mark_src"
+          case "$mark_src" in
+            http://127.0.0.1:8080/*) login_mark_url="$mark_src" ;;
+            /*) login_mark_url="http://127.0.0.1:8080$mark_src" ;;
+            *) echo "Unexpected Akun SQ mark resource URL: $mark_src" >&2; exit 1 ;;
+          esac
+
+          curl --fail --silent "$login_mark_url" --output /tmp/keycloak-login-ysq-mark.png
+          cmp -s /tmp/keycloak-login-ysq-mark.png infra/keycloak/themes/sq-hub/login/resources/img/ysq-mark.png
+
+          account_mark_src="${mark_src/\/login\//\/account\/}"
+          test "$account_mark_src" != "$mark_src"
+          case "$account_mark_src" in
+            http://127.0.0.1:8080/*) account_mark_url="$account_mark_src" ;;
+            /*) account_mark_url="http://127.0.0.1:8080$account_mark_src" ;;
+            *) echo "Unexpected Akun SQ account mark resource URL: $account_mark_src" >&2; exit 1 ;;
+          esac
+          curl --fail --silent "$account_mark_url" --output /tmp/keycloak-account-ysq-mark.png
+          cmp -s /tmp/keycloak-account-ysq-mark.png infra/keycloak/themes/sq-hub/account/resources/img/ysq-mark.png
 
       - name: Verify imported realm policy and clients
         shell: bash

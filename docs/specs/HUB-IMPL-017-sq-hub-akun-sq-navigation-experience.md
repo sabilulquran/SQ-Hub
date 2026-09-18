@@ -90,7 +90,7 @@ Perilaku:
 1. web merender transition state `Membuka Akun SQ…`;
 2. web menavigasi ke endpoint Hub internal;
 3. endpoint internal mensyaratkan Hub session valid;
-4. endpoint membangun Account Console URL hanya dari configured `KEYCLOAK_ISSUER`;
+4. endpoint membangun canonical Account Console root `…/account/` hanya dari configured `KEYCLOAK_ISSUER`;
 5. query parameter, hash, atau input pengguna tidak pernah menjadi redirect target;
 6. browser tidak menerima token atau credential tambahan;
 7. bila automatic navigation tidak berjalan, transition page menyediakan fallback link ke endpoint Hub internal yang sama.

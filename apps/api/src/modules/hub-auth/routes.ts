@@ -18,7 +18,7 @@ function requestContext(request: FastifyRequest): HubRequestContext {
 
 export function accountConsoleUrlFromIssuer(issuer: string): URL {
   const normalized = issuer.replace(/\/$/, "");
-  return new URL(`${normalized}/account`);
+  return new URL(`${normalized}/account/`);
 }
 
 export function registerHubAuthRoutes(

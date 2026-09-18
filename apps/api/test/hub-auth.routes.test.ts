@@ -117,7 +117,7 @@ describe("SQ Hub browser auth routes", () => {
     await app.close();
 
     expect(response.statusCode).toBe(302);
-    expect(response.headers.location).toBe("https://login.example.test/realms/staff/account");
+    expect(response.headers.location).toBe("https://login.example.test/realms/staff/account/");
     expect(response.headers.location).not.toContain("evil.example");
   });
 
@@ -138,7 +138,7 @@ describe("SQ Hub browser auth routes", () => {
 
   it("builds Account Console root from the configured issuer only", () => {
     expect(accountConsoleUrlFromIssuer("https://login.example.test/realms/staff/").href)
-      .toBe("https://login.example.test/realms/staff/account");
+      .toBe("https://login.example.test/realms/staff/account/");
   });
 
   it("clears the local session and returns the official OIDC logout URL", async () => {

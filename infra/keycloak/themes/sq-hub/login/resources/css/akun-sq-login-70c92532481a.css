@@ -495,3 +495,142 @@ input[type="checkbox"] {
     text-align: left;
   }
 }
+
+/* HUB-IMPL-017 review polish: modern account hierarchy and resilient native form layout. */
+.pf-v5-c-login__main,
+.card-pf {
+  width: min(100%, 27.75rem) !important;
+  padding: 1.75rem 1.85rem !important;
+}
+
+.sq-account-brand {
+  margin-bottom: 1rem;
+}
+
+.sq-account-brand__logo {
+  width: 3.25rem;
+  height: 3.25rem;
+  aspect-ratio: 160 / 159;
+  object-fit: contain;
+}
+
+.sq-account-brand__copy strong {
+  font-size: 1rem;
+  letter-spacing: -.01em;
+}
+
+.sq-account-brand__copy span {
+  margin-top: .15rem;
+  font-size: .72rem;
+}
+
+.pf-v5-c-login__main-header {
+  padding-bottom: 1.15rem !important;
+}
+
+#kc-page-title,
+.pf-v5-c-title {
+  font-size: 1.4rem !important;
+}
+
+.pf-v5-c-login__main-body > .pf-v5-c-login__main-footer {
+  padding-bottom: 1rem !important;
+}
+
+.pf-v5-c-form__group {
+  margin-bottom: .8rem !important;
+}
+
+#kc-social-providers li a,
+.pf-v5-c-button.pf-m-primary,
+#kc-login,
+input[type="submit"].btn-primary {
+  width: 100% !important;
+  min-height: 2.875rem !important;
+}
+
+.pf-v5-c-button.pf-m-primary,
+#kc-login,
+input[type="submit"].btn-primary {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  padding-inline: 1rem !important;
+}
+
+#kc-form-buttons,
+.pf-v5-c-action-list {
+  display: block !important;
+  width: 100% !important;
+  margin-top: .2rem;
+}
+
+#kc-form-buttons .pf-v5-c-button.pf-m-primary,
+.pf-v5-c-action-list .pf-v5-c-button.pf-m-primary {
+  width: 100% !important;
+}
+
+#kc-otp-login-form {
+  display: flex;
+  width: 100%;
+  flex-direction: column;
+}
+
+#kc-otp-login-form .pf-v5-c-form__group {
+  width: 100%;
+}
+
+#kc-otp-login-form label[for="trustDevice"] {
+  display: flex !important;
+  width: 100%;
+  min-height: 2.75rem;
+  align-items: flex-start;
+  gap: .6rem;
+  margin: 0 !important;
+  padding: .45rem 0;
+  line-height: 1.45 !important;
+}
+
+#kc-otp-login-form #trustDevice {
+  width: 1.05rem !important;
+  height: 1.05rem !important;
+  min-height: 0 !important;
+  margin: .12rem 0 0 !important;
+  flex: 0 0 auto;
+}
+
+#kc-otp-login-form #kc-form-buttons,
+#kc-otp-login-form .pf-v5-c-action-list {
+  margin-top: .15rem;
+}
+
+.pf-v5-c-alert,
+.alert {
+  margin-bottom: .85rem !important;
+}
+
+.sq-login-footer {
+  margin-top: 1rem;
+}
+
+@media (max-width: 640px) {
+  .pf-v5-c-login__main,
+  .card-pf {
+    padding: 1rem .5rem 1.25rem !important;
+  }
+
+  .sq-account-brand {
+    margin-top: .1rem;
+    margin-bottom: .9rem;
+  }
+
+  .sq-account-brand__logo {
+    width: 3rem;
+    height: 3rem;
+  }
+
+  .pf-v5-c-login__main-header {
+    padding-bottom: 1rem !important;
+  }
+}
+
