@@ -7,6 +7,7 @@ on:
       - "infra/keycloak/realm/sq-staff-staging-realm.json"
       - "docs/design/sq-identity-theme.md"
       - "docs/specs/HUB-IMPL-015-akun-sq-account-experience.md"
+      - "docs/specs/HUB-IMPL-017-sq-hub-akun-sq-navigation-experience.md"
       - ".github/workflows/akun-sq-experience-contract.yml"
   push:
     branches: [main]
@@ -30,18 +31,18 @@ jobs:
           login='infra/keycloak/themes/sq-hub/login'
           account='infra/keycloak/themes/sq-hub/account'
           grep -Fxq 'parent=keycloak.v2' "$login/theme.properties"
-          grep -Fxq 'styles=css/styles.css css/akun-sq-login-2629a2861483.css' "$login/theme.properties"
+          grep -Fxq 'styles=css/styles.css css/akun-sq-login-5b553ec5d46a.css' "$login/theme.properties"
           grep -Fxq 'contentHashPattern=^css/akun-sq-login-[0-9a-f]{12}[.]css$' "$login/theme.properties"
           grep -Fxq 'parent=keycloak.v3' "$account/theme.properties"
-          grep -Fxq 'styles=css/akun-sq-account-d4e9b269d645.css' "$account/theme.properties"
+          grep -Fxq 'styles=css/akun-sq-account-da37d0564c87.css' "$account/theme.properties"
           grep -Fxq 'title=Akun SQ' "$account/theme.properties"
           grep -Fxq 'logo=img/ysq-mark.svg' "$account/theme.properties"
           grep -Fq 'img/ysq-mark.svg' "$login/footer.ftl"
-          test "$(git hash-object "$login/resources/css/akun-sq-login-2629a2861483.css" | cut -c1-12)" = 2629a2861483
+          test "$(git hash-object "$login/resources/css/akun-sq-login-5b553ec5d46a.css" | cut -c1-12)" = 5b553ec5d46a
           grep -Fxq 'favicons.svg=img/favicon.svg' "$login/theme.properties"
           test -s "$login/resources/img/ysq-mark.svg"
           test -s "$account/resources/img/ysq-mark.svg"
-          test "$(git hash-object "$account/resources/css/akun-sq-account-d4e9b269d645.css" | cut -c1-12)" = d4e9b269d645
+          test "$(git hash-object "$account/resources/css/akun-sq-account-da37d0564c87.css" | cut -c1-12)" = da37d0564c87
 
       - name: Preserve native authentication boundary
         shell: bash
@@ -80,7 +81,7 @@ jobs:
           ! grep -Fq 'Nilai Utsman' infra/keycloak/themes/sq-hub/login/footer.ftl
           ! grep -Fq 'sq-brand-values' infra/keycloak/themes/sq-hub/login/footer.ftl
           ! grep -Fqi 'SQ Identity' infra/keycloak/themes/sq-hub/login/footer.ftl
-          ! grep -Fq 'grid-template-columns: minmax(0, 3fr)' infra/keycloak/themes/sq-hub/login/resources/css/akun-sq-login-2629a2861483.css
+          ! grep -Fq 'grid-template-columns: minmax(0, 3fr)' infra/keycloak/themes/sq-hub/login/resources/css/akun-sq-login-5b553ec5d46a.css
 
       - name: Verify desktop and mobile layout
         shell: bash
@@ -89,7 +90,7 @@ jobs:
           chrome="$(command -v google-chrome || command -v chromium || command -v chromium-browser || true)"
           test -n "$chrome"
           cat > "$fixture" <<'HTML'
-          <!doctype html><html lang="id"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="resources/css/akun-sq-login-2629a2861483.css"></head>
+          <!doctype html><html lang="id"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="resources/css/akun-sq-login-5b553ec5d46a.css"></head>
           <body class="login-pf"><div class="pf-v5-c-login"><div class="pf-v5-c-login__container"><header id="kc-header"><div id="kc-header-wrapper">Akun SQ</div></header><main class="pf-v5-c-login__main"><header class="pf-v5-c-login__main-header"><h1 id="kc-page-title" class="pf-v5-c-title">Masuk ke Akun SQ</h1></header><div class="pf-v5-c-login__main-body"><div id="kc-form"><form id="kc-form-login" class="pf-v5-c-form"><div class="pf-v5-c-form__group"><label>NIP atau email</label><input type="text"></div><input id="kc-login" class="btn-primary" type="submit" value="Berikutnya"></form></div><div class="pf-v5-c-login__main-footer"><div class="pf-v5-c-login__main-footer-band"><span class="pf-v5-c-login__main-footer-band-item">Atau masuk dengan</span></div><div id="kc-social-providers"><ul class="pf-v5-c-login__main-body"><li><a id="social-google">Masuk dengan Google</a></li></ul></div></div></div><footer class="pf-v5-c-login__main-footer"><div class="sq-account-brand"><img class="sq-account-brand__logo" src="resources/img/ysq-mark.svg" alt=""><div class="sq-account-brand__copy"><strong>Akun SQ</strong><span>Yayasan Sabilul Qur'an</span></div></div><p class="sq-login-footer">Satu akun untuk layanan digital.</p></footer></main></div></div>
           <script>if(new URLSearchParams(location.search).get('mode')==='long'){const e=document.createElement('div');e.style.height='1200px';document.querySelector('.pf-v5-c-login__main-body').appendChild(e)}const d=document.documentElement,b=document.body,card=document.querySelector('.pf-v5-c-login__main').getBoundingClientRect(),google=document.querySelector('#social-google').getBoundingClientRect(),form=document.querySelector('#kc-form').getBoundingClientRect();b.dataset.vertical=String(Math.max(d.scrollHeight,b.scrollHeight)>innerHeight+1);b.dataset.horizontal=String(Math.max(d.scrollWidth,b.scrollWidth)>innerWidth+1);b.dataset.cardVisible=String(card.left>=-1&&card.right<=innerWidth+1);b.dataset.googleFirst=String(google.top<form.top)</script></body></html>
           HTML
@@ -107,7 +108,56 @@ jobs:
           run_layout 1440 900 long true
           rm -f "$fixture"
 
+      - name: Capture Akun SQ structural visual evidence
+        if: github.event_name == 'pull_request'
+        shell: bash
+        run: |
+          set -euo pipefail
+          CHROME="$(command -v google-chrome || command -v google-chrome-stable || command -v chromium || command -v chromium-browser || true)"
+          test -n "$CHROME"
+          mkdir -p visual-akun-sq
+
+          check_no_overflow() {
+            width="$1"
+            height="$2"
+            page="$3"
+            output="/tmp/akun-sq-overflow-$width-$height.html"
+            "$CHROME" --headless=new --no-sandbox --disable-gpu --allow-file-access-from-files --virtual-time-budget=500 --window-size="$width,$height" --dump-dom "file://$PWD/$page" > "$output"
+            grep -Fq 'data-horizontal="false"' "$output"
+          }
+
+          check_no_overflow 320 844 tools/visual/akun-sq-login-fixture.html
+          check_no_overflow 360 844 tools/visual/akun-sq-login-fixture.html
+          check_no_overflow 390 844 tools/visual/akun-sq-login-fixture.html
+          check_no_overflow 412 844 tools/visual/akun-sq-login-fixture.html
+          check_no_overflow 768 900 tools/visual/akun-sq-login-fixture.html
+          check_no_overflow 1280 720 tools/visual/akun-sq-login-fixture.html
+          check_no_overflow 1440 900 tools/visual/akun-sq-login-fixture.html
+          check_no_overflow 390 844 'tools/visual/akun-sq-account-fixture.html?mode=security'
+
+          "$CHROME" --headless=new --no-sandbox --disable-gpu --allow-file-access-from-files --window-size=1440,900 --screenshot=visual-akun-sq/login-desktop.png "file://$PWD/tools/visual/akun-sq-login-fixture.html"
+          "$CHROME" --headless=new --no-sandbox --disable-gpu --allow-file-access-from-files --window-size=390,844 --screenshot=visual-akun-sq/login-mobile.png "file://$PWD/tools/visual/akun-sq-login-fixture.html"
+          "$CHROME" --headless=new --no-sandbox --disable-gpu --allow-file-access-from-files --window-size=1280,720 --screenshot=visual-akun-sq/login-invalid.png "file://$PWD/tools/visual/akun-sq-login-fixture.html?mode=invalid"
+          "$CHROME" --headless=new --no-sandbox --disable-gpu --allow-file-access-from-files --window-size=1280,720 --screenshot=visual-akun-sq/login-totp-trusted.png "file://$PWD/tools/visual/akun-sq-login-fixture.html?mode=totp"
+          "$CHROME" --headless=new --no-sandbox --disable-gpu --allow-file-access-from-files --window-size=1280,720 --screenshot=visual-akun-sq/login-forgot.png "file://$PWD/tools/visual/akun-sq-login-fixture.html?mode=forgot"
+          "$CHROME" --headless=new --no-sandbox --disable-gpu --allow-file-access-from-files --window-size=1280,720 --screenshot=visual-akun-sq/login-reset.png "file://$PWD/tools/visual/akun-sq-login-fixture.html?mode=reset"
+          "$CHROME" --headless=new --no-sandbox --disable-gpu --allow-file-access-from-files --window-size=1440,900 --screenshot=visual-akun-sq/account-overview.png "file://$PWD/tools/visual/akun-sq-account-fixture.html?mode=overview"
+          "$CHROME" --headless=new --no-sandbox --disable-gpu --allow-file-access-from-files --window-size=1440,900 --screenshot=visual-akun-sq/account-security.png "file://$PWD/tools/visual/akun-sq-account-fixture.html?mode=security"
+          "$CHROME" --headless=new --no-sandbox --disable-gpu --allow-file-access-from-files --window-size=1440,900 --screenshot=visual-akun-sq/account-sessions.png "file://$PWD/tools/visual/akun-sq-account-fixture.html?mode=sessions"
+          "$CHROME" --headless=new --no-sandbox --disable-gpu --allow-file-access-from-files --window-size=390,844 --screenshot=visual-akun-sq/account-mobile.png "file://$PWD/tools/visual/akun-sq-account-fixture.html?mode=security"
+
+          test "$(find visual-akun-sq -name '*.png' | wc -l)" -eq 10
+
+      - name: Upload Akun SQ visual evidence
+        if: github.event_name == 'pull_request'
+        uses: actions/upload-artifact@v4
+        with:
+          name: akun-sq-visual-smoke
+          path: visual-akun-sq/*.png
+          if-no-files-found: error
+          retention-days: 7
+
       - name: Reject committed credentials
         shell: bash
         run: |
-          ! git grep -n -E '(client_secret|access_token)[[:space:]]*=[[:space:]]*[^$<{]' -- infra/keycloak/themes docs/specs/HUB-IMPL-015-akun-sq-account-experience.md
+          ! git grep -n -E '(client_secret|access_token)[[:space:]]*=[[:space:]]*[^$<{]' -- infra/keycloak/themes tools/visual docs/specs/HUB-IMPL-015-akun-sq-account-experience.md docs/specs/HUB-IMPL-017-sq-hub-akun-sq-navigation-experience.md
