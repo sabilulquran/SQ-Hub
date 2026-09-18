@@ -1,6 +1,7 @@
-import { AppWindow, Grid2X2, Search } from "lucide-react";
+import { Grid2X2, Search } from "lucide-react";
 import { useMemo, useState } from "react";
 
+import { filterApplications } from "@/application-filter";
 import { ApplicationCard } from "@/components/ApplicationCard";
 import { GlobalHeader, type HeaderPreviewMode } from "@/components/GlobalHeader";
 import { MobileNavigation } from "@/components/MobileNavigation";
@@ -13,20 +14,6 @@ interface WorkspaceShellProps {
   route?: WorkspacePrimaryRoute;
   previewMode?: HeaderPreviewMode;
   onLogout?: () => void | Promise<void>;
-}
-
-export function filterApplications(
-  applications: WorkspaceApplication[],
-  query: string,
-): WorkspaceApplication[] {
-  const normalized = query.trim().toLocaleLowerCase("id-ID");
-  if (!normalized) return applications;
-  return applications.filter((application) =>
-    [application.name, application.description ?? ""]
-      .join(" ")
-      .toLocaleLowerCase("id-ID")
-      .includes(normalized),
-  );
 }
 
 export function WorkspaceShell({
