@@ -1,0 +1,18 @@
+# Production edge example for SQ Hub.
+# Caddy owns public TLS. Only the Hub web loopback port is a public upstream.
+# apps/web/nginx.conf then keeps /auth/callback and /api/* server-side.
+
+hub.sabilulquran.or.id {
+	encode zstd gzip
+
+	@health path /healthz
+	reverse_proxy @health 127.0.0.1:18201
+
+	@oidc_callback path /auth/callback
+	reverse_proxy @oidc_callback 127.0.0.1:18201
+
+	@api path /api/*
+	reverse_proxy @api 127.0.0.1:18201
+
+	reverse_proxy 127.0.0.1:18201
+}

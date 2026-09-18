@@ -1,0 +1,407 @@
+# HUB-IMPL-016 — SQ Hub production launcher runbook
+
+**Status:** REPOSITORY PREPARATION  
+**Repository-ready state:** determined by reviewed PR + green CI  
+**Production deployed state:** NOT ESTABLISHED by this document  
+**Browser verified state:** NOT ESTABLISHED by this document  
+**Target:** `https://hub.sabilulquran.or.id`
+
+This runbook is the operator handoff for launching the already-implemented SQ Hub authenticated workspace. It deliberately separates repository evidence, VPS/runtime work, DNS/Cloudflare work, and browser UAT.
+
+The existence of this file, a merged PR, or green CI may establish **REPOSITORY_READY** only. It must never be reported as **DEPLOYED** or **BROWSER_VERIFIED** without live operator/browser evidence.
+
+## Scope boundary
+
+This launch may:
+
+- reconcile only the production SQ Hub browser OIDC client `sq-hub`;
+- deploy/reconfigure SQ Hub API and web using reviewed immutable images;
+- add the production Hub Caddy route;
+- add DNS/Cloudflare for `hub.sabilulquran.or.id`;
+- run health and browser UAT.
+
+This launch must not:
+
+- recreate/upgrade Keycloak;
+- recreate/modify HCIS;
+- create, recreate, migrate, or replace databases owned by other services;
+- alter production realm issuer/key;
+- alter HCIS clients/mappers/audience;
+- alter trusted-device flow, Google provider, MFA, or login theme;
+- activate Account Console `accountTheme=sq-hub`;
+- add provisioning/offboarding, Organizational Unit, external identity, universal Person Registry, or domain permissions;
+- copy runtime secrets into Git, terminal transcripts, tickets, or chat.
+
+Akun SQ Account Console source is already present, but production `accountTheme=sq-hub` activation is a separate authenticated operator task.
+
+## Evidence rules
+
+Allowed evidence:
+
+- repository/source SHA;
+- immutable image name + digest;
+- sanitized Compose/Caddy validation result;
+- service/container name and health status;
+- HTTP status;
+- exact public issuer URL;
+- exact non-secret OIDC client settings;
+- DNS resolution result;
+- redacted synthetic persona handle;
+- timestamp;
+- PASS/FAIL/ROLLBACK markers.
+
+Never record:
+
+- client secret;
+- password;
+- OTP/TOTP value or seed;
+- recovery code;
+- access token, refresh token, ID token;
+- authorization code;
+- cookie value;
+- raw OIDC `sub`;
+- employee/production personal data;
+- full environment files;
+- raw database rows/dumps.
+
+## Phase 0 — repository gate
+
+Owner: GitHub reviewer / release owner.
+
+Required before live work:
+
+1. PR for HUB-IMPL-016 is reviewed and merged.
+2. Main CI is green.
+3. Hub Production Launcher Contract is green.
+4. Existing application typecheck, lint, tests, builds, Compose validation, and browser-storage guard are green.
+5. Record the exact merged source SHA.
+6. Publish/resolve approved API and web images and record immutable **digest** references:
+   - `ghcr.io/sabilulquran/sq-hub-api@sha256:<64hex>`
+   - `ghcr.io/sabilulquran/sq-hub-web@sha256:<64hex>`
+7. Confirm neither reference is a moving tag such as `latest`, `main`, `staging`, or `sha-<commit>` for the actual production Compose input.
+
+Safe evidence:
+
+```text
+REPOSITORY_READY source=<sha>
+API_IMAGE_DIGEST=<image@sha256:...>
+WEB_IMAGE_DIGEST=<image@sha256:...>
+```
+
+Do not proceed if CI is red or an image digest cannot be resolved.
+
+## Phase 1 — VPS preflight and backup/snapshot
+
+Owner: Codex local / production operator.
+
+No mutation until the current production topology is inventoried.
+
+### 1.1 Record current SQ Hub ownership
+
+Read-only inspect:
+
+- current SQ Hub API container/service;
+- current SQ Hub API immutable image;
+- current Compose project/config path if managed by Compose;
+- current SQ Hub database host/service **name only**, not credentials;
+- Docker networks attached to the API;
+- current loopback port, if any;
+- available memory/disk;
+- current Caddy configuration backup location.
+
+The repository intentionally does not guess the existing production network or database hostname. Set `SQ_HUB_PRODUCTION_NETWORK`, `DATABASE_URL`, machine-token values, and identity-directory values from the **existing approved production configuration**, not from staging examples.
+
+If the current API is managed by a different Compose project/topology than `infra/docker-compose.production.yml`, stop and reconcile that ownership before using the new Compose file. Do not start a duplicate production API.
+
+### 1.2 Snapshot before change
+
+Required order:
+
+1. capture a dated copy/checksum of the current SQ Hub runtime configuration without printing its secret values;
+2. create/verify the approved SQ Hub database backup/snapshot using the existing production backup procedure;
+3. record current API image digest/reference;
+4. record current Caddy config checksum/copy;
+5. confirm rollback can restore the current API/web image/config;
+6. confirm the current image(s) remain locally available or pullable by immutable digest.
+
+Safe evidence:
+
+```text
+HUB_PRODUCTION_PREFLIGHT_PASS
+HUB_DB_BACKUP_REF=<redacted-safe-id>
+PREVIOUS_API_IMAGE=<immutable-ref>
+CADDY_BACKUP_REF=<safe-path-or-checksum>
+```
+
+A backup file existing is not proof of successful restore. Do not claim restore-tested unless it was actually restored in an approved isolated target.
+
+## Phase 2 — prepare production env without leaking secrets
+
+Owner: production operator / secret custodian.
+
+Use `infra/production.env.example` only as a key/shape template. Create VPS-only `infra/.env.production` (or the approved canonical runtime path), owner-readable only.
+
+Required values must come from existing production state or the explicit HUB-IMPL-016 contract:
+
+- existing production `DATABASE_URL`;
+- existing production machine-token audience and allowlist;
+- exact new `sq-hub` client secret after Phase 3;
+- existing production identity-directory URL/client/secret;
+- exact API/web image digests;
+- existing production integration network;
+- reviewed memory limits.
+
+Production-fixed values are already hard-coded in Compose:
+
+- HCIS URL `https://hcis.sabilulquran.or.id`;
+- issuer `https://login.sabilulquran.or.id/realms/sq-staff`;
+- client ID `sq-hub`;
+- callback `https://hub.sabilulquran.or.id/auth/callback`;
+- logout redirect `https://hub.sabilulquran.or.id/`;
+- secure cookie `true`.
+
+Before mutation, render configuration only:
+
+```bash
+docker compose   --env-file infra/.env.production   -f infra/docker-compose.production.yml   config -q
+```
+
+Never run `docker compose config` without `-q` in shared evidence because rendered output may contain interpolated secrets.
+
+## Phase 3 — provision/reconcile OIDC client and secret safely
+
+Owner: authorized Keycloak production operator.
+
+Preconditions:
+
+- exact realm is `sq-staff`;
+- operator has an approved authenticated `kcadm` configuration or equivalent Admin Console/API session;
+- no staging admin context is reused;
+- backup/change record is active.
+
+The desired non-secret client shape is:
+
+`infra/keycloak/clients/sq-hub-production.json`
+
+The guarded reconciliation helper:
+
+`infra/keycloak/scripts/reconcile-hub-production-client.sh`
+
+It must be executed only from an authorized production administration context. It:
+
+- refuses a realm other than exact `sq-staff`;
+- queries exact client ID `sq-hub`;
+- creates it if absent or reconciles it if unique;
+- contains no secret;
+- verifies exact callback/origin/PKCE/flow settings;
+- outputs only sanitized PASS markers;
+- stops at `HUB_PRODUCTION_CLIENT_SECRET_HANDOFF_REQUIRED`.
+
+### Secret custody
+
+After non-secret settings converge:
+
+1. obtain or rotate the `sq-hub` client secret through the approved Keycloak/secret-management path;
+2. put it directly into the production runtime secret/env store;
+3. do not echo it;
+4. do not paste it into GitHub/chat/change evidence;
+5. do not save it in the repository desired-state file.
+
+Safe evidence:
+
+```text
+HUB_PRODUCTION_CLIENT_CONFIGURATION_PASS action=<created|updated> realm=sq-staff client=sq-hub
+HUB_PRODUCTION_CLIENT_SECRET_HANDOFF_COMPLETE
+```
+
+The second marker is a custodian attestation only; it must contain no value.
+
+## Phase 4 — deploy SQ Hub API
+
+Owner: production operator.
+
+Why API first: the web launcher depends on the API for OIDC callback, session creation, workspace, logout, and Admin Center APIs.
+
+Before recreating API:
+
+1. verify exact target API digest is already reviewed;
+2. verify the current API rollback image/config;
+3. verify the existing SQ Hub database and production integration network are not defined as owned services by this launcher Compose;
+4. verify `docker compose ... config -q` succeeds;
+5. confirm the command targets only `api`.
+
+Deployment shape:
+
+```bash
+docker compose   --env-file infra/.env.production   -f infra/docker-compose.production.yml   up -d --no-deps --no-build --pull never --force-recreate api
+```
+
+Use `docker pull <exact-image@sha256:...>` beforehand if the digest is not local.
+
+Do **not** run unqualified `docker compose up -d`.
+
+API acceptance before web:
+
+- container health is healthy;
+- loopback `/health` returns success;
+- running image equals the recorded digest;
+- existing database service/container was not recreated by this action;
+- Keycloak and HCIS were not part of this Compose operation.
+
+If API fails, go directly to rollback; do not continue to web/Caddy/DNS.
+
+## Phase 5 — deploy SQ Hub web
+
+Owner: production operator.
+
+The web container is the only public application upstream.
+
+```bash
+docker compose   --env-file infra/.env.production   -f infra/docker-compose.production.yml   up -d --no-deps --no-build --pull never --force-recreate web
+```
+
+Required local checks before edge change:
+
+- web container healthy;
+- `http://127.0.0.1:18201/healthz` succeeds;
+- API remains healthy;
+- exact callback path sent through the web boundary does not return SPA `index.html`;
+- running web image equals the target digest.
+
+Do not publish container port 80 or API 3100 directly to the internet.
+
+## Phase 6 — Caddy edge
+
+Owner: production edge operator.
+
+Use `infra/reverse-proxy.caddy.production.example` as the reviewed route shape and adapt only to the existing Caddy file organization.
+
+Rules:
+
+- Caddy owns TLS;
+- upstream is `127.0.0.1:18201` only;
+- `/healthz`, exact `/auth/callback`, and `/api/*` are explicit;
+- no public upstream points to API port `18200`;
+- no DB port is exposed;
+- do not modify login/HCIS routes as part of this change.
+
+Required sequence:
+
+1. back up current Caddy config;
+2. add only the Hub site block;
+3. validate Caddy configuration;
+4. reload Caddy;
+5. verify existing Akun SQ and HCIS hosts remain healthy.
+
+Do not change DNS until Caddy validation/reload succeeds.
+
+## Phase 7 — DNS / Cloudflare
+
+Owner: DNS/Cloudflare operator.
+
+Create the production record for:
+
+`hub.sabilulquran.or.id`
+
+It must target the existing approved production edge. Follow the current organization policy for proxying/TLS; do not copy a staging record blindly.
+
+Record only:
+
+- record type;
+- hostname;
+- redacted/expected public target if operationally safe;
+- DNS resolver result;
+- timestamp.
+
+Do not record Cloudflare API tokens or account credentials.
+
+## Phase 8 — public health and protocol smoke
+
+Owner: production operator.
+
+After DNS resolves:
+
+1. `https://hub.sabilulquran.or.id/healthz` returns 200;
+2. `https://login.sabilulquran.or.id/realms/sq-staff/.well-known/openid-configuration` returns exact issuer `https://login.sabilulquran.or.id/realms/sq-staff`;
+3. anonymous Hub navigation redirects into Akun SQ authorization flow for client `sq-hub`;
+4. callback registration is exact `https://hub.sabilulquran.or.id/auth/callback`;
+5. no direct public API/database port is reachable by design;
+6. HCIS and Akun SQ public health remain unchanged.
+
+Health success permits moving to browser UAT. It does not establish **BROWSER_VERIFIED**.
+
+## Phase 9 — browser UAT
+
+Owner: product owner / approved tester.
+
+Use only approved synthetic production persona(s). Existing accepted staging UAT remains valid evidence for unchanged behavior and is not deleted or relabeled. Production launch still needs a small production delta proving the new hostname/client/edge path.
+
+Minimum production launcher delta:
+
+- anonymous `https://hub.sabilulquran.or.id/` enters Akun SQ;
+- synthetic Staff login returns to the Hub;
+- user identity presentation is correct and contains no raw OIDC subject;
+- only applications with active Application Access appear;
+- HCIS launcher opens the canonical production HCIS URL;
+- if the persona is an authorized Platform Administrator with accepted prerequisites, Administrasi SQ remains server-authorized; ordinary Staff must not gain admin access;
+- Hub logout clears the Hub session and continues through SQ Identity logout;
+- same-browser revisit after completed logout requires authentication;
+- desktop and approximately 390x844 mobile launcher remain usable;
+- browser localStorage/sessionStorage inspection shows no access token, refresh token, ID token, authorization code, state, nonce, or PKCE verifier;
+- Hub session cookie metadata shows host-only, HttpOnly, Secure, SameSite=Lax, Path=/; record attributes only, never value.
+
+Do not mutate production Application Access solely to repeat the already-accepted staging revoke/restore scenario unless a separate approved test explicitly requires it.
+
+If all required launch delta checks pass, record:
+
+```text
+DEPLOYED
+BROWSER_VERIFIED
+```
+
+with timestamp and redacted persona handle.
+
+## Phase 10 — rollback
+
+Rollback is a deliberate operator action, not an automatic auth fallback.
+
+Trigger rollback for:
+
+- API/web cannot become healthy;
+- OIDC callback/login fails because of launcher configuration;
+- wrong issuer/client/redirect is observed;
+- unexpected authorization exposure;
+- Hub edge change disrupts existing services;
+- security-relevant browser finding such as token persistence or incorrect cookie scope.
+
+Rollback order:
+
+1. disable/remove the Hub DNS record if public exposure itself is unsafe;
+2. restore previous Caddy configuration and reload;
+3. restore previous web image/config or remove the newly introduced web service if no previous production web existed;
+4. restore previous API image/config if the API was changed;
+5. verify previous SQ Hub API health;
+6. verify Akun SQ and HCIS health;
+7. retain the production `sq-hub` client disabled or remove it only if the change owner explicitly decides that is the safe rollback state; do not alter other clients;
+8. do **not** destructively roll back database migrations as part of routine image rollback.
+
+Record:
+
+```text
+HUB_PRODUCTION_ROLLBACK_BEGIN
+HUB_PRODUCTION_ROLLBACK_PASS
+```
+
+or escalate if rollback verification fails.
+
+## Final status record
+
+Use three independent lines:
+
+| State | Allowed value | Evidence |
+| --- | --- | --- |
+| Repository | `REPOSITORY_READY` / `NOT_READY` | merged SHA + CI |
+| Runtime | `DEPLOYED` / `NOT_DEPLOYED` / `ROLLED_BACK` | operator/VPS + edge/DNS evidence |
+| Browser | `BROWSER_VERIFIED` / `NOT_VERIFIED` | actual browser UAT |
+
+Never infer one row from another.
