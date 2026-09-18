@@ -4,7 +4,7 @@
 **Date:** 2026-08-27
 
 ## Outcome
-Membuktikan fondasi SQ Hub end-to-end dengan satu aplikasi consumer nyata (HCIS) tanpa sekaligus membangun seluruh launcher, organization migration, atau SPMB.
+Membuktikan fondasi SQ Hub end-to-end dengan satu aplikasi consumer nyata (HCIS) tanpa sekaligus membangun seluruh launcher, organization integration, atau SPMB.
 
 Wave 1 dianggap berhasil ketika Staff test dapat:
 1. login melalui Akun SQ/Keycloak staging;
@@ -41,7 +41,7 @@ Wave 1 dianggap berhasil ketika Staff test dapat:
 
 ## Explicit non-goals
 - production cutover;
-- Organizational Unit migration ke SQ Hub;
+- Organization Directory integration; Wave 1 tidak memindahkan authoring organisasi dari HCIS. Keputusan target lama untuk memindahkan master ke Hub kemudian disupersede oleh ADR-0007;
 - full SQ Hub launcher/admin UI;
 - SPMB implementation;
 - shared `@sq/ui` package extraction;
