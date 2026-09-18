@@ -1,3 +1,5 @@
+name: sq-hub-production
+
 services:
   api:
     image: ${SQ_HUB_API_IMAGE:?set SQ_HUB_API_IMAGE to an immutable ghcr.io digest}
@@ -40,7 +42,7 @@ services:
       retries: 12
       start_period: 10s
     networks:
-      hub_runtime:
+      backend:
         aliases:
           - api
       production_integration:
@@ -63,19 +65,28 @@ services:
       retries: 12
       start_period: 5s
     networks:
-      - hub_runtime
-      - web_edge
+      backend: {}
+      web_edge:
+        aliases:
+          - sq-hub-production-web
     mem_limit: ${SQ_HUB_WEB_MEMORY_LIMIT:?set reviewed production web memory limit}
 
 networks:
-  hub_runtime:
+  # Keep the generic API alias isolated here. The Hub web proxy resolves
+  # api:3100 only on this private network.
+  backend:
+    name: sq-hub-production_backend
     internal: true
-  # A container attached only to an internal Docker network does not receive a
-  # published loopback port on the production Docker Engine. Keep application
-  # traffic on hub_runtime and use this bridge only for the host-bound web port
-  # consumed by Caddy.
+
+  # Dedicated Hub web edge. The existing containerized Caddy joins this
+  # network and targets the unique sq-hub-production-web:80 alias. The Hub web
+  # service must never join the shared edge_proxy network: doing so can make
+  # its nginx "api" upstream collide with unrelated services using the same
+  # generic alias on edge_proxy.
   web_edge:
+    name: sq-hub-production_web_edge
     driver: bridge
+
   production_integration:
     external: true
     name: ${SQ_HUB_PRODUCTION_NETWORK:?set the existing SQ Hub production integration network}
