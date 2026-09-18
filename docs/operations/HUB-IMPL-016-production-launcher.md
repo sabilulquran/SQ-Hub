@@ -111,6 +111,8 @@ Read-only inspect:
 
 The repository intentionally does not guess the existing production network or database hostname. Set `SQ_HUB_PRODUCTION_NETWORK`, `DATABASE_URL`, machine-token values, and identity-directory values from the **existing approved production configuration**, not from staging examples.
 
+The web service also uses a small non-internal Docker bridge named `web_edge` so Docker can publish its loopback-only Caddy upstream. Application traffic between web and API remains on the internal `hub_runtime` network; `web_edge` does not publish the API or database.
+
 If the current API is managed by a different Compose project/topology than `infra/docker-compose.production.yml`, stop and reconcile that ownership before using the new Compose file. Do not start a duplicate production API.
 
 ### 1.2 Snapshot before change
