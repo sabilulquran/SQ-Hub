@@ -163,7 +163,7 @@ Use synthetic personas for:
 ## Non-goals
 - production auth cutover;
 - removal of legacy HCIS credentials/code (that happens after production rollback window);
-- Organization Master migration;
+- Organization Directory integration or any migration of workforce-organization authoring ownership from HCIS to Hub;
 - redesign of HCIS role/permission model;
 - SPMB OIDC integration;
 - universal session revocation/event bus.
