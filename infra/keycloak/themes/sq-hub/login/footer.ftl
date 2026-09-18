@@ -1,9 +1,9 @@
 <#macro content>
   <div class="sq-account-brand" aria-label="Akun SQ">
-    <img class="sq-account-brand__logo" src="${url.resourcesPath}/img/favicon.svg" alt="">
+    <img class="sq-account-brand__logo" src="${url.resourcesPath}/img/ysq-mark.svg" alt="">
     <div class="sq-account-brand__copy">
       <strong>Akun SQ</strong>
-      <span>Yayasan Sabilul Qur&apos;an</span>
+      <span>Yayasan Sabilul Qur'an</span>
     </div>
   </div>
   <p class="sq-login-footer">${msg("akunSqFooter")}</p>
