@@ -444,9 +444,10 @@ Repository/CI evidence does not independently re-prove any item in this list.
 Repository source includes:
 
 - `infra/keycloak/realm/master-production-recovery.json` for non-secret master-realm Akun SQ branding, `sq-hub` login/account themes, and `resetPasswordAllowed=true`;
-- `infra/keycloak/master-smtp.env.example` for the non-secret SMTP configuration shape.
+- `infra/keycloak/master-smtp.env.example` for the non-secret SMTP configuration shape;
+- `infra/keycloak/scripts/reconcile-master-production-recovery.sh` for guarded operator reconciliation of the master realm only.
 
-Do not claim email recovery is operational until an authorized operator supplies SMTP credentials/configuration in the production secret store and successfully verifies delivery. Keycloak Admin Console remains an internal operator surface; this package does not fork or redesign Admin Console.
+The reconciliation script consumes SMTP credentials only from the controlled runtime file, does not print them, and emits sanitized PASS markers. It does not prove delivery. Do not claim email recovery is operational until an authorized operator supplies SMTP credentials/configuration in the production secret store and successfully verifies an actual Forgot Password email. Keycloak Admin Console remains an internal operator surface; this package does not fork or redesign Admin Console.
 
 ## Final status record
 
