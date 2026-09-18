@@ -1,8 +1,8 @@
-# SQ Identity / Keycloak Staging
+# Akun SQ / Keycloak Staging
 
 Implementation target: `HUB-IMPL-001`.
 
-This directory contains the reproducible, non-secret staging foundation for SQ Identity. It does **not** contain real Staff accounts, client secrets, bootstrap passwords, database passwords, or production data.
+This directory contains the reproducible, non-secret staging foundation for Akun SQ. It does **not** contain real Staff accounts, client secrets, bootstrap passwords, database passwords, or production data.
 
 ## Topology
 

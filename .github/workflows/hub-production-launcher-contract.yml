@@ -10,6 +10,13 @@ on:
       - "infra/reverse-proxy.caddy.production.example"
       - "infra/keycloak/clients/sq-hub-production.json"
       - "infra/keycloak/scripts/reconcile-hub-production-client.sh"
+      - "infra/keycloak/scripts/verify-hub-production-secret-fingerprint.sh"
+      - "infra/keycloak/scripts/reconcile-master-production-recovery.sh"
+      - "infra/keycloak/realm/master-production-recovery.json"
+      - "infra/keycloak/master-smtp.env.example"
+      - "infra/keycloak/themes/sq-hub/login/footer.ftl"
+      - "infra/keycloak/themes/sq-hub/account/theme.properties"
+      - "docs/operations/project-status-2026-09-18.md"
       - "docs/specs/HUB-IMPL-016-hub-production-launcher.md"
       - "docs/operations/HUB-IMPL-016-production-launcher.md"
       - "apps/web/src/security.test.ts"
@@ -24,6 +31,13 @@ on:
       - "infra/reverse-proxy.caddy.production.example"
       - "infra/keycloak/clients/sq-hub-production.json"
       - "infra/keycloak/scripts/reconcile-hub-production-client.sh"
+      - "infra/keycloak/scripts/verify-hub-production-secret-fingerprint.sh"
+      - "infra/keycloak/scripts/reconcile-master-production-recovery.sh"
+      - "infra/keycloak/realm/master-production-recovery.json"
+      - "infra/keycloak/master-smtp.env.example"
+      - "infra/keycloak/themes/sq-hub/login/footer.ftl"
+      - "infra/keycloak/themes/sq-hub/account/theme.properties"
+      - "docs/operations/project-status-2026-09-18.md"
       - "docs/specs/HUB-IMPL-016-hub-production-launcher.md"
       - "docs/operations/HUB-IMPL-016-production-launcher.md"
       - "apps/web/src/security.test.ts"
@@ -42,7 +56,30 @@ jobs:
         run: python3 tools/production/verify_hub_launcher_contract.py
 
       - name: Validate production reconciliation script syntax
-        run: bash -n infra/keycloak/scripts/reconcile-hub-production-client.sh
+        run: |
+          bash -n infra/keycloak/scripts/reconcile-hub-production-client.sh
+          bash -n infra/keycloak/scripts/verify-hub-production-secret-fingerprint.sh
+          bash -n infra/keycloak/scripts/reconcile-master-production-recovery.sh
+
+      - name: Secret scan for production launcher scope
+        shell: bash
+        run: |
+          if git grep -n -I -E '(BEGIN (RSA|OPENSSH|EC|DSA) PRIVATE KEY|AKIA[0-9A-Z]{16}|client[_ -]?secret[[:space:]]*[:=][[:space:]]*[A-Za-z0-9+/=_-]{24,}|password[[:space:]]*[:=][[:space:]]*[A-Za-z0-9+/=_-]{24,})' -- \
+            infra/docker-compose.production.yml \
+            infra/production.env.example \
+            infra/reverse-proxy.caddy.production.example \
+            infra/keycloak/clients/sq-hub-production.json \
+            infra/keycloak/realm/master-production-recovery.json \
+            infra/keycloak/master-smtp.env.example \
+            infra/keycloak/scripts/reconcile-hub-production-client.sh \
+            infra/keycloak/scripts/verify-hub-production-secret-fingerprint.sh \
+            infra/keycloak/scripts/reconcile-master-production-recovery.sh \
+            docs/specs/HUB-IMPL-016-hub-production-launcher.md \
+            docs/operations/HUB-IMPL-016-production-launcher.md \
+            docs/operations/project-status-2026-09-18.md; then
+            echo "Potential secret material detected" >&2
+            exit 1
+          fi
 
       - name: Validate production Compose with non-secret render fixture
         shell: bash

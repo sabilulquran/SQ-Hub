@@ -18,13 +18,13 @@ Menyediakan foundation lintas aplikasi yang cukup untuk menghubungkan HCIS dan a
 - Email unik yang diverifikasi boleh menjadi alternatif login Employee.
 - Staff tanpa NIP menggunakan email unik yang diverifikasi sebagai username pada Foundation v1.
 - NIK tidak digunakan sebagai login identifier.
-- SQ Identity menggunakan Keycloak sebagai self-hosted Identity Provider engine sesuai ADR-0003.
+- Akun SQ menggunakan Keycloak sebagai self-hosted Identity Provider engine sesuai ADR-0003.
 - Detail policy terdapat di `docs/security/staff-authentication-policy.md`.
 
 ### HUB-FND-002 Single Sign-On
-- Staff yang telah login melalui SQ Identity dapat membuka aplikasi lain yang diizinkan tanpa memasukkan credential kembali.
+- Staff yang telah login melalui Akun SQ dapat membuka aplikasi lain yang diizinkan tanpa memasukkan credential kembali.
 - Aplikasi domain tidak menerima atau menyimpan password Staff setelah migration cutover.
-- Internal applications integrate to SQ Identity through standard OIDC Authorization Code flows supported by Keycloak.
+- Internal applications integrate to Akun SQ through standard OIDC Authorization Code flows supported by Keycloak.
 - Keycloak owns authentication protocol/session concerns; SQ Hub and domain applications retain their authorization ownership boundaries.
 - Aplikasi yang memiliki backend menangani token/code exchange server-side dan tidak menyimpan access/refresh token di browser storage.
 - Session baseline Foundation v1: SSO idle 8 jam, SSO max 12 jam, Remember Me nonaktif, access token baseline 5 menit.
@@ -58,7 +58,7 @@ SQ Hub menyimpan registry aplikasi yang bergabung dalam ekosistem, minimum:
 ### HUB-FND-007 Shared Design Foundation
 - HCIS frontend yang telah sesuai brand menjadi baseline awal SQ Design System sesuai ADR-0004 dan `docs/design/hcis-baseline.md`.
 - SQ Hub mengekstrak/menormalisasi design principles, tokens, app-shell conventions, shared components/patterns, dan accessibility baseline dari baseline tersebut.
-- SQ Identity/Keycloak login theme harus senada dengan baseline SQ.
+- Akun SQ/Keycloak login theme harus senada dengan baseline SQ.
 - Shared implementation hanya dibuat ketika kebutuhan reuse sudah nyata.
 
 ### HUB-FND-008 Audit Foundation
@@ -70,12 +70,12 @@ Perubahan sensitif pada identity/application access dan tindakan administrasi pe
 - Baseline initial factor adalah TOTP + recovery codes; passkey/WebAuthn boleh digunakan setelah UAT.
 
 ### HUB-FND-010 HCIS Identity Migration
-- HCIS bermigrasi dari application-owned password authentication ke SQ Identity sesuai ADR-0005.
+- HCIS bermigrasi dari application-owned password authentication ke Akun SQ sesuai ADR-0005.
 - Existing HCIS `accounts.id` dipertahankan sebagai local authorization principal agar role/permission/scope tidak perlu direwrite.
 - HCIS menyimpan mapping `identity_issuer + identity_subject` terhadap local principal.
 - Password hash, MFA secret, recovery codes, dan session lama HCIS **tidak** dimigrasikan ke Keycloak.
-- Staff membuat credential baru pada SQ Identity.
-- HCIS account status adalah domain-local state; suspension/inactive HCIS tidak otomatis men-disable global SQ Identity.
+- Staff membuat credential baru pada Akun SQ.
+- HCIS account status adalah domain-local state; suspension/inactive HCIS tidak otomatis men-disable global Akun SQ.
 - Production cutover menggunakan controlled switch, bukan dua login publik paralel.
 - Credential lama boleh dipertahankan maksimum 14 hari hanya sebagai rollback window, kemudian wajib dihapus setelah cutover diterima.
 
@@ -102,7 +102,7 @@ Contoh target ownership awal:
 - production application coding sebelum architecture/security foundation disetujui.
 
 ## Experience target
-Staff masuk menggunakan NIP atau email yang sesuai policy melalui SQ Identity, membuka SQ Hub, melihat aplikasi yang memang dimiliki aksesnya, lalu berpindah antara HCIS dan SPMB tanpa login ulang. SQ Identity dan seluruh aplikasi mengikuti bahasa visual SQ yang diturunkan dari baseline HCIS, sambil tetap memiliki karakter domain masing-masing.
+Staff masuk menggunakan NIP atau email yang sesuai policy melalui Akun SQ, membuka SQ Hub, melihat aplikasi yang memang dimiliki aksesnya, lalu berpindah antara HCIS dan SPMB tanpa login ulang. Akun SQ dan seluruh aplikasi mengikuti bahasa visual SQ yang diturunkan dari baseline HCIS, sambil tetap memiliki karakter domain masing-masing.
 
 ## Implementation Wave 1
 Implementation pertama mengikuti `docs/product/implementation-wave-1.md` dan tiga contract:

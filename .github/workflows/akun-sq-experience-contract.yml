@@ -35,6 +35,8 @@ jobs:
           grep -Fxq 'parent=keycloak.v3' "$account/theme.properties"
           grep -Fxq 'styles=css/akun-sq-account-d4e9b269d645.css' "$account/theme.properties"
           grep -Fxq 'title=Akun SQ' "$account/theme.properties"
+          grep -Fxq 'logo=img/ysq-mark.svg' "$account/theme.properties"
+          grep -Fq 'img/ysq-mark.svg' "$login/footer.ftl"
           test "$(git hash-object "$login/resources/css/akun-sq-login-2629a2861483.css" | cut -c1-12)" = 2629a2861483
           grep -Fxq 'favicons.svg=img/favicon.svg' "$login/theme.properties"
           test -s "$login/resources/img/ysq-mark.svg"
@@ -54,6 +56,19 @@ jobs:
           grep -Fxq 'loginTitle=Akun SQ' "$theme/messages/messages_id.properties"
           grep -Fxq "akunSqFooter=Satu akun untuk layanan digital Yayasan Sabilul Qur'an." "$theme/messages/messages_id.properties"
           grep -Fq '${msg("akunSqFooter")}' "$theme/footer.ftl"
+
+      - name: Reject legacy user-facing identity brand
+        shell: bash
+        run: |
+          legacy="$(git grep -n -I -F 'SQ Identity' -- \
+            apps/web \
+            infra/keycloak/themes/sq-hub \
+            infra/keycloak/realm/sq-staff-staging-realm.json \
+            infra/keycloak/realm/master-production-recovery.json \
+            docs/product \
+            docs/security || true)"
+          legacy="$(printf '%s\n' "$legacy" | grep -v 'not.toContain("SQ Identity")' || true)"
+          test -z "$legacy" || { printf '%s\n' "$legacy"; exit 1; }
 
       - name: Reject legacy product composition from active theme
         shell: bash

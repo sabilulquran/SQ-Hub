@@ -1,18 +1,20 @@
-# Production edge example for SQ Hub.
-# Caddy owns public TLS. Only the Hub web loopback port is a public upstream.
-# apps/web/nginx.conf then keeps /auth/callback and /api/* server-side.
+# Production edge example for SQ Hub with containerized Caddy.
+# Caddy owns public TLS and MUST join Docker network sq-hub-production_web_edge.
+# It targets the Hub-specific web alias, never localhost/127.0.0.1 and never a
+# generic "api" alias. apps/web/nginx.conf then proxies callback/API to the Hub
+# API through the isolated sq-hub-production_backend network.
 
 hub.sabilulquran.or.id {
 	encode zstd gzip
 
 	@health path /healthz
-	reverse_proxy @health 127.0.0.1:18201
+	reverse_proxy @health sq-hub-production-web:80
 
 	@oidc_callback path /auth/callback
-	reverse_proxy @oidc_callback 127.0.0.1:18201
+	reverse_proxy @oidc_callback sq-hub-production-web:80
 
 	@api path /api/*
-	reverse_proxy @api 127.0.0.1:18201
+	reverse_proxy @api sq-hub-production-web:80
 
-	reverse_proxy 127.0.0.1:18201
+	reverse_proxy sq-hub-production-web:80
 }

@@ -80,7 +80,7 @@ The accepted staff authentication policy already requires MFA for SQ Hub platfor
 
 Foundation rules:
 - a Platform Administrator identity must have TOTP + recovery path configured before the privilege is granted;
-- privilege assignment does not bypass SQ Identity authentication policy;
+- privilege assignment does not bypass Akun SQ authentication policy;
 - granting or re-granting the privilege invalidates eligibility of an older Hub session for the admin surface; the user must establish a Hub session after the latest grant before using Administrasi SQ;
 - revocation is checked on every protected admin request and takes effect immediately for the admin surface, while the ordinary SQ Hub workspace session may remain valid;
 - initial staging UAT must demonstrate a fresh privileged login with MFA before Admin Center acceptance.
