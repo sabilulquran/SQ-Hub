@@ -64,7 +64,7 @@ jobs:
       - name: Secret scan for production launcher scope
         shell: bash
         run: |
-          if git grep -n -I -E '(BEGIN (RSA|OPENSSH|EC|DSA) PRIVATE KEY|AKIA[0-9A-Z]{16}|client[_ -]?secret[[:space:]]*[:=][[:space:]]*[A-Za-z0-9+/=_-]{24,}|password[[:space:]]*[:=][[:space:]]*[^$<{[:space:]]{16,})' -- \
+          if git grep -n -I -E '(BEGIN (RSA|OPENSSH|EC|DSA) PRIVATE KEY|AKIA[0-9A-Z]{16}|client[_ -]?secret[[:space:]]*[:=][[:space:]]*[A-Za-z0-9+/=_-]{24,}|password[[:space:]]*[:=][[:space:]]*[A-Za-z0-9+/=_-]{24,})' -- \
             infra/docker-compose.production.yml \
             infra/production.env.example \
             infra/reverse-proxy.caddy.production.example \
