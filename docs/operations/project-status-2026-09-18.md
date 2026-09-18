@@ -1,52 +1,67 @@
 # Status proyek SQ Hub — 2026-09-18
 
-Dokumen ini adalah status repository untuk persiapan peluncuran SQ Hub launcher production. Ia tidak mengklaim pemeriksaan atau perubahan VPS/DNS/browser pada 18 September 2026.
+Dokumen ini memisahkan **evidence repository** dari **evidence runtime/browser operator**. Pekerjaan GitHub tidak mengakses VPS, DNS, Cloudflare, database production, Keycloak production, browser production, atau credential.
 
 ## Ringkasan non-engineer
 
-SQ Hub launcher dan login terautentikasi sudah tersedia di source dan sebelumnya telah lulus UAT staging. SQ Hub API production juga sebelumnya teramati berjalan. Gap utama yang tersisa untuk launcher production adalah jalur deployment web yang eksplisit, production OIDC client yang terpisah dari staging, reverse proxy/DNS, dan verifikasi browser pada hostname production.
+SQ Hub production launcher telah berhasil diverifikasi operator pada 18 September 2026. Portal **SQ Hub** aktif di `https://hub.sabilulquran.or.id`; sistem akun/login tetap bernama **Akun SQ**. Browser production berhasil login dengan Authorization Code + PKCE S256, kembali ke workspace, menampilkan HCIS sesuai Application Access, dan menampilkan Administrasi SQ untuk pengguna yang berwenang.
 
-HUB-IMPL-016 menambahkan paket repository untuk menutup gap tersebut tanpa menyentuh production dari GitHub: kontrak `sq-hub` production, Compose API/web yang tidak memiliki Keycloak/HCIS/database lain, contoh Caddy, desired-state OIDC client tanpa secret, contract CI, serta runbook preflight/deploy/smoke/rollback.
-
-Status pada branch/PR ini hanya dapat menjadi **REPOSITORY_READY** setelah review dan CI lulus. `hub.sabilulquran.or.id` tidak boleh disebut **DEPLOYED** atau **BROWSER_VERIFIED** sampai Codex lokal/operator benar-benar menjalankan handoff live dan menghasilkan bukti yang sesuai.
+PR source-of-truth closure ini tidak melakukan deployment ulang. Tujuannya adalah membuat repository mencerminkan topologi yang terbukti bekerja, menutup penyebab insiden secret lama, menjaga branding Akun SQ, dan menambah contract test agar konfigurasi yang diketahui gagal tidak dapat masuk kembali.
 
 ## Matriks status
 
-| Area | Status saat dokumen dibuat | Makna |
+| Area | Status 18 September 2026 | Sumber evidence |
 | --- | --- | --- |
-| Authenticated SQ Hub workspace | Sudah diimplementasikan dan ACCEPTED | Server-side Authorization Code + PKCE, opaque Hub session, Application Access workspace, logout tersedia. |
-| Staging Hub UAT | Bukti accepted sudah ada | Bukti lama dipertahankan dan tidak diulang/dihapus oleh paket production ini. |
-| SQ Hub API production | Sebelumnya teramati deployed/healthy pada audit 16 September | Bukti historis; agent GitHub ini tidak memeriksa live runtime 18 September. |
-| SQ Hub web production | Belum dibuktikan deployed | Audit terakhir menyatakan launcher publik belum tersedia. |
-| Production Hub OIDC client | Repository desired state disiapkan | Live `sq-hub` client/secret tetap pekerjaan operator. |
-| Caddy route production | Repository example disiapkan | Live Caddy belum diklaim berubah. |
-| DNS `hub.sabilulquran.or.id` | Belum dibuktikan tersedia | DNS/Cloudflare tetap pekerjaan operator. |
-| Browser production UAT | Belum dijalankan oleh paket ini | Harus diuji setelah deployment/DNS. |
-| Account Console Akun SQ | Source tersedia; runtime activation terpisah | `accountTheme=sq-hub` tetap pekerjaan operator terpisah dan bukan scope launcher. |
+| SQ Hub source/config | HUB-IMPL-016 source-of-truth closure dalam PR | repository + CI |
+| Hub public TLS/HTTP | DEPLOYED; TLS valid, HTTP 200 | operator runtime |
+| DNS Hub | A -> `103.89.5.4`, DNS only | operator runtime |
+| Production OIDC client | `sq-hub` aktif pada `sq-staff` | operator runtime |
+| Callback | `https://hub.sabilulquran.or.id/auth/callback` | operator runtime |
+| Post logout | `https://hub.sabilulquran.or.id/` | operator runtime |
+| OIDC flow | Authorization Code + PKCE S256 berhasil | operator/browser |
+| OIDC transaction cookie | Secure, HttpOnly, SameSite=Lax | operator/browser |
+| Workspace | workspace, HCIS Application Access, Administrasi SQ tampil sesuai akun yang diuji | operator/browser |
+| API/web/Keycloak | healthy, restart count 0 | operator runtime |
+| Public Admin Console | blocked; HTTP 404 | operator runtime |
+| Master administrator | `admin@sabilulquran.or.id` | operator runtime |
+| Bootstrap `cutover-bootstrap` | disabled | operator runtime |
+| Realm display name | Akun SQ | operator runtime |
+| login/account theme | `sq-hub` / `sq-hub` | operator runtime |
+| Database | tidak ada migration/perubahan destruktif dalam cutover ini | operator runtime |
 
-## Production contract yang disiapkan
+## Topologi production yang menjadi kontrak
 
-- issuer: `https://login.sabilulquran.or.id/realms/sq-staff`;
-- Hub origin: `https://hub.sabilulquran.or.id`;
-- client production: `sq-hub`, terpisah dari `sq-hub-staging`;
-- callback exact: `https://hub.sabilulquran.or.id/auth/callback`;
-- logout redirect exact: `https://hub.sabilulquran.or.id/`;
-- Authorization Code + PKCE S256;
-- implicit/direct grant/service account nonaktif pada browser client;
-- secure host-only Hub cookies;
-- no browser OIDC token/code/state/nonce/verifier storage;
-- API/web image production menggunakan digest immutable;
-- Caddy hanya menargetkan web loopback boundary;
-- production Compose tidak mendefinisikan Keycloak, HCIS, atau database lain.
+- SQ Hub API + web berada pada private `sq-hub-production_backend`;
+- web juga berada pada dedicated `sq-hub-production_web_edge`;
+- Caddy tetap merupakan container pada shared `edge_proxy`, lalu **bergabung** ke `sq-hub-production_web_edge`;
+- Caddy menargetkan Hub web melalui DNS container yang unik, `sq-hub-production-web:80`;
+- Hub web **tidak boleh** bergabung ke shared `edge_proxy`;
+- nginx Hub tetap menggunakan alias `api:3100` hanya pada private backend network;
+- menggunakan `127.0.0.1:18201` dari dalam containerized Caddy adalah konfigurasi salah.
 
-## Handoff live yang masih wajib
+Topologi Hub-web-ke-`edge_proxy` pernah menghasilkan collision alias generik `api` dengan aplikasi lain dan endpoint login 502. Karena itu contract test sekarang harus menolak pola tersebut.
 
-Codex lokal/operator menjalankan urutan:
+## Insiden secret dan aturan setelah rotasi
 
-**backup/snapshot → provision/reconcile client + secret secara aman → deploy API → deploy web → Caddy → DNS/Cloudflare → health/protocol smoke → browser UAT → rollback bila gagal.**
+Public OIDC login sempat gagal dengan `invalid_client_credentials` walaupun secret Keycloak dan file secret VPS sudah cocok. Penyebabnya adalah container API yang masih memuat environment lama. Setelah API di-force-recreate dari env file terbaru, login browser berhasil.
 
-Bukti aman dan data terlarang dijelaskan rinci di `HUB-IMPL-016-production-launcher.md`.
+Mulai sekarang, setelah client secret berubah:
+
+1. secret tidak boleh dicetak;
+2. secret store/env file diperbarui;
+3. API wajib di-force-recreate;
+4. fingerprint SHA-256 non-secret Keycloak, secret file, dan environment container dibandingkan;
+5. login baru boleh dianggap ready bila ketiganya cocok.
+
+## Branding dan recovery
+
+- **Akun SQ** adalah nama sistem akun/login.
+- **SQ Hub** adalah nama portal aplikasi.
+- Login dan Account Console menggunakan theme `sq-hub` serta logo/favicon organisasi.
+- Public Keycloak Admin Console tetap diblokir; Admin Console adalah permukaan operator internal.
+- Login master realm perlu branding Akun SQ, tetapi tidak ada fork besar Admin Console dalam scope ini.
+- Repository menyiapkan bentuk konfigurasi non-secret SMTP master realm dan Forgot Password. Email recovery **belum boleh diklaim aktif** sampai operator memasukkan credential SMTP dan menguji pengiriman nyata.
 
 ## Batas klaim
 
-Green CI membuktikan kontrak repository, bukan availability production. Health check membuktikan service merespons, bukan browser UAT. DNS resolve membuktikan routing tersedia, bukan login/authorization benar. Browser UAT hanya boleh diberi status PASS bila benar-benar dijalankan.
+CI dapat membuktikan source/configuration contract, typecheck, lint, test, build, Compose validation, secret scan, serta regression guard. CI tidak membuktikan kondisi VPS/browser saat ini. Status runtime/browser di atas berasal dari evidence operator 18 September 2026 yang diberikan untuk source-of-truth closure ini.
