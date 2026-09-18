@@ -130,7 +130,7 @@ jobs:
           test "$status" = "200"
           grep -Fq 'Akun SQ' /tmp/akun-sq-login.html
           grep -Fq 'Masuk ke Akun SQ' /tmp/akun-sq-login.html
-          grep -Fq 'css/akun-sq-login-2629a2861483.css' /tmp/akun-sq-login.html
+          grep -Fq 'css/akun-sq-login-5b553ec5d46a.css' /tmp/akun-sq-login.html
           ! grep -Fq 'css/sq-account-hcis-d8e0fab49a38.css' /tmp/akun-sq-login.html
           ! grep -Fq 'css/sq-identity-066c6982e041.css' /tmp/akun-sq-login.html
           ! grep -Fq 'css/sq-account-41ad9ff20ec3.css' /tmp/akun-sq-login.html
