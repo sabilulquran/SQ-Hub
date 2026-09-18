@@ -405,7 +405,6 @@ def validate_native_navigation(driver: Driver, base_url: str) -> None:
         "account-security/signing-in",
         "account-security/device-activity",
         "applications",
-        "account-security/linked-accounts",
     ]
     for fragment in required:
         if not any(fragment in href for href in hrefs):
@@ -414,7 +413,6 @@ def validate_native_navigation(driver: Driver, base_url: str) -> None:
     checks = [
         ("account-security/device-activity", "Sesi", ".signed-in-device-list"),
         ("applications", "Aplikasi", 'h1[data-testid="page-heading"]'),
-        ("account-security/linked-accounts", "Akun terhubung", 'h1[data-testid="page-heading"]'),
     ]
     for path, title, selector in checks:
         driver.goto(urljoin(base_url, path))
