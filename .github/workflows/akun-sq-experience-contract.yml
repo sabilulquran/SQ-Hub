@@ -37,7 +37,7 @@ jobs:
           grep -Fxq 'styles=css/styles.css css/akun-sq-login-be6b1a63ccf6.css' "$login/theme.properties"
           grep -Fxq 'contentHashPattern=^css/akun-sq-login-[0-9a-f]{12}[.]css$' "$login/theme.properties"
           grep -Fxq 'parent=keycloak.v3' "$account/theme.properties"
-          grep -Fxq 'styles=css/akun-sq-account-959eb4c77248.css' "$account/theme.properties"
+          grep -Fxq 'styles=css/akun-sq-account-126f6b841d90.css' "$account/theme.properties"
           grep -Fxq 'title=Akun SQ' "$account/theme.properties"
           grep -Fxq 'logo=img/ysq-mark.png' "$account/theme.properties"
           grep -Fq 'img/ysq-mark.png' "$login/footer.ftl"
@@ -47,8 +47,9 @@ jobs:
           cmp -s "$account/resources/img/ysq-mark.png" apps/web/src/assets/brand/ysq-mark.png
           test ! -e "$login/resources/img/ysq-mark.svg"
           test ! -e "$account/resources/img/ysq-mark.svg"
-          test "$(git hash-object "$account/resources/css/akun-sq-account-959eb4c77248.css" | cut -c1-12)" = 959eb4c77248
+          test "$(git hash-object "$account/resources/css/akun-sq-account-126f6b841d90.css" | cut -c1-12)" = 126f6b841d90
           test ! -e "$account/resources/css/akun-sq-account-8af415711c7c.css"
+          test ! -e "$account/resources/css/akun-sq-account-959eb4c77248.css"
 
       - name: Preserve native authentication boundary
         shell: bash
