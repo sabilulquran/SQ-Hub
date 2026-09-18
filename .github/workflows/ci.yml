@@ -125,6 +125,11 @@ jobs:
           check_no_overflow 1440 900 http://127.0.0.1:4173/
           check_no_overflow 390 844 http://127.0.0.1:4173/apps
 
+          "$CHROME" --headless=new --no-sandbox --disable-gpu --virtual-time-budget=1000 --window-size=1440,900 --dump-dom 'http://127.0.0.1:4173/?preview=launcher&exercise=escape' > /tmp/launcher-escape.html
+          grep -Fq 'data-preview-escape-restored="true"' /tmp/launcher-escape.html
+          "$CHROME" --headless=new --no-sandbox --disable-gpu --virtual-time-budget=1000 --window-size=1440,900 --dump-dom 'http://127.0.0.1:4173/?preview=account-menu&exercise=escape' > /tmp/account-menu-escape.html
+          grep -Fq 'data-preview-escape-restored="true"' /tmp/account-menu-escape.html
+
           "$CHROME" --headless=new --no-sandbox --disable-gpu --hide-scrollbars --window-size=1440,900 --screenshot=visual-smoke/sq-hub-home-desktop-1440x900.png http://127.0.0.1:4173/
           "$CHROME" --headless=new --no-sandbox --disable-gpu --hide-scrollbars --window-size=1440,900 --screenshot=visual-smoke/sq-hub-apps-desktop-1440x900.png http://127.0.0.1:4173/apps
           "$CHROME" --headless=new --no-sandbox --disable-gpu --hide-scrollbars --window-size=1440,900 --screenshot=visual-smoke/sq-hub-launcher-desktop.png 'http://127.0.0.1:4173/?preview=launcher'
