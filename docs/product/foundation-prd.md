@@ -5,7 +5,7 @@
 **Scope:** Foundation v1
 
 ## Problem
-Sistem Sabilul Qur'an akan berkembang menjadi beberapa aplikasi domain. Jika setiap aplikasi membangun identity, organization master, app access, dan UI foundation sendiri, staf akan mengalami login berulang, data unit yang tidak konsisten, akses yang sulit dikelola, dan pengalaman pengguna yang berbeda-beda.
+Sistem Sabilul Qur'an akan berkembang menjadi beberapa aplikasi domain. Jika setiap aplikasi membangun identity, integrasi organisasi sendiri, app access, dan UI foundation sendiri, staf akan mengalami login berulang, data unit yang tidak konsisten, akses yang sulit dikelola, dan pengalaman pengguna yang berbeda-beda.
 
 ## Goal
 Menyediakan foundation lintas aplikasi yang cukup untuk menghubungkan HCIS dan aplikasi kedua (SPMB) tanpa menjadikan SQ Hub sebagai ERP monolith.
@@ -29,11 +29,15 @@ Menyediakan foundation lintas aplikasi yang cukup untuk menghubungkan HCIS dan a
 - Aplikasi yang memiliki backend menangani token/code exchange server-side dan tidak menyimpan access/refresh token di browser storage.
 - Session baseline Foundation v1: SSO idle 8 jam, SSO max 12 jam, Remember Me nonaktif, access token baseline 5 menit.
 
-### HUB-FND-003 Organizational Unit Master
-- Target system of record Organizational Unit adalah SQ Hub.
-- Aplikasi domain mereferensikan unit resmi SQ Hub setelah cutover.
-- HCIS yang saat ini telah memiliki organizational unit harus dimigrasikan melalui mapping dan cutover plan; jangan mengasumsikan ownership berpindah hanya dengan deploy SQ Hub.
-- Master unit paralel tidak boleh dibuat tanpa keputusan arsitektur eksplisit.
+### HUB-FND-003 Shared Organization Directory
+- HCIS adalah system of authority dan tempat authoring workforce organization: unit organisasi, posisi/jabatan, penempatan pegawai, hubungan atasan, effective dates, dan data ketenagakerjaan terkait.
+- SQ Hub menyediakan Organization Directory sebagai read model/distribution layer lintas aplikasi; Hub tidak mengedit fakta organisasi milik HCIS.
+- HCIS -> Hub menggunakan authenticated controlled integration contract dengan dedicated service identity.
+- Aplikasi domain seperti Finance dan Workspace membaca shared Organization Directory dari Hub sebagai default cross-application read path, bukan direct database coupling ke HCIS.
+- Hub dapat melayani last-known-good projection saat HCIS sementara tidak tersedia dengan metadata source/version/synchronized_at atau as_of/staleness.
+- Hub bukan central approval engine. Approval policy/workflow/delegation/escalation/domain authorization/audit keputusan tetap di aplikasi domain.
+- Domain app yang me-resolve approver dari fakta organisasi menyimpan resolved-approver snapshot beserta organization version/effective time ketika transaksi diajukan.
+- SLA, global identifier, snapshot/delta, conflict handling, dan retention tetap DISCOVERY/TBD di HUB-IMPL-018.
 
 ### HUB-FND-004 Application Registry
 SQ Hub menyimpan registry aplikasi yang bergabung dalam ekosistem, minimum:
@@ -82,8 +86,10 @@ Perubahan sensitif pada identity/application access dan tindakan administrasi pe
 ## Integration principle
 Aplikasi boleh sangat terintegrasi tetapi ownership data harus jelas. Sebagai default, cross-domain write dilakukan melalui contract/API yang dimiliki domain target, bukan dengan menulis tabel domain lain secara langsung.
 
-Contoh target ownership awal:
-- Organizational Unit -> SQ Hub
+Contoh ownership:
+- Workforce organization authoring/system of authority -> HCIS
+- Shared Organization Directory projection/distribution -> SQ Hub
+- Approval/workflow policy -> masing-masing aplikasi domain
 - Employee/leave/attendance/payroll -> HCIS
 - Applicant/admission/selection -> SPMB
 - Invoice/payment -> Finance (future)
@@ -113,7 +119,10 @@ Implementation pertama mengikuti `docs/product/implementation-wave-1.md` dan tig
 Engineering stack mengikuti ADR-0006 dan staging naming untuk Wave 1 menggunakan `login-staging.`, `hub-staging.`, dan `hcis-staging.sabilulquran.or.id`.
 
 ## Open decisions
-- Organizational Unit migration/cutover plan from HCIS;
+- Organization Directory SLA/freshness;
+- global identifier lintas aplikasi dan mapping dari identifier HCIS;
+- snapshot versus delta contract;
+- conflict handling dan retention/history;
 - Keycloak production version pin setelah staging verification dan operational sizing;
 - exact implementation technology and versioning strategy for distributable shared design packages;
 - full Application Access administration UI/workflow beyond the Wave 1 operator path.
@@ -125,5 +134,6 @@ Engineering stack mengikuti ADR-0006 dan staging naming untuk Wave 1 menggunakan
 - HCIS authentication migration: ADR-0005 + `docs/migration/hcis-auth-cutover-plan.md`.
 - SQ Hub engineering stack: ADR-0006.
 - Wave 1 scope/contracts: `docs/product/implementation-wave-1.md` + `docs/specs/HUB-IMPL-00*.md`.
+- Organization ownership/directory boundary: ADR-0007 + `HUB-IMPL-018` (DISCOVERY).
 
 Open decisions harus ditutup melalui domain/security specification atau ADR sebelum implementasi terkait dimulai.
