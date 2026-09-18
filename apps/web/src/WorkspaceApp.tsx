@@ -1,11 +1,11 @@
 import { AlertTriangle, LoaderCircle, RefreshCw } from "lucide-react";
 import { type ReactNode, useCallback, useEffect, useState } from "react";
 
-import { AdminCenterPage } from "@/AdminCenterPage";
+import { AccountTransitionPage } from "@/AccountTransitionPage";\nimport { AdminCenterPage } from "@/AdminCenterPage";
 import { WorkspaceShell } from "@/WorkspaceShell";
 import { BrandLockup } from "@/components/BrandLockup";
 import { adminRouteStateFromResponse, type AdminRouteState } from "@/admin-route-state";
-import type { WorkspaceSnapshot } from "@/types";
+import { resolveHubRoute } from "@/routes";\nimport type { WorkspaceSnapshot } from "@/types";
 
 type RuntimeState =
   | { status: "loading" }
@@ -84,10 +84,17 @@ export function WorkspaceApp() {
   }, []);
 
   if (state.status === "ready") {
-    if (adminRoute()) {
+    const route = resolveHubRoute(window.location.pathname);
+    if (route === "admin") {
       return <AdminRoute workspace={state.workspace} onLogout={logout} />;
     }
-    return <WorkspaceShell workspace={state.workspace} onLogout={logout} />;
+    if (route === "account") {
+      return <AccountTransitionPage workspace={state.workspace} onLogout={logout} />;
+    }
+    if (route === "home" || route === "apps") {
+      return <WorkspaceShell workspace={state.workspace} route={route} onLogout={logout} />;
+    }
+    return <NotFoundPage />;
   }
 
   return (
