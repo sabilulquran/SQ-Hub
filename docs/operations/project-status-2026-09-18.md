@@ -6,9 +6,9 @@ Dokumen ini memisahkan **evidence repository** dari **evidence runtime/browser o
 
 SQ Hub production launcher telah berhasil diverifikasi operator pada 18 September 2026. Portal **SQ Hub** aktif di `https://hub.sabilulquran.or.id`; sistem akun/login tetap bernama **Akun SQ**. Browser production berhasil login dengan Authorization Code + PKCE S256, kembali ke workspace, menampilkan HCIS sesuai Application Access, dan menampilkan Administrasi SQ untuk pengguna yang berwenang.
 
-Deployment yang diverifikasi operator memakai source commit `6f5f5e9db40644ee104c303e9f9f0d6786243819` (PR #80). Image runtime yang dilaporkan operator adalah API `ghcr.io/sabilulquran/sq-hub-api@sha256:4015f029c3559edb0165fe20cc7b4bde05d6504acf51883a4fd668b6f7f56ec5`, web `ghcr.io/sabilulquran/sq-hub-web@sha256:f43ac77cc6d2b3acc3d27a92b265e860d5570128d8612ea3c921f31e61df6944`, dan Keycloak `ghcr.io/sabilulquran/sq-hub-keycloak@sha256:1e9ec16edc38d6ac470bf2c92b31425895946f11330eb8882f90c8897b285adc`. SQ Hub dan halaman login Akun SQ sudah browser-verified oleh operator. Setelah deployment tersebut, operator menemukan gap responsive pada Account Console: toolbar masthead native `keycloak.v3` membentuk baris/permukaan gelap dan pada mobile menimpa judul halaman. Koreksi gap itu sedang dikerjakan di repository dan belum boleh dianggap fixed di production sebelum deployment serta browser verification operator berikutnya.
+Deployment launcher yang sebelumnya diverifikasi operator memakai source commit `6f5f5e9db40644ee104c303e9f9f0d6786243819` (PR #80). Koreksi Account Console dari PR #81 kemudian merged sebagai `92ab28c7226b6835fdf29a98cb4ec5d77ac42539`, dideploy oleh operator dengan image Keycloak `ghcr.io/sabilulquran/sq-hub-keycloak@sha256:be63a077dd0df833a44264087c5238bc147734602c2dda6c15c4c5cb8f088987`, dan telah diverifikasi ulang melalui browser production desktop serta viewport 390×844. Dengan evidence operator tersebut, gap masthead/toolbar Account Console yang sebelumnya berstatus **belum diverifikasi fixed** sekarang berstatus **deployed dan browser-verified**.
 
-Pekerjaan source-of-truth dan koreksi repository ini tidak melakukan deployment ulang. Tujuannya adalah membuat repository mencerminkan topologi yang terbukti bekerja, menutup penyebab insiden secret lama, menjaga branding Akun SQ, serta menambah contract test agar konfigurasi dan layout yang diketahui gagal tidak dapat masuk kembali.
+Deployment PR #81 hanya merecreate container Keycloak. Operator melaporkan Keycloak kembali healthy; database Keycloak, SQ Hub API, dan SQ Hub web mempertahankan container identity serta waktu mulai sebelumnya. OIDC discovery production tetap sehat. Tidak ada perubahan database, migration, credential, authorization, Application Access, atau data pengguna dalam deployment ini. Catatan ini merekam evidence operator yang diberikan; pekerjaan dokumentasi di repository tidak mengakses atau mengubah runtime production.
 
 ## Matriks status
 
@@ -25,14 +25,14 @@ Pekerjaan source-of-truth dan koreksi repository ini tidak melakukan deployment 
 | Workspace | workspace, HCIS Application Access, Administrasi SQ tampil sesuai akun yang diuji | operator/browser |
 | API/web/Keycloak | healthy, restart count 0 | operator runtime |
 | Public Admin Console | blocked; HTTP 404 | operator runtime |
-| Master administrator | `admin@sabilulquran.or.id` | operator runtime |
 | Bootstrap `cutover-bootstrap` | disabled | operator runtime |
 | Realm display name | Akun SQ | operator runtime |
 | login/account theme | `sq-hub` / `sq-hub` | operator runtime |
-| SQ Hub + login Akun SQ | browser-verified setelah deployment commit `6f5f5e9` | operator/browser |
-| Account Console mobile | operator menemukan masthead/toolbar overlap; koreksi repository sedang berjalan, production belum diverifikasi fixed | operator/browser + repository work |
-| Production image digests | API `4015f029…f56ec5`; web `f43ac77c…df6944`; Keycloak `1e9ec16e…285adc` | operator runtime |
-| Database | tidak ada migration/perubahan destruktif dalam cutover ini | operator runtime |
+| SQ Hub + login Akun SQ | browser-verified setelah deployment launcher commit `6f5f5e9` | operator/browser |
+| Account Console Akun SQ | PR #81 commit `92ab28c7…42539` deployed; desktop dan viewport 390×844 browser-verified | operator runtime + browser production |
+| Account Console stylesheet | `akun-sq-account-148467199d0b.css` aktif pada browser production | browser production |
+| Production image evidence | API/web tetap pada container sebelumnya; Keycloak PR #81 `be63a077…088987` | operator runtime |
+| Database | deployment PR #81 tidak mengubah database atau migration | operator runtime |
 
 ## Topologi production yang menjadi kontrak
 
@@ -72,8 +72,55 @@ Mulai sekarang, setelah client secret berubah:
 CI dapat membuktikan source/configuration contract, typecheck, lint, test, build, Compose validation, secret scan, serta regression guard. CI tidak membuktikan kondisi VPS/browser saat ini. Status runtime/browser di atas berasal dari evidence operator 18 September 2026 yang diberikan untuk source-of-truth closure ini.
 
 
-## Koreksi pascadeployment Account Console
+## Penutupan koreksi Account Console production
 
-Temuan operator sesudah deployment commit `6f5f5e9` menunjukkan bahwa stylesheet child theme Account Console memang termuat dan organization mark berhasil dimuat, tetapi fixture CI sebelumnya tidak merepresentasikan DOM masthead runtime `keycloak.v3`. Karena itu fixture dapat lulus walaupun `.pf-v5-c-masthead__content` dan toolbar native keluar dari tinggi masthead pada viewport mobile.
+### Repository dan CI evidence
 
-Repository correction setelah temuan ini harus dibuktikan pada disposable Keycloak 26.7.2 yang menjalankan child theme `sq-hub`, dengan persona sintetis dan screenshot runtime aktual. Evidence tersebut hanya membuktikan repository/disposable-runtime readiness. Production tetap berstatus **belum diverifikasi fixed** sampai operator mendeploy image/theme hasil PR dan melakukan browser verification pada production.
+- PR #81, **fix(HUB-IMPL-017): correct Akun SQ Account Console runtime responsiveness**, merged ke `main` sebagai commit `92ab28c7226b6835fdf29a98cb4ec5d77ac42539`.
+- Repository correction mempertahankan Account Console native `keycloak.v3` dan memperbaiki containment masthead/toolbar, organization mark, branding **Akun SQ**, responsive drawer, dan runtime assertions.
+- Evidence repository/CI PR #81 membuktikan source, disposable Keycloak runtime, serta regression contract. Evidence ini tidak sendirinya membuktikan kondisi production.
+
+### Operator runtime evidence — 18 September 2026
+
+Operator melaporkan deployment PR #81 dengan batas bukti berikut:
+
+- image Keycloak production: `ghcr.io/sabilulquran/sq-hub-keycloak@sha256:be63a077dd0df833a44264087c5238bc147734602c2dda6c15c4c5cb8f088987`;
+- backup konfigurasi rollback: `compose.identity.json.before-pr81-20260918T114558Z`;
+- container Keycloak direcreate dan kembali healthy;
+- database Keycloak, SQ Hub API, dan SQ Hub web mempertahankan container identity serta waktu mulai sebelumnya;
+- OIDC discovery production tetap sehat;
+- tidak ada perubahan database, migration, credential, authorization, Application Access, atau data pengguna.
+
+Backup rollback di atas adalah referensi nama artefak operator, bukan file yang disimpan di repository.
+
+### Browser production evidence — 18 September 2026
+
+Browser production desktop berhasil menampilkan:
+
+- organization mark;
+- brand **Akun SQ**;
+- masthead putih;
+- toolbar transparan;
+- halaman **Informasi pribadi**;
+- navigasi **Keamanan akun** dan **Aplikasi**.
+
+Pada viewport **390×844**, operator mengukur:
+
+- masthead tinggi **64 px**;
+- masthead content berada pada top **8 px**, bottom **56 px**, tinggi **48 px**;
+- judul mulai pada top **80 px**, sehingga terdapat gap **16 px** setelah masthead;
+- tidak ada horizontal overflow;
+- stylesheet aktif adalah `akun-sq-account-148467199d0b.css`;
+- drawer navigasi membuka selebar **290 px** dan seluruh isinya berada dalam viewport.
+
+Dengan evidence runtime dan browser tersebut, status koreksi Account Console berubah dari **belum diverifikasi fixed** menjadi **deployed dan browser-verified**.
+
+### Batas klaim
+
+Pemisahan evidence tetap wajib:
+
+- **repository/CI evidence** membuktikan source/configuration dan regression contract;
+- **operator runtime evidence** membuktikan deployment/container/discovery sesuai observasi operator pada 18 September 2026;
+- **browser production evidence** membuktikan hasil rendering dan responsive behavior pada browser/viewport yang diuji operator.
+
+Catatan ini tidak menyimpan password, token, cookie value, OTP, raw OIDC subject, secret, email pengguna, atau data pribadi lain. PR dokumentasi penutupan ini sendiri tidak mengubah source code, theme, workflow, Compose, image reference runtime, database, Keycloak production, DNS, secret, authorization, Application Access, atau data pengguna.
