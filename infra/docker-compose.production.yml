@@ -1,0 +1,74 @@
+services:
+  api:
+    image: ${SQ_HUB_API_IMAGE:?set SQ_HUB_API_IMAGE to an immutable ghcr.io digest}
+    restart: unless-stopped
+    environment:
+      PORT: 3100
+      DATABASE_URL: ${DATABASE_URL:?set production SQ Hub DATABASE_URL}
+      HCIS_CANONICAL_URL: https://hcis.sabilulquran.or.id
+      KEYCLOAK_ISSUER: https://login.sabilulquran.or.id/realms/sq-staff
+      MACHINE_TOKEN_AUDIENCE: ${MACHINE_TOKEN_AUDIENCE:?set existing production machine-token audience}
+      ALLOWED_MACHINE_CLIENTS: ${ALLOWED_MACHINE_CLIENTS:?set existing production machine-client allowlist}
+      SQ_HUB_OIDC_CLIENT_ID: sq-hub
+      SQ_HUB_OIDC_CLIENT_SECRET: ${SQ_HUB_OIDC_CLIENT_SECRET:?set production Hub OIDC client secret}
+      SQ_HUB_OIDC_REDIRECT_URI: https://hub.sabilulquran.or.id/auth/callback
+      SQ_HUB_OIDC_POST_LOGOUT_REDIRECT_URI: https://hub.sabilulquran.or.id/
+      HUB_SESSION_IDLE_HOURS: 8
+      HUB_SESSION_MAX_HOURS: 12
+      HUB_OIDC_TRANSACTION_TTL_MINUTES: 10
+      HUB_COOKIE_SECURE: "true"
+      KEYCLOAK_DIRECTORY_BASE_URL: ${KEYCLOAK_DIRECTORY_BASE_URL:?set existing production identity-directory URL}
+      KEYCLOAK_DIRECTORY_REALM: sq-staff
+      KEYCLOAK_DIRECTORY_CLIENT_ID: ${KEYCLOAK_DIRECTORY_CLIENT_ID:?set existing production directory client id}
+      KEYCLOAK_DIRECTORY_CLIENT_SECRET: ${KEYCLOAK_DIRECTORY_CLIENT_SECRET:?set existing production directory client secret}
+    command:
+      - sh
+      - -c
+      - node apps/api/dist/db/migrate.js && node apps/api/dist/db/seed.js && exec node apps/api/dist/server.js
+    expose:
+      - "3100"
+    ports:
+      - "${SQ_HUB_BIND_ADDRESS:-127.0.0.1}:${SQ_HUB_API_HTTP_PORT:-18200}:3100"
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - fetch('http://127.0.0.1:3100/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+    networks:
+      hub_runtime:
+        aliases:
+          - api
+      production_integration:
+        aliases:
+          - sq-hub-api-production
+    mem_limit: ${SQ_HUB_API_MEMORY_LIMIT:?set reviewed production API memory limit}
+
+  web:
+    image: ${SQ_HUB_WEB_IMAGE:?set SQ_HUB_WEB_IMAGE to an immutable ghcr.io digest}
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
+    ports:
+      - "${SQ_HUB_BIND_ADDRESS:-127.0.0.1}:${SQ_HUB_WEB_HTTP_PORT:-18201}:80"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1/healthz >/dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 5s
+    networks:
+      - hub_runtime
+    mem_limit: ${SQ_HUB_WEB_MEMORY_LIMIT:?set reviewed production web memory limit}
+
+networks:
+  hub_runtime:
+    internal: true
+  production_integration:
+    external: true
+    name: ${SQ_HUB_PRODUCTION_NETWORK:?set the existing SQ Hub production integration network}
