@@ -11,6 +11,7 @@ on:
       - "infra/keycloak/clients/sq-hub-production.json"
       - "infra/keycloak/scripts/reconcile-hub-production-client.sh"
       - "infra/keycloak/scripts/verify-hub-production-secret-fingerprint.sh"
+      - "infra/keycloak/scripts/reconcile-master-production-recovery.sh"
       - "infra/keycloak/realm/master-production-recovery.json"
       - "infra/keycloak/master-smtp.env.example"
       - "infra/keycloak/themes/sq-hub/login/footer.ftl"
@@ -57,6 +58,7 @@ jobs:
         run: |
           bash -n infra/keycloak/scripts/reconcile-hub-production-client.sh
           bash -n infra/keycloak/scripts/verify-hub-production-secret-fingerprint.sh
+          bash -n infra/keycloak/scripts/reconcile-master-production-recovery.sh
 
       - name: Secret scan for production launcher scope
         shell: bash
@@ -70,6 +72,7 @@ jobs:
             infra/keycloak/master-smtp.env.example \
             infra/keycloak/scripts/reconcile-hub-production-client.sh \
             infra/keycloak/scripts/verify-hub-production-secret-fingerprint.sh \
+            infra/keycloak/scripts/reconcile-master-production-recovery.sh \
             docs/specs/HUB-IMPL-016-hub-production-launcher.md \
             docs/operations/HUB-IMPL-016-production-launcher.md \
             docs/operations/project-status-2026-09-18.md; then
