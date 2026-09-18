@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Akun SQ visual fixture</title>
+  <link rel="stylesheet" href="../../infra/keycloak/themes/sq-hub/login/resources/css/akun-sq-login-5b553ec5d46a.css">
+</head>
+<body class="login-pf">
+  <div class="pf-v5-c-login">
+    <div class="pf-v5-c-login__container">
+      <main class="pf-v5-c-login__main">
+        <footer class="pf-v5-c-login__main-footer">
+          <div class="sq-account-brand">
+            <img class="sq-account-brand__logo" src="../../infra/keycloak/themes/sq-hub/login/resources/img/ysq-mark.svg" alt="">
+            <div class="sq-account-brand__copy">
+              <strong>Akun SQ</strong>
+              <span>Yayasan Sabilul Qur'an</span>
+            </div>
+          </div>
+          <p class="sq-login-footer">Satu akun untuk layanan digital Yayasan Sabilul Qur'an.</p>
+        </footer>
+        <header class="pf-v5-c-login__main-header">
+          <h1 id="kc-page-title" class="pf-v5-c-title">Masuk ke Akun SQ</h1>
+        </header>
+        <div class="pf-v5-c-login__main-body">
+          <div id="fixture-state"></div>
+        </div>
+      </main>
+    </div>
+  </div>
+  <script>
+    const mode = new URLSearchParams(location.search).get("mode") || "login";
+    const state = document.querySelector("#fixture-state");
+    const title = document.querySelector("#kc-page-title");
+    const field = (label, type, value) =>
+      '<div class="pf-v5-c-form__group"><label>' + label + '</label><input class="form-control" type="' + (type || "text") + '" value="' + (value || "") + '"></div>';
+    const submit = (label) =>
+      '<button id="kc-login" class="pf-v5-c-button pf-m-primary" type="button">' + label + '</button>';
+
+    if (mode === "invalid") {
+      state.innerHTML = '<div class="pf-v5-c-alert pf-m-danger">NIP/email atau kata sandi tidak sesuai.</div>' +
+        field("NIP atau email", "text", "UAT-HCIS-001") + field("Kata sandi", "password") + submit("Masuk");
+    } else if (mode === "totp") {
+      title.textContent = "Verifikasi keamanan";
+      state.innerHTML = field("Kode autentikator") +
+        '<label class="pf-v5-c-check"><input type="checkbox"> Percayai perangkat ini selama 30 hari</label>' +
+        submit("Verifikasi");
+    } else if (mode === "forgot") {
+      title.textContent = "Lupa password";
+      state.innerHTML = '<p class="instruction">Masukkan NIP atau email untuk melanjutkan pemulihan.</p>' +
+        field("NIP atau email") + submit("Kirim");
+    } else if (mode === "reset") {
+      title.textContent = "Buat kata sandi baru";
+      state.innerHTML = field("Kata sandi baru", "password") +
+        field("Ulangi kata sandi baru", "password") + submit("Simpan");
+    } else {
+      state.innerHTML =
+        '<div class="pf-v5-c-login__main-footer"><div id="kc-social-providers"><ul><li><a>Masuk dengan Google</a></li></ul></div>' +
+        '<div class="pf-v5-c-login__main-footer-band"><span class="pf-v5-c-login__main-footer-band-item">Atau</span></div></div>' +
+        '<div id="kc-form">' + field("NIP atau email") + submit("Berikutnya") + '</div>';
+    }
+
+    requestAnimationFrame(() => {
+      const root = document.documentElement;
+      document.body.dataset.horizontal = String(root.scrollWidth > root.clientWidth + 1);
+    });
+  </script>
+</body>
+</html>
