@@ -93,22 +93,29 @@
         card("Aplikasi", "Tinjau aplikasi yang terhubung ke akun.", "Lihat aplikasi");
     }
 
-    window.addEventListener("load", async () => {
+    function measureAccountLayout() {
       const logo = document.querySelector(".pf-v5-c-brand");
-      try { await logo.decode(); } catch {}
-      requestAnimationFrame(() => {
-        const root = document.documentElement;
-        const logoBox = logo.getBoundingClientRect();
-        const mastheadBox = document.querySelector(".pf-v5-c-masthead").getBoundingClientRect();
+      const root = document.documentElement;
+      const logoBox = logo.getBoundingClientRect();
+      const mastheadBox = document.querySelector(".pf-v5-c-masthead").getBoundingClientRect();
 
-        document.body.dataset.horizontal = String(root.scrollWidth > root.clientWidth + 1);
-        document.body.dataset.logoLoaded = String(logo.complete && logo.naturalWidth > 0 && logo.naturalHeight > 0);
-        document.body.dataset.logoSize = String(
-          logoBox.width >= 36 && logoBox.width <= 44 && logoBox.height >= 36 && logoBox.height <= 44
-        );
-        document.body.dataset.mastheadCompact = String(mastheadBox.height >= 56 && mastheadBox.height <= 72);
-      });
-    });
+      document.body.dataset.horizontal = String(root.scrollWidth > root.clientWidth + 1);
+      document.body.dataset.logoLoaded = String(logo.complete && logo.naturalWidth > 0 && logo.naturalHeight > 0);
+      document.body.dataset.logoSize = String(
+        logoBox.width >= 36 && logoBox.width <= 44 && logoBox.height >= 36 && logoBox.height <= 44
+      );
+      document.body.dataset.mastheadCompact = String(mastheadBox.height >= 56 && mastheadBox.height <= 72);
+    }
+
+    const scheduleAccountMeasurement = () => {
+      requestAnimationFrame(() => requestAnimationFrame(measureAccountLayout));
+    };
+    if (document.readyState === "complete") {
+      scheduleAccountMeasurement();
+    } else {
+      window.addEventListener("load", scheduleAccountMeasurement, { once: true });
+    }
+    window.setTimeout(measureAccountLayout, 250);
   </script>
 </body>
 </html>
