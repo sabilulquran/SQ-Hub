@@ -79,6 +79,7 @@ function makeApp(input: {
     verifyMachineToken: async () => ({ clientId: "hcis-api-staging" }),
     hubAuth: input.hubAuth ?? fakeHub(),
     hubRedirectUri: `${hubOrigin}/auth/callback`,
+    hubAccountIssuer: session.issuer,
     adminAllowedOrigin: hubOrigin,
     platformAdmin: {
       authorize: input.authorize ?? (async () => undefined),
