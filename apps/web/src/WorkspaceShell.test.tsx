@@ -1,52 +1,111 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
-import { WorkspaceShell } from "@/WorkspaceShell";
+import { AccountMenu } from "@/components/AccountMenu";
+import { AppLauncher } from "@/components/AppLauncher";
+import { MobileNavigation } from "@/components/MobileNavigation";
+import { filterApplications, WorkspaceShell } from "@/WorkspaceShell";
 import type { WorkspaceSnapshot } from "@/types";
 
 const workspace: WorkspaceSnapshot = {
-  user: { displayName: "Pegawai Sintetis", initials: "PS", contextLabel: "Unit Contoh" },
-  applications: [{ key: "hcis", name: "HCIS", description: "Aplikasi kepegawaian", canonicalUrl: "https://hcis.example.test" }],
+  user: { displayName: "Ahmad Fikri", initials: "AF", contextLabel: "UAT-HCIS-001 · Pegawai sintetis" },
+  applications: [
+    { key: "hcis", name: "HCIS", description: "Aplikasi kepegawaian", canonicalUrl: "https://hcis.example.test" },
+    { key: "portal-contoh", name: "Portal Contoh", description: "Fixture visual sintetis", canonicalUrl: "https://portal.example" },
+  ],
   capabilities: { platformAdministration: false },
 };
 
-describe("SQ Hub workspace shell", () => {
-  it("renders the frozen-HCIS shell proportions, YSQ lockup, and responsive account triggers", () => {
-    const html = renderToStaticMarkup(<WorkspaceShell workspace={workspace} preview />);
-    expect(html).toContain("SQ Hub");
-    expect(html).toContain("Akun SQ");
-    expect(html).toContain("Yayasan Sabilul Qur&#x27;an");
-    expect(html).toContain("w-72");
-    expect(html).toContain("lg:pl-72");
-    expect(html).toContain("h-9 w-9 shrink-0 items-center justify-center rounded-xl");
-    expect(html).toContain("rounded-[1.75rem]");
-    expect(html).toContain("h-11 w-11 shrink-0 object-contain");
-    expect(html).toContain("h-9 w-9 shrink-0 object-contain");
-    expect(html.match(/aria-haspopup="menu"/g)).toHaveLength(2);
-    expect(html).toContain("Preview desain");
-    expect(html).not.toContain("SQ Identity");
-    expect(html).not.toContain("rounded-[2rem] bg-brand-primary");
-  });
-
-  it("shows actionable Administrasi SQ navigation only for a server-authorized capability", () => {
-    const ordinary = renderToStaticMarkup(<WorkspaceShell workspace={workspace} />);
-    expect(ordinary).not.toContain('href="/admin"');
-    const admin = renderToStaticMarkup(<WorkspaceShell workspace={{ ...workspace, capabilities: { platformAdministration: true } }} />);
-    expect(admin).toContain("Administrasi SQ");
-    expect(admin.match(/href="\/admin"/g)).toHaveLength(2);
-  });
-
-  it("renders only applications supplied by the authorized workspace boundary", () => {
-    const html = renderToStaticMarkup(<WorkspaceShell workspace={workspace} />);
+describe("SQ Hub navigation experience", () => {
+  it("renders Beranda with the authorized application list and a link to all apps", () => {
+    const html = renderToStaticMarkup(<WorkspaceShell workspace={workspace} route="home" />);
+    expect(html).toContain("Assalamu&#x27;alaikum, Ahmad Fikri");
+    expect(html).toContain("Aplikasi Anda");
+    expect(html).toContain('href="/apps"');
     expect(html).toContain("HCIS");
     expect(html).toContain("https://hcis.example.test");
-    expect(html).not.toContain("Finance");
-    expect(html).not.toContain("SPMB");
+    expect(html).not.toContain("w-72");
+    expect(html).not.toContain("Application Access");
   });
 
-  it("shows a safe empty state when the workspace contains no authorized applications", () => {
-    const html = renderToStaticMarkup(<WorkspaceShell workspace={{ ...workspace, applications: [] }} />);
-    expect(html).toContain("Belum ada aplikasi");
-    expect(html).toContain("Belum ada akses aplikasi aktif");
+  it("renders the all-apps route and client-side search filters only the supplied snapshot", () => {
+    const html = renderToStaticMarkup(<WorkspaceShell workspace={workspace} route="apps" />);
+    expect(html).toContain("Semua aplikasi");
+    expect(html).toContain('id="application-search"');
+    expect(filterApplications(workspace.applications, "kepegawaian").map((item) => item.key)).toEqual(["hcis"]);
+    expect(filterApplications(workspace.applications, "tidak-ada")).toEqual([]);
+  });
+
+  it("keeps empty workspace distinct from a no-result search", () => {
+    const empty = renderToStaticMarkup(
+      <WorkspaceShell workspace={{ ...workspace, applications: [] }} route="apps" />,
+    );
+    expect(empty).toContain("Belum ada aplikasi");
+    expect(empty).not.toContain("Aplikasi tidak ditemukan");
+
+    expect(filterApplications(workspace.applications, "tidak-ada")).toHaveLength(0);
+  });
+
+  it("launcher contains only authorized applications and gates Administration SQ", () => {
+    const ordinary = renderToStaticMarkup(
+      <AppLauncher
+        applications={workspace.applications}
+        platformAdministration={false}
+        previewOpen
+      />,
+    );
+    expect(ordinary).toContain("HCIS");
+    expect(ordinary).toContain("Portal Contoh");
+    expect(ordinary).not.toContain("Finance");
+    expect(ordinary).not.toContain("Administrasi SQ");
+    expect(ordinary).toContain('aria-haspopup="dialog"');
+    expect(ordinary).toContain('aria-expanded="true"');
+
+    const admin = renderToStaticMarkup(
+      <AppLauncher
+        applications={workspace.applications}
+        platformAdministration
+        previewOpen
+      />,
+    );
+    expect(admin).toContain('href="/admin"');
+  });
+
+  it("account menu links to Akun SQ, all apps, conditional admin, and official logout action", () => {
+    const ordinary = renderToStaticMarkup(
+      <AccountMenu user={workspace.user} onLogout={() => undefined} previewOpen />,
+    );
+    expect(ordinary).toContain('href="/account"');
+    expect(ordinary).toContain("Kelola Akun SQ");
+    expect(ordinary).toContain('href="/apps"');
+    expect(ordinary).not.toContain('href="/admin"');
+    expect(ordinary).toContain("Keluar");
+    expect(ordinary).not.toContain("Segera");
+
+    const admin = renderToStaticMarkup(
+      <AccountMenu
+        user={workspace.user}
+        platformAdministration
+        onLogout={() => undefined}
+        previewOpen
+      />,
+    );
+    expect(admin).toContain('href="/admin"');
+  });
+
+  it("mobile navigation marks the active route and conditionally exposes Admin", () => {
+    const ordinary = renderToStaticMarkup(
+      <MobileNavigation active="apps" platformAdministration={false} />,
+    );
+    expect(ordinary).toContain('href="/"');
+    expect(ordinary).toContain('href="/apps"');
+    expect(ordinary).toContain('href="/account"');
+    expect(ordinary).not.toContain('href="/admin"');
+    expect(ordinary).toContain('aria-current="page"');
+
+    const admin = renderToStaticMarkup(
+      <MobileNavigation active="admin" platformAdministration />,
+    );
+    expect(admin).toContain('href="/admin"');
   });
 });
