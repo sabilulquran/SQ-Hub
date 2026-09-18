@@ -4,7 +4,8 @@ import { describe, expect, it } from "vitest";
 import { AccountMenu } from "@/components/AccountMenu";
 import { AppLauncher } from "@/components/AppLauncher";
 import { MobileNavigation } from "@/components/MobileNavigation";
-import { filterApplications, WorkspaceShell } from "@/WorkspaceShell";
+import { WorkspaceShell } from "@/WorkspaceShell";
+import { filterApplications } from "@/application-filter";
 import type { WorkspaceSnapshot } from "@/types";
 
 const workspace: WorkspaceSnapshot = {
