@@ -154,7 +154,7 @@ Production rollout is not authorized by this specification.
 - Platform Administrator self-grant/self-revoke UI;
 - Keycloak Admin Console replacement;
 - HCIS/domain role or permission management;
-- Organizational Unit master/cutover;
+- workforce organization authoring/master, ownership cutover from HCIS to Hub, atau Organization Directory implementation;
 - universal Person Registry;
 - exposing Keycloak Admin REST credentials or tokens to the browser;
 - broad Keycloak `manage-users` authority solely for MFA-readiness display;
