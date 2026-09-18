@@ -30,6 +30,26 @@ if (previewEnabled) {
       );
     });
   });
+
+  if (params.get("exercise") === "escape") {
+    window.setTimeout(() => {
+      const selector =
+        previewMode === "launcher"
+          ? '[aria-label="Buka peluncur aplikasi"]'
+          : previewMode === "account-menu"
+            ? '[aria-label^="Menu akun "]'
+            : null;
+      const trigger = selector ? document.querySelector<HTMLButtonElement>(selector) : null;
+      document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+      window.requestAnimationFrame(() => {
+        document.body.dataset.previewEscapeRestored = String(
+          Boolean(trigger) &&
+            trigger?.getAttribute("aria-expanded") === "false" &&
+            document.activeElement === trigger,
+        );
+      });
+    }, 120);
+  }
 }
 
 const fixture =
