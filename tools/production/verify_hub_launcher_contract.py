@@ -61,7 +61,10 @@ def validate_network_contract(compose: str, caddy: str) -> None:
     require("internal: true" in compose, "Hub backend must remain internal")
 
     require(f"{WEB_ALIAS}:80" in caddy, "containerized Caddy must use unique Hub web DNS upstream")
-    require("127.0.0.1" not in caddy, "containerized Caddy must not use loopback upstream")
+    require(
+        re.search(r"(?m)^\s*reverse_proxy(?:\s+@\S+)?\s+127[.]0[.]0[.]1(?::\d+)?\s*$", caddy) is None,
+        "containerized Caddy must not use loopback upstream",
+    )
     require("reverse_proxy @oidc_callback sq-hub-production-web:80" in caddy,
             "callback must go through Hub web boundary")
     require("reverse_proxy @api sq-hub-production-web:80" in caddy,
