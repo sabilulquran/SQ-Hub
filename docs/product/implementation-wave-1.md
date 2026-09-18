@@ -7,7 +7,7 @@
 Membuktikan fondasi SQ Hub end-to-end dengan satu aplikasi consumer nyata (HCIS) tanpa sekaligus membangun seluruh launcher, organization migration, atau SPMB.
 
 Wave 1 dianggap berhasil ketika Staff test dapat:
-1. login melalui SQ Identity/Keycloak staging;
+1. login melalui Akun SQ/Keycloak staging;
 2. memiliki HCIS Application Access yang dikelola SQ Hub;
 3. membuka HCIS staging melalui OIDC;
 4. tetap mendapatkan role/permission/scope HCIS yang sama;
@@ -33,7 +33,7 @@ Wave 1 dianggap berhasil ketika Staff test dapat:
 
 ### HUB-IMPL-003 — HCIS OIDC consumer
 - identity link `issuer + sub` ke existing local `accounts.id`;
-- Authorization Code flow melalui SQ Identity;
+- Authorization Code flow melalui Akun SQ;
 - Application Access check ketika membuat HCIS session;
 - HCIS local roles/permissions/scopes tetap dipakai;
 - staging-only migration rehearsal dan tests;
