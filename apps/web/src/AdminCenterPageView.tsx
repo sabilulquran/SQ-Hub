@@ -1,9 +1,7 @@
 import {
   AppWindow,
-  ArrowLeft,
   CheckCircle2,
   KeyRound,
-  LockKeyhole,
   Plus,
   RefreshCw,
   Save,
@@ -15,8 +13,8 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 
-import { AccountMenu } from "@/components/AccountMenu";
-import { BrandLockup } from "@/components/BrandLockup";
+import { GlobalHeader } from "@/components/GlobalHeader";
+import { MobileNavigation } from "@/components/MobileNavigation";
 import type {
   AdminApplication,
   AdminAuditRecord,
