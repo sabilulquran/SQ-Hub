@@ -10,10 +10,10 @@
 - Identity protocol/security internals are delegated to Keycloak rather than reimplemented in SQ Hub.
 
 ## Authentication
-- Staff authentication is centralized through SQ Identity.
-- SQ Identity uses Keycloak according to ADR-0003.
+- Staff authentication is centralized through Akun SQ.
+- Akun SQ uses Keycloak according to ADR-0003.
 - Domain applications must not receive or store Staff passwords after migration cutover.
-- Domain applications integrate to SQ Identity through standard OIDC/OAuth2 behavior; do not invent custom token exchange/login protocols without a superseding ADR.
+- Domain applications integrate to Akun SQ through standard OIDC/OAuth2 behavior; do not invent custom token exchange/login protocols without a superseding ADR.
 - Staff authentication policy is defined in `docs/security/staff-authentication-policy.md`.
 - Keycloak fine-grained Authorization Services are not the canonical domain-permission engine; Application Access stays with SQ Hub and domain permissions stay with each application.
 
@@ -58,14 +58,14 @@ Foundation v1 baseline:
 - access token baseline: 5 minutes;
 - application absolute session must not outlive the SSO maximum without reauthentication.
 
-Applications may maintain their own server-side application session while relying on SQ Identity/Keycloak for SSO.
+Applications may maintain their own server-side application session while relying on Akun SQ/Keycloak for SSO.
 
 Do not solve SSO by sharing one broad application cookie across all `*.sabilulquran.or.id` subdomains. Use centralized IdP redirect/session behavior so each application maintains an appropriately scoped session.
 
 For backend-backed web applications, perform authorization-code exchange and refresh-token handling server-side. Do not place access/refresh tokens in browser localStorage/sessionStorage.
 
 ## Logout
-User-facing logout must terminate the current application session and SQ Identity SSO session. Before a second internal application is production, cross-application/global logout behavior must be verified with the chosen OIDC/Keycloak client implementation.
+User-facing logout must terminate the current application session and Akun SQ SSO session. Before a second internal application is production, cross-application/global logout behavior must be verified with the chosen OIDC/Keycloak client implementation.
 
 ## Secrets
 - Database passwords, signing keys, encryption keys, API tokens, OIDC client secrets, Keycloak admin/service credentials, and similar material must be supplied through environment/secret management and never committed.
@@ -76,7 +76,7 @@ User-facing logout must terminate the current application session and SQ Identit
 - Domain applications enforce their own permissions server-side.
 - Client-side hiding is not an authorization control.
 - Token claims may contain derived access information for performance/integration, but must not silently become a competing source of truth to SQ Hub Application Access.
-- Domain-local account suspension/revocation does not automatically disable global SQ Identity; each layer's lifecycle owner must act within its own boundary.
+- Domain-local account suspension/revocation does not automatically disable global Akun SQ; each layer's lifecycle owner must act within its own boundary.
 
 ## Audit
 Security-sensitive administrative actions must create audit records with minimum actor, action, target, timestamp, and outcome. Audit records must not contain raw passwords, authentication tokens, MFA secrets, or unnecessary sensitive payloads.
@@ -114,4 +114,4 @@ The following must be resolved before production launch/cutover:
 - privileged access and recovery path documented;
 - audit behavior verified;
 - secret injection/rotation mechanism documented;
-- SQ Identity theme verified against the pinned Keycloak version.
+- Akun SQ theme verified against the pinned Keycloak version.
