@@ -20,15 +20,19 @@ Indeks ini membantu maintainer membedakan specification yang sudah berada di `ma
 | HUB-IMPL-012 | [Akun SQ trusted device for TOTP](HUB-IMPL-012-trusted-device-totp.md) | **ACCEPTED** di `main`; nomor ini tidak tersedia untuk proposal lain. |
 | HUB-IMPL-015 | [Akun SQ account experience](HUB-IMPL-015-akun-sq-account-experience.md) | **ACCEPTED**; redesign login dan Account Console tanpa perubahan protokol/issuer. |
 | HUB-IMPL-016 | [SQ Hub production launcher release package](HUB-IMPL-016-hub-production-launcher.md) | **ACCEPTED**; repository contract/runbook untuk launcher production, tanpa klaim deployment live. |
+| HUB-IMPL-017 | [SQ Hub + Akun SQ navigation experience](HUB-IMPL-017-sq-hub-akun-sq-navigation-experience.md) | Lihat status pada specification. |
+| HUB-IMPL-018 | [Organization Directory foundation](HUB-IMPL-018-organization-directory-foundation.md) | **DISCOVERY**; contract candidate untuk HCIS-authored organization -> Hub projection/distribution. Tidak mengotorisasi runtime implementation. |
 
 ## ID proposal aktif yang belum berada di `main`
 
 | ID | Proposal | Status saat rekonsiliasi 2026-09-15 |
 | --- | --- | --- |
 | HUB-IMPL-013 | [PR #42 — Go 5C staff provisioning and offboarding](https://github.com/sabilulquran/SQ-Hub/pull/42) | **DRAFT / PROPOSED**. ID menggantikan nomor proposal lama HUB-IMPL-011 yang berbenturan dengan specification accepted. Belum memberi izin merge atau deployment. |
-| HUB-IMPL-014 | [PR #43 — Organizational Unit master foundation](https://github.com/sabilulquran/SQ-Hub/pull/43) | **DRAFT / PROPOSED**. ID menggantikan nomor proposal lama HUB-IMPL-012 yang berbenturan dengan specification accepted. Belum memberi izin merge, cutover, atau deployment. |
 
-PR gabungan historis #45 masih memuat nomor proposal lama HUB-IMPL-011/012 pada branch-nya, tetapi sudah ditutup sebagai superseded setelah perbaikan yang masih berguna dipindahkan ke PR #42 dan #43. Branch historis tidak mengubah pemetaan ID aktif di atas.
+## Proposal yang disupersede
+
+- **HUB-IMPL-014 / PR #43 — Organizational Unit master foundation** adalah proposal historis yang bertentangan dengan keputusan Product Owner 18 September 2026. ADR-0007 menetapkan HCIS sebagai workforce organization authoring/system of authority dan SQ Hub hanya sebagai Organization Directory projection/distribution. Proposal #43 tidak boleh dijadikan merge/cutover path; discovery penggantinya adalah HUB-IMPL-018.
+- PR gabungan historis #45 masih memuat nomor proposal lama HUB-IMPL-011/012 pada branch-nya dan tetap superseded. Branch historis tidak mengubah pemetaan ID aktif di atas.
 
 ## Bukti staging historis
 
