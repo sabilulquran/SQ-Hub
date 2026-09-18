@@ -1,8 +1,8 @@
 # HUB-IMPL-018 — Organization Directory foundation
 
-**Status:** DISCOVERY  
-**Product:** SQ Hub  
-**Area:** Organization integration / shared directory  
+**Status:** DISCOVERY
+**Product:** SQ Hub
+**Area:** Organization integration / shared directory
 **Depends on:** ADR-0001, ADR-0007, Foundation PRD, ownership and integration boundary
 
 ## Outcome
