@@ -108,66 +108,14 @@ button { color: inherit; }
   line-height: 1.45;
 }
 
-/* Keep Go5B behavior intact while making Admin Center share HCIS AppShell proportions. */
-aside:has(nav[aria-label="Navigasi Administrasi SQ"]) {
-  border-right-color: color-mix(in oklab, var(--border) 80%, transparent);
-  background: color-mix(in oklab, var(--sidebar) 95%, transparent);
-}
-aside:has(nav[aria-label="Navigasi Administrasi SQ"]) nav {
-  margin-top: 2rem;
-  display: flex;
-  flex: 1;
-  flex-direction: column;
-  gap: 0.375rem;
-}
-aside:has(nav[aria-label="Navigasi Administrasi SQ"]) nav a,
-aside:has(nav[aria-label="Navigasi Administrasi SQ"]) nav > div {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  border-radius: 1rem;
-  padding: 0.625rem 0.75rem;
-  font-size: 0.875rem;
-  font-weight: 600;
-}
-aside:has(nav[aria-label="Navigasi Administrasi SQ"]) nav > div {
-  background: var(--brand-primary-pale);
-  color: var(--brand-primary-deep);
-  box-shadow: var(--shadow-soft);
-}
-aside:has(nav[aria-label="Navigasi Administrasi SQ"]) nav svg {
-  box-sizing: content-box;
-  width: 1.125rem;
-  height: 1.125rem;
-  flex: 0 0 auto;
-  padding: 0.625rem;
-  border-radius: 0.75rem;
-  background: color-mix(in oklab, var(--muted) 70%, white);
-  color: var(--muted-foreground);
-}
-aside:has(nav[aria-label="Navigasi Administrasi SQ"]) nav > div svg {
-  background: white;
-  color: var(--brand-primary);
-  box-shadow: var(--shadow-soft);
-}
-aside:has(nav[aria-label="Navigasi Administrasi SQ"]) nav a:hover svg {
-  background: var(--brand-primary-pale);
-  color: var(--brand-primary-deep);
-}
-@media (min-width: 1024px) {
-  aside:has(nav[aria-label="Navigasi Administrasi SQ"]) { width: 18rem; padding: 1.5rem 1.25rem; }
-  div.min-h-screen:has(> aside nav[aria-label="Navigasi Administrasi SQ"]) > div { padding-left: 18rem; }
-  div.min-h-screen:has(> aside nav[aria-label="Navigasi Administrasi SQ"]) > div > header {
-    padding: 0.75rem 2rem;
-    border-bottom-color: color-mix(in oklab, var(--border) 70%, transparent);
-    background: color-mix(in oklab, var(--surface) 92%, transparent);
-    backdrop-filter: blur(8px);
-  }
-  div.min-h-screen:has(> aside nav[aria-label="Navigasi Administrasi SQ"]) > div > main {
-    padding-left: 2rem;
-    padding-right: 2rem;
-    padding-top: 2rem;
-  }
-}
-
 ::selection { background: var(--brand-primary-pale); color: var(--brand-primary-deep); }
+
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+}

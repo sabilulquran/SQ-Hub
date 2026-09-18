@@ -35,6 +35,24 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Validate diff whitespace
+        run: git diff --check HEAD^1..HEAD
+
+      - name: Scoped secret scan
+        shell: bash
+        run: |
+          if git grep -n -I -E '(BEGIN (RSA|OPENSSH|EC|DSA) PRIVATE KEY|AKIA[0-9A-Z]{16}|client[_ -]?secret[[:space:]]*[:=][[:space:]]*[A-Za-z0-9+/=_-]{24,}|password[[:space:]]*[:=][[:space:]]*[A-Za-z0-9+/=_-]{24,})' -- \
+            apps/web \
+            apps/api \
+            docs/specs/HUB-IMPL-017-sq-hub-akun-sq-navigation-experience.md \
+            infra/keycloak/themes/sq-hub \
+            tools/visual; then
+            echo "Potential secret material detected in HUB-IMPL-017 scope" >&2
+            exit 1
+          fi
 
       - uses: actions/setup-node@v4
         with:
@@ -106,15 +124,42 @@ jobs:
           fi
 
           mkdir -p visual-smoke
-          "$CHROME" --headless=new --no-sandbox --disable-gpu --hide-scrollbars --window-size=1440,900 --screenshot=visual-smoke/sq-hub-desktop-1440x900.png http://127.0.0.1:4173
-          "$CHROME" --headless=new --no-sandbox --disable-gpu --hide-scrollbars --window-size=390,844 --screenshot=visual-smoke/sq-hub-mobile-390x844.png http://127.0.0.1:4173
-          "$CHROME" --headless=new --no-sandbox --disable-gpu --hide-scrollbars --window-size=1440,900 --screenshot=visual-smoke/sq-admin-desktop-1440x900.png http://127.0.0.1:4173/admin
-          "$CHROME" --headless=new --no-sandbox --disable-gpu --hide-scrollbars --window-size=390,844 --screenshot=visual-smoke/sq-admin-mobile-390x844.png http://127.0.0.1:4173/admin
 
-          test -s visual-smoke/sq-hub-desktop-1440x900.png
-          test -s visual-smoke/sq-hub-mobile-390x844.png
-          test -s visual-smoke/sq-admin-desktop-1440x900.png
-          test -s visual-smoke/sq-admin-mobile-390x844.png
+          check_no_overflow() {
+            width="$1"
+            height="$2"
+            url="$3"
+            output="/tmp/sq-hub-overflow-$width-$height.html"
+            "$CHROME" --headless=new --no-sandbox --disable-gpu --virtual-time-budget=800 --window-size="$width,$height" --dump-dom "$url" > "$output"
+            grep -Fq 'data-preview-horizontal-overflow="false"' "$output"
+          }
+
+          check_no_overflow 320 844 http://127.0.0.1:4173/
+          check_no_overflow 360 844 http://127.0.0.1:4173/
+          check_no_overflow 390 844 http://127.0.0.1:4173/
+          check_no_overflow 412 844 http://127.0.0.1:4173/
+          check_no_overflow 768 900 http://127.0.0.1:4173/
+          check_no_overflow 1280 720 http://127.0.0.1:4173/
+          check_no_overflow 1440 900 http://127.0.0.1:4173/
+          check_no_overflow 390 844 http://127.0.0.1:4173/apps
+
+          "$CHROME" --headless=new --no-sandbox --disable-gpu --virtual-time-budget=1000 --window-size=1440,900 --dump-dom 'http://127.0.0.1:4173/?preview=launcher&exercise=escape' > /tmp/launcher-escape.html
+          grep -Fq 'data-preview-escape-restored="true"' /tmp/launcher-escape.html
+          "$CHROME" --headless=new --no-sandbox --disable-gpu --virtual-time-budget=1000 --window-size=1440,900 --dump-dom 'http://127.0.0.1:4173/?preview=account-menu&exercise=escape' > /tmp/account-menu-escape.html
+          grep -Fq 'data-preview-escape-restored="true"' /tmp/account-menu-escape.html
+
+          "$CHROME" --headless=new --no-sandbox --disable-gpu --hide-scrollbars --window-size=1440,900 --screenshot=visual-smoke/sq-hub-home-desktop-1440x900.png http://127.0.0.1:4173/
+          "$CHROME" --headless=new --no-sandbox --disable-gpu --hide-scrollbars --window-size=1440,900 --screenshot=visual-smoke/sq-hub-apps-desktop-1440x900.png http://127.0.0.1:4173/apps
+          "$CHROME" --headless=new --no-sandbox --disable-gpu --hide-scrollbars --window-size=1440,900 --screenshot=visual-smoke/sq-hub-launcher-desktop.png 'http://127.0.0.1:4173/?preview=launcher'
+          "$CHROME" --headless=new --no-sandbox --disable-gpu --hide-scrollbars --window-size=1440,900 --screenshot=visual-smoke/sq-hub-account-menu-desktop.png 'http://127.0.0.1:4173/?preview=account-menu'
+          "$CHROME" --headless=new --no-sandbox --disable-gpu --hide-scrollbars --window-size=1440,900 --screenshot=visual-smoke/sq-hub-empty-workspace.png 'http://127.0.0.1:4173/?state=empty'
+          "$CHROME" --headless=new --no-sandbox --disable-gpu --hide-scrollbars --window-size=390,844 --screenshot=visual-smoke/sq-hub-home-mobile-390x844.png http://127.0.0.1:4173/
+          "$CHROME" --headless=new --no-sandbox --disable-gpu --hide-scrollbars --window-size=390,844 --screenshot=visual-smoke/sq-hub-launcher-mobile-390x844.png 'http://127.0.0.1:4173/?preview=launcher'
+          "$CHROME" --headless=new --no-sandbox --disable-gpu --hide-scrollbars --window-size=390,844 --screenshot=visual-smoke/sq-hub-bottom-nav-mobile.png 'http://127.0.0.1:4173/?state=ordinary'
+          "$CHROME" --headless=new --no-sandbox --disable-gpu --hide-scrollbars --window-size=1440,900 --screenshot=visual-smoke/sq-admin-authorized-desktop.png http://127.0.0.1:4173/admin
+          "$CHROME" --headless=new --no-sandbox --disable-gpu --hide-scrollbars --window-size=1440,900 --screenshot=visual-smoke/sq-hub-ordinary-no-admin.png 'http://127.0.0.1:4173/?state=ordinary'
+
+          test "$(find visual-smoke -name '*.png' | wc -l)" -eq 10
 
       - name: Upload visual smoke screenshots
         if: github.event_name == 'pull_request'

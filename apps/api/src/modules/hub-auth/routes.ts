@@ -16,11 +16,19 @@ function requestContext(request: FastifyRequest): HubRequestContext {
   };
 }
 
+export function accountConsoleUrlFromIssuer(issuer: string): URL {
+  const normalized = issuer.replace(/\/$/, "");
+  return new URL(`${normalized}/account/`);
+}
+
 export function registerHubAuthRoutes(
   app: FastifyInstance,
   hubAuth: HubAuthRuntime,
   redirectUri: string,
+  accountIssuer: string,
 ) {
+  const accountConsoleUrl = accountConsoleUrlFromIssuer(accountIssuer);
+
   app.get("/auth/oidc/start", async (_request, reply) => {
     reply.header("Cache-Control", "no-store");
     try {
@@ -59,6 +67,20 @@ export function registerHubAuthRoutes(
     const sessionToken = readCookie(request.headers.cookie, HUB_SESSION_COOKIE_NAME);
     try {
       return reply.send(await hubAuth.getWorkspace(sessionToken));
+    } catch (error) {
+      if (error instanceof HubAuthError) {
+        return reply.status(error.statusCode).send({ error: error.code });
+      }
+      throw error;
+    }
+  });
+
+  app.get("/account", async (request, reply) => {
+    reply.header("Cache-Control", "no-store");
+    const sessionToken = readCookie(request.headers.cookie, HUB_SESSION_COOKIE_NAME);
+    try {
+      await hubAuth.getSession(sessionToken);
+      return reply.redirect(accountConsoleUrl.href);
     } catch (error) {
       if (error instanceof HubAuthError) {
         return reply.status(error.statusCode).send({ error: error.code });
