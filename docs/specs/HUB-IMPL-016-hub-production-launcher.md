@@ -101,11 +101,15 @@ The operator must reconcile the current production API/database topology before 
 
 ## Reverse-proxy boundary
 
-TLS remains the responsibility of the existing edge/Caddy layer.
+TLS remains the responsibility of the existing containerized Caddy edge.
 
 For `hub.sabilulquran.or.id`:
 
-- public traffic terminates at Caddy and reaches only the Hub web loopback port;
+- Caddy joins the dedicated external-facing Hub web network `sq-hub-production_web_edge`;
+- Caddy targets the unique Hub web DNS alias `sq-hub-production-web:80`;
+- Caddy must not target `127.0.0.1:18201` or any other loopback address from inside its own container;
+- the Hub web service stays on `sq-hub-production_backend` and `sq-hub-production_web_edge` only;
+- the Hub web service must not join the shared `edge_proxy` network, because its nginx upstream name `api` must remain isolated from generic aliases owned by unrelated applications;
 - exact `/auth/callback` reaches the web reverse proxy and is then proxied server-side to the Hub API;
 - `/api/*` reaches the web reverse proxy and is then proxied server-side to the Hub API;
 - `/healthz` is an explicit web health route;
@@ -179,9 +183,15 @@ Safe evidence may record source SHA, immutable image digest, service name, healt
 
 Never record passwords, OTPs, recovery codes, client secrets, access/refresh/ID tokens, authorization codes, cookie values, raw OIDC `sub`, or employee data.
 
-## Account Console boundary
+## Akun SQ production account and recovery boundary
 
-Akun SQ login redesign is already deployed separately. Account Console theme source exists, but setting production `accountTheme=sq-hub` remains a separate authenticated operator action and is not part of this launcher deployment.
+Akun SQ is the user-facing account/login product name; SQ Hub remains the application portal.
+
+Production operator evidence dated 18 September 2026 establishes that the `sq-staff` realm display name is **Akun SQ** and both `loginTheme` and `accountTheme` are `sq-hub`. Repository source must preserve that state and use the existing Sabilul Qur'an organization mark/favicon rather than a generic logo.
+
+The public Keycloak Admin Console remains blocked and is an internal operator surface. The master-realm login should use Akun SQ branding, but this specification does not authorize a custom Admin Console fork.
+
+Repository source may prepare non-secret master-realm Forgot Password and SMTP configuration. Recovery email is not considered active until an authorized operator injects SMTP credentials and verifies real delivery.
 
 ## Acceptance criteria for this GitHub task
 
@@ -195,8 +205,11 @@ Akun SQ login redesign is already deployed separately. Account Console theme sou
 8. Browser token-storage prohibition remains covered across runtime web source.
 9. CI runs production contract checks in addition to the existing typecheck, lint, test, and build gates.
 10. Operations documentation separates repository readiness, deployment, browser verification, and rollback.
-11. Existing accepted staging UAT evidence is retained unchanged.
-12. No production runtime, DNS, Keycloak, HCIS, database, or secret is changed by the PR itself.
+11. Contract checks reject shared-edge API alias collision, containerized-Caddy loopback upstreams, stale API secret state after rotation, and wrong production callback/logout URLs.
+12. Akun SQ account/login/account-console source uses the approved organization logo/favicon and contains no active user-facing "SQ Identity" branding.
+13. Non-secret master-realm branding/Forgot Password/SMTP shape exists without credentials and without claiming recovery delivery is active.
+14. Existing accepted staging UAT evidence is retained unchanged.
+15. No production runtime, DNS, Keycloak, HCIS, database, or secret is changed by the PR itself.
 
 ## Non-goals
 
