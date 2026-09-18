@@ -88,37 +88,44 @@
         '</div>';
     }
 
-    window.addEventListener("load", async () => {
+    function measureLoginLayout() {
       const logo = document.querySelector(".sq-account-brand__logo");
-      try { await logo.decode(); } catch {}
-      requestAnimationFrame(() => {
-        const root = document.documentElement;
-        const card = document.querySelector(".pf-v5-c-login__main").getBoundingClientRect();
-        const logoBox = logo.getBoundingClientRect();
-        const primary = document.querySelector("#kc-login");
-        const formBox = primary.closest("form").getBoundingClientRect();
-        const primaryBox = primary.getBoundingClientRect();
+      const root = document.documentElement;
+      const card = document.querySelector(".pf-v5-c-login__main").getBoundingClientRect();
+      const logoBox = logo.getBoundingClientRect();
+      const primary = document.querySelector("#kc-login");
+      const formBox = primary.closest("form").getBoundingClientRect();
+      const primaryBox = primary.getBoundingClientRect();
 
-        document.body.dataset.horizontal = String(root.scrollWidth > root.clientWidth + 1);
-        document.body.dataset.logoLoaded = String(logo.complete && logo.naturalWidth > 0 && logo.naturalHeight > 0);
-        document.body.dataset.logoSize = String(
-          logoBox.width >= 48 && logoBox.width <= 56 && logoBox.height >= 48 && logoBox.height <= 56
+      document.body.dataset.horizontal = String(root.scrollWidth > root.clientWidth + 1);
+      document.body.dataset.logoLoaded = String(logo.complete && logo.naturalWidth > 0 && logo.naturalHeight > 0);
+      document.body.dataset.logoSize = String(
+        logoBox.width >= 48 && logoBox.width <= 56 && logoBox.height >= 48 && logoBox.height <= 56
+      );
+      document.body.dataset.primaryFull = String(primaryBox.width / formBox.width >= 0.96);
+      document.body.dataset.cardCompact = String(card.width <= 456 && card.height < Math.max(700, innerHeight - 8));
+
+      if (mode === "totp") {
+        const otpGroup = document.querySelector("#otp").closest(".pf-v5-c-form__group").getBoundingClientRect();
+        const trustGroup = document.querySelector("#trustDevice").closest(".pf-v5-c-form__group").getBoundingClientRect();
+        const buttonGroup = document.querySelector("#kc-form-buttons").getBoundingClientRect();
+        document.body.dataset.totpVertical = String(
+          otpGroup.bottom <= trustGroup.top + 1 &&
+          trustGroup.bottom <= buttonGroup.top + 1 &&
+          primaryBox.width / formBox.width >= 0.96
         );
-        document.body.dataset.primaryFull = String(primaryBox.width / formBox.width >= 0.96);
-        document.body.dataset.cardCompact = String(card.width <= 456 && card.height < Math.max(700, innerHeight - 8));
+      }
+    }
 
-        if (mode === "totp") {
-          const otpGroup = document.querySelector("#otp").closest(".pf-v5-c-form__group").getBoundingClientRect();
-          const trustGroup = document.querySelector("#trustDevice").closest(".pf-v5-c-form__group").getBoundingClientRect();
-          const buttonGroup = document.querySelector("#kc-form-buttons").getBoundingClientRect();
-          document.body.dataset.totpVertical = String(
-            otpGroup.bottom <= trustGroup.top + 1 &&
-            trustGroup.bottom <= buttonGroup.top + 1 &&
-            primaryBox.width / formBox.width >= 0.96
-          );
-        }
-      });
-    });
+    const scheduleLoginMeasurement = () => {
+      requestAnimationFrame(() => requestAnimationFrame(measureLoginLayout));
+    };
+    if (document.readyState === "complete") {
+      scheduleLoginMeasurement();
+    } else {
+      window.addEventListener("load", scheduleLoginMeasurement, { once: true });
+    }
+    window.setTimeout(measureLoginLayout, 250);
   </script>
 </body>
 </html>
