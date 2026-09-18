@@ -66,7 +66,7 @@ update="$(
         ssl: $ssl,
         auth: $auth,
         user: $user,
-        password: $password
+        password: env.KEYCLOAK_MASTER_SMTP_PASSWORD
       }
     ' <<<"$current"
 )"
