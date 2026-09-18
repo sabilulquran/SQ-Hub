@@ -19,6 +19,7 @@ Indeks ini membantu maintainer membedakan specification yang sudah berada di `ma
 | HUB-IMPL-011 | [Akun SQ recovery and Google sign-in](HUB-IMPL-011-identity-recovery-google.md) | **ACCEPTED** di `main`; nomor ini tidak tersedia untuk proposal lain. |
 | HUB-IMPL-012 | [Akun SQ trusted device for TOTP](HUB-IMPL-012-trusted-device-totp.md) | **ACCEPTED** di `main`; nomor ini tidak tersedia untuk proposal lain. |
 | HUB-IMPL-015 | [Akun SQ account experience](HUB-IMPL-015-akun-sq-account-experience.md) | **ACCEPTED**; redesign login dan Account Console tanpa perubahan protokol/issuer. |
+| HUB-IMPL-016 | [SQ Hub production launcher release package](HUB-IMPL-016-hub-production-launcher.md) | **ACCEPTED**; repository contract/runbook untuk launcher production, tanpa klaim deployment live. |
 
 ## ID proposal aktif yang belum berada di `main`
 
