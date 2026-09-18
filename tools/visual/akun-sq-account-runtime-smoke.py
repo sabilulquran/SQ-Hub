@@ -194,11 +194,12 @@ return (() => {
     };
   };
   const dark = (color) => {
-    const match = color.match(/rgba?(([d.]+)[, ]+([d.]+)[, ]+([d.]+)(?:[, /]+([d.]+))?)/);
-    if (!match) return false;
-    const alpha = match[4] === undefined ? 1 : Number(match[4]);
+    const values = color.match(/[0-9.]+/g)?.map(Number) || [];
+    if (values.length < 3) return false;
+    const [red, green, blue] = values;
+    const alpha = values.length > 3 ? values[3] : 1;
     if (alpha < .2) return false;
-    return (Number(match[1]) + Number(match[2]) + Number(match[3])) / 3 < 80;
+    return (red + green + blue) / 3 < 80;
   };
 
   const masthead = document.querySelector(".pf-v5-c-masthead");

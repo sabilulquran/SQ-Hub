@@ -48,6 +48,7 @@ jobs:
           test ! -e "$login/resources/img/ysq-mark.svg"
           test ! -e "$account/resources/img/ysq-mark.svg"
           test "$(git hash-object "$account/resources/css/akun-sq-account-959eb4c77248.css" | cut -c1-12)" = 959eb4c77248
+          test ! -e "$account/resources/css/akun-sq-account-8af415711c7c.css"
 
       - name: Preserve native authentication boundary
         shell: bash
