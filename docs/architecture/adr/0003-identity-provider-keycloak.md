@@ -53,8 +53,8 @@ Keycloak owns identity-provider concerns:
 SQ Hub remains the source of truth for:
 - Application Registry;
 - Application Access;
-- Organizational Unit master;
-- platform audit/business administration related to those capabilities.
+- shared Organization Directory projection/distribution (ADR-0007), while HCIS remains workforce organization authoring/system of authority;
+- platform audit/business administration related to SQ Hub-owned capabilities.
 
 Each domain application remains the source of truth for its domain roles and permissions.
 
