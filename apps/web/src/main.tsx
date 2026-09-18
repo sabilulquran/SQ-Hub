@@ -68,7 +68,7 @@ const previewApplications = [
   },
 ];
 
-function PreviewApp() {
+function renderPreviewApp() {
   if (route === "admin") {
     return <AdminCenterPage workspace={fixture} previewApplications={previewApplications} />;
   }
@@ -88,5 +88,5 @@ function PreviewApp() {
 }
 
 createRoot(document.getElementById("root")!).render(
-  <StrictMode>{previewEnabled ? <PreviewApp /> : <WorkspaceApp />}</StrictMode>,
+  <StrictMode>{previewEnabled ? renderPreviewApp() : <WorkspaceApp />}</StrictMode>,
 );
