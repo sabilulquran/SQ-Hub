@@ -60,13 +60,15 @@ jobs:
       - name: Reject legacy user-facing identity brand
         shell: bash
         run: |
-          ! git grep -n -I -F 'SQ Identity' -- \
+          legacy="$(git grep -n -I -F 'SQ Identity' -- \
             apps/web \
             infra/keycloak/themes/sq-hub \
             infra/keycloak/realm/sq-staff-staging-realm.json \
             infra/keycloak/realm/master-production-recovery.json \
             docs/product \
-            docs/security
+            docs/security || true)"
+          legacy="$(printf '%s\n' "$legacy" | grep -v 'not.toContain("SQ Identity")' || true)"
+          test -z "$legacy" || { printf '%s\n' "$legacy"; exit 1; }
 
       - name: Reject legacy product composition from active theme
         shell: bash
