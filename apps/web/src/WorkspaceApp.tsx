@@ -1,11 +1,13 @@
 import { AlertTriangle, LoaderCircle, RefreshCw } from "lucide-react";
 import { type ReactNode, useCallback, useEffect, useState } from "react";
 
-import { AccountTransitionPage } from "@/AccountTransitionPage";\nimport { AdminCenterPage } from "@/AdminCenterPage";
+import { AccountTransitionPage } from "@/AccountTransitionPage";
+import { AdminCenterPage } from "@/AdminCenterPage";
 import { WorkspaceShell } from "@/WorkspaceShell";
 import { BrandLockup } from "@/components/BrandLockup";
 import { adminRouteStateFromResponse, type AdminRouteState } from "@/admin-route-state";
-import { resolveHubRoute } from "@/routes";\nimport type { WorkspaceSnapshot } from "@/types";
+import { resolveHubRoute } from "@/routes";
+import type { WorkspaceSnapshot } from "@/types";
 
 type RuntimeState =
   | { status: "loading" }
