@@ -1,14 +1,14 @@
 # HUB-IMPL-016 — SQ Hub production launcher runbook
 
-**Status:** REPOSITORY PREPARATION  
+**Status:** SOURCE-OF-TRUTH CLOSURE  
 **Repository-ready state:** determined by reviewed PR + green CI  
-**Production deployed state:** NOT ESTABLISHED by this document  
-**Browser verified state:** NOT ESTABLISHED by this document  
+**Production deployed state:** OPERATOR-VERIFIED on 2026-09-18; not re-verified by this PR  
+**Browser verified state:** OPERATOR-VERIFIED on 2026-09-18; not re-verified by this PR  
 **Target:** `https://hub.sabilulquran.or.id`
 
 This runbook is the operator handoff for launching the already-implemented SQ Hub authenticated workspace. It deliberately separates repository evidence, VPS/runtime work, DNS/Cloudflare work, and browser UAT.
 
-The existence of this file, a merged PR, or green CI may establish **REPOSITORY_READY** only. It must never be reported as **DEPLOYED** or **BROWSER_VERIFIED** without live operator/browser evidence.
+The existence of this file, a merged PR, or green CI may establish **REPOSITORY_READY** only. The **DEPLOYED** and **BROWSER_VERIFIED** statements below are carried from explicit operator evidence dated 18 September 2026; this GitHub task did not access production and must not be cited as independent runtime verification.
 
 ## Scope boundary
 
@@ -28,11 +28,11 @@ This launch must not:
 - alter production realm issuer/key;
 - alter HCIS clients/mappers/audience;
 - alter trusted-device flow, Google provider, MFA, or login theme;
-- activate Account Console `accountTheme=sq-hub`;
+- change the already operator-verified production `accountTheme=sq-hub` or `loginTheme=sq-hub` except through an explicit future change;
 - add provisioning/offboarding, Organizational Unit, external identity, universal Person Registry, or domain permissions;
 - copy runtime secrets into Git, terminal transcripts, tickets, or chat.
 
-Akun SQ Account Console source is already present, but production `accountTheme=sq-hub` activation is a separate authenticated operator task.
+Production operator evidence dated 18 September 2026 states that both login and Account Console themes are already `sq-hub`, the realm display name is **Akun SQ**, the permanent master-realm administrator is `admin@sabilulquran.or.id`, and bootstrap account `cutover-bootstrap` is disabled. These are operator attestations, not observations made by this PR.
 
 ## Evidence rules
 
@@ -111,7 +111,17 @@ Read-only inspect:
 
 The repository intentionally does not guess the existing production network or database hostname. Set `SQ_HUB_PRODUCTION_NETWORK`, `DATABASE_URL`, machine-token values, and identity-directory values from the **existing approved production configuration**, not from staging examples.
 
-The web service also uses a small non-internal Docker bridge named `web_edge` so Docker can publish its loopback-only Caddy upstream. Application traffic between web and API remains on the internal `hub_runtime` network; `web_edge` does not publish the API or database.
+The production topology is now explicit and reproducible:
+
+- Compose project/name is `sq-hub-production`;
+- API and web share private network `sq-hub-production_backend`;
+- web additionally joins `sq-hub-production_web_edge`;
+- containerized Caddy joins `sq-hub-production_web_edge`;
+- Caddy targets unique DNS alias `sq-hub-production-web:80`;
+- web must **not** join shared `edge_proxy`;
+- the generic nginx upstream `api:3100` exists only on `sq-hub-production_backend`.
+
+The loopback web port remains useful for host-local smoke checks only. A Caddy container must never use `127.0.0.1:18201` because that address refers to the Caddy container itself, not the Hub web container.
 
 If the current API is managed by a different Compose project/topology than `infra/docker-compose.production.yml`, stop and reconcile that ownership before using the new Compose file. Do not start a duplicate production API.
 
@@ -199,7 +209,7 @@ It must be executed only from an authorized production administration context. I
 - outputs only sanitized PASS markers;
 - stops at `HUB_PRODUCTION_CLIENT_SECRET_HANDOFF_REQUIRED`.
 
-### Secret custody
+### Secret custody and reconciliation
 
 After non-secret settings converge:
 
@@ -207,7 +217,12 @@ After non-secret settings converge:
 2. put it directly into the production runtime secret/env store;
 3. do not echo it;
 4. do not paste it into GitHub/chat/change evidence;
-5. do not save it in the repository desired-state file.
+5. do not save it in the repository desired-state file;
+6. **force-recreate the API container** after any client-secret change; an env-file edit alone does not update an already-running container;
+7. run `infra/keycloak/scripts/verify-hub-production-secret-fingerprint.sh` to compare truncated SHA-256 fingerprints for the Keycloak client secret, the production env/secret file value, and the running API container environment;
+8. proceed only when all three fingerprints match.
+
+The verifier prints fingerprints only and never prints the secret value. A mismatch means the API is stale or custody is inconsistent and login must be treated as not ready.
 
 Safe evidence:
 
@@ -281,7 +296,10 @@ Use `infra/reverse-proxy.caddy.production.example` as the reviewed route shape a
 Rules:
 
 - Caddy owns TLS;
-- upstream is `127.0.0.1:18201` only;
+- Caddy joins `sq-hub-production_web_edge`;
+- upstream is exactly `sq-hub-production-web:80`;
+- do not use `127.0.0.1:18201` from containerized Caddy;
+- do not attach Hub web to shared `edge_proxy`;
 - `/healthz`, exact `/auth/callback`, and `/api/*` are explicit;
 - no public upstream points to API port `18200`;
 - no DB port is exposed;
@@ -396,6 +414,40 @@ HUB_PRODUCTION_ROLLBACK_PASS
 
 or escalate if rollback verification fails.
 
+## Operator-verified production evidence — 2026-09-18
+
+The following facts were supplied by the production operator after successful live verification. They are intentionally recorded separately from repository/CI evidence:
+
+- `https://hub.sabilulquran.or.id` served TLS-valid HTTP 200;
+- DNS A resolved to `103.89.5.4` as DNS-only;
+- production client `sq-hub` was active in realm `sq-staff`;
+- callback was exactly `https://hub.sabilulquran.or.id/auth/callback`;
+- post-logout redirect was exactly `https://hub.sabilulquran.or.id/`;
+- Authorization Code + PKCE S256 succeeded;
+- OIDC transaction cookie attributes included Secure, HttpOnly, SameSite=Lax;
+- production browser reached the user workspace, HCIS Application Access, and Administrasi SQ;
+- API, web, and Keycloak were healthy with restart count 0;
+- public Admin Console returned HTTP 404;
+- permanent master-realm administrator was `admin@sabilulquran.or.id`;
+- bootstrap account `cutover-bootstrap` was disabled;
+- production realm display name was **Akun SQ**;
+- production login and Account Console themes were `sq-hub`;
+- Keycloak client secret and VPS secret file matched; an earlier `invalid_client_credentials` incident was resolved only after the API container was force-recreated from the current env file;
+- Caddy was containerized on `edge_proxy`, while Hub web remained on `sq-hub-production_backend` and `sq-hub-production_web_edge`; Caddy joined the Hub web-edge network and targeted the unique Hub web container DNS name;
+- attaching Hub web to shared `edge_proxy` caused an `api` alias collision and login 502, so that topology is explicitly forbidden;
+- no destructive database migration/change was performed.
+
+Repository/CI evidence does not independently re-prove any item in this list.
+
+## Master realm SMTP / Forgot Password preparation
+
+Repository source includes:
+
+- `infra/keycloak/realm/master-production-recovery.json` for non-secret master-realm Akun SQ branding, `sq-hub` login/account themes, and `resetPasswordAllowed=true`;
+- `infra/keycloak/master-smtp.env.example` for the non-secret SMTP configuration shape.
+
+Do not claim email recovery is operational until an authorized operator supplies SMTP credentials/configuration in the production secret store and successfully verifies delivery. Keycloak Admin Console remains an internal operator surface; this package does not fork or redesign Admin Console.
+
 ## Final status record
 
 Use three independent lines:
@@ -403,7 +455,7 @@ Use three independent lines:
 | State | Allowed value | Evidence |
 | --- | --- | --- |
 | Repository | `REPOSITORY_READY` / `NOT_READY` | merged SHA + CI |
-| Runtime | `DEPLOYED` / `NOT_DEPLOYED` / `ROLLED_BACK` | operator/VPS + edge/DNS evidence |
-| Browser | `BROWSER_VERIFIED` / `NOT_VERIFIED` | actual browser UAT |
+| Runtime | `DEPLOYED` | operator evidence dated 2026-09-18; not independently re-verified by GitHub |
+| Browser | `BROWSER_VERIFIED` | operator browser evidence dated 2026-09-18; not independently re-verified by GitHub |
 
 Never infer one row from another.
