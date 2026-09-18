@@ -9,15 +9,17 @@ SQ Hub **bukan ERP monolith**. Business logic HCIS, SPMB, Finance, Workspace, Ac
 ## Status
 Foundation documentation accepted. Implementasi utama Wave 1 sudah berada di `main`, tetapi status deployment, UAT, dan acceptance tidak boleh disimpulkan hanya dari status specification atau merge.
 
-Ringkasan status terbaru yang merekonsiliasi checkout lokal, GitHub, dan audit VPS langsung pada 16 September 2026 tersedia di:
+Ringkasan status repository terbaru untuk persiapan launcher production tersedia di:
 
-- [`docs/operations/project-status-2026-09-16.md`](docs/operations/project-status-2026-09-16.md)
+- [`docs/operations/project-status-2026-09-18.md`](docs/operations/project-status-2026-09-18.md)
+
+Audit VPS langsung terakhir yang direkonsiliasi di repository tetap tersedia di [`docs/operations/project-status-2026-09-16.md`](docs/operations/project-status-2026-09-16.md).
 
 Kondisi yang dapat dinyatakan dari sumber yang diperiksa:
-- `main` berada di `a09886a6e02a699bb77fd18bf9262a07f48dbda4`; CI dan Wave 1 Acceptance Contract untuk commit tersebut berhasil;
+- `main` terakhir diaudit untuk paket launcher production dari `57ddddb64a78ef4ca0ad405d14bb16a9c1f56253`; branch HUB-IMPL-016 menyiapkan kontrak repository tanpa mengubah production;
 - audit langsung 16 September 2026 mengonfirmasi HCIS production berjalan dengan OIDC, SQ Identity/Keycloak production sehat, dan SQ Hub API production sehat;
 - recovery/email login, Google provider, dan trusted-device flow terpasang pada production, tetapi acceptance pengguna end-to-end masih belum lengkap;
-- staging Hub/HCIS/Keycloak berhenti, `hub.sabilulquran.or.id` belum memiliki DNS/route/web production, dan backup terjadwal, restore, audit event, serta log rotation masih menjadi gap;
+- bukti audit live terakhir masih menyatakan `hub.sabilulquran.or.id` belum memiliki DNS/route/web production; HUB-IMPL-016 hanya menyiapkan jalur repository dan tidak mengubah status live tersebut;
 - `docs/operations/HUB-IMPL-003-production-cutover.md` tetap `CUTOVER_BLOCKED`: deployment yang teramati tidak menggantikan bukti approval, acceptance, rollback rehearsal, atau UAT yang masih disyaratkan.
 
 Keputusan foundation yang sudah dikunci:
