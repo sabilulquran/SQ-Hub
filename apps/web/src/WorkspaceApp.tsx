@@ -23,9 +23,6 @@ function startupError(): string | null {
   return null;
 }
 
-function adminRoute(): boolean {
-  return window.location.pathname === "/admin" || window.location.pathname.startsWith("/admin/");
-}
 
 export function WorkspaceApp() {
   const [state, setState] = useState<RuntimeState>(() => {
