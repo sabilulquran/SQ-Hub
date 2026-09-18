@@ -1,6 +1,6 @@
 # ADR-0007: HCIS-authored Organization Directory
 
-**Status:** Accepted  
+**Status:** Accepted
 **Date:** 2026-09-18
 
 ## Context
