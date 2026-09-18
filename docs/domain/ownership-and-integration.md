@@ -11,7 +11,9 @@ Setiap data penting harus memiliki satu system of record yang jelas. Aplikasi la
 | Data/capability | Owner |
 |---|---|
 | Staff global identity | SQ Identity (SQ Hub capability) |
-| Organizational Unit | SQ Hub |
+| Workforce organization authoring (unit, posisi/jabatan, penempatan, atasan, effective dates) | HCIS |
+| Shared Organization Directory projection/distribution | SQ Hub |
+| Approval/workflow policy dan decision audit | masing-masing aplikasi domain |
 | Application Registry | SQ Hub |
 | Application Access | SQ Hub |
 | Employee master | HCIS |
@@ -23,21 +25,28 @@ Setiap data penting harus memiliki satu system of record yang jelas. Aplikasi la
 | Work/project records | Workspace (future) |
 | Student academic records | Academic (future) |
 
-## Organizational Unit transition
-HCIS sudah memiliki konsep `organizational_units`. Foundation v1 menetapkan **target ownership** Organizational Unit pada SQ Hub, tetapi cutover tidak boleh diasumsikan terjadi hanya karena dokumen ini diterima.
+## Organization authoring dan shared directory
+HCIS adalah **system of authority** dan tempat authoring untuk workforce organization, termasuk unit organisasi, posisi/jabatan, penempatan pegawai, hubungan atasan, effective dates, dan data ketenagakerjaan terkait.
 
-Sebelum SQ Hub menjadi system of record aktif untuk Organizational Unit:
-- inventaris dan petakan unit HCIS yang sudah ada;
-- tentukan stable identifier/mapping untuk integrasi;
-- tentukan migration/cutover plan;
-- hindari periode dual-write tanpa aturan sinkronisasi yang eksplisit;
-- pastikan HCIS tetap berjalan normal sampai cutover dinyatakan selesai.
+SQ Hub memiliki **Organization Directory** sebagai projection/read model dan distribution layer lintas aplikasi. Hub menerima data dari HCIS melalui authenticated integration contract dan tidak menyediakan edit path untuk fakta organisasi milik HCIS.
 
-Setelah cutover, aplikasi domain tidak membuat master unit paralel sebagai source of truth baru.
+Boundary wajib:
+- tidak ada direct database coupling ke database HCIS untuk shared organization reads;
+- tidak ada dual-write HCIS dan Hub;
+- tidak ada master organisasi paralel;
+- Keycloak bukan organization master;
+- aplikasi lain seperti Finance dan Workspace membaca shared Organization Directory dari Hub sebagai default distribution path;
+- last-known-good projection boleh dilayani saat HCIS sementara tidak tersedia, tetapi source/version/synchronized_at atau as_of/staleness harus terlihat;
+- SLA, global identifier, snapshot/delta, conflict handling, dan retention tetap DISCOVERY/TBD pada HUB-IMPL-018.
+
+### Approval/workflow boundary
+SQ Hub bukan central approval engine. Hub hanya menyediakan fakta organisasi yang dapat dipakai domain app untuk menentukan kandidat approver atau scope.
+
+Masing-masing aplikasi domain tetap memiliki approval policy, workflow state, delegation, escalation, authorization, dan audit keputusan. Ketika transaksi diajukan, domain app menyimpan resolved approver snapshot beserta organization version/effective time yang digunakan. Perubahan struktur organisasi berikutnya tidak boleh diam-diam menulis ulang approval yang sedang berjalan tanpa aturan domain eksplisit.
 
 ## Cross-domain workflow
 Cross-domain workflow adalah expected behavior, bukan exception. Contoh:
-- SPMB menggunakan Organizational Unit dari SQ Hub.
+- Aplikasi domain menggunakan Organization Directory SQ Hub untuk shared organization reads yang diperlukan, sementara HCIS tetap meng-author data sumber.
 - SPMB dapat meminta Finance membuat tagihan.
 - HCIS dapat mengirim atau menerima finance-related contract sesuai workflow yang disetujui.
 - SPMB dapat membuat work item pada Workspace melalui contract.
