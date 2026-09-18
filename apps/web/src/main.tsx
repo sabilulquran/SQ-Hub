@@ -22,6 +22,16 @@ const previewMode =
     : params.get("preview") === "account-menu"
       ? "account-menu"
       : undefined;
+if (previewEnabled) {
+  window.requestAnimationFrame(() => {
+    window.requestAnimationFrame(() => {
+      document.body.dataset.previewHorizontalOverflow = String(
+        document.documentElement.scrollWidth > document.documentElement.clientWidth + 1,
+      );
+    });
+  });
+}
+
 const fixture =
   params.get("state") === "empty"
     ? emptyWorkspaceFixture
