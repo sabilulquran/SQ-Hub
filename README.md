@@ -2,7 +2,7 @@
 
 Shared digital platform foundation for Sabilul Qur'an.
 
-SQ Hub menyediakan fondasi lintas aplikasi untuk identity/SSO staf, Organizational Unit master, Application Registry/Access, Hub Launcher, design system, dan shared capability lain yang benar-benar dibutuhkan lintas domain.
+SQ Hub menyediakan fondasi lintas aplikasi untuk identity/SSO staf, shared Organization Directory, Application Registry/Access, Hub Launcher, design system, dan shared capability lain yang benar-benar dibutuhkan lintas domain. Workforce organization tetap di-author oleh HCIS; SQ Hub mendistribusikan projection lintas aplikasi sesuai ADR-0007.
 
 SQ Hub **bukan ERP monolith**. Business logic HCIS, SPMB, Finance, Workspace, Academic, dan aplikasi domain lain tetap dimiliki aplikasi masing-masing.
 
@@ -28,6 +28,7 @@ Keputusan foundation yang sudah dikunci:
 - **MFA wajib untuk privileged/security-sensitive Staff**, belum mandatory untuk seluruh Staff pada Foundation v1.
 - **SSO session baseline:** idle 8 jam, max 12 jam, Remember Me off pada rollout awal.
 - **HCIS auth migration tidak memindahkan password/MFA lama**; local principal ID dipertahankan dan ditautkan ke Keycloak melalui OIDC `issuer + sub`.
+- **HCIS tetap system of authority dan authoring untuk workforce organization**; SQ Hub menyediakan shared Organization Directory projection/distribution, sedangkan approval/workflow tetap dimiliki aplikasi domain (ADR-0007).
 - **HCIS frontend menjadi baseline awal SQ Design System**; shared primitives nantinya diekstrak ke SQ Hub.
 - **SQ Hub mengikuti engineering family HCIS:** TypeScript, Fastify, PostgreSQL, React/Vite/Tailwind ketika web dibutuhkan.
 - **Wave 1 staging naming:** `login.sabilulquran.or.id` uses the `sq-staff-staging` realm and separate staging data/configuration; the application hosts are `hub-staging.sabilulquran.or.id` and `hcis-staging.sabilulquran.or.id`.
@@ -57,7 +58,7 @@ Implementation order:
 2. `HUB-IMPL-002` — Application Registry + Application Access.
 3. `HUB-IMPL-003` — HCIS OIDC consumer integration.
 
-Wave 1 intentionally does not include production auth cutover, Organization migration, full launcher/admin UI, or SPMB implementation. Production deployment yang kemudian teramati harus direkonsiliasi sebagai operational evidence terpisah; hal itu tidak mengubah non-goal historis atau acceptance criteria secara retrospektif.
+Wave 1 intentionally does not include production auth cutover, Organization Directory integration, full launcher/admin UI, or SPMB implementation. Production deployment yang kemudian teramati harus direkonsiliasi sebagai operational evidence terpisah; hal itu tidak mengubah non-goal historis atau acceptance criteria secara retrospektif.
 
 ## URLs
 Production target:
