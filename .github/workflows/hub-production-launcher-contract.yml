@@ -32,6 +32,7 @@ on:
       - "infra/keycloak/clients/sq-hub-production.json"
       - "infra/keycloak/scripts/reconcile-hub-production-client.sh"
       - "infra/keycloak/scripts/verify-hub-production-secret-fingerprint.sh"
+      - "infra/keycloak/scripts/reconcile-master-production-recovery.sh"
       - "infra/keycloak/realm/master-production-recovery.json"
       - "infra/keycloak/master-smtp.env.example"
       - "infra/keycloak/themes/sq-hub/login/footer.ftl"
