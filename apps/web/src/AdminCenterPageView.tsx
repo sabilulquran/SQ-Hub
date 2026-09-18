@@ -297,40 +297,9 @@ export function AdminCenterPage({
 
   return (
     <div className="min-h-screen bg-background">
-      <aside className="fixed inset-y-0 left-0 z-30 hidden w-64 border-r border-border/65 bg-sidebar/95 px-4 py-5 backdrop-blur-xl lg:flex lg:flex-col">
-        <BrandLockup />
-        <nav className="mt-7 space-y-1" aria-label="Navigasi Administrasi SQ">
-          <a href="/" className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold text-muted-foreground transition hover:bg-white hover:text-foreground">
-            <ArrowLeft className="h-[18px] w-[18px]" aria-hidden="true" />
-            Kembali ke SQ Hub
-          </a>
-          <div className="flex items-center gap-3 rounded-xl bg-brand-primary-pale px-3 py-2.5 text-sm font-bold text-brand-primary-deep ring-1 ring-brand-primary/10" aria-current="page">
-            <ShieldEllipsis className="h-[18px] w-[18px]" aria-hidden="true" />
-            Administrasi SQ
-          </div>
-        </nav>
-        <div className="mt-auto pt-5">
-          <div className="mb-3 rounded-xl border border-brand-primary/10 bg-brand-primary-pale/55 px-3 py-3 text-[11px] leading-5 text-brand-primary-deep">
-            <span className="flex items-center gap-2 font-bold"><LockKeyhole className="h-4 w-4" /> Area terbatas</span>
-            <span className="mt-1 block text-brand-primary-deep/75">Akses aplikasi hanya membuka pintu aplikasi. Hak bisnis tetap dikelola aplikasi domain.</span>
-          </div>
-          <AccountMenu user={workspace.user} variant="sidebar" onLogout={onLogout} />
-        </div>
-      </aside>
+      <GlobalHeader workspace={workspace} onLogout={onLogout} />
 
-      <div className="lg:pl-64">
-        <header className="sticky top-0 z-20 border-b border-border/55 bg-background/90 px-4 py-2.5 backdrop-blur-xl sm:px-6 lg:px-7">
-          <div className="mx-auto flex max-w-7xl items-center justify-between gap-4">
-            <div className="lg:hidden"><BrandLockup compact /></div>
-            <div className="hidden min-w-0 lg:block">
-              <p className="text-[10px] font-bold uppercase tracking-[0.15em] text-muted-foreground">Platform</p>
-              <h1 className="truncate font-display text-lg font-bold tracking-[-0.02em] text-brand-heading">Administrasi SQ</h1>
-            </div>
-            <AccountMenu user={workspace.user} variant="header" onLogout={onLogout} />
-          </div>
-        </header>
-
-        <main className="mx-auto max-w-7xl px-4 pb-28 pt-5 sm:px-6 sm:pt-6 lg:px-7 lg:pb-10">
+      <main className="mx-auto max-w-7xl px-4 pb-32 pt-7 sm:px-6 sm:pt-8 lg:px-8 lg:pb-12">
           <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
             <div>
               <p className="text-[10px] font-bold uppercase tracking-[0.17em] text-brand-primary-deep">Administrasi platform</p>
@@ -436,8 +405,11 @@ export function AdminCenterPage({
               ) : null}
             </>
           ) : null}
-        </main>
-      </div>
+      </main>
+      <MobileNavigation
+        active="admin"
+        platformAdministration={workspace.capabilities.platformAdministration}
+      />
     </div>
   );
 }
