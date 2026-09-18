@@ -2,7 +2,7 @@
 
 **Status:** ACCEPTED
 **Date:** 2026-08-27
-**Applies to:** internal Staff identities using SQ Identity / Keycloak
+**Applies to:** internal Staff identities using Akun SQ / Keycloak
 
 ## Goal
 Memberikan pengalaman login yang sederhana untuk Staff sekaligus menetapkan baseline keamanan yang konsisten untuk HCIS, SPMB Admin, SQ Hub, dan aplikasi internal berikutnya.
@@ -22,7 +22,7 @@ Human login identifier:
 Username/email boleh berubah sesuai lifecycle bisnis; aplikasi domain tetap mengikat principal berdasarkan `issuer + sub`, bukan string login.
 
 ## 2. Account provisioning
-- SQ Identity/Keycloak adalah pemilik credential dan authentication lifecycle.
+- Akun SQ/Keycloak adalah pemilik credential dan authentication lifecycle.
 - SQ Hub adalah pemilik Application Access.
 - Domain application tidak membuat password Staff sendiri.
 - Account baru harus memiliki email yang dapat digunakan untuk activation/recovery sebelum self-service recovery diaktifkan.
@@ -37,12 +37,12 @@ Baseline awal:
 - tidak ada rotasi password periodik hanya berdasarkan umur;
 - password wajib diganti setelah reset administratif, indikasi compromise, atau perubahan security policy yang memang membutuhkan reset.
 
-Password lama HCIS tidak menjadi credential SQ Identity setelah migration cutover.
+Password lama HCIS tidak menjadi credential Akun SQ setelah migration cutover.
 
 ## 4. MFA policy
 ### Wajib MFA sejak Foundation v1
 MFA wajib untuk identity yang memiliki salah satu kategori akses berikut:
-- Keycloak/SQ Identity administrator;
+- Keycloak/Akun SQ administrator;
 - SQ Hub platform administrator atau pengelola Application Access;
 - HCIS Super Admin;
 - administrator aplikasi/domain;
@@ -84,10 +84,10 @@ Internal web application menggunakan standard OIDC Authorization Code flow. Untu
 - jangan simpan access token atau refresh token di `localStorage`/`sessionStorage`;
 - jangan memakai satu shared cookie untuk semua `*.sabilulquran.or.id`.
 
-SSO terjadi karena aplikasi mempercayai session SQ Identity, bukan karena semua aplikasi berbagi cookie yang sama.
+SSO terjadi karena aplikasi mempercayai session Akun SQ, bukan karena semua aplikasi berbagi cookie yang sama.
 
 ## 8. Logout
-- Tombol **Keluar** harus mengakhiri application session dan SQ Identity SSO session.
+- Tombol **Keluar** harus mengakhiri application session dan Akun SQ SSO session.
 - Sebelum aplikasi internal kedua production, global logout antar aplikasi harus diuji menggunakan mekanisme OIDC/Keycloak yang sesuai (termasuk back-channel logout bila dipakai oleh client implementation).
 - Menutup tab/browser bukan pengganti logout.
 
@@ -111,7 +111,7 @@ Keycloak authenticates identity
 
 Akun yang disabled pada **global identity lifecycle** tidak boleh memperoleh session baru. Domain-local suspension/application-access revocation tetap mengikuti owner masing-masing dan tidak boleh otomatis men-disable global identity.
 
-Contoh: Staff dapat kehilangan akses HCIS tetapi tetap memiliki akses sah ke SPMB Admin. HCIS tidak berwenang mematikan SQ Identity global hanya karena status lokal HCIS berubah.
+Contoh: Staff dapat kehilangan akses HCIS tetapi tetap memiliki akses sah ke SPMB Admin. HCIS tidak berwenang mematikan Akun SQ global hanya karena status lokal HCIS berubah.
 
 ## 11. Review triggers
 Policy ini harus direview jika:
