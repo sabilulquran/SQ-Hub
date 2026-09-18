@@ -33,7 +33,7 @@ It may authorize platform concerns such as:
 - Application Registry administration;
 - Application Access administration;
 - platform audit inspection;
-- future shared organization administration after the Organizational Unit master is explicitly implemented;
+- future Organization Directory operational inspection/reconciliation after a dedicated implementation contract is accepted; this does not authorize HCIS-owned organization authoring in Hub;
 - future identity provisioning/offboarding workflows that coordinate platform-owned responsibilities.
 
 It does **not** automatically authorize domain business capabilities.
@@ -139,7 +139,7 @@ Employee `resigned` state remains an HCIS fact and must not be silently equated 
 - password/MFA/recovery management UI;
 - HCIS role or permission administration;
 - migration of HCIS `SUPER_ADMIN`;
-- Organizational Unit master/cutover;
+- workforce organization authoring/master atau ownership cutover dari HCIS ke Hub;
 - Application Registry mutation UI;
 - Application Access mutation UI;
 - universal Person Registry;

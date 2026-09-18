@@ -9,7 +9,7 @@ SQ Hub menyediakan fondasi lintas aplikasi sehingga staf dapat menggunakan berba
 
 ## SQ Hub is
 - fondasi identitas staf dan Single Sign-On;
-- master Organizational Unit;
+- shared Organization Directory yang memproyeksikan workforce organization dari HCIS;
 - registry aplikasi dan Application Access;
 - shared design system dan app-shell conventions;
 - tempat shared capability lintas aplikasi bila kebutuhan nyata terbukti;
@@ -18,6 +18,8 @@ SQ Hub menyediakan fondasi lintas aplikasi sehingga staf dapat menggunakan berba
 ## SQ Hub is not
 - ERP monolith;
 - tempat business logic HCIS, SPMB, Finance, Workspace, Academic, atau aplikasi domain lain;
+- authoring system/master untuk workforce organization milik HCIS;
+- central approval engine untuk transaksi domain;
 - satu universal database untuk semua business domain;
 - universal Person Registry pada fase awal;
 - alasan untuk membuat microservice atau abstraction sebelum ada kebutuhan nyata.

@@ -75,7 +75,14 @@ Untuk task visual lintas aplikasi, baca `docs/design/hcis-baseline.md` sebelum m
 - Legacy credential retention maksimum 14 hari hanya untuk explicit rollback, lalu wajib dihapus setelah accepted cutover.
 
 ## 6. Organization
-Organizational Unit adalah target shared master milik SQ Hub. Existing HCIS organization data tetap operasional sampai migration/cutover eksplisit selesai. Jangan membuat master unit paralel atau dual-write tanpa aturan sinkronisasi yang terdokumentasi.
+- HCIS adalah system of authority dan tempat authoring untuk workforce organization: unit organisasi, posisi/jabatan, penempatan pegawai, hubungan atasan, effective dates, dan data ketenagakerjaan terkait.
+- SQ Hub memiliki shared **Organization Directory** sebagai read model/distribution layer lintas aplikasi; Hub tidak mengedit fakta organisasi milik HCIS.
+- Integrasi HCIS -> Hub menggunakan authenticated controlled contract dan dedicated service identity. Jangan direct database coupling.
+- Jangan membuat dual-write HCIS/Hub, master organisasi paralel, atau menjadikan Keycloak organization master.
+- Approval policy, workflow state, delegation, escalation, domain authorization, dan audit keputusan tetap dimiliki aplikasi domain. SQ Hub bukan central approval engine.
+- Hub hanya menyediakan fakta organisasi untuk candidate approver/scope. Domain app menyimpan resolved-approver snapshot beserta organization version/effective time saat transaksi diajukan; perubahan struktur berikutnya tidak boleh diam-diam menulis ulang approval berjalan tanpa aturan domain eksplisit.
+- Organization Directory harus mendukung last-known-good projection dan metadata source/version/synchronized_at atau as_of/staleness sesuai ADR-0007 dan HUB-IMPL-018.
+- SLA, global identifier, snapshot/delta, conflict handling, dan retention tetap DISCOVERY/TBD sampai diputuskan eksplisit.
 
 ## 7. Engineering stack
 - Foundation stack mengikuti ADR-0006: TypeScript/Node.js, Fastify/PostgreSQL untuk API, React/Vite/Tailwind untuk web saat dibutuhkan.
