@@ -7,31 +7,25 @@ SQ Hub menyediakan fondasi lintas aplikasi untuk identity/SSO staf, shared Organ
 SQ Hub **bukan ERP monolith**. Business logic HCIS, SPMB, Finance, Workspace, Academic, dan aplikasi domain lain tetap dimiliki aplikasi masing-masing.
 
 ## Status
-Foundation documentation accepted. Implementasi utama Wave 1 sudah berada di `main`, tetapi status deployment, UAT, dan acceptance tidak boleh disimpulkan hanya dari status specification atau merge.
+Foundation v1 sekarang berstatus **ACCEPTED**. Core Akun SQ + SQ Hub telah melewati fase rancangan awal dan memiliki evidence production untuk login/SSO, launcher, Application Access, Administrasi SQ foundation, serta Account Console.
 
-Ringkasan status repository terbaru untuk persiapan launcher production tersedia di:
+Ringkasan status terkini:
+- [`docs/operations/project-status-2026-09-19.md`](docs/operations/project-status-2026-09-19.md)
 
-- [`docs/operations/project-status-2026-09-18.md`](docs/operations/project-status-2026-09-18.md)
+Pemisahan evidence tetap wajib:
+- **repository/CI** membuktikan source/configuration dan automated contract;
+- **operator/runtime/browser** membuktikan kondisi production pada waktu pengujian;
+- capability yang masih memerlukan runtime acceptance tidak boleh dinyatakan selesai hanya karena source sudah merge.
 
-Audit VPS langsung terakhir yang direkonsiliasi di repository tetap tersedia di [`docs/operations/project-status-2026-09-16.md`](docs/operations/project-status-2026-09-16.md).
-
-Kondisi yang dapat dinyatakan dari sumber yang diperiksa:
-- `main` terakhir diaudit untuk paket launcher production dari `57ddddb64a78ef4ca0ad405d14bb16a9c1f56253`; branch HUB-IMPL-016 menyiapkan kontrak repository tanpa mengubah production;
-- audit langsung 16 September 2026 mengonfirmasi HCIS production berjalan dengan OIDC, SQ Identity/Keycloak production sehat, dan SQ Hub API production sehat;
-- recovery/email login, Google provider, dan trusted-device flow terpasang pada production, tetapi acceptance pengguna end-to-end masih belum lengkap;
-- bukti audit live terakhir masih menyatakan `hub.sabilulquran.or.id` belum memiliki DNS/route/web production; HUB-IMPL-016 hanya menyiapkan jalur repository dan tidak mengubah status live tersebut;
-- `docs/operations/HUB-IMPL-003-production-cutover.md` tetap `CUTOVER_BLOCKED`: deployment yang teramati tidak menggantikan bukti approval, acceptance, rollback rehearsal, atau UAT yang masih disyaratkan.
-
-Keputusan foundation yang sudah dikunci:
-- **SQ Identity menggunakan Keycloak** sebagai self-hosted Identity Provider engine.
-- **Employee login menggunakan NIP/employee number sebagai primary username**, dengan verified unique email sebagai alternate login; Staff tanpa NIP memakai verified unique email pada Foundation v1.
-- **MFA wajib untuk privileged/security-sensitive Staff**, belum mandatory untuk seluruh Staff pada Foundation v1.
-- **SSO session baseline:** idle 8 jam, max 12 jam, Remember Me off pada rollout awal.
-- **HCIS auth migration tidak memindahkan password/MFA lama**; local principal ID dipertahankan dan ditautkan ke Keycloak melalui OIDC `issuer + sub`.
-- **HCIS tetap system of authority dan authoring untuk workforce organization**; SQ Hub menyediakan shared Organization Directory projection/distribution, sedangkan approval/workflow tetap dimiliki aplikasi domain (ADR-0007).
-- **HCIS frontend menjadi baseline awal SQ Design System**; shared primitives nantinya diekstrak ke SQ Hub.
-- **SQ Hub mengikuti engineering family HCIS:** TypeScript, Fastify, PostgreSQL, React/Vite/Tailwind ketika web dibutuhkan.
-- **Wave 1 staging naming:** `login.sabilulquran.or.id` uses the `sq-staff-staging` realm and separate staging data/configuration; the application hosts are `hub-staging.sabilulquran.or.id` and `hcis-staging.sabilulquran.or.id`.
+Status ringkas per area:
+- **Akun SQ core** — production;
+- **SQ Hub launcher** — production;
+- **HCIS SSO + Application Access** — production;
+- **Account Console** — production dan responsive;
+- **password recovery / Google / trusted-device** — source sudah accepted dan production component teramati aktif, tetapi journey end-to-end masih membutuhkan evidence penutupan;
+- **Staff provisioning/offboarding** — proposal HUB-IMPL-013, belum accepted;
+- **Organization Directory HCIS → Hub** — boundary Accepted melalui ADR-0007, runtime masih HUB-IMPL-018 DISCOVERY;
+- **SQ Portal / universal person / external identity** — visi/discovery lanjutan, bukan scope Foundation v1.
 
 ## Source of truth
 Mulai dari:
