@@ -5,13 +5,13 @@
 **Product capabilities:** HUB-FND-006 Hub Launcher, HUB-FND-005 Application Access administration  
 **Promotes:** HUB-IMPL-004, HUB-IMPL-005, HUB-IMPL-007, HUB-IMPL-009  
 **Environment:** production  
-**Execution:** repository preparation only; live deployment remains an operator change
+**Execution:** repository preparation plus an operator-authorized GitHub Actions deployment path; PR merge alone never mutates production
 
 ## Objective
 
 Provide one explicit, reviewable repository path for launching the existing SQ Hub authenticated workspace and Admin Center at `https://hub.sabilulquran.or.id` without inventing new identity, authorization, or domain behavior.
 
-This specification authorizes the repository artifacts needed for a production launcher release. It does **not** authorize an agent to mutate production runtime, DNS, Cloudflare, Keycloak, HCIS, databases, or secrets, and it does not convert repository readiness into deployment or browser acceptance.
+This specification authorizes the repository artifacts needed for a production launcher release and a manually dispatched, production-environment-gated GitHub Actions workflow that can roll reviewed images to the existing production VPS. Creating or merging a PR does **not** itself authorize or trigger production mutation. A live run still requires the explicit `workflow_dispatch` confirmation, GitHub `production` environment approval, production backup attestation, and configured SSH/runtime secrets. Repository readiness never converts itself into deployment or browser acceptance.
 
 ## Existing behavior promoted unchanged
 
@@ -150,6 +150,31 @@ Operator reconciliation rules:
 
 Repeated reconciliation of the represented non-secret settings must converge to the same state without changing unrelated clients or realm settings.
 
+## GitHub Actions production deployment contract
+
+The canonical automated path is `.github/workflows/deploy-production.yml`.
+
+The workflow must:
+
+- run only through `workflow_dispatch`;
+- require an exact 40-character SHA that equals current `origin/main`;
+- require the literal confirmations `DEPLOY_PRODUCTION` and `BACKUP_VERIFIED`;
+- run behind GitHub Environment `production`;
+- use SSH credentials and runtime paths from GitHub environment/repository secrets, never from committed files;
+- resolve API, web, and Akun SQ/Keycloak source SHAs independently from the requested main SHA;
+- pull only organization-owned exact-SHA GHCR tags, then resolve and persist immutable `@sha256:` digests for production;
+- compare desired image IDs with the currently running containers and make documentation-only releases a runtime no-op;
+- deploy API, web, and identity as independent scopes; an unqualified whole-stack `docker compose up` is forbidden;
+- preserve the existing production Hub env and production Keycloak env through mode-600 rollback copies during a run;
+- fail closed when the production worktree is dirty, required runtime files are missing, component images are absent, the production Keycloak compose path cannot render the requested image, or public health checks fail;
+- automatically attempt image/config rollback for services recreated during a failed run without destructively rolling back databases;
+- verify Hub health, exact production OIDC issuer discovery, and HCIS public reachability before reporting PASS;
+- logout the production VPS from GHCR when the workflow finishes.
+
+The workflow intentionally derives component SHAs instead of assuming every `main` commit has three newly built images. The API/web/Keycloak publisher workflows already produce immutable `sha-<component-source-sha>` tags when their respective source paths change. A documentation-only merge therefore advances repository source of truth without manufacturing or redeploying identical runtime images.
+
+Identity image rollout is supported only when production supplies an explicit existing Keycloak env file and Compose file through protected GitHub secrets. The workflow may update only the `SQ_HUB_KEYCLOAK_IMAGE` runtime image reference and recreate the existing `keycloak` service. It does not automatically reconcile realm settings, Google credentials, SMTP credentials, users, roles, Application Access, or domain authorization.
+
 ## Deployment and rollback contract
 
 The operator runbook must keep these phases distinct:
@@ -210,6 +235,8 @@ Repository source may prepare non-secret master-realm Forgot Password and SMTP c
 13. Non-secret master-realm branding/Forgot Password/SMTP shape exists without credentials and without claiming recovery delivery is active.
 14. Existing accepted staging UAT evidence is retained unchanged.
 15. No production runtime, DNS, Keycloak, HCIS, database, or secret is changed by the PR itself.
+16. A guarded manual GitHub Actions deployment workflow validates exact current-main SHA, production approval, backup attestation, component-specific immutable images, service-scoped recreation, public health, and rollback behavior.
+17. Documentation-only main changes resolve to the existing component image SHAs and do not force API/web/Keycloak recreation.
 
 ## Non-goals
 
@@ -221,4 +248,4 @@ Repository source may prepare non-secret master-realm Forgot Password and SMTP c
 - universal Person Registry;
 - HCIS/SPMB/Finance business logic;
 - universal Keycloak roles/permissions;
-- production execution by repository agents.
+- automatic production execution on merge/push without explicit workflow dispatch and production approval.

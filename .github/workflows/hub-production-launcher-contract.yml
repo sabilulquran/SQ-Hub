@@ -4,6 +4,8 @@ on:
   pull_request:
     paths:
       - ".github/workflows/hub-production-launcher-contract.yml"
+      - ".github/workflows/deploy-production.yml"
+      - "tools/production/deploy_from_github.sh"
       - "tools/production/**"
       - "infra/docker-compose.production.yml"
       - "infra/production.env.example"
@@ -25,6 +27,8 @@ on:
       - main
     paths:
       - ".github/workflows/hub-production-launcher-contract.yml"
+      - ".github/workflows/deploy-production.yml"
+      - "tools/production/deploy_from_github.sh"
       - "tools/production/**"
       - "infra/docker-compose.production.yml"
       - "infra/production.env.example"
@@ -55,6 +59,39 @@ jobs:
       - name: Validate production repository contract
         run: python3 tools/production/verify_hub_launcher_contract.py
 
+      - name: Validate guarded production deployment workflow
+        shell: bash
+        run: |
+          set -euo pipefail
+          deploy='.github/workflows/deploy-production.yml'
+          helper='tools/production/deploy_from_github.sh'
+          test -f "$deploy"
+          test -f "$helper"
+          bash -n "$helper"
+          ruby -e 'require "yaml"; YAML.load_file(ARGV[0], aliases: true)' "$deploy"
+          grep -Fq 'workflow_dispatch:' "$deploy"
+          grep -Fq 'environment: production' "$deploy"
+          grep -Fq 'group: sq-hub-production' "$deploy"
+          grep -Fq 'DEPLOY_PRODUCTION' "$deploy"
+          grep -Fq 'BACKUP_VERIFIED' "$deploy"
+          grep -Fq 'SQ_HUB_PROD_SSH_PRIVATE_KEY' "$deploy"
+          grep -Fq 'SQ_HUB_PROD_SSH_KNOWN_HOSTS' "$deploy"
+          grep -Fq 'git rev-parse origin/main' "$deploy"
+          grep -Fq 'apps/api package.json package-lock.json' "$deploy"
+          grep -Fq 'apps/web package.json package-lock.json' "$deploy"
+          grep -Fq 'identity_sha="$(git log -1 --format=%H "$TARGET_SHA" -- infra/keycloak)"' "$deploy"
+          grep -Fq '< tools/production/deploy_from_github.sh' "$deploy"
+          grep -Fq 'SQ_HUB_API_IMAGE' "$helper"
+          grep -Fq 'SQ_HUB_WEB_IMAGE' "$helper"
+          grep -Fq 'SQ_HUB_KEYCLOAK_IMAGE' "$helper"
+          grep -Fq 'docker image inspect "$tag"' "$helper"
+          grep -Fq -- '--no-deps --no-build --pull never --force-recreate api' "$helper"
+          grep -Fq -- '--no-deps --no-build --pull never --force-recreate web' "$helper"
+          grep -Fq -- '--no-deps --no-build --pull never --force-recreate keycloak' "$helper"
+          grep -Fq 'PRODUCTION_ROLLBACK_BEGIN' "$helper"
+          grep -Fq 'SQ_HUB_PRODUCTION_DEPLOY_PASS' "$helper"
+          grep -Fq 'docker logout ghcr.io' "$deploy"
+
       - name: Validate production reconciliation script syntax
         run: |
           bash -n infra/keycloak/scripts/reconcile-hub-production-client.sh
@@ -65,6 +102,8 @@ jobs:
         shell: bash
         run: |
           if git grep -n -I -E '(BEGIN (RSA|OPENSSH|EC|DSA) PRIVATE KEY|AKIA[0-9A-Z]{16}|client[_ -]?secret[[:space:]]*[:=][[:space:]]*[A-Za-z0-9+/=_-]{24,}|password[[:space:]]*[:=][[:space:]]*[A-Za-z0-9+/=_-]{24,})' -- \
+            .github/workflows/deploy-production.yml \
+            tools/production/deploy_from_github.sh \
             infra/docker-compose.production.yml \
             infra/production.env.example \
             infra/reverse-proxy.caddy.production.example \
