@@ -50,9 +50,10 @@ PR lama yang tidak boleh diperlakukan sebagai jalur implementasi aktif:
 
 ### 1. Runtime acceptance Akun SQ
 
-Repository sudah menyediakan runbook:
+Repository sudah menyediakan runbook dan checklist pengujian:
 - `docs/operations/HUB-IMPL-011-production-handoff.md`;
-- `docs/operations/HUB-IMPL-012-production-handoff.md`.
+- `docs/operations/HUB-IMPL-012-production-handoff.md`;
+- `docs/operations/akun-sq-production-uat-checklist-2026-09-19.md`.
 
 Penutupan memerlukan tindakan operator pada production karena membutuhkan secret/runtime/browser nyata. Evidence minimum:
 - recovery email benar-benar terkirim, action link single-use/expiry sesuai policy;
