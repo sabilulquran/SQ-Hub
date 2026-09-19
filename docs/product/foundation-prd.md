@@ -1,8 +1,11 @@
 # SQ Hub Foundation PRD
 
-**Status:** DRAFT
+**Status:** ACCEPTED
+**Accepted:** 2026-09-19
 **Product:** SQ Hub
 **Scope:** Foundation v1
+
+> Status `ACCEPTED` menyatakan requirement Foundation v1 sudah menjadi source of truth produk. Status delivery tiap capability tetap dibuktikan terpisah melalui specification, CI, dan evidence runtime/operator; PRD ini tidak mengubah evidence menjadi PASS secara retrospektif.
 
 ## Problem
 Sistem Sabilul Qur'an akan berkembang menjadi beberapa aplikasi domain. Jika setiap aplikasi membangun identity, integrasi organisasi sendiri, app access, dan UI foundation sendiri, staf akan mengalami login berulang, data unit yang tidak konsisten, akses yang sulit dikelola, dan pengalaman pengguna yang berbeda-beda.
@@ -83,6 +86,30 @@ Perubahan sensitif pada identity/application access dan tindakan administrasi pe
 - Production cutover menggunakan controlled switch, bukan dua login publik paralel.
 - Credential lama boleh dipertahankan maksimum 14 hari hanya sebagai rollback window, kemudian wajib dihapus setelah cutover diterima.
 
+## Delivery snapshot — 2026-09-19
+
+Foundation v1 tidak lagi berada pada fase rancangan awal.
+
+**Sudah tersedia di production dengan evidence operator/browser yang tercatat:**
+- Akun SQ sebagai identity/login Staff;
+- OIDC/SSO HCIS menggunakan `issuer + sub`;
+- SQ Hub launcher di `https://hub.sabilulquran.or.id`;
+- authenticated workspace, Beranda, Semua Aplikasi, Application Access, global header/account navigation, dan mobile navigation;
+- Administrasi SQ foundation dan Application Access administration;
+- Account Console Akun SQ yang responsif.
+
+**Sudah diimplementasikan di repository dan teramati aktif pada production, tetapi acceptance pengguna end-to-end masih memerlukan evidence khusus:**
+- password recovery melalui SMTP;
+- Google sign-in/linking untuk existing Akun SQ;
+- trusted-device TOTP 30 hari.
+
+**Belum menjadi capability production yang accepted:**
+- Staff provisioning/offboarding melalui Administrasi SQ (HUB-IMPL-013 masih proposal sampai policy/security decisions ditutup);
+- shared Organization Directory runtime (HUB-IMPL-018 masih DISCOVERY walaupun boundary ownership ADR-0007 sudah Accepted);
+- consumer aplikasi kedua/ketiga di luar HCIS.
+
+Discovery SQ Portal/universal-person/external identity tetap berada di luar Foundation v1 dan tidak menjadi backlog implementasi aktif hanya karena pernah didokumentasikan.
+
 ## Integration principle
 Aplikasi boleh sangat terintegrasi tetapi ownership data harus jelas. Sebagai default, cross-domain write dilakukan melalui contract/API yang dimiliki domain target, bukan dengan menulis tabel domain lain secara langsung.
 
@@ -108,7 +135,7 @@ Contoh ownership:
 - production application coding sebelum architecture/security foundation disetujui.
 
 ## Experience target
-Staff masuk menggunakan NIP atau email yang sesuai policy melalui Akun SQ, membuka SQ Hub, melihat aplikasi yang memang dimiliki aksesnya, lalu berpindah antara HCIS dan SPMB tanpa login ulang. Akun SQ dan seluruh aplikasi mengikuti bahasa visual SQ yang diturunkan dari baseline HCIS, sambil tetap memiliki karakter domain masing-masing.
+Staff masuk menggunakan NIP atau email yang sesuai policy melalui Akun SQ, membuka SQ Hub, melihat hanya aplikasi yang memang dimiliki aksesnya, lalu masuk ke HCIS atau consumer lain tanpa memasukkan credential ulang selama sesi SSO masih sah. Akun SQ dan seluruh aplikasi mengikuti bahasa visual SQ yang konsisten sambil tetap mempertahankan authorization dan business logic masing-masing domain.
 
 ## Implementation Wave 1
 Implementation pertama mengikuti `docs/product/implementation-wave-1.md` dan tiga contract:
@@ -119,13 +146,13 @@ Implementation pertama mengikuti `docs/product/implementation-wave-1.md` dan tig
 Engineering stack mengikuti ADR-0006 dan staging naming untuk Wave 1 menggunakan `login-staging.`, `hub-staging.`, dan `hcis-staging.sabilulquran.or.id`.
 
 ## Open decisions
+Open decision berikut tidak membatalkan status ACCEPTED Foundation v1; masing-masing membatasi hanya capability lanjutan yang terkait:
 - Organization Directory SLA/freshness;
 - global identifier lintas aplikasi dan mapping dari identifier HCIS;
 - snapshot versus delta contract;
 - conflict handling dan retention/history;
-- Keycloak production version pin setelah staging verification dan operational sizing;
-- exact implementation technology and versioning strategy for distributable shared design packages;
-- full Application Access administration UI/workflow beyond the Wave 1 operator path.
+- exact implementation technology and versioning strategy untuk distributable shared design packages;
+- policy/security closure untuk Staff provisioning/offboarding sebelum HUB-IMPL-013 dapat diterima.
 
 ## Closed decisions references
 - IdP: ADR-0003 Keycloak.
