@@ -98,20 +98,24 @@ The preferred repeatable rollout path is **Actions → Deploy SQ Hub Production*
 
 ### One-time protected configuration
 
-Configure the GitHub Environment **production** with reviewer protection and the following secrets:
+Configure the GitHub Environment **production** with reviewer protection and only these connection secrets:
 
 - `SQ_HUB_PROD_HOST` — production VPS hostname/IP;
-- `SQ_HUB_PROD_USER` — restricted deployment user;
-- `SQ_HUB_PROD_REPO_PATH` — existing SQ Hub production checkout;
+- `SQ_HUB_PROD_USER` — SSH deployment user; current operator-verified user path supports non-interactive sudo;
 - `SQ_HUB_PROD_SSH_PRIVATE_KEY`;
-- `SQ_HUB_PROD_SSH_KNOWN_HOSTS`;
-- `SQ_HUB_PROD_ENV_FILE` — Hub production env path; if empty the workflow uses `<repo>/infra/.env.production`;
-- `SQ_HUB_PROD_KEYCLOAK_ENV_FILE` — existing production Keycloak env path, required for `auto`, `identity`, or `all`;
-- `SQ_HUB_PROD_KEYCLOAK_COMPOSE_FILE` — existing production Keycloak Compose file, required for `auto`, `identity`, or `all`.
+- `SQ_HUB_PROD_SSH_KNOWN_HOSTS`.
 
-The Keycloak runtime env must already contain `SQ_HUB_KEYCLOAK_IMAGE=` and the referenced Compose file must render that variable as the existing `keycloak` service image. The workflow refuses identity deployment otherwise.
+Production runtime paths are not secret and are fixed by the verified topology:
 
-GitHub does not store the production application/Keycloak env contents. It stores only SSH credentials and filesystem paths required to reach the existing protected runtime files.
+- runtime directory: `/var/www/sq-hub-production`;
+- Hub Compose: `/var/www/sq-hub-production/compose.hub.json`;
+- identity Compose: `/var/www/sq-hub-production/compose.identity.json`;
+- Hub project/services: `sq-hub-production` → `api`, `web`;
+- identity project/services: `sq-hub-keycloak-production` → `keycloak-db`, `keycloak`.
+
+The runtime directory is root-owned and intentionally not readable as an ordinary SSH checkout. The workflow therefore does not require or assume a Git working tree on the VPS. It verifies `sudo -n`, validates the exact Compose service sets and running-container ownership labels, and uses sudo only for the root-owned runtime bundle and Docker operations.
+
+GitHub stores no production application env, Keycloak env, database credential, OIDC secret, SMTP secret, or Compose content.
 
 ### Dispatch
 
@@ -136,7 +140,7 @@ The existing publishers provide exact `sha-<source-sha>` images. Production depl
 
 ### Failure and rollback
 
-During a run, the workflow creates mode-600 copies of the Hub/Keycloak runtime env files, records the previous repository SHA, and keeps previous container images local. If a recreated service or public health check fails, it restores the previous checkout/env references and attempts image/config rollback for only the services already recreated.
+During a run, the workflow creates root-owned `.before-gha-<timestamp>` copies of the two production Compose JSON files and keeps previous container images local. It atomically changes only the image field for a selected service. If a recreated service or public health check fails, it restores the previous Compose file(s) and attempts image/config rollback for only services already recreated.
 
 This rollback never performs a destructive database rollback. A failed rollback attempt remains an incident requiring operator intervention.
 
@@ -147,6 +151,20 @@ The manual Phase 1+ sequence below remains the fallback path when GitHub Actions
 Owner: Codex local / production operator.
 
 No mutation until the current production topology is inventoried.
+
+### 1.0 Operator-verified runtime bundle — 2026-09-19
+
+Current production evidence supplied by the operator:
+
+- `/var/www/sq-hub-production` is a root-owned runtime bundle, **not** a Git checkout;
+- directory mode is `700`;
+- `compose.hub.json` is root-owned and defines exactly `api` + `web`;
+- `compose.identity.json` is root-owned and defines exactly `keycloak-db` + `keycloak`;
+- running API/web containers report Compose project `sq-hub-production` and config file `/var/www/sq-hub-production/compose.hub.json`;
+- running Keycloak reports project `sq-hub-keycloak-production` and config file `/var/www/sq-hub-production/compose.identity.json`;
+- the deployment SSH user can execute `sudo -n` successfully.
+
+Automation must preserve this ownership model rather than making the runtime directory readable/writable to the ordinary SSH user.
 
 ### 1.1 Record current SQ Hub ownership
 
