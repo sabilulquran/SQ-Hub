@@ -16,13 +16,14 @@ This launch may:
 
 - reconcile only the production SQ Hub browser OIDC client `sq-hub`;
 - deploy/reconfigure SQ Hub API and web using reviewed immutable images;
+- when explicitly selected, roll only the reviewed Akun SQ/Keycloak image on the existing production Keycloak Compose service without changing realm data/configuration;
 - add the production Hub Caddy route;
 - add DNS/Cloudflare for `hub.sabilulquran.or.id`;
 - run health and browser UAT.
 
 This launch must not:
 
-- recreate/upgrade Keycloak;
+- replace Keycloak database/configuration, change Keycloak major/minor version, or mutate realm behavior merely as a side effect of image rollout;
 - recreate/modify HCIS;
 - create, recreate, migrate, or replace databases owned by other services;
 - alter production realm issuer/key;
@@ -75,10 +76,11 @@ Required before live work:
 3. Hub Production Launcher Contract is green.
 4. Existing application typecheck, lint, tests, builds, Compose validation, and browser-storage guard are green.
 5. Record the exact merged source SHA.
-6. Publish/resolve approved API and web images and record immutable **digest** references:
-   - `ghcr.io/sabilulquran/sq-hub-api@sha256:<64hex>`
-   - `ghcr.io/sabilulquran/sq-hub-web@sha256:<64hex>`
-7. Confirm neither reference is a moving tag such as `latest`, `main`, `staging`, or `sha-<commit>` for the actual production Compose input.
+6. Publish/resolve approved component images. The GitHub deployment workflow resolves the latest source commit independently for API, web, and identity, pulls the corresponding exact-SHA GHCR tag, then converts it to an immutable **digest** before writing production runtime state:
+   - `ghcr.io/sabilulquran/sq-hub-api@sha256:<64hex>`;
+   - `ghcr.io/sabilulquran/sq-hub-web@sha256:<64hex>`;
+   - `ghcr.io/sabilulquran/sq-hub-keycloak@sha256:<64hex>` when identity scope is selected.
+7. Confirm actual production runtime references are immutable digests, never `latest`, `main`, `staging`, or a moving SHA tag.
 
 Safe evidence:
 
@@ -89,6 +91,56 @@ WEB_IMAGE_DIGEST=<image@sha256:...>
 ```
 
 Do not proceed if CI is red or an image digest cannot be resolved.
+
+## Phase 0A — GitHub Actions deployment path
+
+The preferred repeatable rollout path is **Actions → Deploy SQ Hub Production** (`.github/workflows/deploy-production.yml`).
+
+### One-time protected configuration
+
+Configure the GitHub Environment **production** with reviewer protection and the following secrets:
+
+- `SQ_HUB_PROD_HOST` — production VPS hostname/IP;
+- `SQ_HUB_PROD_USER` — restricted deployment user;
+- `SQ_HUB_PROD_REPO_PATH` — existing SQ Hub production checkout;
+- `SQ_HUB_PROD_SSH_PRIVATE_KEY`;
+- `SQ_HUB_PROD_SSH_KNOWN_HOSTS`;
+- `SQ_HUB_PROD_ENV_FILE` — Hub production env path; if empty the workflow uses `<repo>/infra/.env.production`;
+- `SQ_HUB_PROD_KEYCLOAK_ENV_FILE` — existing production Keycloak env path, required for `auto`, `identity`, or `all`;
+- `SQ_HUB_PROD_KEYCLOAK_COMPOSE_FILE` — existing production Keycloak Compose file, required for `auto`, `identity`, or `all`.
+
+The Keycloak runtime env must already contain `SQ_HUB_KEYCLOAK_IMAGE=` and the referenced Compose file must render that variable as the existing `keycloak` service image. The workflow refuses identity deployment otherwise.
+
+GitHub does not store the production application/Keycloak env contents. It stores only SSH credentials and filesystem paths required to reach the existing protected runtime files.
+
+### Dispatch
+
+Provide:
+
+- `target_sha` — exact current 40-character `main` SHA;
+- `scope` — `auto`, `hub`, `api`, `web`, `identity`, or `all`;
+- `confirmation=DEPLOY_PRODUCTION`;
+- `backup_confirmation=BACKUP_VERIFIED`.
+
+`BACKUP_VERIFIED` is an operator attestation that the approved database/runtime backup or snapshot required for the selected change exists. The workflow does not fabricate backup evidence.
+
+### Component-aware image resolution
+
+The workflow intentionally does not assume the latest documentation commit has fresh images. It resolves:
+
+- API source SHA from the latest target-main change touching `apps/api` or root Node lock/package files;
+- web source SHA from the latest target-main change touching `apps/web` or root Node lock/package files;
+- identity source SHA from the latest target-main change touching `infra/keycloak`.
+
+The existing publishers provide exact `sha-<source-sha>` images. Production deployment pulls those tags, resolves `@sha256:` digests, compares the desired image ID with the running container, and recreates only changed services. A docs-only release is therefore a runtime no-op.
+
+### Failure and rollback
+
+During a run, the workflow creates mode-600 copies of the Hub/Keycloak runtime env files, records the previous repository SHA, and keeps previous container images local. If a recreated service or public health check fails, it restores the previous checkout/env references and attempts image/config rollback for only the services already recreated.
+
+This rollback never performs a destructive database rollback. A failed rollback attempt remains an incident requiring operator intervention.
+
+The manual Phase 1+ sequence below remains the fallback path when GitHub Actions is unavailable or the production runtime has not yet been reconciled to the automation prerequisites.
 
 ## Phase 1 — VPS preflight and backup/snapshot
 
