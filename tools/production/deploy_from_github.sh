@@ -105,8 +105,8 @@ set_env_value() {
     echo "STOP: required key $key is missing from runtime env" >&2
     return 1
   fi
-  chmod 600 "$tmp"
-  mv "$tmp" "$file"
+  cat "$tmp" > "$file"
+  rm -f "$tmp"
 }
 
 compose_container() {
