@@ -39,7 +39,7 @@ Accepted historical execution is reused only for the exact behavior it covered a
 | F11 | Production deployment workflow proven | PASS — NO-OP path | Run 35581490721; all three components unchanged; no recreate/rollback claim |
 | F12 | Rollback/backup operational path documented | PASS — documentation only | HUB-IMPL-016 production runbook; actual backup/restore/custody reconciliation remains F-OPS, not implied by Compose copies |
 | F13 | Source-of-truth docs current on main | OPEN | This replacement documentation package requires review/merge; consolidated PRD approval must be explicit |
-| F14 | No stale Foundation PR misleading status | OPEN | Close #84 as superseded only after replacement exists; retain cross-link/history |
+| F14 | No stale Foundation PR misleading status | PASS | PR #84 closed as superseded after replacement PR #88 was opened; history and cross-link retained |
 | F15 | Status separates deployed vs verified | OPEN until reviewed/merged | Current ledger/status/README implement the distinction on the documentation branch |
 | F16 | Final closure report and owner acceptance exist | NOT_RUN | Complete the final record below only after all required gates have evidence |
 
@@ -83,7 +83,7 @@ F-OPS distinguishes an existing documented path from a performed restore. Preser
 
 ## PR reconciliation
 
-PR #84 is not accepted as a closure package: it used an older baseline, conflated PRD acceptance wording with delivery, omitted required security scenarios, and failed to carry all existing recovery/trust evidence accurately. This branch is built from audited main. Replacement PR number, cleanup result, and CI evidence must be recorded after GitHub confirms them. No PR may be auto-merged by this ledger.
+PR #84 is not accepted as a closure package: it used an older baseline, conflated PRD acceptance wording with delivery, omitted required security scenarios, and failed to carry all existing recovery/trust evidence accurately. This branch is built from audited main. Replacement PR #88 is the active documentation package; PR #84 was closed as superseded with a cross-link after #88 existed. CI/review evidence for the final PR head remains a merge gate. No PR may be auto-merged by this ledger.
 
 PR #12 and #42 are preserved as discovery/proposal and do not block this package through implementation work. They must remain clearly outside Foundation implementation.
 
