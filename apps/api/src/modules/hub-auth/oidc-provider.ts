@@ -21,6 +21,9 @@ export interface HubOidcAuthorizationTransaction {
   codeVerifier: string;
   nonce: string;
   returnPath?: "/" | "/account";
+  replaceSessionTokenHash?: string;
+  expectedIssuer?: string;
+  expectedSubject?: string;
 }
 
 export interface HubOidcIdentity {
