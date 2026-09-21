@@ -88,7 +88,71 @@ jobs:
           grep -Fq 'hub_compose="$runtime_dir/compose.hub.json"' "$helper"
           grep -Fq 'identity_compose="$runtime_dir/compose.identity.json"' "$helper"
           grep -Fq 'hub_project=sq-hub-production' "$helper"
+          grep -Fq "test \"\$hub_services\" = \
+          grep -Fq 'sudo -n docker image inspect "$tag"' "$helper"
+          grep -Fq 'set_compose_image "$hub_compose" api "$api_digest"' "$helper"
+          grep -Fq 'set_compose_image "$hub_compose" web "$web_digest"' "$helper"
+          grep -Fq 'set_compose_image "$identity_compose" keycloak "$kc_digest"' "$helper"
+          grep -Fq -- '--no-deps --no-build --pull never --force-recreate api' "$helper"
+          grep -Fq -- '--no-deps --no-build --pull never --force-recreate web' "$helper"
+          grep -Fq -- '--no-deps --no-build --pull never --force-recreate keycloak' "$helper"
+          grep -Fq 'PRODUCTION_ROLLBACK_BEGIN' "$helper"
+          grep -Fq 'SQ_HUB_PRODUCTION_DEPLOY_PASS' "$helper"
+          grep -Fq 'sudo -n docker logout ghcr.io' "$deploy"
+
+      - name: Validate production reconciliation script syntax
+        run: |
+          bash -n infra/keycloak/scripts/reconcile-hub-production-client.sh
+          bash -n infra/keycloak/scripts/verify-hub-production-secret-fingerprint.sh
+          bash -n infra/keycloak/scripts/reconcile-master-production-recovery.sh
+
+      - name: Secret scan for production launcher scope
+        shell: bash
+        run: |
+          if git grep -n -I -E '(BEGIN (RSA|OPENSSH|EC|DSA) PRIVATE KEY|AKIA[0-9A-Z]{16}|client[_ -]?secret[[:space:]]*[:=][[:space:]]*[A-Za-z0-9+/=_-]{24,}|password[[:space:]]*[:=][[:space:]]*[A-Za-z0-9+/=_-]{24,})' -- \
+            .github/workflows/deploy-production.yml \
+            tools/production/deploy_from_github.sh \
+            infra/docker-compose.production.yml \
+            infra/production.env.example \
+            infra/reverse-proxy.caddy.production.example \
+            infra/keycloak/clients/sq-hub-production.json \
+            infra/keycloak/realm/master-production-recovery.json \
+            infra/keycloak/master-smtp.env.example \
+            infra/keycloak/scripts/reconcile-hub-production-client.sh \
+            infra/keycloak/scripts/verify-hub-production-secret-fingerprint.sh \
+            infra/keycloak/scripts/reconcile-master-production-recovery.sh \
+            docs/specs/HUB-IMPL-016-hub-production-launcher.md \
+            docs/operations/HUB-IMPL-016-production-launcher.md \
+            docs/operations/project-status-2026-09-18.md; then
+            echo "Potential secret material detected" >&2
+            exit 1
+          fi
+
+      - name: Validate production Compose with non-secret render fixture
+        shell: bash
+        run: |
+          sed             -e 's#postgresql://replace_with_db_user:replace_with_db_password@replace_with_existing_db_host:5432/replace_with_db_name#postgresql://user:pass@db:5432/sq_hub#'             -e 's#replace_with_existing_production_machine_audience#sq-hub-api-production#'             -e 's#replace_with_existing_production_machine_client_allowlist#hcis-api-production#'             -e 's#replace_with_secret_store_value_for_sq_hub_client#ci-placeholder-not-a-real-secret#'             -e 's#replace_with_existing_production_identity_directory_url#http://identity:8080#'             -e 's#replace_with_existing_production_directory_client_id#sq-hub-directory-production#'             -e 's#replace_with_secret_store_value_for_directory_client#ci-placeholder-not-a-real-secret#'             -e 's#replace_with_existing_sq_hub_production_network#sq_platform_production#'             -e 's#replace_with_reviewed_api_memory_limit#256m#'             -e 's#replace_with_reviewed_web_memory_limit#96m#'             infra/production.env.example > /tmp/hub-production.env
+
+          docker compose --env-file /tmp/hub-production.env -f infra/docker-compose.production.yml config -q
+
+      - name: Reject mutable production image references
+        shell: bash
+        run: |
+          if grep -En 'SQ_HUB_(API|WEB)_IMAGE=.*:(latest|staging|main)([[:space:]]|$)' infra/production.env.example; then
+            echo "Mutable production image reference found" >&2
+            exit 1
+          fi
+          grep -Fq 'ghcr.io/sabilulquran/sq-hub-api@sha256:' infra/production.env.example
+          grep -Fq 'ghcr.io/sabilulquran/sq-hub-web@sha256:' infra/production.env.example
+
+      - name: Preserve browser token-storage prohibition
+        run: npm ci --ignore-scripts && npm --workspace @sq-hub/web test -- --run src/security.test.ts
+api\\npostgres\\nweb'" "$helper"
           grep -Fq 'identity_project=sq-hub-keycloak-production' "$helper"
+          if grep -Fq -- '--force-recreate postgres' "$helper"; then
+            echo "Production deploy helper must never recreate postgres" >&2
+            exit 1
+          fi
           grep -Fq 'sudo -n docker image inspect "$tag"' "$helper"
           grep -Fq 'set_compose_image "$hub_compose" api "$api_digest"' "$helper"
           grep -Fq 'set_compose_image "$hub_compose" web "$web_digest"' "$helper"
