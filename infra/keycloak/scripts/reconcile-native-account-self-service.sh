@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+KEYCLOAK_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+ENV_FILE="${KEYCLOAK_ENV_FILE:-${KEYCLOAK_DIR}/.env.staging}"
+COMPOSE_FILE="${KEYCLOAK_COMPOSE_FILE:-${KEYCLOAK_DIR}/docker-compose.staging.yml}"
 REALM="${KEYCLOAK_REALM:-sq-staff-staging}"
 case "$REALM" in
   sq-staff)
@@ -26,12 +30,22 @@ fail() {
 }
 
 [[ "$CLIENT_ID" == "$DEFAULT_CLIENT_ID" ]] || fail "client does not match realm contract"
-[[ -x "$KCADM" ]] || fail "kcadm executable not found"
-[[ -f "$KCADM_CONFIG" ]] || fail "pre-authenticated kcadm config is required"
+command -v docker >/dev/null 2>&1 || fail "docker is required"
 command -v jq >/dev/null 2>&1 || fail "jq is required"
+[[ -f "$COMPOSE_FILE" ]] || fail "compose file not found"
+[[ -f "$ENV_FILE" ]] || fail "environment file not found"
+
+compose_exec() {
+  docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" exec -T keycloak "$@"
+}
+
+compose_exec test -x "$KCADM" >/dev/null 2>&1 ||
+  fail "kcadm executable not found in Keycloak container"
+compose_exec test -f "$KCADM_CONFIG" >/dev/null 2>&1 ||
+  fail "pre-authenticated kcadm config is required in Keycloak container"
 
 kcadm() {
-  "$KCADM" "$@" --config "$KCADM_CONFIG"
+  compose_exec "$KCADM" "$@" --config "$KCADM_CONFIG"
 }
 
 hub_json="$(kcadm get clients -r "$REALM" -q "clientId=$CLIENT_ID")" ||
