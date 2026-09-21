@@ -54,6 +54,22 @@ kcadm() {
   compose_exec "$KCADM" "$@" --config "$KCADM_CONFIG"
 }
 
+realm_json="$(kcadm get "realms/$REALM")" ||
+  fail "unable to inspect realm capability baseline"
+jq -e '
+  (.organizationsEnabled // false) == false and
+  (.userManagedAccessAllowed // false) == false and
+  (.verifiableCredentialsEnabled // false) == false
+' >/dev/null <<<"$realm_json" ||
+  fail "realm enables Account Console capability outside native Foundation parity"
+
+required_actions="$(kcadm get authentication/required-actions -r "$REALM")" ||
+  fail "unable to inspect required actions"
+jq -e '
+  ([.[] | select(.alias == "delete_account" and .enabled == true)] | length) == 0
+' >/dev/null <<<"$required_actions" ||
+  fail "delete-account self-service is active outside native Foundation parity"
+
 hub_json="$(kcadm get clients -r "$REALM" -q "clientId=$CLIENT_ID")" ||
   fail "unable to query Hub client"
 account_json="$(kcadm get clients -r "$REALM" -q "clientId=account")" ||
@@ -172,8 +188,10 @@ jq -e --arg name "$MAPPER_NAME" '
   )] | length == 1
 ' >/dev/null <<<"$verify_mappers" || fail "account audience mapper verification failed"
 
-unset hub_json account_json hub_client account_roles desired_roles current_scope missing_scope \
-  mappers mapper_matches mapper_payload mapper_update_payload verify_scope verify_mappers
+unset realm_json required_actions hub_json account_json hub_client account_roles desired_roles \
+  current_scope missing_scope mappers mapper_matches mapper_payload mapper_update_payload \
+  verify_scope verify_mappers
 
+printf 'NATIVE_ACCOUNT_CAPABILITY_BASELINE_PASS realm=%s\n' "$REALM"
 printf 'NATIVE_ACCOUNT_SCOPE_MAPPING_PASS realm=%s client=%s\n' "$REALM" "$CLIENT_ID"
 printf 'NATIVE_ACCOUNT_AUDIENCE_PASS realm=%s client=%s audience=account\n' "$REALM" "$CLIENT_ID"
