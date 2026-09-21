@@ -41,19 +41,17 @@ Sumber core production: [status 18 September](project-status-2026-09-18.md). Sum
 
 ## Exact gap yang tersisa
 
-Ledger historis tetap **27 PASS / 28 NOT_RUN / 3 BLOCKED**, bukan persentase keseluruhan Foundation. Terdapat gate administratif dan staging reuse di dalam angka PASS tersebut.
+Ledger historis tetap **27 PASS / 28 NOT_RUN / 3 BLOCKED**, tetapi tidak semua baris yang belum dijalankan adalah blocker Foundation saat ini. Definisi selesai 21 September menaikkan hanya acceptance yang secara eksplisit dibutuhkan untuk penutupan Foundation.
 
-NOT_RUN yang harus ditelusuri, bukan dihapus dari scope secara diam-diam:
+Mandatory closure gaps:
 
-- Identity/persona/domain continuity: `1.4`, `1.5`, `2.2`–`2.4`, `6.2`, `6.3`, `6.5`, serta fixture assignment `10.2`.
-- Privileged MFA/recovery: `3.1`, `3.2`, `3.6`.
-- Google: `4.1`–`4.5`.
-- Trusted-device remainder: `5.6`–`5.12`.
-- Browser storage/cookie: `7.1`–`7.4`.
+- **Recovery E2E:** pertahankan 3.3–3.5 PASS; buktikan fresh login dengan password baru berhasil, password lama ditolak, dan identity/access tidak berubah (F-REC).
+- **Google existing-account / mapping:** 4.1–4.5, ditambah wrong/unknown mapping fail-closed (1.5/6.5) dan regression login NIP/email biasa yang relevan.
+- **MFA / trusted device:** pertahankan 5.1–5.5 PASS; selesaikan privileged MFA/recovery dan contract-defined expiry/invalidation/security remainder. Non-browser crypto invariants boleh memakai exact automated evidence bila benar-benar menutup invariant yang sama.
+- **Browser security:** 7.1–7.4 dan pemeriksaan Hub sesuai HUB-IMPL-016.
+- **Documentation closure:** PR #88 harus review/CI/merge dengan approval; final owner sign-off setelah mandatory acceptance di atas selesai.
 
-Keycloak outage `9.1`–`9.3` tetap BLOCKED sampai target terisolasi/production-like tersedia. Jangan menghentikan Keycloak production. Accepted staging SQ Hub outage/revoke/logout evidence tetap dapat dipakai untuk perilaku yang benar-benar sama sesuai no-repeat rule; bukan pengganti Keycloak-outage matrix yang berbeda.
-
-Delta closure di luar ID historis dicatat dengan prefix `F-`: password baru/lama sesudah reset, browser Hub, Administrasi SQ boundary, global logout lintas Hub/HCIS, operational evidence reconciliation, dan persetujuan akhir. Prefix baru mencegah mengubah jumlah 58 baris atau menghitung satu pengujian dua kali.
+Historical issue #9 rows yang tidak memetakan langsung ke checklist closure—misalnya ekspansi persona non-Employee/manager/HC-admin, fixture bookkeeping, dan Keycloak outage 9.1–9.3—tetap backlog yang jujur, bukan PASS dan bukan blocker Foundation. Keycloak outage tetap hanya boleh dijalankan pada target terisolasi/production-like; jangan menghentikan Keycloak production.
 
 ## Keputusan rilis bukan keputusan selesai
 
@@ -69,6 +67,6 @@ Selain baseline lama, PR #84 memiliki masalah isi: bahasa ACCEPTED terlalu luas,
 
 ## Langkah aktif
 
-Gunakan [panduan UAT delta](akun-sq-production-uat-checklist-2026-09-21.md) dan [ledger closure](foundation-v1-closure.md). Jalankan baseline browser sebelum invalidation, siapkan Google fixture yang email assertion-nya benar-benar cocok, lalu selesaikan matrix melalui approved synthetic identities. Catat hasil per ID, bukan satu pesan PASS untuk semua.
+Gunakan [panduan UAT delta](akun-sq-production-uat-checklist-2026-09-21.md) dan [ledger closure](foundation-v1-closure.md). Mulai dari browser baseline, lalu recovery + password invalidation, Google existing-account/mapping matrix, dan sisa MFA/trusted-device. Catat hasil per ID, bukan satu pesan PASS untuk semua. Persona tambahan dan outage rehearsal yang tidak memetakan ke checklist closure tetap backlog issue #9.
 
 Tidak ada source code, workflow, Compose, image, secret, DNS, database, Keycloak realm, user, role, Application Access, atau runtime production yang diubah oleh paket dokumentasi ini. Merge dan production deployment memerlukan persetujuan terpisah.
