@@ -99,7 +99,6 @@ export interface AccountLinkedIdentity {
 export interface AccountGroup {
   name: string;
   path: string;
-  direct: boolean;
 }
 
 export interface AccountSnapshot {
