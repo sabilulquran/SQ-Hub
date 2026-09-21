@@ -202,10 +202,11 @@ terhadap exact realm `sq-staff`, client `sq-hub`, dan Compose identity productio
 
 Aksi production harus:
 - dijalankan dari reviewed source SHA yang sama dengan release;
+- fail closed bila Organizations, user-managed resources/UMA, Verifiable Credentials, atau Delete Account ternyata aktif; capability tersebut harus dipetakan native lebih dulu sebelum rollout dilanjutkan;
 - hanya menambah/menjaga tujuh role account-client allowlist dan audience `account`;
 - fail closed bila ada role account-client lain yang sudah terscope ke `sq-hub`;
 - tidak mengubah HCIS client, Google provider, trusted-device flow, MFA, realm key/issuer, theme, atau client secret;
-- merekam hanya marker `NATIVE_ACCOUNT_SCOPE_MAPPING_PASS` dan `NATIVE_ACCOUNT_AUDIENCE_PASS`, tanpa token/secret/raw user data.
+- merekam hanya marker `NATIVE_ACCOUNT_CAPABILITY_BASELINE_PASS`, `NATIVE_ACCOUNT_SCOPE_MAPPING_PASS`, dan `NATIVE_ACCOUNT_AUDIENCE_PASS`, tanpa token/secret/raw user data.
 
 Green CI membuktikan helper dan disposable Keycloak behavior, tetapi **bukan** bukti bahwa reconciliation production sudah dijalankan.
 
