@@ -46,7 +46,7 @@ Baseline parity untuk Foundation:
 - tandai current device/current session;
 - user dapat mengakhiri sesi lain secara individual;
 - user dapat mengakhiri semua sesi lain;
-- current session tidak diberi tombol single-session logout yang menipu; logout current identity tetap menggunakan flow logout Akun SQ.
+- current session tidak diberi tombol single-session logout yang menipu **dan backend menolak individual DELETE terhadap current session**; logout current identity tetap menggunakan flow logout Akun SQ.
 
 ### 4. Aplikasi
 Dua konsep wajib dipisahkan:
@@ -123,6 +123,12 @@ Mutation profil, session logout, consent revoke, dan unlink account dilakukan le
 - tidak mengubah Application Access atau domain role.
 
 Hasil AIA kembali ke native Akun SQ dan status dibaca ulang server-side. Redirect sukses bukan bukti sendiri bahwa action berhasil.
+
+Setiap re-auth atau required action yang dimulai dari sesi Hub aktif harus diikat server-side ke hash sesi tersebut dan principal `issuer + sub` saat flow dimulai. Callback:
+- menolak bila principal hasil OIDC berbeda;
+- membuat sesi Hub pengganti dan merevoke sesi lama serta menghapus delegated refresh token lama dalam transaksi penyimpanan yang sama;
+- gagal membuat sesi pengganti bila sesi yang hendak diganti sudah tidak aktif;
+- tidak mengirim hash sesi, `sub`, atau refresh token tersebut ke browser.
 
 ## Google account boundary
 
@@ -229,7 +235,7 @@ HUB-IMPL-019 tidak:
 2. Native navigation baseline memuat Profil Saya, Keamanan, Sesi & Perangkat, Aplikasi, dan Akun Terhubung; Keanggotaan muncul bila data group tersedia.
 3. Profil editable mengikuti metadata read-only/required/multivalued provider; field biasa disimpan melalui Account API, sedangkan email memakai `UPDATE_EMAIL` bila provider menandainya sebagai required-action-managed.
 4. Credential container aktif tidak dihilangkan; password/TOTP/recovery memakai provider action yang sudah diverifikasi server-side.
-5. Device/session inventory berasal dari provider; non-current session dapat diakhiri dan semua sesi lain dapat diakhiri.
+5. Device/session inventory berasal dari provider; non-current session dapat diakhiri dan semua sesi lain dapat diakhiri; individual deletion untuk current session ditolak server-side.
 6. SQ Application Access dan identity-connected applications/consents ditampilkan sebagai dua konsep berbeda.
 7. Linked provider dapat dihubungkan/diputus hanya setelah ownership/availability diverifikasi server-side.
 8. Hub access token untuk self-service memiliki audience `account` dan account-role scope tepat sesuai allowlist, dengan `fullScopeAllowed=false`.
@@ -238,7 +244,7 @@ HUB-IMPL-019 tidak:
 11. Authentication/required-action pages tetap berwajah Akun SQ tanpa brand/copy Keycloak pada active UI.
 12. Layout setiap baseline section lulus visual smoke desktop dan 390×844 tanpa horizontal overflow.
 13. Existing Hub launcher, Application Access, Admin Center, logout, dan domain authorization tidak berubah semantik.
-14. Unit/integration tests mencakup encryption/rotation, resource ownership validation, read-only profile enforcement, account reauth fallback, and parity navigation.
+14. Unit/integration tests mencakup encryption/rotation, resource ownership validation, read-only profile enforcement, account reauth fallback, same-principal Hub-session replacement, current-session logout guard, and parity navigation.
 15. Production rollout memerlukan reconciliation scope/audience + runtime evidence terpisah; CI tidak boleh dinyatakan sebagai production acceptance.
 
 ## Rollback
