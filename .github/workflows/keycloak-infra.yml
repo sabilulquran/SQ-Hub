@@ -381,6 +381,7 @@ jobs:
                 bash infra/keycloak/scripts/reconcile-native-account-self-service.sh
             )"
             printf '%s\n' "$output"
+            grep -Fq 'NATIVE_ACCOUNT_CAPABILITY_BASELINE_PASS realm=sq-staff-staging' <<<"$output"
             grep -Fq 'NATIVE_ACCOUNT_SCOPE_MAPPING_PASS realm=sq-staff-staging client=sq-hub-staging' <<<"$output"
             grep -Fq 'NATIVE_ACCOUNT_AUDIENCE_PASS realm=sq-staff-staging client=sq-hub-staging audience=account' <<<"$output"
           done
