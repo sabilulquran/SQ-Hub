@@ -1,9 +1,9 @@
 # HUB-IMPL-019 — Native Akun SQ experience
 
-**Status:** ACCEPTED  
-**Owner:** Product Owner SQ Hub/HCIS — Human Capital YSQ  
-**Decision date:** 21 September 2026  
-**Scope:** SQ Hub account surface + Akun SQ authentication presentation  
+**Status:** ACCEPTED
+**Owner:** Product Owner SQ Hub/HCIS — Human Capital YSQ
+**Decision date:** 21 September 2026
+**Scope:** SQ Hub account surface + Akun SQ authentication presentation
 **Identity engine:** Keycloak remains the backend identity provider per ADR-0003
 
 ## Tujuan
