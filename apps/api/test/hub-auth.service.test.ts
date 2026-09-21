@@ -253,6 +253,26 @@ describe("HubAuthService", () => {
     ).rejects.toMatchObject({ code: "OIDC_TRANSACTION_EXPIRED" });
   });
 
+  it("preserves the native account return path when a provider action fails", async () => {
+    const { auth, provider } = service();
+    const begin = await auth.beginLogin("UPDATE_PASSWORD", "/account");
+    const transactionToken = cookieValue(begin.setCookie, HUB_OIDC_TRANSACTION_COOKIE_NAME);
+    provider.completeAuthorization = async () => {
+      throw new Error("synthetic provider cancellation");
+    };
+
+    await expect(
+      auth.completeLogin(
+        new URL("https://hub-staging.sabilulquran.or.id/auth/callback?error=access_denied"),
+        transactionToken,
+        context,
+      ),
+    ).rejects.toMatchObject({
+      code: "OIDC_COMPLETION_FAILED",
+      returnPath: "/account",
+    });
+  });
+
   it("refreshes delegated account access server-side and persists rotated refresh token encrypted", async () => {
     const { auth, store, provider, vault } = service();
     const begin = await auth.beginLogin(undefined, "/account");
