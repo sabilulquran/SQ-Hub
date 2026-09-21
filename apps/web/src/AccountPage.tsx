@@ -694,6 +694,7 @@ function SessionsSection({
   onMutate: AccountContentProps["onMutate"];
 }) {
   const devices = account.management.devices;
+  const [confirmAll, setConfirmAll] = useState(false);
   return (
     <SectionCard
       icon={Smartphone}
@@ -705,19 +706,42 @@ function SessionsSection({
           Sesi saat ini ditandai agar tidak terputus tanpa sengaja.
         </p>
         {devices.some((device) => device.sessions.some((session) => !session.current)) ? (
-          <button
-            type="button"
-            onClick={() =>
-              void onMutate("Mengakhiri sesi lain", {
-                url: "/api/account/sessions",
-                method: "DELETE",
-              })
-            }
-            className={dangerButtonClass}
-          >
-            <LogOut className="h-4 w-4" aria-hidden="true" />
-            Keluar dari semua sesi lain
-          </button>
+          confirmAll ? (
+            <div className="flex max-w-full flex-wrap items-center justify-end gap-2 rounded-xl border border-red-200 bg-red-50 px-3 py-2">
+              <span className="text-xs font-semibold text-red-800">
+                Yakin keluar dari semua sesi lain?
+              </span>
+              <button
+                type="button"
+                onClick={() => setConfirmAll(false)}
+                className={secondaryButtonClass}
+              >
+                Batal
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setConfirmAll(false);
+                  void onMutate("Mengakhiri sesi lain", {
+                    url: "/api/account/sessions",
+                    method: "DELETE",
+                  });
+                }}
+                className={dangerButtonClass}
+              >
+                Ya, keluarkan
+              </button>
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setConfirmAll(true)}
+              className={dangerButtonClass}
+            >
+              <LogOut className="h-4 w-4" aria-hidden="true" />
+              Keluar dari semua sesi lain
+            </button>
+          )
         ) : null}
       </div>
       {devices.length > 0 ? (
@@ -744,6 +768,7 @@ function DeviceCard({
   device: AccountDevice;
   onMutate: AccountContentProps["onMutate"];
 }) {
+  const [confirmSessionId, setConfirmSessionId] = useState<string | null>(null);
   return (
     <div className="rounded-xl border border-border/70 p-4">
       <div className="flex min-w-0 items-start gap-3">
@@ -792,18 +817,41 @@ function DeviceCard({
               </p>
             </div>
             {!session.current ? (
-              <button
-                type="button"
-                onClick={() =>
-                  void onMutate("Mengakhiri sesi", {
-                    url: `/api/account/sessions/${encodeURIComponent(session.id)}`,
-                    method: "DELETE",
-                  })
-                }
-                className={dangerButtonClass}
-              >
-                Keluar
-              </button>
+              confirmSessionId === session.id ? (
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-[11px] font-semibold text-red-800">
+                    Akhiri sesi ini?
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setConfirmSessionId(null)}
+                    className={secondaryButtonClass}
+                  >
+                    Batal
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setConfirmSessionId(null);
+                      void onMutate("Mengakhiri sesi", {
+                        url: `/api/account/sessions/${encodeURIComponent(session.id)}`,
+                        method: "DELETE",
+                      });
+                    }}
+                    className={dangerButtonClass}
+                  >
+                    Ya, keluar
+                  </button>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setConfirmSessionId(session.id)}
+                  className={dangerButtonClass}
+                >
+                  Keluar
+                </button>
+              )
             ) : null}
           </div>
         ))}
