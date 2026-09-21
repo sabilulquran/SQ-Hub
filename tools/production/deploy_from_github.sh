@@ -183,14 +183,70 @@ finally:
 PY
 }
 
+compose_container_any() {
+  project=$1
+  service=$2
+  sudo -n docker ps -aq \
+    --filter "label=com.docker.compose.project=$project" \
+    --filter "label=com.docker.compose.service=$service" |
+    head -n 1
+}
+
+wait_runtime_probe() {
+  project=$1
+  service=$2
+  probe=$3
+
+  for attempt in $(seq 1 60); do
+    cid="$(compose_container_any "$project" "$service")"
+    if [ -n "$cid" ]; then
+      state="$(sudo -n docker inspect "$cid" --format '{{.State.Status}}')"
+      case "$state" in
+        exited|dead)
+          echo "STOP: $project/$service exited before readiness" >&2
+          return 1
+          ;;
+      esac
+
+      if [ "$state" = "running" ]; then
+        case "$probe" in
+          api)
+            if sudo -n docker exec "$cid" node -e \
+              "fetch('http://127.0.0.1:3100/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))" \
+              >/dev/null 2>&1; then
+              return 0
+            fi
+            ;;
+          web)
+            if sudo -n docker exec "$cid" sh -c \
+              'wget -qO- http://127.0.0.1/healthz >/dev/null' \
+              >/dev/null 2>&1; then
+              return 0
+            fi
+            ;;
+          *)
+            echo "STOP: unsupported runtime probe: $probe" >&2
+            return 1
+            ;;
+        esac
+      fi
+    fi
+    sleep 2
+  done
+
+  echo "STOP: $project/$service did not become ready" >&2
+  return 1
+}
+
 wait_compose_healthy() {
   project=$1
   service=$2
   for attempt in $(seq 1 60); do
-    cid="$(compose_container "$project" "$service")"
+    cid="$(compose_container_any "$project" "$service")"
     if [ -n "$cid" ]; then
       status="$(
-        sudo -n docker inspect "$cid"           --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}'
+        sudo -n docker inspect "$cid" \
+          --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}'
       )"
       if [ "$status" = "healthy" ] || [ "$status" = "running" ]; then
         return 0
@@ -310,8 +366,7 @@ fi
 if [ "$api_change" = 1 ]; then
   deployed_api=1
   sudo -n docker compose -f "$hub_compose"     up -d --no-deps --no-build --pull never --force-recreate api
-  wait_compose_healthy "$hub_project" api
-  curl --fail --silent http://127.0.0.1:18200/health >/dev/null
+  wait_runtime_probe "$hub_project" api api
   echo "API_DEPLOY_PASS source=$api_sha image=$api_digest"
 else
   echo "API_DEPLOY_NOOP source=$api_sha"
@@ -320,8 +375,7 @@ fi
 if [ "$web_change" = 1 ]; then
   deployed_web=1
   sudo -n docker compose -f "$hub_compose"     up -d --no-deps --no-build --pull never --force-recreate web
-  wait_compose_healthy "$hub_project" web
-  curl --fail --silent http://127.0.0.1:18201/healthz >/dev/null
+  wait_runtime_probe "$hub_project" web web
   echo "WEB_DEPLOY_PASS source=$web_sha image=$web_digest"
 else
   echo "WEB_DEPLOY_NOOP source=$web_sha"
