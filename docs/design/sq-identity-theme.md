@@ -1,7 +1,7 @@
 # Akun SQ Theme
 
 **Status:** ACCEPTED IMPLEMENTATION PROFILE  
-**Specification:** `HUB-IMPL-015`, preserving the functional contracts of `HUB-IMPL-001`, `008`, `010`, `011`, and `012`
+**Specification:** `HUB-IMPL-015` for provider theme + `HUB-IMPL-019` for native user-facing account, preserving the functional contracts of `HUB-IMPL-001`, `008`, `010`, `011`, and `012`
 **Runtime target:** Keycloak 26.7.2 / `sq-staff-staging`
 
 ## Product identity
@@ -28,11 +28,17 @@ The accepted composition is:
 
 Only `footer.ftl` and the existing trusted-device `login-otp.ftl` are overridden. Shared `template.ftl`, login form, recovery form, and protocol behavior remain owned by the pinned Keycloak release.
 
-## Account Console theme
+## Native Akun SQ account
 
-The Account Console uses the same `sq-hub` theme and extends the supported `keycloak.v3` account theme. It changes presentation through theme properties, messages, logo/favicon assets, and CSS. Keycloak still owns account data, credentials, linked accounts, MFA, and session actions.
+HUB-IMPL-019 supersedes the Keycloak Account Console as the normal user-facing account destination. `hub.sabilulquran.or.id/account` is a native SQ Hub surface with Profil Saya, Keamanan, Login & perangkat, and Aplikasi Saya.
 
-The console uses a white masthead, concise navigation, light canvas, rounded bordered content surfaces, turquoise actions, and responsive mobile spacing. A future fully custom React Account Console requires a separate specification only if supported theming cannot satisfy a concrete usability requirement.
+Keycloak still owns credentials, MFA, recovery, brokering, and IdP sessions. Native Akun SQ may launch supported Keycloak Application Initiated Actions through an explicit server-side allowlist, while the user-facing required-action screens remain Akun SQ themed.
+
+## Legacy Account Console compatibility
+
+The `keycloak.v3` account theme remains packaged only as a compatibility/operator fallback while the native surface reaches production acceptance. It is not linked from the normal SQ Hub journey and must not be treated as the final product experience.
+
+If compatibility access is used during rollback or diagnosis, the existing Akun SQ account theme remains branded and responsive rather than falling back to default provider visuals.
 
 ## Asset and cache rules
 
@@ -48,13 +54,15 @@ Wave 1 remains Indonesian-first. Controls retain visible keyboard focus, labels,
 
 Repository and image smoke checks must prove:
 
-1. login and Account Console theme declarations are valid and use the expected parent themes;
+1. login theme declarations are valid and the legacy Account Console compatibility theme remains structurally valid;
 2. login HTML renders `Akun SQ`, the versioned stylesheet, and favicon without active legacy styles;
 3. realm issuer/key remains stable and both `loginTheme` and `accountTheme` equal `sq-hub`;
 4. native authentication action/form boundaries and trusted-device fields remain intact;
 5. normal login has no unnecessary overflow on 1440×900, 1280×720, and 390×844, while long content scrolls;
-6. no secret or production identity data is committed.
+6. native `/account` renders without provider branding and without exposing technical identity identifiers or credentials;
+7. native account layout has no horizontal overflow on 390×844 and remains usable on desktop;
+8. no secret or production identity data is committed.
 
-CI is structural evidence. Staging visual UAT must still inspect login, invalid credentials, password reset, TOTP/trusted device, recovery, logout, personal information, security, sessions, and mobile behavior before production rollout.
+CI is structural evidence. Staging visual UAT must still inspect login, invalid credentials, password reset, TOTP/trusted device, recovery, logout, native account profile/security/application surfaces, and mobile behavior before production rollout.
 
 Brand assets must reuse the existing official Sabilul Qur'an mark (ysq-mark.svg) and favicon.svg. The generic SQ hexagon from the mockup is a placeholder and is not an approved replacement for the organization logo.

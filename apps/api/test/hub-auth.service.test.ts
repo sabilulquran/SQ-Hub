@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type {
+  HubOidcAction,
   HubOidcAuthorizationTransaction,
   HubOidcProviderLike,
 } from "../src/modules/hub-auth/oidc-provider.js";
@@ -90,8 +91,10 @@ class FakeOidcProvider implements HubOidcProviderLike {
     nonce: "nonce-001",
   };
   completedWith: HubOidcAuthorizationTransaction | null = null;
+  requestedAction: HubOidcAction | undefined;
 
-  async createAuthorizationRequest() {
+  async createAuthorizationRequest(action?: HubOidcAction) {
+    this.requestedAction = action;
     return {
       url: new URL("https://login.example.test/authorize"),
       transaction: this.transaction,
@@ -171,6 +174,14 @@ describe("HubAuthService", () => {
     expect(result.setCookie).not.toContain("verifier-001");
     expect(store.transaction?.tokenHash).toMatch(/^[a-f0-9]{64}$/);
     expect(store.transaction?.tokenHash).not.toBe(rawCookie);
+  });
+
+  it("passes only typed account actions into the OIDC provider", async () => {
+    const { auth, provider } = service();
+
+    await auth.beginLogin("UPDATE_PASSWORD");
+
+    expect(provider.requestedAction).toBe("UPDATE_PASSWORD");
   });
 
   it("consumes the transaction once and creates only an opaque Hub session cookie", async () => {

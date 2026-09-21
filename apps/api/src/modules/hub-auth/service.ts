@@ -1,6 +1,6 @@
 import { createHash, randomBytes } from "node:crypto";
 
-import type { HubOidcProviderLike } from "./oidc-provider.js";
+import type { HubOidcAction, HubOidcProviderLike } from "./oidc-provider.js";
 import type {
   HubAuthStore,
   HubRequestContext,
@@ -38,7 +38,7 @@ export class HubAuthError extends Error {
 }
 
 export interface HubAuthRuntime {
-  beginLogin(): Promise<{ authorizationUrl: URL; setCookie: string }>;
+  beginLogin(action?: HubOidcAction): Promise<{ authorizationUrl: URL; setCookie: string }>;
   completeLogin(
     callbackUrl: URL,
     transactionToken: string | null,
@@ -81,8 +81,8 @@ export class HubAuthService implements HubAuthRuntime {
     this.secureCookies = options.secureCookies;
   }
 
-  async beginLogin(): Promise<{ authorizationUrl: URL; setCookie: string }> {
-    const request = await this.oidcProvider.createAuthorizationRequest();
+  async beginLogin(action?: HubOidcAction): Promise<{ authorizationUrl: URL; setCookie: string }> {
+    const request = await this.oidcProvider.createAuthorizationRequest(action);
     const transactionToken = generateOpaqueToken();
     await this.repository.createTransaction({
       tokenHash: hashOpaqueToken(transactionToken),

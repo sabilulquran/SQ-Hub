@@ -48,6 +48,7 @@ jobs:
             apps/web \
             apps/api \
             docs/specs/HUB-IMPL-017-sq-hub-akun-sq-navigation-experience.md \
+            docs/specs/HUB-IMPL-019-native-akun-sq-experience.md \
             infra/keycloak/themes/sq-hub \
             tools/visual; then
             echo "Potential secret material detected in HUB-IMPL-017 scope" >&2
@@ -142,6 +143,8 @@ jobs:
           check_no_overflow 1280 720 http://127.0.0.1:4173/
           check_no_overflow 1440 900 http://127.0.0.1:4173/
           check_no_overflow 390 844 http://127.0.0.1:4173/apps
+          check_no_overflow 390 844 http://127.0.0.1:4173/account
+          check_no_overflow 1280 720 http://127.0.0.1:4173/account
 
           "$CHROME" --headless=new --no-sandbox --disable-gpu --virtual-time-budget=1000 --window-size=1440,900 --dump-dom 'http://127.0.0.1:4173/?preview=launcher&exercise=escape' > /tmp/launcher-escape.html
           grep -Fq 'data-preview-escape-restored="true"' /tmp/launcher-escape.html
@@ -158,8 +161,10 @@ jobs:
           "$CHROME" --headless=new --no-sandbox --disable-gpu --hide-scrollbars --window-size=390,844 --screenshot=visual-smoke/sq-hub-bottom-nav-mobile.png 'http://127.0.0.1:4173/?state=ordinary'
           "$CHROME" --headless=new --no-sandbox --disable-gpu --hide-scrollbars --window-size=1440,900 --screenshot=visual-smoke/sq-admin-authorized-desktop.png http://127.0.0.1:4173/admin
           "$CHROME" --headless=new --no-sandbox --disable-gpu --hide-scrollbars --window-size=1440,900 --screenshot=visual-smoke/sq-hub-ordinary-no-admin.png 'http://127.0.0.1:4173/?state=ordinary'
+          "$CHROME" --headless=new --no-sandbox --disable-gpu --hide-scrollbars --window-size=1440,900 --screenshot=visual-smoke/akun-sq-native-account-desktop.png http://127.0.0.1:4173/account
+          "$CHROME" --headless=new --no-sandbox --disable-gpu --hide-scrollbars --window-size=390,844 --screenshot=visual-smoke/akun-sq-native-account-mobile-390x844.png http://127.0.0.1:4173/account
 
-          test "$(find visual-smoke -name '*.png' | wc -l)" -eq 10
+          test "$(find visual-smoke -name '*.png' | wc -l)" -eq 12
 
       - name: Upload visual smoke screenshots
         if: github.event_name == 'pull_request'

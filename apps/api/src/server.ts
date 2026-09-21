@@ -55,7 +55,6 @@ const app = buildApp({
   verifyMachineToken,
   hubAuth,
   hubRedirectUri: config.hubOidcRedirectUri,
-  hubAccountIssuer: config.keycloakIssuer,
   adminAllowedOrigin: new URL(config.hubOidcRedirectUri).origin,
   platformAdmin,
   adminApplicationRegistry: accessService,

@@ -29,7 +29,6 @@ export function buildApp(input: {
   verifyMachineToken: VerifyMachineToken;
   hubAuth?: HubAuthRuntime;
   hubRedirectUri?: string;
-  hubAccountIssuer?: string;
   adminAllowedOrigin?: string;
   platformAdmin?: Pick<PlatformAdminService, "authorize">;
   adminApplicationRegistry?: Pick<ApplicationAccessService, "listApplications" | "upsertApplication">;
@@ -73,14 +72,14 @@ export function buildApp(input: {
   });
 
   if (input.hubAuth) {
-    if (!input.hubRedirectUri || !input.hubAccountIssuer) {
-      throw new Error("hubRedirectUri and hubAccountIssuer are required when Hub auth routes are enabled");
+    if (!input.hubRedirectUri) {
+      throw new Error("hubRedirectUri is required when Hub auth routes are enabled");
     }
     registerHubAuthRoutes(
       app,
       input.hubAuth,
       input.hubRedirectUri,
-      input.hubAccountIssuer,
+      input.identityDirectory,
     );
   }
 

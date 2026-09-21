@@ -4,7 +4,7 @@
 **Date:** 2026-09-18
 **Owner:** Product Owner SQ Hub/HCIS — Human Capital YSQ
 **Products:** SQ Hub + Akun SQ
-**Depends on:** HUB-IMPL-004, HUB-IMPL-005, HUB-IMPL-007, HUB-IMPL-009, HUB-IMPL-015, HUB-IMPL-016, ADR-0003, ADR-0004, ADR-0006, staff authentication policy, security baseline
+**Depends on:** HUB-IMPL-004, HUB-IMPL-005, HUB-IMPL-007, HUB-IMPL-009, HUB-IMPL-015, HUB-IMPL-016, HUB-IMPL-019, ADR-0003, ADR-0004, ADR-0006, staff authentication policy, security baseline
 
 ## Tujuan
 
@@ -84,18 +84,18 @@ Mempertahankan Go 5A/5B yang sudah diterima.
 
 ### `/account`
 
-Route web stabil dan ramah pengguna untuk membuka Akun SQ.
+Route web stabil dan ramah pengguna untuk Akun SQ.
 
-Perilaku:
-1. web merender transition state `Membuka Akun SQ…`;
-2. web menavigasi ke endpoint Hub internal;
-3. endpoint internal mensyaratkan Hub session valid;
-4. endpoint membangun canonical Account Console root `…/account/` hanya dari configured `KEYCLOAK_ISSUER`;
-5. query parameter, hash, atau input pengguna tidak pernah menjadi redirect target;
-6. browser tidak menerima token atau credential tambahan;
-7. bila automatic navigation tidak berjalan, transition page menyediakan fallback link ke endpoint Hub internal yang sama.
+Sejak HUB-IMPL-019:
+1. web merender native Akun SQ di SQ Hub;
+2. browser mengambil browser-safe account snapshot dari endpoint Hub internal;
+3. endpoint mensyaratkan Hub session valid dan membaca identity server-side;
+4. response tidak mengekspos issuer, subject, token, credential, OTP secret, atau recovery code;
+5. Profil Saya, Keamanan, Login & perangkat, dan Aplikasi Saya memakai bahasa SQ yang umum;
+6. action password/TOTP/recovery hanya dapat dimulai melalui allowlist server-side;
+7. Keycloak Account Console tidak lagi menjadi destination normal pengguna.
 
-Specification ini hanya membuat entry Account Console root. Deep route seperti security/sessions tidak dibuat sampai kontrak Keycloak 26.7.2 diverifikasi dan dilindungi test.
+Authentication required-action tetap diproses identity engine dan kembali ke native `/account`.
 
 ### Route yang sengaja tidak dibuat
 
@@ -119,7 +119,7 @@ Web menggunakan typed pathname resolver sederhana; dependency router baru tidak 
 | --- | --- | --- |
 | `/` | Beranda SQ Hub | valid Hub session |
 | `/apps` | Semua aplikasi | valid Hub session |
-| `/account` | transition ke Akun SQ | valid Hub session pada endpoint redirect |
+| `/account` | native Akun SQ | valid Hub session + browser-safe identity lookup |
 | `/admin` dan child path yang sudah dimiliki Admin Center | Administrasi SQ | valid Hub session + existing Platform Administrator authorization |
 
 Exact `/auth/callback` tetap server-side pada nginx dan bukan SPA route.
@@ -248,9 +248,11 @@ Arah:
 
 Native form action, field name, hidden input, OIDC parameter, OTP field, `trustDevice`, dan security behavior tidak boleh berubah.
 
-## Akun SQ Account Console
+## Akun SQ native account + legacy Account Console
 
-Theme account tetap child `keycloak.v3`. Tidak ada custom React Account Console fork.
+HUB-IMPL-019 menggantikan Account Console sebagai experience pengguna normal. Native React `/account` adalah destination final di Hub.
+
+Theme account `keycloak.v3` tetap dipaketkan sebagai compatibility/operator fallback selama transisi, bukan sebagai navigation target pengguna.
 
 Presentation menggunakan mekanisme theme yang didukung:
 - masthead Akun SQ + organization mark/favicon;
@@ -351,14 +353,14 @@ In scope:
 4. App launcher hanya memakai authorized applications dan menutup via Escape/outside click dengan focus restoration.
 5. Admin link hanya ada ketika `platformAdministration === true`.
 6. Account menu memiliki `/account`, `/apps`, conditional `/admin`, dan official logout.
-7. `/account` tidak menerima arbitrary redirect target.
-8. Server account redirect hanya dibangun dari configured `KEYCLOAK_ISSUER` dan membutuhkan Hub session.
+7. `/account` merender native Akun SQ dan tidak menerima arbitrary redirect/action target.
+8. Server account API membutuhkan Hub session, hanya mengembalikan browser-safe data, dan action security memakai allowlist.
 9. Desktop Beranda/Apps tidak memiliki permanent sidebar.
 10. Mobile bottom navigation memiliki Beranda/Aplikasi/Akun + conditional Admin, safe-area, dan tidak menutup konten.
 11. 320/360/390/412/768/1280×720/1440×900 layout tidak memerlukan horizontal page scroll.
 12. Active navigation mempunyai `aria-current`.
 13. Akun SQ login tetap memakai native Keycloak action/fields dan semua supported flow tetap ter-theme.
-14. Account Console tetap `keycloak.v3` dan responsive.
+14. Native Akun SQ responsive; legacy Account Console `keycloak.v3` hanya compatibility fallback.
 15. Active user-facing Hub/theme tidak menampilkan `SQ Identity` atau generic Keycloak branding yang dapat ditheme.
 16. Organization mark/favicon tetap dipakai.
 17. Browser source tetap bebas bearer-token/code/PKCE storage.

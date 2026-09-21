@@ -8,6 +8,11 @@ export interface HubOidcProviderOptions {
   postLogoutRedirectUri: string;
 }
 
+export type HubOidcAction =
+  | "UPDATE_PASSWORD"
+  | "CONFIGURE_TOTP"
+  | "CONFIGURE_RECOVERY_AUTHN_CODES";
+
 export interface HubOidcAuthorizationTransaction {
   state: string;
   codeVerifier: string;
@@ -21,7 +26,7 @@ export interface HubOidcIdentity {
 }
 
 export interface HubOidcProviderLike {
-  createAuthorizationRequest(): Promise<{
+  createAuthorizationRequest(action?: HubOidcAction): Promise<{
     url: URL;
     transaction: HubOidcAuthorizationTransaction;
   }>;
@@ -40,7 +45,7 @@ export class HubOidcProvider implements HubOidcProviderLike {
     this.issuer = options.issuer.replace(/\/$/, "");
   }
 
-  async createAuthorizationRequest(): Promise<{
+  async createAuthorizationRequest(action?: HubOidcAction): Promise<{
     url: URL;
     transaction: HubOidcAuthorizationTransaction;
   }> {
@@ -57,6 +62,7 @@ export class HubOidcProvider implements HubOidcProviderLike {
       code_challenge_method: "S256",
       state,
       nonce,
+      ...(action ? { kc_action: action } : {}),
     });
 
     return {

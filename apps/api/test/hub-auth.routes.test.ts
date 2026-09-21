@@ -1,12 +1,30 @@
 import { describe, expect, it } from "vitest";
 
 import { buildApp } from "../src/app.js";
-import { accountConsoleUrlFromIssuer } from "../src/modules/hub-auth/routes.js";
+import type { HubOidcAction } from "../src/modules/hub-auth/oidc-provider.js";
 import { HubAuthError, type HubAuthRuntime } from "../src/modules/hub-auth/service.js";
+import type { IdentityDirectory } from "../src/modules/identity-directory/client.js";
 
 const accountIssuer = "https://login.example.test/realms/staff";
 
-function appWithHub(hubAuth: HubAuthRuntime) {
+const identityDirectory: IdentityDirectory = {
+  issuer: accountIssuer,
+  search: async () => [],
+  inspect: async () => ({
+    identity: { issuer: accountIssuer, subject: "synthetic-subject" },
+    username: "19870001",
+    email: "synthetic@example.test",
+    emailVerified: true,
+    displayName: "Ahmad Fikri",
+    enabled: true,
+    security: {
+      totpConfigured: true,
+      recoveryCodesConfigured: null,
+    },
+  }),
+};
+
+function appWithHub(hubAuth: HubAuthRuntime, directory: IdentityDirectory = identityDirectory) {
   return buildApp({
     accessService: {
       checkAccess: async () => ({
@@ -18,7 +36,7 @@ function appWithHub(hubAuth: HubAuthRuntime) {
     verifyMachineToken: async () => ({ clientId: "hcis-api-staging" }),
     hubAuth,
     hubRedirectUri: "https://hub-staging.sabilulquran.or.id/auth/callback",
-    hubAccountIssuer: accountIssuer,
+    identityDirectory: directory,
   });
 }
 
@@ -107,21 +125,42 @@ describe("SQ Hub browser auth routes", () => {
     expect(response.json()).toEqual({ error: "UNAUTHENTICATED" });
   });
 
-  it("redirects an authenticated account request only to the configured issuer account console", async () => {
+  it("serves native browser-safe account data instead of redirecting to provider Account Console", async () => {
     const app = appWithHub(fakeHub());
     const response = await app.inject({
       method: "GET",
-      url: "/account?redirect=https://evil.example/&target=javascript:alert(1)",
+      url: "/account",
       headers: { cookie: "sq_hub_session=opaque" },
     });
     await app.close();
 
-    expect(response.statusCode).toBe(302);
-    expect(response.headers.location).toBe("https://login.example.test/realms/staff/account/");
-    expect(response.headers.location).not.toContain("evil.example");
+    expect(response.statusCode).toBe(200);
+    expect(response.headers.location).toBeUndefined();
+    expect(response.json()).toEqual({
+      profile: {
+        displayName: "Ahmad Fikri",
+        username: "19870001",
+        email: "synthetic@example.test",
+        emailVerified: true,
+      },
+      security: {
+        totpConfigured: true,
+        recoveryCodesConfigured: null,
+      },
+      applications: [
+        {
+          key: "hcis",
+          name: "HCIS",
+          canonicalUrl: "https://hcis.example",
+        },
+      ],
+    });
+    expect(response.body).not.toContain("synthetic-subject");
+    expect(response.body).not.toContain("issuer");
+    expect(response.body).not.toContain("/realms/");
   });
 
-  it("requires a valid Hub session before opening Account Console", async () => {
+  it("requires a valid Hub session before returning native account data", async () => {
     const app = appWithHub(
       fakeHub({
         getSession: async () => {
@@ -136,9 +175,69 @@ describe("SQ Hub browser auth routes", () => {
     expect(response.json()).toEqual({ error: "UNAUTHENTICATED" });
   });
 
-  it("builds Account Console root from the configured issuer only", () => {
-    expect(accountConsoleUrlFromIssuer("https://login.example.test/realms/staff/").href)
-      .toBe("https://login.example.test/realms/staff/account/");
+  it("starts only the allowlisted password account action", async () => {
+    let requestedAction: HubOidcAction | undefined;
+    const app = appWithHub(
+      fakeHub({
+        beginLogin: async (action) => {
+          requestedAction = action;
+          return {
+            authorizationUrl: new URL("https://login.example.test/authorize"),
+            setCookie: "sq_hub_oidc_tx=opaque; Path=/; HttpOnly; SameSite=Lax; Secure",
+          };
+        },
+      }),
+    );
+
+    const response = await app.inject({
+      method: "GET",
+      url: "/auth/oidc/action/password",
+      headers: { cookie: "sq_hub_session=opaque" },
+    });
+    await app.close();
+
+    expect(response.statusCode).toBe(302);
+    expect(response.headers.location).toBe("https://login.example.test/authorize");
+    expect(requestedAction).toBe("UPDATE_PASSWORD");
+  });
+
+  it("rejects arbitrary account actions before creating an OIDC transaction", async () => {
+    let beginCalls = 0;
+    const app = appWithHub(
+      fakeHub({
+        beginLogin: async () => {
+          beginCalls += 1;
+          return {
+            authorizationUrl: new URL("https://login.example.test/authorize"),
+            setCookie: "sq_hub_oidc_tx=opaque; Path=/; HttpOnly; SameSite=Lax; Secure",
+          };
+        },
+      }),
+    );
+
+    const response = await app.inject({
+      method: "GET",
+      url: "/auth/oidc/action/delete-account",
+      headers: { cookie: "sq_hub_session=opaque" },
+    });
+    await app.close();
+
+    expect(response.statusCode).toBe(404);
+    expect(response.json()).toEqual({ error: "ACCOUNT_ACTION_NOT_FOUND" });
+    expect(beginCalls).toBe(0);
+  });
+
+  it("returns an account action callback to native Akun SQ", async () => {
+    const app = appWithHub(fakeHub());
+    const response = await app.inject({
+      method: "GET",
+      url: "/auth/callback?code=synthetic&state=synthetic&kc_action=UPDATE_PASSWORD&kc_action_status=success",
+      headers: { cookie: "sq_hub_oidc_tx=opaque" },
+    });
+    await app.close();
+
+    expect(response.statusCode).toBe(302);
+    expect(response.headers.location).toBe("/account");
   });
 
   it("clears the local session and returns the official OIDC logout URL", async () => {

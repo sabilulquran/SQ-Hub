@@ -1,7 +1,7 @@
 import { AlertTriangle, LoaderCircle, RefreshCw } from "lucide-react";
 import { type ReactNode, useCallback, useEffect, useState } from "react";
 
-import { AccountTransitionPage } from "@/AccountTransitionPage";
+import { AccountPage } from "@/AccountPage";
 import { AdminCenterPage } from "@/AdminCenterPage";
 import { WorkspaceShell } from "@/WorkspaceShell";
 import { BrandLockup } from "@/components/BrandLockup";
@@ -88,7 +88,7 @@ export function WorkspaceApp() {
       return <AdminRoute workspace={state.workspace} onLogout={logout} />;
     }
     if (route === "account") {
-      return <AccountTransitionPage workspace={state.workspace} onLogout={logout} />;
+      return <AccountPage workspace={state.workspace} onLogout={logout} />;
     }
     if (route === "home" || route === "apps") {
       return <WorkspaceShell workspace={state.workspace} route={route} onLogout={logout} />;

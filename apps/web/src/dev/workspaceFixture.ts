@@ -1,4 +1,4 @@
-import type { WorkspaceSnapshot } from "@/types";
+import type { AccountSnapshot, WorkspaceSnapshot } from "@/types";
 
 export const workspaceFixture: WorkspaceSnapshot = {
   user: {
@@ -33,4 +33,19 @@ export const ordinaryWorkspaceFixture: WorkspaceSnapshot = {
 export const emptyWorkspaceFixture: WorkspaceSnapshot = {
   ...ordinaryWorkspaceFixture,
   applications: [],
+};
+
+
+export const accountFixture: AccountSnapshot = {
+  profile: {
+    displayName: "Ahmad Fikri",
+    username: "19870001",
+    email: "ahmad.fikri@example.test",
+    emailVerified: true,
+  },
+  security: {
+    totpConfigured: true,
+    recoveryCodesConfigured: true,
+  },
+  applications: workspaceFixture.applications,
 };
