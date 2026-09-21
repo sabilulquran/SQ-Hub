@@ -231,7 +231,6 @@ export const accountFixture: AccountSnapshot = {
       {
         name: "Human Capital",
         path: "/Yayasan/Human Capital",
-        direct: true,
       },
     ],
   },
