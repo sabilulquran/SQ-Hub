@@ -1,12 +1,14 @@
 import { buildApp } from "./app.js";
 import { loadConfig } from "./config.js";
 import { createPool } from "./db/pool.js";
+import { KeycloakAccountSelfService } from "./modules/account-self-service/client.js";
 import { createKeycloakMachineTokenVerifier } from "./modules/application-access/machine-auth.js";
 import { PgApplicationAccessRepository } from "./modules/application-access/repository.js";
 import { ApplicationAccessService } from "./modules/application-access/service.js";
 import { HubOidcProvider } from "./modules/hub-auth/oidc-provider.js";
 import { PgHubAuthRepository } from "./modules/hub-auth/repository.js";
 import { HubAuthService } from "./modules/hub-auth/service.js";
+import { HubTokenVault } from "./modules/hub-auth/token-vault.js";
 import { PgHubWorkspaceRepository } from "./modules/hub-auth/workspace-repository.js";
 import { KeycloakIdentityDirectory } from "./modules/identity-directory/client.js";
 import { PgPlatformAdminRepository } from "./modules/platform-admin/repository.js";
@@ -37,6 +39,7 @@ const hubOidcProvider = new HubOidcProvider({
   redirectUri: config.hubOidcRedirectUri,
   postLogoutRedirectUri: config.hubOidcPostLogoutRedirectUri,
 });
+const accountSelfService = new KeycloakAccountSelfService(config.keycloakIssuer);
 const hubAuth = new HubAuthService(
   new PgHubAuthRepository(pool),
   hubOidcProvider,
@@ -47,6 +50,7 @@ const hubAuth = new HubAuthService(
     transactionTtlMinutes: config.hubOidcTransactionTtlMinutes,
     secureCookies: config.hubCookieSecure,
   },
+  new HubTokenVault(config.hubOidcClientSecret),
   platformAdmin,
 );
 
@@ -60,6 +64,7 @@ const app = buildApp({
   adminApplicationRegistry: accessService,
   adminApplicationAccess: accessService,
   identityDirectory,
+  accountSelfService,
   logger: true,
 });
 
