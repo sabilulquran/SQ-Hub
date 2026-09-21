@@ -1,12 +1,10 @@
 import {
   AppWindow,
-  BadgeCheck,
   ChevronRight,
   KeyRound,
   Laptop,
   Link2,
   LogOut,
-  Mail,
   RefreshCw,
   Save,
   ShieldCheck,
