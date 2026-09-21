@@ -43,6 +43,7 @@ export interface HubAuthRuntime {
   beginLogin(
     action?: HubOidcAction,
     returnPath?: "/" | "/account",
+    replaceSessionToken?: string | null,
   ): Promise<{ authorizationUrl: URL; setCookie: string }>;
   completeLogin(
     callbackUrl: URL,
@@ -94,14 +95,25 @@ export class HubAuthService implements HubAuthRuntime {
   async beginLogin(
     action?: HubOidcAction,
     returnPath: "/" | "/account" = "/",
+    replaceSessionToken?: string | null,
   ): Promise<{ authorizationUrl: URL; setCookie: string }> {
     const request = await this.oidcProvider.createAuthorizationRequest(action);
     const transactionToken = generateOpaqueToken();
+    const replacementSession = replaceSessionToken
+      ? await this.getRequiredSession(replaceSessionToken)
+      : null;
     await this.repository.createTransaction({
       tokenHash: hashOpaqueToken(transactionToken),
       transaction: {
         ...request.transaction,
         returnPath,
+        ...(replacementSession && replaceSessionToken
+          ? {
+              replaceSessionTokenHash: hashOpaqueToken(replaceSessionToken),
+              expectedIssuer: replacementSession.issuer,
+              expectedSubject: replacementSession.subject,
+            }
+          : {}),
       },
       expiresAt: new Date(Date.now() + this.transactionTtlMs),
     });
@@ -145,6 +157,26 @@ export class HubAuthService implements HubAuthRuntime {
         stored.transaction.returnPath ?? "/",
       );
     }
+    if (
+      stored.transaction.expectedIssuer ||
+      stored.transaction.expectedSubject
+    ) {
+      const sameIdentity =
+        Boolean(stored.transaction.expectedIssuer) &&
+        Boolean(stored.transaction.expectedSubject) &&
+        normalizeIssuer(completed.identity.issuer) ===
+          normalizeIssuer(stored.transaction.expectedIssuer!) &&
+        completed.identity.subject === stored.transaction.expectedSubject;
+      if (!sameIdentity) {
+        throw new HubAuthError(
+          400,
+          "OIDC_IDENTITY_SWITCH_REJECTED",
+          "Aksi Akun SQ harus diselesaikan oleh akun yang sama.",
+          stored.transaction.returnPath ?? "/",
+        );
+      }
+    }
+
     const sessionToken = generateOpaqueToken();
     const encryptedRefreshToken = completed.refreshToken
       ? this.tokenVault.seal(completed.refreshToken)
@@ -154,6 +186,7 @@ export class HubAuthService implements HubAuthRuntime {
       tokenHash: hashOpaqueToken(sessionToken),
       identity: completed.identity,
       accountRefreshTokenCiphertext: encryptedRefreshToken,
+      replaceSessionTokenHash: stored.transaction.replaceSessionTokenHash ?? null,
       expiresAt: new Date(Date.now() + this.maxSeconds * 1000),
       context,
     });
@@ -284,6 +317,10 @@ export function readCookie(header: string | undefined, name: string): string | n
     if (rawName === name) return rawValue.join("=") || null;
   }
   return null;
+}
+
+function normalizeIssuer(value: string): string {
+  return value.replace(/\/+$/, "");
 }
 
 function generateOpaqueToken(): string {
