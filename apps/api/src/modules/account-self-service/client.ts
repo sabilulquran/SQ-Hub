@@ -124,6 +124,17 @@ function numberValue(value: unknown): number | null {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 
+const SUPPORTED_CREDENTIAL_ACTIONS = new Set([
+  "UPDATE_PASSWORD",
+  "CONFIGURE_TOTP",
+  "CONFIGURE_RECOVERY_AUTHN_CODES",
+]);
+
+function supportedCredentialAction(value: unknown): string | null {
+  const action = stringValue(value);
+  return action && SUPPORTED_CREDENTIAL_ACTIONS.has(action) ? action : null;
+}
+
 function valuesForAttribute(source: JsonRecord, name: string): string[] {
   const raw = record(source.attributes)[name] ?? source[name];
   if (Array.isArray(raw)) {
@@ -183,8 +194,8 @@ export class KeycloakAccountSelfService {
         category: stringValue(container.category) ?? "other",
         label: stringValue(container.displayName) ?? stringValue(container.type) ?? "Credential",
         helpText: stringValue(container.helptext) ?? "",
-        createAction: stringValue(container.createAction),
-        updateAction: stringValue(container.updateAction),
+        createAction: supportedCredentialAction(container.createAction),
+        updateAction: supportedCredentialAction(container.updateAction),
         removeable: boolValue(container.removeable),
         credentials: userCredentials.map((entry) => {
           const credential = record(record(entry).credential);
@@ -499,8 +510,8 @@ export class KeycloakAccountSelfService {
         category: stringValue(container.category) ?? "other",
         label: stringValue(container.displayName) ?? stringValue(container.type) ?? "Credential",
         helpText: stringValue(container.helptext) ?? "",
-        createAction: stringValue(container.createAction),
-        updateAction: stringValue(container.updateAction),
+        createAction: supportedCredentialAction(container.createAction),
+        updateAction: supportedCredentialAction(container.updateAction),
         removeable: boolValue(container.removeable),
         credentials: userCredentials.map((entry) => {
           const credential = record(record(entry).credential);
