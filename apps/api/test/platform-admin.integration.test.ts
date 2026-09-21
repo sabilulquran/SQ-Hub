@@ -37,6 +37,7 @@ function session(createdAt: Date, overrides: Partial<HubSessionRecord> = {}): Hu
     username: "19870099",
     email: "platform-admin@example.test",
     emailVerified: true,
+    accountRefreshTokenCiphertext: null,
     createdAt,
     expiresAt: new Date(createdAt.getTime() + 12 * 60 * 60 * 1000),
     ...overrides,
