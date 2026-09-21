@@ -39,6 +39,7 @@ export interface HubAuthStore {
     tokenHash: string;
     identity: HubSessionIdentity;
     accountRefreshTokenCiphertext: string | null;
+    replaceSessionTokenHash?: string | null;
     expiresAt: Date;
     context: HubRequestContext;
   }): Promise<HubSessionRecord>;
@@ -52,6 +53,9 @@ interface TransactionRow {
   codeVerifier: string;
   nonce: string;
   returnPath: "/" | "/account" | null;
+  replaceSessionTokenHash: string | null;
+  expectedIssuer: string | null;
+  expectedSubject: string | null;
   expiresAt: Date;
 }
 
@@ -79,8 +83,17 @@ export class PgHubAuthRepository implements HubAuthStore {
     await this.pool.query(
       `
         INSERT INTO hub_oidc_transactions (
-          id, token_hash, state, code_verifier, nonce, return_path, expires_at
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7)
+          id,
+          token_hash,
+          state,
+          code_verifier,
+          nonce,
+          return_path,
+          replace_session_token_hash,
+          expected_identity_issuer,
+          expected_identity_subject,
+          expires_at
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
       `,
       [
         randomUUID(),
@@ -89,6 +102,9 @@ export class PgHubAuthRepository implements HubAuthStore {
         input.transaction.codeVerifier,
         input.transaction.nonce,
         input.transaction.returnPath ?? null,
+        input.transaction.replaceSessionTokenHash ?? null,
+        input.transaction.expectedIssuer ?? null,
+        input.transaction.expectedSubject ?? null,
         input.expiresAt,
       ],
     );
@@ -107,6 +123,9 @@ export class PgHubAuthRepository implements HubAuthStore {
           code_verifier AS "codeVerifier",
           nonce,
           return_path AS "returnPath",
+          replace_session_token_hash AS "replaceSessionTokenHash",
+          expected_identity_issuer AS "expectedIssuer",
+          expected_identity_subject AS "expectedSubject",
           expires_at AS "expiresAt"
       `,
       [tokenHash],
@@ -119,6 +138,11 @@ export class PgHubAuthRepository implements HubAuthStore {
         codeVerifier: row.codeVerifier,
         nonce: row.nonce,
         ...(row.returnPath ? { returnPath: row.returnPath } : {}),
+        ...(row.replaceSessionTokenHash
+          ? { replaceSessionTokenHash: row.replaceSessionTokenHash }
+          : {}),
+        ...(row.expectedIssuer ? { expectedIssuer: row.expectedIssuer } : {}),
+        ...(row.expectedSubject ? { expectedSubject: row.expectedSubject } : {}),
       },
       expiresAt: row.expiresAt,
     };
@@ -128,6 +152,7 @@ export class PgHubAuthRepository implements HubAuthStore {
     tokenHash: string;
     identity: HubSessionIdentity;
     accountRefreshTokenCiphertext: string | null;
+    replaceSessionTokenHash?: string | null;
     expiresAt: Date;
     context: HubRequestContext;
   }): Promise<HubSessionRecord> {
@@ -135,6 +160,36 @@ export class PgHubAuthRepository implements HubAuthStore {
     try {
       await client.query("BEGIN");
       const sessionId = randomUUID();
+      let replacedSession:
+        | { sessionId: string; identityIssuer: string; identitySubject: string }
+        | undefined;
+
+      if (input.replaceSessionTokenHash) {
+        const replacement = await client.query<{
+          sessionId: string;
+          identityIssuer: string;
+          identitySubject: string;
+        }>(
+          `
+            UPDATE hub_sessions
+            SET revoked_at = now(),
+                account_refresh_token_ciphertext = NULL
+            WHERE token_hash = $1
+              AND revoked_at IS NULL
+              AND expires_at > now()
+            RETURNING
+              id AS "sessionId",
+              identity_issuer AS "identityIssuer",
+              identity_subject AS "identitySubject"
+          `,
+          [input.replaceSessionTokenHash],
+        );
+        replacedSession = replacement.rows[0];
+        if (!replacedSession) {
+          throw new Error("Hub session selected for replacement is no longer active");
+        }
+      }
+
       const result = await client.query<SessionRow>(
         `
           INSERT INTO hub_sessions (
@@ -194,6 +249,26 @@ export class PgHubAuthRepository implements HubAuthStore {
           JSON.stringify({ issuer: input.identity.issuer }),
         ],
       );
+
+      if (replacedSession) {
+        await client.query(
+          `
+            INSERT INTO platform_audit_events (
+              id, actor_kind, actor_ref, action, target_type, target_ref, outcome, payload
+            ) VALUES ($1, 'human', $2, 'hub.auth.session.replaced', 'hub_session', $3, 'succeeded', $4::jsonb)
+          `,
+          [
+            randomUUID(),
+            replacedSession.identitySubject,
+            replacedSession.sessionId,
+            JSON.stringify({
+              issuer: replacedSession.identityIssuer,
+              replacementSessionId: sessionId,
+            }),
+          ],
+        );
+      }
+
       await client.query("COMMIT");
 
       return {
