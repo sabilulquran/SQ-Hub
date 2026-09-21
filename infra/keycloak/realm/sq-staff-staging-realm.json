@@ -138,5 +138,8 @@
         }
       ]
     }
-  ]
+  ],
+  "organizationsEnabled": false,
+  "userManagedAccessAllowed": false,
+  "verifiableCredentialsEnabled": false
 }
