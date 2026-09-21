@@ -32,6 +32,7 @@ export class HubAuthError extends Error {
     public readonly statusCode: number,
     public readonly code: string,
     message: string,
+    public readonly returnPath?: "/" | "/account",
   ) {
     super(message);
     this.name = "HubAuthError";
@@ -130,10 +131,20 @@ export class HubAuthService implements HubAuthRuntime {
       throw new HubAuthError(400, "OIDC_TRANSACTION_EXPIRED", "Transaksi masuk sudah berakhir.");
     }
 
-    const completed = await this.oidcProvider.completeAuthorization(
-      callbackUrl,
-      stored.transaction,
-    );
+    let completed;
+    try {
+      completed = await this.oidcProvider.completeAuthorization(
+        callbackUrl,
+        stored.transaction,
+      );
+    } catch {
+      throw new HubAuthError(
+        400,
+        "OIDC_COMPLETION_FAILED",
+        "Proses masuk Akun SQ belum dapat diselesaikan.",
+        stored.transaction.returnPath ?? "/",
+      );
+    }
     const sessionToken = generateOpaqueToken();
     const encryptedRefreshToken = completed.refreshToken
       ? this.tokenVault.seal(completed.refreshToken)
