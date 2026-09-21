@@ -486,23 +486,6 @@ export class KeycloakAccountSelfService {
     return `delete_credential:${credentialId}`;
   }
 
-  async setCredentialLabel(
-    accessToken: string,
-    credentialId: string,
-    label: string,
-  ): Promise<void> {
-    const credentials = await this.snapshotCredentials(accessToken);
-    const exists = credentials.some((container) =>
-      container.credentials.some((credential) => credential.id === credentialId),
-    );
-    if (!exists) throw new AccountSelfServiceError(404, "CREDENTIAL_NOT_FOUND");
-    await this.voidRequest(
-      accessToken,
-      `credentials/${encodeURIComponent(credentialId)}/label`,
-      { method: "PUT", body: JSON.stringify(label.trim()) },
-    );
-  }
-
   private async snapshotCredentials(accessToken: string): Promise<AccountCredentialType[]> {
     const raw = await this.json(accessToken, "credentials");
     const items = Array.isArray(raw) ? raw : [];
