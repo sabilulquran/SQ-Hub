@@ -16,6 +16,7 @@ import {
   HUB_SESSION_COOKIE_NAME,
   HubAuthService,
 } from "../src/modules/hub-auth/service.js";
+import { HubTokenVault } from "../src/modules/hub-auth/token-vault.js";
 import type {
   HubWorkspaceApplication,
   HubWorkspaceApplicationSource,
@@ -38,6 +39,7 @@ class MemoryStore implements HubAuthStore {
     record: HubSessionRecord;
   } | null = null;
   revokedHash: string | null = null;
+  rotatedCiphertext: string | null = null;
 
   async createTransaction(input: {
     tokenHash: string;
@@ -60,6 +62,7 @@ class MemoryStore implements HubAuthStore {
   async createSession(input: {
     tokenHash: string;
     identity: HubSessionIdentity;
+    accountRefreshTokenCiphertext: string | null;
     expiresAt: Date;
     context: HubRequestContext;
   }) {
@@ -71,6 +74,7 @@ class MemoryStore implements HubAuthStore {
       username: input.identity.username,
       email: input.identity.email,
       emailVerified: input.identity.emailVerified,
+      accountRefreshTokenCiphertext: input.accountRefreshTokenCiphertext,
       createdAt: new Date(),
       expiresAt: input.expiresAt,
     };
@@ -80,6 +84,12 @@ class MemoryStore implements HubAuthStore {
 
   async getSession(tokenHash: string) {
     return this.session?.tokenHash === tokenHash ? this.session.record : null;
+  }
+
+  async updateAccountRefreshToken(sessionId: string, ciphertext: string) {
+    if (this.session?.record.sessionId !== sessionId) return;
+    this.rotatedCiphertext = ciphertext;
+    this.session.record.accountRefreshTokenCiphertext = ciphertext;
   }
 
   async revokeSession(tokenHash: string) {
@@ -95,6 +105,7 @@ class FakeOidcProvider implements HubOidcProviderLike {
   };
   completedWith: HubOidcAuthorizationTransaction | null = null;
   requestedAction: HubOidcAction | undefined;
+  refreshInput: string | null = null;
 
   async createAuthorizationRequest(action?: HubOidcAction) {
     this.requestedAction = action;
@@ -110,12 +121,23 @@ class FakeOidcProvider implements HubOidcProviderLike {
   ) {
     this.completedWith = transaction;
     return {
-      issuer: "https://login.sabilulquran.or.id/realms/sq-staff-staging",
-      subject: "opaque-subject",
-      displayName: "SQ Hub UAT",
-      username: "19870001",
-      email: "uat@example.test",
-      emailVerified: true,
+      identity: {
+        issuer: "https://login.sabilulquran.or.id/realms/sq-staff-staging",
+        subject: "opaque-subject",
+        displayName: "SQ Hub UAT",
+        username: "19870001",
+        email: "uat@example.test",
+        emailVerified: true,
+      },
+      refreshToken: "refresh-token-plaintext",
+    };
+  }
+
+  async refreshAccountAccess(refreshToken: string) {
+    this.refreshInput = refreshToken;
+    return {
+      accessToken: "short-lived-account-access",
+      refreshToken: "rotated-refresh-token",
     };
   }
 
@@ -142,6 +164,7 @@ function service(platformAdministration = false) {
   const store = new MemoryStore();
   const provider = new FakeOidcProvider();
   const workspace = new FakeWorkspaceSource();
+  const vault = new HubTokenVault("synthetic-client-secret-for-tests");
   const auth = new HubAuthService(
     store,
     provider,
@@ -152,11 +175,12 @@ function service(platformAdministration = false) {
       transactionTtlMinutes: 10,
       secureCookies: true,
     },
+    vault,
     {
       canUseAdmin: async () => platformAdministration,
     },
   );
-  return { auth, store, provider };
+  return { auth, store, provider, vault };
 }
 
 function cookieValue(setCookie: string, name: string) {
@@ -169,7 +193,7 @@ function cookieValue(setCookie: string, name: string) {
 describe("HubAuthService", () => {
   it("keeps OIDC transaction material server-side behind an opaque secure cookie", async () => {
     const { auth, store } = service();
-    const result = await auth.beginLogin();
+    const result = await auth.beginLogin(undefined, "/account");
     const rawCookie = cookieValue(result.setCookie, HUB_OIDC_TRANSACTION_COOKIE_NAME);
 
     expect(result.authorizationUrl.href).toBe("https://login.example.test/authorize");
@@ -178,6 +202,7 @@ describe("HubAuthService", () => {
     expect(result.setCookie).toContain("Secure");
     expect(result.setCookie).not.toContain("state-001");
     expect(result.setCookie).not.toContain("verifier-001");
+    expect(store.transaction?.transaction.returnPath).toBe("/account");
     expect(store.transaction?.tokenHash).toMatch(/^[a-f0-9]{64}$/);
     expect(store.transaction?.tokenHash).not.toBe(rawCookie);
   });
@@ -185,14 +210,14 @@ describe("HubAuthService", () => {
   it("passes only typed account actions into the OIDC provider", async () => {
     const { auth, provider } = service();
 
-    await auth.beginLogin("UPDATE_PASSWORD");
+    await auth.beginLogin("UPDATE_PASSWORD", "/account");
 
     expect(provider.requestedAction).toBe("UPDATE_PASSWORD");
   });
 
-  it("consumes the transaction once and creates only an opaque Hub session cookie", async () => {
-    const { auth, store, provider } = service();
-    const begin = await auth.beginLogin();
+  it("encrypts delegated refresh token at rest and returns only opaque Hub cookies", async () => {
+    const { auth, store, provider, vault } = service();
+    const begin = await auth.beginLogin(undefined, "/account");
     const transactionToken = cookieValue(begin.setCookie, HUB_OIDC_TRANSACTION_COOKIE_NAME);
 
     const completed = await auth.completeLogin(
@@ -201,25 +226,72 @@ describe("HubAuthService", () => {
       context,
     );
 
-    expect(provider.completedWith).toEqual(provider.transaction);
+    expect(provider.completedWith?.returnPath).toBe("/account");
     expect(store.transaction).toBeNull();
     expect(store.session?.tokenHash).toMatch(/^[a-f0-9]{64}$/);
     expect(store.session?.identity.subject).toBe("opaque-subject");
     expect(store.session?.identity.username).toBe("19870001");
-    expect(store.session?.identity.email).toBe("uat@example.test");
-    expect(store.session?.identity.emailVerified).toBe(true);
+    expect(store.session?.record.accountRefreshTokenCiphertext).toBeTruthy();
+    expect(store.session?.record.accountRefreshTokenCiphertext).not.toContain(
+      "refresh-token-plaintext",
+    );
+    expect(
+      vault.open(store.session!.record.accountRefreshTokenCiphertext!),
+    ).toBe("refresh-token-plaintext");
+    expect(completed.returnPath).toBe("/account");
     expect(completed.setCookies[0]).toContain(`${HUB_SESSION_COOKIE_NAME}=`);
     expect(completed.setCookies[0]).toContain("HttpOnly");
     expect(completed.setCookies[0]).not.toContain("opaque-subject");
-    expect(completed.setCookies[1]).toContain(`${HUB_OIDC_TRANSACTION_COOKIE_NAME}=`);
-    expect(completed.setCookies[1]).toContain("Max-Age=0");
+    expect(completed.setCookies.join(";")).not.toContain("refresh-token-plaintext");
 
     await expect(
-      auth.completeLogin(new URL("https://hub-staging.sabilulquran.or.id/auth/callback"), transactionToken, context),
+      auth.completeLogin(
+        new URL("https://hub-staging.sabilulquran.or.id/auth/callback"),
+        transactionToken,
+        context,
+      ),
     ).rejects.toMatchObject({ code: "OIDC_TRANSACTION_EXPIRED" });
   });
 
-  it("returns a browser workspace without exposing the opaque OIDC subject", async () => {
+  it("refreshes delegated account access server-side and persists rotated refresh token encrypted", async () => {
+    const { auth, store, provider, vault } = service();
+    const begin = await auth.beginLogin(undefined, "/account");
+    const transactionToken = cookieValue(begin.setCookie, HUB_OIDC_TRANSACTION_COOKIE_NAME);
+    const completed = await auth.completeLogin(
+      new URL("https://hub-staging.sabilulquran.or.id/auth/callback"),
+      transactionToken,
+      context,
+    );
+    const sessionToken = cookieValue(completed.setCookies[0]!, HUB_SESSION_COOKIE_NAME);
+
+    const delegated = await auth.getAccountAccess(sessionToken);
+
+    expect(delegated.accessToken).toBe("short-lived-account-access");
+    expect(provider.refreshInput).toBe("refresh-token-plaintext");
+    expect(store.rotatedCiphertext).toBeTruthy();
+    expect(store.rotatedCiphertext).not.toContain("rotated-refresh-token");
+    expect(vault.open(store.rotatedCiphertext!)).toBe("rotated-refresh-token");
+  });
+
+  it("requires reauthentication when an older Hub session has no delegated refresh token", async () => {
+    const { auth, store } = service();
+    const begin = await auth.beginLogin();
+    const transactionToken = cookieValue(begin.setCookie, HUB_OIDC_TRANSACTION_COOKIE_NAME);
+    const completed = await auth.completeLogin(
+      new URL("https://hub-staging.sabilulquran.or.id/auth/callback"),
+      transactionToken,
+      context,
+    );
+    const sessionToken = cookieValue(completed.setCookies[0]!, HUB_SESSION_COOKIE_NAME);
+    store.session!.record.accountRefreshTokenCiphertext = null;
+
+    await expect(auth.getAccountAccess(sessionToken)).rejects.toMatchObject({
+      statusCode: 428,
+      code: "ACCOUNT_REAUTH_REQUIRED",
+    });
+  });
+
+  it("returns a browser workspace without exposing delegated identity material", async () => {
     const { auth } = service(true);
     const begin = await auth.beginLogin();
     const transactionToken = cookieValue(begin.setCookie, HUB_OIDC_TRANSACTION_COOKIE_NAME);
@@ -243,6 +315,7 @@ describe("HubAuthService", () => {
       capabilities: { platformAdministration: true },
     });
     expect(JSON.stringify(workspace)).not.toContain("opaque-subject");
+    expect(JSON.stringify(workspace)).not.toContain("refresh-token");
   });
 
   it("rejects a missing Hub session and revokes an authenticated session on logout", async () => {
