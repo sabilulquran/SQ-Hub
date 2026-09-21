@@ -190,6 +190,25 @@ Delegated Account API memerlukan:
 
 Repository menyediakan idempotent reconciliation untuk scope/audience dan CI harus membuktikan tidak ada account-role scope yang lebih luas dari allowlist.
 
+### Production reconciliation handoff
+
+Production **tidak** mengubah scope/audience sebagai side effect dari rollout image Keycloak. Perubahan realm tetap menjadi aksi operator berizin yang terpisah.
+
+Sebelum native self-service dinyatakan siap di production, operator wajib menjalankan:
+
+`infra/keycloak/scripts/reconcile-native-account-self-service.sh`
+
+terhadap exact realm `sq-staff`, client `sq-hub`, dan Compose identity production yang sudah dirender. Untuk root-owned runtime bundle saat ini, helper mendukung `KEYCLOAK_COMPOSE_FILE=/var/www/sq-hub-production/compose.identity.json` dan `KEYCLOAK_ENV_FILE=""` agar tidak mengasumsikan file env staging. Helper tetap mensyaratkan authenticated `kcadm` config yang sudah tersedia **di dalam** container Keycloak dan tidak mengelola credential administrator.
+
+Aksi production harus:
+- dijalankan dari reviewed source SHA yang sama dengan release;
+- hanya menambah/menjaga tujuh role account-client allowlist dan audience `account`;
+- fail closed bila ada role account-client lain yang sudah terscope ke `sq-hub`;
+- tidak mengubah HCIS client, Google provider, trusted-device flow, MFA, realm key/issuer, theme, atau client secret;
+- merekam hanya marker `NATIVE_ACCOUNT_SCOPE_MAPPING_PASS` dan `NATIVE_ACCOUNT_AUDIENCE_PASS`, tanpa token/secret/raw user data.
+
+Green CI membuktikan helper dan disposable Keycloak behavior, tetapi **bukan** bukti bahwa reconciliation production sudah dijalankan.
+
 ## Out of scope
 
 HUB-IMPL-019 tidak:
