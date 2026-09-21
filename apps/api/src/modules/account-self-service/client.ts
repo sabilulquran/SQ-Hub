@@ -15,6 +15,7 @@ export interface AccountProfileField {
   readOnly: boolean;
   multivalued: boolean;
   values: string[];
+  requiredAction: "UPDATE_EMAIL" | null;
 }
 
 export interface AccountCredential {
@@ -165,6 +166,11 @@ export class KeycloakAccountSelfService {
         readOnly: boolValue(field.readOnly),
         multivalued: boolValue(field.multivalued),
         values: valuesForAttribute(profileRecord, name),
+        requiredAction:
+          name === "email" &&
+          record(field.annotations)["kc.required.action.supported"] === true
+            ? "UPDATE_EMAIL"
+            : null,
       };
     }).filter((field) => field.name);
 
@@ -320,6 +326,12 @@ export class KeycloakAccountSelfService {
       if (!field || field.readOnly) {
         throw new AccountSelfServiceError(400, "PROFILE_FIELD_NOT_EDITABLE");
       }
+      if (
+        name === "email" &&
+        record(record(field).annotations)["kc.required.action.supported"] === true
+      ) {
+        throw new AccountSelfServiceError(400, "PROFILE_FIELD_REQUIRES_ACTION");
+      }
       if (!field.multivalued && values.length > 1) {
         throw new AccountSelfServiceError(400, "PROFILE_FIELD_INVALID");
       }
@@ -355,6 +367,28 @@ export class KeycloakAccountSelfService {
       method: "POST",
       body: JSON.stringify(payload),
     });
+  }
+
+  async resolveProfileAction(
+    accessToken: string,
+    fieldName: string,
+  ): Promise<"UPDATE_EMAIL"> {
+    if (fieldName !== "email") {
+      throw new AccountSelfServiceError(404, "PROFILE_ACTION_NOT_AVAILABLE");
+    }
+    const current = record(await this.json(accessToken, "?userProfileMetadata=true"));
+    const metadata = record(current.userProfileMetadata);
+    const fieldMetadata = Array.isArray(metadata.attributes) ? metadata.attributes : [];
+    const emailField = fieldMetadata
+      .map((item) => record(item))
+      .find((field) => stringValue(field.name) === "email");
+    if (
+      !emailField ||
+      record(emailField.annotations)["kc.required.action.supported"] !== true
+    ) {
+      throw new AccountSelfServiceError(404, "PROFILE_ACTION_NOT_AVAILABLE");
+    }
+    return "UPDATE_EMAIL";
   }
 
   async revokeConsent(accessToken: string, clientId: string): Promise<void> {
