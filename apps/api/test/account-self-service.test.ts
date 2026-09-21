@@ -118,6 +118,16 @@ describe("KeycloakAccountSelfService", () => {
             },
           ],
         },
+        {
+          type: "future-passkey",
+          category: "passwordless",
+          displayName: "future-passkey-display-name",
+          helptext: "Provider capability not yet accepted by HUB-IMPL-019.",
+          createAction: "UNREVIEWED_ACTION",
+          updateAction: "UNREVIEWED_UPDATE",
+          removeable: false,
+          userCredentialMetadatas: [],
+        },
       ],
       "/realms/staff/account/sessions/devices": [
         {
@@ -210,6 +220,11 @@ describe("KeycloakAccountSelfService", () => {
       },
     ]);
     expect(snapshot.credentials[0]?.credentials[0]?.id).toBe("cred-otp-1");
+    expect(snapshot.credentials[1]).toMatchObject({
+      type: "future-passkey",
+      createAction: null,
+      updateAction: null,
+    });
     expect(snapshot.devices[0]?.sessions[0]?.current).toBe(true);
     expect(snapshot.applications[0]?.name).toBe("SQ Hub");
     expect(snapshot.linkedAccounts[0]?.providerAlias).toBe("google");
