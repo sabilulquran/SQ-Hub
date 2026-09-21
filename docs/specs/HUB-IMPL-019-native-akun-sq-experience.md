@@ -110,6 +110,7 @@ Untuk action sensitif yang memang dimiliki identity engine, SQ Hub memulai Appli
 
 Baseline action yang diterima:
 - `UPDATE_PASSWORD`;
+- `UPDATE_EMAIL` hanya bila metadata profil provider menandai email mendukung required action tersebut;
 - `CONFIGURE_TOTP`;
 - `CONFIGURE_RECOVERY_AUTHN_CODES`;
 - `idp_link:<provider>` hanya setelah provider diverifikasi tersedia bagi user;
@@ -206,7 +207,7 @@ HUB-IMPL-019 tidak:
 
 1. Mengklik **Kelola Akun SQ** dari Hub membuka native `/account`, tidak redirect ke provider Account Console.
 2. Native navigation baseline memuat Profil Saya, Keamanan, Sesi & Perangkat, Aplikasi, dan Akun Terhubung; Keanggotaan muncul bila data group tersedia.
-3. Profil editable mengikuti metadata read-only/required/multivalued provider dan menyimpan melalui Account API.
+3. Profil editable mengikuti metadata read-only/required/multivalued provider; field biasa disimpan melalui Account API, sedangkan email memakai `UPDATE_EMAIL` bila provider menandainya sebagai required-action-managed.
 4. Credential container aktif tidak dihilangkan; password/TOTP/recovery memakai provider action yang sudah diverifikasi server-side.
 5. Device/session inventory berasal dari provider; non-current session dapat diakhiri dan semua sesi lain dapat diakhiri.
 6. SQ Application Access dan identity-connected applications/consents ditampilkan sebagai dua konsep berbeda.
