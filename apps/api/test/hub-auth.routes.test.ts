@@ -450,6 +450,30 @@ describe("SQ Hub browser auth routes", () => {
     expect(response.headers.location).toBe("/account");
   });
 
+  it("returns a failed account action to native Akun SQ even without kc_action in callback", async () => {
+    const app = appWithHub(
+      fakeHub({
+        completeLogin: async () => {
+          throw new HubAuthError(
+            400,
+            "OIDC_COMPLETION_FAILED",
+            "synthetic cancellation",
+            "/account",
+          );
+        },
+      }),
+    );
+    const response = await app.inject({
+      method: "GET",
+      url: "/auth/callback?error=access_denied&state=synthetic",
+      headers: { cookie: "sq_hub_oidc_tx=opaque" },
+    });
+    await app.close();
+
+    expect(response.statusCode).toBe(302);
+    expect(response.headers.location).toBe("/account?authError=oidc_failed");
+  });
+
   it("clears the local session and returns the official OIDC logout URL", async () => {
     const app = appWithHub(fakeHub());
     const response = await app.inject({
