@@ -138,6 +138,8 @@ The workflow intentionally does not assume the latest documentation commit has f
 
 The existing publishers provide exact `sha-<source-sha>` images. Production deployment pulls those tags, resolves `@sha256:` digests, compares the desired image ID with the running container, and recreates only changed services. A docs-only release is therefore a runtime no-op.
 
+When the API image changes, the launcher runs the migration runner from the **target API image** against the existing production database before recreating the API container. Migrations remain checksum-protected and idempotent; a migration failure stops rollout before the new API becomes the running service. The mandatory backup gate remains the rollback boundary for database changes.
+
 For recreated API/web services, the automated workflow verifies readiness **inside the recreated container** using the service-local health endpoint. It intentionally does not require host loopback ports `18200`/`18201`, because those are optional runtime conveniences rather than a stable invariant of the root-owned production bundle. Public `https://hub.sabilulquran.or.id/healthz` is still verified before PASS.
 
 ### Failure and rollback
