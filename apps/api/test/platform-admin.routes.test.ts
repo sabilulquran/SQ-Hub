@@ -11,6 +11,9 @@ const session = {
   issuer: "https://login.example.test/realms/staff",
   subject: "opaque-platform-admin",
   displayName: "Synthetic Platform Admin",
+  username: "19870099",
+  email: "platform-admin@example.test",
+  emailVerified: true,
   createdAt: new Date("2026-08-31T01:00:00Z"),
   expiresAt: new Date("2026-08-31T12:00:00Z"),
 };
