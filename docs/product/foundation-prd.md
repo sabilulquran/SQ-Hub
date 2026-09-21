@@ -1,8 +1,8 @@
 # SQ Hub Foundation PRD
 
-**Status:** DRAFT — dokumen konsolidasi; status ini tidak mengubah ADR/specification yang sudah ACCEPTED.  
-**Product:** SQ Hub / Akun SQ  
-**Scope:** Foundation v1  
+**Status:** DRAFT — dokumen konsolidasi; status ini tidak mengubah ADR/specification yang sudah ACCEPTED.
+**Product:** SQ Hub / Akun SQ
+**Scope:** Foundation v1
 **Delivery acceptance:** OPEN; lihat [ledger closure](../operations/foundation-v1-closure.md).
 
 ## Keputusan scope closure — 21 September 2026
