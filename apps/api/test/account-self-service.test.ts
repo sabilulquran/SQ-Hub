@@ -216,10 +216,31 @@ describe("KeycloakAccountSelfService", () => {
     expect(snapshot.groups[0]).toEqual({
       name: "Human Capital",
       path: "/Human Capital",
-      direct: true,
     });
     expect(calls.every((call) => call.authorization === `Bearer ${token}`)).toBe(true);
     expect(JSON.stringify(snapshot)).not.toContain(token);
+  });
+
+  it("keeps the required Account API snapshot usable when optional groups are forbidden", async () => {
+    installFetch({
+      "/realms/staff/account/?userProfileMetadata=true": {
+        username: "19870001",
+        attributes: {},
+        userProfileMetadata: { attributes: [] },
+      },
+      "/realms/staff/account/credentials": [],
+      "/realms/staff/account/sessions/devices": [],
+      "/realms/staff/account/applications": [],
+      "/realms/staff/account/linked-accounts?linked=true&first=0&max=100": [],
+      "/realms/staff/account/linked-accounts?linked=false&first=0&max=100": [],
+      "/realms/staff/account/groups": { status: 403 },
+    });
+    const client = new KeycloakAccountSelfService(issuer);
+
+    const snapshot = await client.snapshot(token);
+
+    expect(snapshot.profile.username).toBe("19870001");
+    expect(snapshot.groups).toEqual([]);
   });
 
   it("refuses profile fields that Account API marks read-only", async () => {
