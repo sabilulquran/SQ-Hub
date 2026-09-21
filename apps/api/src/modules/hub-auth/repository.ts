@@ -13,6 +13,9 @@ export interface HubSessionIdentity {
   issuer: string;
   subject: string;
   displayName: string;
+  username: string | null;
+  email: string | null;
+  emailVerified: boolean | null;
 }
 
 export interface HubSessionRecord extends HubSessionIdentity {
@@ -53,6 +56,9 @@ interface SessionRow {
   identityIssuer: string;
   identitySubject: string;
   displayName: string;
+  username: string | null;
+  email: string | null;
+  emailVerified: boolean | null;
   createdAt: Date;
   expiresAt: Date;
 }
@@ -128,15 +134,21 @@ export class PgHubAuthRepository implements HubAuthStore {
             identity_issuer,
             identity_subject,
             display_name,
+            username,
+            email,
+            email_verified,
             expires_at,
             ip_address,
             user_agent
-          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
           RETURNING
             id AS "sessionId",
             identity_issuer AS "identityIssuer",
             identity_subject AS "identitySubject",
             display_name AS "displayName",
+            username,
+            email,
+            email_verified AS "emailVerified",
             created_at AS "createdAt",
             expires_at AS "expiresAt"
         `,
@@ -146,6 +158,9 @@ export class PgHubAuthRepository implements HubAuthStore {
           input.identity.issuer,
           input.identity.subject,
           input.identity.displayName,
+          input.identity.username,
+          input.identity.email,
+          input.identity.emailVerified,
           input.expiresAt,
           input.context.ipAddress,
           input.context.userAgent,
@@ -174,6 +189,9 @@ export class PgHubAuthRepository implements HubAuthStore {
         issuer: row.identityIssuer,
         subject: row.identitySubject,
         displayName: row.displayName,
+        username: row.username,
+        email: row.email,
+        emailVerified: row.emailVerified,
         createdAt: row.createdAt,
         expiresAt: row.expiresAt,
       };
@@ -193,6 +211,9 @@ export class PgHubAuthRepository implements HubAuthStore {
           identity_issuer AS "identityIssuer",
           identity_subject AS "identitySubject",
           display_name AS "displayName",
+          username,
+          email,
+          email_verified AS "emailVerified",
           created_at AS "createdAt",
           expires_at AS "expiresAt"
         FROM hub_sessions
@@ -217,6 +238,9 @@ export class PgHubAuthRepository implements HubAuthStore {
       issuer: row.identityIssuer,
       subject: row.identitySubject,
       displayName: row.displayName,
+      username: row.username,
+      email: row.email,
+      emailVerified: row.emailVerified,
       createdAt: row.createdAt,
       expiresAt: row.expiresAt,
     };
