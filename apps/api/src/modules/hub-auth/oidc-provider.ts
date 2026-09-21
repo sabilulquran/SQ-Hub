@@ -23,6 +23,9 @@ export interface HubOidcIdentity {
   issuer: string;
   subject: string;
   displayName: string;
+  username: string | null;
+  email: string | null;
+  emailVerified: boolean | null;
 }
 
 export interface HubOidcProviderLike {
@@ -57,7 +60,7 @@ export class HubOidcProvider implements HubOidcProviderLike {
 
     const url = oidc.buildAuthorizationUrl(configuration, {
       redirect_uri: this.options.redirectUri,
-      scope: "openid profile",
+      scope: "openid profile email",
       code_challenge: codeChallenge,
       code_challenge_method: "S256",
       state,
@@ -97,10 +100,22 @@ export class HubOidcProvider implements HubOidcProviderLike {
     const displayName = name || preferredUsername;
     if (!displayName) throw new Error("OIDC profile display name is missing");
 
+    const email =
+      typeof claimValues.email === "string" && claimValues.email.trim()
+        ? claimValues.email.trim()
+        : null;
+    const emailVerified =
+      typeof claimValues.email_verified === "boolean"
+        ? claimValues.email_verified
+        : null;
+
     return {
       issuer: this.issuer,
       subject: claims.sub,
       displayName,
+      username: preferredUsername || null,
+      email,
+      emailVerified,
     };
   }
 

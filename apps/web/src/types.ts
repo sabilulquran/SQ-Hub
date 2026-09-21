@@ -24,9 +24,9 @@ export interface WorkspaceSnapshot {
 export interface AccountSnapshot {
   profile: {
     displayName: string;
-    username: string;
+    username: string | null;
     email: string | null;
-    emailVerified: boolean;
+    emailVerified: boolean | null;
   };
   security: {
     totpConfigured: boolean | null;

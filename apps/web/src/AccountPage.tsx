@@ -179,17 +179,23 @@ function AccountContent({ account }: { account: AccountSnapshot }) {
                     <span
                       className={[
                         "inline-flex items-center gap-1 rounded-full px-2 py-1 text-[11px] font-bold",
-                        account.profile.emailVerified
+                        account.profile.emailVerified === true
                           ? "bg-brand-primary-pale text-brand-primary-deep"
-                          : "bg-brand-yellow/25 text-foreground",
+                          : account.profile.emailVerified === false
+                            ? "bg-brand-yellow/25 text-foreground"
+                            : "bg-muted text-muted-foreground",
                       ].join(" ")}
                     >
-                      {account.profile.emailVerified ? (
+                      {account.profile.emailVerified === true ? (
                         <BadgeCheck className="h-3.5 w-3.5" aria-hidden="true" />
                       ) : (
                         <Mail className="h-3.5 w-3.5" aria-hidden="true" />
                       )}
-                      {account.profile.emailVerified ? "Terverifikasi" : "Belum terverifikasi"}
+                      {account.profile.emailVerified === true
+                        ? "Terverifikasi"
+                        : account.profile.emailVerified === false
+                          ? "Belum terverifikasi"
+                          : "Status belum tersedia"}
                     </span>
                   ) : null}
                 </div>
@@ -210,6 +216,14 @@ function AccountContent({ account }: { account: AccountSnapshot }) {
               </p>
             </div>
           </div>
+
+          {account.security.totpConfigured === null &&
+          account.security.recoveryCodesConfigured === null ? (
+            <p className="mt-5 rounded-xl bg-muted px-4 py-3 text-xs leading-5 text-muted-foreground">
+              Detail status keamanan belum dapat diverifikasi saat ini. Anda tetap dapat mengelola
+              kata sandi, verifikasi dua langkah, dan kode pemulihan dengan aman.
+            </p>
+          ) : null}
 
           <div className="mt-5 divide-y divide-border/70 overflow-hidden rounded-xl border border-border/70">
             <SecurityAction
@@ -309,11 +323,13 @@ function AccountContent({ account }: { account: AccountSnapshot }) {
   );
 }
 
-function ProfileRow({ label, value }: { label: string; value: string }) {
+function ProfileRow({ label, value }: { label: string; value: string | null }) {
   return (
     <div className="grid min-w-0 gap-1 py-4 sm:grid-cols-[10rem_minmax(0,1fr)] sm:gap-4">
       <dt className="text-xs font-bold uppercase tracking-[0.12em] text-muted-foreground">{label}</dt>
-      <dd className="min-w-0 break-words text-sm font-semibold text-foreground">{value}</dd>
+      <dd className="min-w-0 break-words text-sm font-semibold text-foreground">
+        {value ?? "Belum tersedia"}
+      </dd>
     </div>
   );
 }

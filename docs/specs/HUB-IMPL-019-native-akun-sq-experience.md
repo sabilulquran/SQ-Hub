@@ -70,7 +70,9 @@ Theme boleh mewarisi template provider untuk menjaga keamanan/protocol ownership
 
 Browser Akun SQ menggunakan server-side Hub session yang sudah ada. API self-service:
 - memvalidasi `sq_hub_session`;
-- mengambil identity berdasarkan opaque `issuer + sub` server-side;
+- menyimpan atribut profil aman dari login OIDC (`preferred_username`, email, status verifikasi email) bersama server-side Hub session; raw token tetap tidak disimpan;
+- bila identity directory tersedia, memperkaya status profil/security berdasarkan opaque `issuer + sub` server-side;
+- bila identity directory sedang gagal/tidak tersedia, native account **tetap merender** dari session + Application Access dan menandai detail keamanan yang belum dapat diverifikasi sebagai unknown;
 - hanya mengembalikan browser-safe profile/security summary;
 - tidak mengembalikan raw `sub`, access token, refresh token, credential, OTP secret, recovery code, service credential, atau Keycloak admin metadata;
 - fail closed bila session invalid;
@@ -151,14 +153,14 @@ HUB-IMPL-019 tidak:
 ## Acceptance criteria
 
 1. Mengklik **Kelola Akun SQ** dari Hub membuka native `/account`, tidak redirect ke `/realms/.../account/`.
-2. Native page menampilkan Profil Saya, ringkasan Keamanan, dan Aplikasi Saya dari data server-side yang sah.
+2. Native page menampilkan Profil Saya, ringkasan Keamanan, dan Aplikasi Saya dari data server-side yang sah; kegagalan optional identity-directory enrichment tidak boleh menjatuhkan seluruh halaman.
 3. Response account browser tidak mengandung `subject`, issuer, token, credential, OTP secret, recovery code, atau client secret.
 4. Password/TOTP/recovery launcher hanya menggunakan action allowlist dan tidak menerima arbitrary redirect/action dari browser.
 5. Authentication/required-action pages tidak menampilkan brand/copy Keycloak pada active UI.
 6. Browser auth/session contract HUB Foundation tetap berlaku: server-side code exchange, opaque HttpOnly Hub cookie, no token storage.
 7. Layout Akun SQ lulus visual smoke desktop dan 390×844 tanpa overflow.
 8. Existing Hub launcher, Application Access, Admin Center, logout, and domain authorization tidak berubah secara semantik.
-9. Unit/integration tests mencakup account session enforcement, safe account response, action allowlist, dan native route rendering.
+9. Unit/integration tests mencakup account session enforcement, safe account response, action allowlist, native route rendering, serta fallback saat identity directory tidak tersedia.
 10. Production rollout memerlukan evidence runtime terpisah; CI tidak boleh dinyatakan sebagai production acceptance.
 
 ## Rollback

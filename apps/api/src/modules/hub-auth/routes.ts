@@ -107,35 +107,61 @@ export function registerHubAuthRoutes(
     reply.header("Cache-Control", "no-store");
     const sessionToken = readCookie(request.headers.cookie, HUB_SESSION_COOKIE_NAME);
     try {
-      const session = await hubAuth.getSession(sessionToken);
-      if (!identityDirectory) {
-        return reply.status(503).send({ error: "ACCOUNT_UNAVAILABLE" });
-      }
-
-      const [identity, workspace] = await Promise.all([
-        identityDirectory.inspect(session.subject),
+      const [session, workspace] = await Promise.all([
+        hubAuth.getSession(sessionToken),
         hubAuth.getWorkspace(sessionToken),
       ]);
-      if (!identity || normalizedIssuer(identity.identity.issuer) !== normalizedIssuer(session.issuer)) {
-        return reply.status(503).send({ error: "ACCOUNT_UNAVAILABLE" });
+
+      let profile = {
+        displayName: session.displayName,
+        username: session.username,
+        email: session.email,
+        emailVerified: session.emailVerified,
+      };
+      let security = {
+        totpConfigured: null as boolean | null,
+        recoveryCodesConfigured: null as boolean | null,
+      };
+
+      if (identityDirectory) {
+        try {
+          const identity = await identityDirectory.inspect(session.subject);
+          if (
+            identity &&
+            normalizedIssuer(identity.identity.issuer) === normalizedIssuer(session.issuer)
+          ) {
+            profile = {
+              displayName: identity.displayName,
+              username: identity.username,
+              email: identity.email,
+              emailVerified: identity.emailVerified,
+            };
+            security = identity.security;
+          } else {
+            request.log.warn(
+              { event: "account.identity_directory.not_available_for_session" },
+              "Native account is using session profile fallback",
+            );
+          }
+        } catch (error) {
+          request.log.warn(
+            {
+              event: "account.identity_directory.unavailable",
+              errorType: error instanceof IdentityDirectoryError ? "IdentityDirectoryError" : "UnknownError",
+            },
+            "Native account is using session profile fallback",
+          );
+        }
       }
 
       return reply.send({
-        profile: {
-          displayName: identity.displayName,
-          username: identity.username,
-          email: identity.email,
-          emailVerified: identity.emailVerified,
-        },
-        security: identity.security,
+        profile,
+        security,
         applications: workspace.applications,
       });
     } catch (error) {
       if (error instanceof HubAuthError) {
         return reply.status(error.statusCode).send({ error: error.code });
-      }
-      if (error instanceof IdentityDirectoryError) {
-        return reply.status(503).send({ error: "ACCOUNT_UNAVAILABLE" });
       }
       throw error;
     }

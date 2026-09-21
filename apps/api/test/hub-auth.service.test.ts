@@ -68,6 +68,9 @@ class MemoryStore implements HubAuthStore {
       issuer: input.identity.issuer,
       subject: input.identity.subject,
       displayName: input.identity.displayName,
+      username: input.identity.username,
+      email: input.identity.email,
+      emailVerified: input.identity.emailVerified,
       createdAt: new Date(),
       expiresAt: input.expiresAt,
     };
@@ -110,6 +113,9 @@ class FakeOidcProvider implements HubOidcProviderLike {
       issuer: "https://login.sabilulquran.or.id/realms/sq-staff-staging",
       subject: "opaque-subject",
       displayName: "SQ Hub UAT",
+      username: "19870001",
+      email: "uat@example.test",
+      emailVerified: true,
     };
   }
 
@@ -199,6 +205,9 @@ describe("HubAuthService", () => {
     expect(store.transaction).toBeNull();
     expect(store.session?.tokenHash).toMatch(/^[a-f0-9]{64}$/);
     expect(store.session?.identity.subject).toBe("opaque-subject");
+    expect(store.session?.identity.username).toBe("19870001");
+    expect(store.session?.identity.email).toBe("uat@example.test");
+    expect(store.session?.identity.emailVerified).toBe(true);
     expect(completed.setCookies[0]).toContain(`${HUB_SESSION_COOKIE_NAME}=`);
     expect(completed.setCookies[0]).toContain("HttpOnly");
     expect(completed.setCookies[0]).not.toContain("opaque-subject");
