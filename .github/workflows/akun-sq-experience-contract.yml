@@ -8,6 +8,16 @@ on:
       - "docs/design/sq-identity-theme.md"
       - "docs/specs/HUB-IMPL-015-akun-sq-account-experience.md"
       - "docs/specs/HUB-IMPL-017-sq-hub-akun-sq-navigation-experience.md"
+      - "docs/specs/HUB-IMPL-019-native-akun-sq-experience.md"
+      - "apps/web/src/AccountPage.tsx"
+      - "apps/web/src/AccountPage.test.tsx"
+      - "apps/api/src/modules/hub-auth/routes.ts"
+      - "apps/api/src/modules/hub-auth/oidc-provider.ts"
+      - "docs/specs/HUB-IMPL-019-native-akun-sq-experience.md"
+      - "apps/web/src/AccountPage.tsx"
+      - "apps/web/src/AccountPage.test.tsx"
+      - "apps/api/src/modules/hub-auth/routes.ts"
+      - "apps/api/src/modules/hub-auth/oidc-provider.ts"
       - ".github/workflows/akun-sq-experience-contract.yml"
       - "tools/visual/akun-sq-account-fixture.html"
   push:
@@ -78,6 +88,18 @@ jobs:
             docs/security || true)"
           legacy="$(printf '%s\n' "$legacy" | grep -v 'not.toContain("SQ Identity")' || true)"
           test -z "$legacy" || { printf '%s\n' "$legacy"; exit 1; }
+
+      - name: Verify native Akun SQ account boundary
+        shell: bash
+        run: |
+          grep -Fq 'Profil Saya' apps/web/src/AccountPage.tsx
+          grep -Fq 'Aplikasi Saya' apps/web/src/AccountPage.tsx
+          ! grep -Fq 'Keycloak' apps/web/src/AccountPage.tsx
+          ! grep -Fq '/realms/' apps/web/src/AccountPage.tsx
+          grep -Fq 'password: "UPDATE_PASSWORD"' apps/api/src/modules/hub-auth/routes.ts
+          grep -Fq 'totp: "CONFIGURE_TOTP"' apps/api/src/modules/hub-auth/routes.ts
+          grep -Fq '"recovery-codes": "CONFIGURE_RECOVERY_AUTHN_CODES"' apps/api/src/modules/hub-auth/routes.ts
+          ! grep -Fq 'accountConsoleUrlFromIssuer' apps/api/src/modules/hub-auth/routes.ts
 
       - name: Reject legacy product composition from active theme
         shell: bash
@@ -213,4 +235,4 @@ jobs:
       - name: Reject committed credentials
         shell: bash
         run: |
-          ! git grep -n -E '(client_secret|access_token)[[:space:]]*=[[:space:]]*[^$<{]' -- infra/keycloak/themes tools/visual docs/specs/HUB-IMPL-015-akun-sq-account-experience.md docs/specs/HUB-IMPL-017-sq-hub-akun-sq-navigation-experience.md
+          ! git grep -n -E '(client_secret|access_token)[[:space:]]*=[[:space:]]*[^$<{]' -- infra/keycloak/themes tools/visual docs/specs/HUB-IMPL-015-akun-sq-account-experience.md docs/specs/HUB-IMPL-017-sq-hub-akun-sq-navigation-experience.md docs/specs/HUB-IMPL-019-native-akun-sq-experience.md
