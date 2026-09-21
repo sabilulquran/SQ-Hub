@@ -37,6 +37,9 @@ sudo -n test -r "$identity_compose"
 hub_services="$(sudo -n docker compose -f "$hub_compose" config --services | sort)"
 identity_services="$(sudo -n docker compose -f "$identity_compose" config --services | sort)"
 test "$hub_services" = 
+  echo "STOP: unexpected Hub production service set" >&2
+  exit 1
+}
 test "$identity_services" = $'keycloak\nkeycloak-db' || {
   echo "STOP: unexpected Keycloak production service set" >&2
   exit 1
