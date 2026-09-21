@@ -15,6 +15,7 @@ The existence of this file, a merged PR, or green CI may establish **REPOSITORY_
 This launch may:
 
 - reconcile only the production SQ Hub browser OIDC client `sq-hub`;
+- for HUB-IMPL-019, reconcile only the reviewed Account API role-scope allowlist and `account` audience on that same `sq-hub` client through the separate operator-run helper; this is not an identity-image side effect;
 - deploy/reconfigure SQ Hub API and web using reviewed immutable images;
 - when explicitly selected, roll only the reviewed Akun SQ/Keycloak image on the existing production Keycloak Compose service without changing realm data/configuration;
 - add the production Hub Caddy route;
@@ -282,6 +283,35 @@ It must be executed only from an authorized production administration context. I
 - verifies exact callback/origin/PKCE/flow settings;
 - outputs only sanitized PASS markers;
 - stops at `HUB_PRODUCTION_CLIENT_SECRET_HANDOFF_REQUIRED`.
+
+### Native Akun SQ Account API scope/audience
+
+HUB-IMPL-019 adds one separate, bounded client reconciliation after the base `sq-hub` client shape is healthy.
+
+Use the reviewed helper:
+
+`infra/keycloak/scripts/reconcile-native-account-self-service.sh`
+
+For the operator-verified root-owned production runtime bundle, the helper may target the already-rendered identity Compose directly by setting:
+
+- `KEYCLOAK_REALM=sq-staff`;
+- `SQ_HUB_CLIENT_ID=sq-hub`;
+- `KEYCLOAK_COMPOSE_FILE=/var/www/sq-hub-production/compose.identity.json`;
+- `KEYCLOAK_ENV_FILE=""`;
+- `KEYCLOAK_KCADM_CONFIG=<pre-authenticated config path inside the Keycloak container>`.
+
+Run it only from an authorized production administration context with the approved backup/change record active. The script does not create an admin session and must not be given administrator credentials in chat, GitHub variables, or shared transcripts.
+
+Expected safe evidence:
+
+```text
+NATIVE_ACCOUNT_SCOPE_MAPPING_PASS realm=sq-staff client=sq-hub
+NATIVE_ACCOUNT_AUDIENCE_PASS realm=sq-staff client=sq-hub audience=account
+```
+
+The helper fails if `sq-hub` already carries broader account-client role scope than the HUB-IMPL-019 allowlist. Do not automatically delete unexpected scope; stop and review it.
+
+This reconciliation is realm-data mutation and therefore remains separate from `.github/workflows/deploy-production.yml`, whose identity scope only rolls the reviewed Keycloak image. Green CI does not establish production reconciliation.
 
 ### Secret custody and reconciliation
 
