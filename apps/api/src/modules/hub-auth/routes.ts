@@ -29,10 +29,6 @@ const profileUpdateSchema = z
   })
   .strict();
 
-const credentialLabelSchema = z
-  .object({ label: z.string().trim().min(1).max(80) })
-  .strict();
-
 function requestContext(request: FastifyRequest): HubRequestContext {
   return {
     ipAddress: request.ip || null,
@@ -492,32 +488,6 @@ export function registerHubAuthRoutes(
       const login = await hubAuth.beginLogin(action, "/account");
       reply.header("Set-Cookie", login.setCookie);
       return reply.send({ authorizationUrl: login.authorizationUrl.href });
-    } catch (error) {
-      return sendAccountError(reply, error);
-    }
-  });
-
-  app.put<{ Params: { credentialId: string } }>("/account/credentials/:credentialId/label", async (request, reply) => {
-    reply.header("Cache-Control", "no-store");
-    if (!requireSameOrigin(request, allowedOrigin)) {
-      return reply.status(403).send({ error: "ACCOUNT_ORIGIN_FORBIDDEN" });
-    }
-    const parsed = credentialLabelSchema.safeParse(request.body);
-    if (!parsed.success) {
-      return reply.status(400).send({ error: "INVALID_REQUEST" });
-    }
-    if (!accountSelfService) {
-      return reply.status(503).send({ error: "ACCOUNT_MANAGEMENT_UNAVAILABLE" });
-    }
-    const sessionToken = readCookie(request.headers.cookie, HUB_SESSION_COOKIE_NAME);
-    try {
-      const delegated = await hubAuth.getAccountAccess(sessionToken);
-      await accountSelfService.setCredentialLabel(
-        delegated.accessToken,
-        request.params.credentialId,
-        parsed.data.label,
-      );
-      return reply.send({ updated: true });
     } catch (error) {
       return sendAccountError(reply, error);
     }
