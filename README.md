@@ -2,74 +2,62 @@
 
 Shared digital platform foundation for Sabilul Qur'an.
 
-SQ Hub menyediakan fondasi lintas aplikasi untuk identity/SSO staf, shared Organization Directory, Application Registry/Access, Hub Launcher, design system, dan shared capability lain yang benar-benar dibutuhkan lintas domain. Workforce organization tetap di-author oleh HCIS; SQ Hub mendistribusikan projection lintas aplikasi sesuai ADR-0007.
+**Akun SQ** adalah produk identitas/login Staff; **Keycloak** adalah engine di belakangnya. **SQ Hub** adalah launcher/workspace/platform internal, bukan ERP monolith. Business logic HCIS, SPMB, Finance, Workspace, Academic, dan aplikasi domain lain tetap dimiliki aplikasi masing-masing. HCIS adalah authority workforce organization; Organization Directory Hub adalah arah projection/distribution yang runtime-nya masih DISCOVERY, bukan fitur yang sudah live.
 
-SQ Hub **bukan ERP monolith**. Business logic HCIS, SPMB, Finance, Workspace, Academic, dan aplikasi domain lain tetap dimiliki aplikasi masing-masing.
+## Status — 21 September 2026
 
-## Status
-Foundation documentation accepted. Implementasi utama Wave 1 sudah berada di `main`, tetapi status deployment, UAT, dan acceptance tidak boleh disimpulkan hanya dari status specification atau merge.
+**Foundation v1: OPEN — production core tersedia, acceptance keseluruhan belum CLOSED.** Status ACCEPTED pada ADR/specification tidak berarti seluruh Foundation sudah diterima. PRD konsolidasi masih DRAFT sampai ada persetujuan dokumen yang dicatat; accepted ADR/spec tetap berlaku.
 
-Ringkasan status repository terbaru untuk persiapan launcher production tersedia di:
+Mulai dari catatan terkini:
 
-- [`docs/operations/project-status-2026-09-18.md`](docs/operations/project-status-2026-09-18.md)
+- [Status proyek 2026-09-21](docs/operations/project-status-2026-09-21.md).
+- [Ledger penutupan Foundation v1](docs/operations/foundation-v1-closure.md).
+- [Panduan UAT delta production](docs/operations/akun-sq-production-uat-checklist-2026-09-21.md).
+- [Bukti deployment GitHub production 2026-09-21](docs/operations/HUB-IMPL-016-deployment-evidence-2026-09-21.md).
 
-Audit VPS langsung terakhir yang direkonsiliasi di repository tetap tersedia di [`docs/operations/project-status-2026-09-16.md`](docs/operations/project-status-2026-09-16.md).
+Baseline GitHub yang diperiksa: `d2de4411760c963df542a540c6e3e63eee37283e` (merge PR #87). CI dan Hub Production Launcher Contract PASS. Deploy SQ Hub Production run `35581490721` SUCCESS dengan API, web, dan identity **NO-OP**, karena image yang diinginkan sudah berjalan. Keberhasilan ini bukan pengujian recreate, rollback, recovery, Google, atau MFA.
 
-Kondisi yang dapat dinyatakan dari sumber yang diperiksa:
-- `main` terakhir diaudit untuk paket launcher production dari `57ddddb64a78ef4ca0ad405d14bb16a9c1f56253`; branch HUB-IMPL-016 menyiapkan kontrak repository tanpa mengubah production;
-- audit langsung 16 September 2026 mengonfirmasi HCIS production berjalan dengan OIDC, SQ Identity/Keycloak production sehat, dan SQ Hub API production sehat;
-- recovery/email login, Google provider, dan trusted-device flow terpasang pada production, tetapi acceptance pengguna end-to-end masih belum lengkap;
-- bukti audit live terakhir masih menyatakan `hub.sabilulquran.or.id` belum memiliki DNS/route/web production; HUB-IMPL-016 hanya menyiapkan jalur repository dan tidak mengubah status live tersebut;
-- `docs/operations/HUB-IMPL-003-production-cutover.md` tetap `CUTOVER_BLOCKED`: deployment yang teramati tidak menggantikan bukti approval, acceptance, rollback rehearsal, atau UAT yang masih disyaratkan.
+Evidence tidak dimulai dari nol. Ledger identity UAT terdahulu memiliki **27 PASS / 28 NOT_RUN / 3 BLOCKED**: di antaranya pengiriman email recovery, reset/single-use/expired-link, serta lima skenario dasar trusted-device sudah memiliki bukti production. Google, sisa MFA/trust, browser storage/cookie, dan beberapa persona/negative case tetap belum lengkap. Lihat ID dan batas reuse pada ledger, bukan hanya angka total.
 
-Keputusan foundation yang sudah dikunci:
-- **SQ Identity menggunakan Keycloak** sebagai self-hosted Identity Provider engine.
-- **Employee login menggunakan NIP/employee number sebagai primary username**, dengan verified unique email sebagai alternate login; Staff tanpa NIP memakai verified unique email pada Foundation v1.
-- **MFA wajib untuk privileged/security-sensitive Staff**, belum mandatory untuk seluruh Staff pada Foundation v1.
-- **SSO session baseline:** idle 8 jam, max 12 jam, Remember Me off pada rollout awal.
-- **HCIS auth migration tidak memindahkan password/MFA lama**; local principal ID dipertahankan dan ditautkan ke Keycloak melalui OIDC `issuer + sub`.
-- **HCIS tetap system of authority dan authoring untuk workforce organization**; SQ Hub menyediakan shared Organization Directory projection/distribution, sedangkan approval/workflow tetap dimiliki aplikasi domain (ADR-0007).
-- **HCIS frontend menjadi baseline awal SQ Design System**; shared primitives nantinya diekstrak ke SQ Hub.
-- **SQ Hub mengikuti engineering family HCIS:** TypeScript, Fastify, PostgreSQL, React/Vite/Tailwind ketika web dibutuhkan.
-- **Wave 1 staging naming:** `login.sabilulquran.or.id` uses the `sq-staff-staging` realm and separate staging data/configuration; the application hosts are `hub-staging.sabilulquran.or.id` and `hcis-staging.sabilulquran.or.id`.
+SQ Hub production, login Akun SQ, HCIS launch/Application Access, Administrasi SQ surface, dan Account Console desktop/mobile memiliki evidence operator 18 September 2026. Pernyataan lama bahwa Hub belum memiliki DNS/web adalah snapshot historis, bukan kondisi terkini. [Catatan 18 September](docs/operations/project-status-2026-09-18.md) mempertahankan detailnya.
+
+Keputusan PR #67 mengizinkan rilis dengan acceptance tertentu tertunda; keputusan tersebut bukan PASS dan bukan closure Foundation. Instruksi pemilik produk 21 September mengharuskan acceptance penting ditutup sebelum fase berikutnya. [Issue #9](https://github.com/sabilulquran/SQ-Hub/issues/9) tetap menjadi tracker acceptance identity. Dokumen cutover lama adalah rekaman persiapan/rekonsiliasi, bukan izin untuk menjalankan cutover ulang.
+
+## Batas fase aktif
+
+Pekerjaan aktif hanya menutup Foundation: bukti runtime/browser, koreksi defect yang terkonfirmasi, deployment/rollback operational record, dan source of truth.
+
+- PR #42 / HUB-IMPL-013: provisioning/offboarding masih PROPOSED; jangan diimplementasikan dalam closure ini.
+- HUB-IMPL-018: Organization Directory runtime masih DISCOVERY. HCIS tetap authority organisasi, approval/workflow tetap domain-owned.
+- PR #12: SQ Account/SQ Portal/external identity tetap discovery; bukan backlog implementasi Foundation.
+
+## Keputusan teknis yang tetap berlaku
+
+Employee memakai NIP/employee number sebagai username utama dan verified unique email sebagai alternatif. Staff tanpa NIP memakai verified unique email; NIK bukan login identifier. Technical identity adalah exact OIDC `issuer + sub`, bukan email/NIP.
+
+MFA wajib untuk privileged/security-sensitive Staff; Staff biasa dapat enroll sukarela. SSO idle 8 jam, max 12 jam, Remember Me off. Backend menangani OIDC code/token exchange; browser tidak menyimpan bearer token di persistent storage. Cookie aplikasi tidak dibagi ke seluruh subdomain.
+
+Application Access hanya mengatur entry ke aplikasi, bukan role domain. Platform Administrator bukan super-admin universal. HCIS mempertahankan local principal ID dan tidak memigrasikan password hash/MFA/recovery/session lama ke Keycloak.
+
+Engineering stack mengikuti ADR-0006: TypeScript, Fastify/PostgreSQL, React/Vite/Tailwind sesuai kebutuhan. HCIS visual baseline menjadi dasar design system SQ; shared packages hanya dibuat bila reuse nyata tersedia.
 
 ## Source of truth
-Mulai dari:
-- [`AGENTS.md`](AGENTS.md) — aturan engineering dan AI.
-- [`docs/product/vision.md`](docs/product/vision.md) — visi dan boundary produk.
-- [`docs/product/foundation-prd.md`](docs/product/foundation-prd.md) — requirement Foundation v1.
-- [`docs/product/implementation-wave-1.md`](docs/product/implementation-wave-1.md) — scope delivery implementation pertama.
-- [`docs/specs/`](docs/specs/) — implementation contracts dengan specification ID.
-- [`docs/domain/glossary.md`](docs/domain/glossary.md) — istilah resmi.
-- [`docs/domain/ownership-and-integration.md`](docs/domain/ownership-and-integration.md) — ownership data dan integrasi lintas aplikasi.
-- [`docs/architecture/target-architecture.md`](docs/architecture/target-architecture.md) — target logical architecture.
-- [`docs/architecture/adr/`](docs/architecture/adr/) — keputusan arsitektur accepted.
-- [`docs/security/security-baseline.md`](docs/security/security-baseline.md) — security baseline.
-- [`docs/security/staff-authentication-policy.md`](docs/security/staff-authentication-policy.md) — login, password, MFA, session, logout, dan recovery policy Staff.
-- [`docs/migration/hcis-auth-cutover-plan.md`](docs/migration/hcis-auth-cutover-plan.md) — executable migration/cutover runbook untuk HCIS -> SQ Identity.
-- [`docs/design/design-system-direction.md`](docs/design/design-system-direction.md) — arah SQ Design System.
-- [`docs/design/hcis-baseline.md`](docs/design/hcis-baseline.md) — snapshot/ringkasan visual HCIS yang menjadi baseline SQ.
-- [`docs/operations/operational-baseline.md`](docs/operations/operational-baseline.md) — environment, observability, backup, dan recovery minimum.
-- [`docs/development/ai-assisted-workflow.md`](docs/development/ai-assisted-workflow.md) — workflow pengembangan AI-assisted.
 
-## Wave 1
-Implementation order:
-1. `HUB-IMPL-001` — Keycloak staging foundation.
-2. `HUB-IMPL-002` — Application Registry + Application Access.
-3. `HUB-IMPL-003` — HCIS OIDC consumer integration.
+- [AGENTS.md](AGENTS.md) — aturan engineering dan AI.
+- [Visi produk](docs/product/vision.md), [Foundation PRD](docs/product/foundation-prd.md), dan [Implementation Wave 1](docs/product/implementation-wave-1.md).
+- [Implementation contracts](docs/specs/), [glossary](docs/domain/glossary.md), dan [ownership/integration](docs/domain/ownership-and-integration.md).
+- [Target architecture](docs/architecture/target-architecture.md) dan [ADR](docs/architecture/adr/).
+- [Security baseline](docs/security/security-baseline.md) dan [Staff authentication policy](docs/security/staff-authentication-policy.md).
+- [HCIS auth cutover plan](docs/migration/hcis-auth-cutover-plan.md).
+- [Design-system direction](docs/design/design-system-direction.md) dan [HCIS visual baseline](docs/design/hcis-baseline.md).
+- [Operational baseline](docs/operations/operational-baseline.md) dan [AI-assisted workflow](docs/development/ai-assisted-workflow.md).
 
-Wave 1 intentionally does not include production auth cutover, Organization Directory integration, full launcher/admin UI, or SPMB implementation. Production deployment yang kemudian teramati harus direkonsiliasi sebagai operational evidence terpisah; hal itu tidak mengubah non-goal historis atau acceptance criteria secara retrospektif.
+## Wave 1 historis
 
-## URLs
-Production target:
-- `hub.sabilulquran.or.id` — SQ Hub launcher.
-- `login.sabilulquran.or.id` — SQ Identity / Keycloak entry point.
-- `hcis.sabilulquran.or.id` — HCIS.
-- `spmb.sabilulquran.or.id` — SPMB.
+Implementation awal terdiri dari HUB-IMPL-001 Keycloak staging, HUB-IMPL-002 Application Registry/Access, dan HUB-IMPL-003 HCIS OIDC. Wave 1 awal tidak mengotorisasi production cutover, Organization Directory integration, full launcher/admin UI, atau SPMB. Promosi production berikutnya memiliki contract/evidence tersendiri; sejarah scope tidak ditulis ulang secara retrospektif.
 
-Wave 1 staging:
-- `hub-staging.sabilulquran.or.id`
-- `login.sabilulquran.or.id` — SQ Identity staging uses the `sq-staff-staging` realm and separate staging data/configuration.
-- `hcis-staging.sabilulquran.or.id`
+## Environments
 
-Staging dan production wajib terpisah secara logis walaupun berada pada VPS yang sama.
+Production: `hub.sabilulquran.or.id` (SQ Hub), `login.sabilulquran.or.id/realms/sq-staff` (Akun SQ issuer), `hcis.sabilulquran.or.id` (HCIS). SPMB adalah integrasi lanjutan, tidak dinyatakan deployed oleh dokumen ini.
+
+Staging: `hub-staging.sabilulquran.or.id`, `hcis-staging.sabilulquran.or.id`, dan issuer `https://login.sabilulquran.or.id/realms/sq-staff-staging`. Staging/production wajib terpisah realm, data, konfigurasi, dan credential walaupun berada pada VPS yang sama.
