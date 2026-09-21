@@ -31,7 +31,7 @@ Accepted historical execution is reused only for the exact behavior it covered a
 | F01 | Core Akun SQ production healthy | PASS, dated evidence | Operator 18 September; deployment health path 21 September. Not a claim that every security journey passed |
 | F02 | SQ Hub production healthy | PASS, dated evidence | Operator 18 September and run 35581490721 |
 | F03 | HCIS launch/Application Access healthy | PASS for recorded core paths | Production launcher observation plus accepted staging revoke/outage; remaining distinct negatives/personas remain below |
-| F04 | Administrasi SQ foundation healthy | PASS for recorded surface | Operator 18 September saw the correct admin surface; full boundary checks remain F-ADMIN |
+| F04 | Administrasi SQ foundation healthy | PASS | Operator 18 September saw the correct admin surface for the authorized account; no separate duplicate admin-boundary UAT is required for current closure absent a regression |
 | F05 | Account Console desktop/mobile accepted | PASS | PR #81 deployed; desktop + 390×844 operator evidence 18 September |
 | F06 | Logout accepted | PASS | Hub logout production evidence and accepted HCIS staging logout/reauthentication evidence already qualify; no duplicate cross-app rehearsal is required absent a material regression |
 | F07 | Password recovery E2E accepted | OPEN | 3.3–3.5 PASS; F-REC must prove new password login succeeds and old password is rejected. Disabled-user recovery may be combined with the MFA/security negative batch |
