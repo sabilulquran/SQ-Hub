@@ -57,6 +57,7 @@ function fakeHub(overrides: Partial<HubAuthRuntime> = {}): HubAuthRuntime {
         "sq_hub_session=opaque; Path=/; HttpOnly; SameSite=Lax; Secure",
         "sq_hub_oidc_tx=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0; Secure",
       ],
+      returnPath: "/account",
     }),
     getWorkspace: async () => ({
       user: { displayName: "Ahmad Fikri", initials: "AF" },
@@ -77,9 +78,13 @@ function fakeHub(overrides: Partial<HubAuthRuntime> = {}): HubAuthRuntime {
       username: "19870001",
       email: "synthetic@example.test",
       emailVerified: true,
+      accountRefreshTokenCiphertext: null,
       createdAt: new Date("2026-09-18T00:00:00Z"),
       expiresAt: new Date("2026-09-18T12:00:00Z"),
     }),
+    getAccountAccess: async () => {
+      throw new HubAuthError(428, "ACCOUNT_REAUTH_REQUIRED", "synthetic old session");
+    },
     logout: async () => ({
       clearCookie: "sq_hub_session=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0; Secure",
       logoutUrl: new URL("https://login.example.test/logout"),
@@ -151,6 +156,7 @@ describe("SQ Hub browser auth routes", () => {
         username: "19870001",
         email: "synthetic@example.test",
         emailVerified: true,
+        fields: [],
       },
       security: {
         totpConfigured: true,
@@ -163,6 +169,16 @@ describe("SQ Hub browser auth routes", () => {
           canonicalUrl: "https://hcis.example",
         },
       ],
+      management: {
+        available: false,
+        reauthRequired: true,
+        credentials: [],
+        devices: [],
+        applications: [],
+        linkedAccounts: [],
+        availableAccountLinks: [],
+        groups: [],
+      },
     });
     expect(response.body).not.toContain("synthetic-subject");
     expect(response.body).not.toContain("issuer");
@@ -192,6 +208,7 @@ describe("SQ Hub browser auth routes", () => {
         username: "19870001",
         email: "synthetic@example.test",
         emailVerified: true,
+        fields: [],
       },
       security: {
         totpConfigured: null,
@@ -218,6 +235,7 @@ describe("SQ Hub browser auth routes", () => {
           username: null,
           email: null,
           emailVerified: null,
+          accountRefreshTokenCiphertext: null,
           createdAt: new Date("2026-09-18T00:00:00Z"),
           expiresAt: new Date("2026-09-18T12:00:00Z"),
         }),
@@ -244,6 +262,7 @@ describe("SQ Hub browser auth routes", () => {
         username: null,
         email: null,
         emailVerified: null,
+        fields: [],
       },
       security: {
         totpConfigured: null,
