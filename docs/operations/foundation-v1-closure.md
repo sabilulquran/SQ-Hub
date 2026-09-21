@@ -10,7 +10,9 @@ This is the current closure control record, not a certificate that Foundation is
 
 ## Scope and authority
 
-Closure is limited to Foundation contracts HUB-IMPL-003/005/007/009/011/012/015/016/017 and the accepted Staff authentication policy/ADRs. The 21 September owner instruction restores required identity/security acceptance as a **Foundation closure** gate. PR #67 remains a historical release exception, not a security-test result. Do not erase that history or infer retrospective production authorization.
+Closure is limited to Foundation contracts HUB-IMPL-003/005/007/009/011/012/015/016/017 and the accepted Staff authentication policy/ADRs. The 21 September owner instruction restores the explicitly named identity/security acceptance as **Foundation closure** gates: password recovery E2E, Google existing-account linking/login including mapping and normal-login regression, trusted-device/TOTP/MFA, browser cookie/storage security, plus source-of-truth closure. PR #67 remains a historical release exception, not a security-test result. Do not erase that history or infer retrospective production authorization.
+
+This decision does **not** reopen every historical `NOT_RUN`/`BLOCKED` row in issue #9 as a Foundation blocker. Rows that do not map to the owner-defined closure checklist remain truthful backlog and may be completed later without preventing Foundation closure. Never relabel them PASS merely because they are non-blocking.
 
 HUB-IMPL-013, HUB-IMPL-018 runtime, PR #12, SQ Portal, external identity, SPMB implementation, and other later phases are not implementation scope. Testing a synthetic disabled identity is existing authentication acceptance, not implementation of Identity Lifecycle. HCIS retains organization and domain-authorization authority.
 
@@ -31,13 +33,13 @@ Accepted historical execution is reused only for the exact behavior it covered a
 | F03 | HCIS launch/Application Access healthy | PASS for recorded core paths | Production launcher observation plus accepted staging revoke/outage; remaining distinct negatives/personas remain below |
 | F04 | Administrasi SQ foundation healthy | PASS for recorded surface | Operator 18 September saw the correct admin surface; full boundary checks remain F-ADMIN |
 | F05 | Account Console desktop/mobile accepted | PASS | PR #81 deployed; desktop + 390×844 operator evidence 18 September |
-| F06 | Logout accepted for recorded app/SSO paths | PASS for recorded paths | Existing Hub operator evidence and HCIS accepted staging logout; cross-app delta F-LOGOUT remains separate |
-| F07 | Password recovery E2E accepted | OPEN | 3.3–3.5 PASS; F-REC and disabled-user 3.6 still require qualifying evidence |
+| F06 | Logout accepted | PASS | Hub logout production evidence and accepted HCIS staging logout/reauthentication evidence already qualify; no duplicate cross-app rehearsal is required absent a material regression |
+| F07 | Password recovery E2E accepted | OPEN | 3.3–3.5 PASS; F-REC must prove new password login succeeds and old password is rejected. Disabled-user recovery may be combined with the MFA/security negative batch |
 | F08 | Google existing-account linking/login matrix accepted | NOT_RUN | 4.1–4.5 and associated MFA/trust/mapping checks |
-| F09 | Trusted-device/TOTP/MFA matrix accepted | OPEN | 5.1–5.5 PASS; 3.1–3.2 and 5.6–5.12 pending |
+| F09 | Trusted-device/TOTP/MFA matrix accepted | OPEN | 5.1–5.5 PASS; privileged MFA/recovery and the contract-defined expiry/invalidation/security remainder still need qualifying evidence. Automated invariant evidence may satisfy non-browser cryptographic cases when it exactly matches the contract |
 | F10 | Browser cookie/storage security accepted | NOT_RUN | 7.1–7.4 and F-BROWSER for Hub |
 | F11 | Production deployment workflow proven | PASS — NO-OP path | Run 35581490721; all three components unchanged; no recreate/rollback claim |
-| F12 | Rollback/backup operational path documented | PASS — documentation only | HUB-IMPL-016 production runbook; actual backup/restore/custody reconciliation remains F-OPS, not implied by Compose copies |
+| F12 | Rollback/backup operational path documented | PASS | HUB-IMPL-016 runbook documents rollback and deployment run 35581490721 emitted Compose backup references. Compose copies are not DB backups; an isolated restore rehearsal remains an operational improvement, not a separate Foundation closure gate under the 21 September definition of done |
 | F13 | Source-of-truth docs current on main | OPEN | This replacement documentation package requires review/merge; consolidated PRD approval must be explicit |
 | F14 | No stale Foundation PR misleading status | PASS | PR #84 closed as superseded after replacement PR #88 was opened; history and cross-link retained |
 | F15 | Status separates deployed vs verified | OPEN until reviewed/merged | Current ledger/status/README implement the distinction on the documentation branch |
@@ -53,33 +55,32 @@ At this audit the 58-row ledger is **27 PASS / 28 NOT_RUN / 3 BLOCKED**. It incl
 
 Already-qualified browser/runtime evidence includes recovery delivery/reset/single-use/expiry (3.3–3.5), trusted-device unchecked/wrong OTP/checked-valid/same browser/other browser (5.1–5.5), NIP/email/same principal (1.1–1.3), ordinary HCIS authorization (2.1), and HCIS-local suspension with safe restore (6.1). Preserve accepted staging revoke/access-outage/logout results with their staging label.
 
-| Remaining group | Exact legacy IDs | Dependency / exit evidence |
+## Mandatory closure mapping from the historical identity ledger
+
+The historical ledger stays intact, but only the rows below are elevated as current Foundation closure gates because they map directly to the owner's 21 September definition of done.
+
+| Mandatory group | Legacy / delta IDs | Exit evidence |
 | --- | --- | --- |
-| Staff/persona authorization | 1.4, 2.2, 2.3, 2.4 | Approved non-Employee, manager, HC admin, privileged fixtures; expected domain scopes preserved |
-| Exact mapping and deny paths | 1.5, 6.2, 6.3, 6.5 | Approved unmapped/no-access/disabled fixtures; no heuristic join or new unauthorized session; wrong-pair automated regression retained |
-| Privileged MFA/recovery | 3.1, 3.2, 3.6 | Enforced TOTP; one-time recovery Authentication Code; disabled recovery cannot create a session |
-| Google | 4.1–4.5 | Real organization-controlled Google fixtures; exact asserted email, local proof, MFA, same principal, no privilege changes |
-| Trust remainder | 5.6–5.12 | Expiry/tamper, password/TOTP replacement, disabled identity, ordinary/privileged comparison, Google parity |
-| Browser | 7.1–7.4 | Actual storage and cookie metadata inspection; no copied values |
-| Fixture assignment | 10.2 | Operator-confirmed current synthetic handles and intended outcomes, not an assumption that old test users still exist |
-| Keycloak outage | 9.1–9.3, BLOCKED | Isolated/production-like target and approval; never stop or isolate production Keycloak |
+| Recovery completion | F-REC; reuse 3.3–3.5 | Fresh login with the new password succeeds, old password is rejected, existing identity/access remains unchanged; delivery/reset/single-use/expiry evidence is retained |
+| Google existing-account + mapping regression | 4.1–4.5 plus 1.5/6.5 where needed to prove wrong/unknown mapping remains fail-closed | Unknown Google is rejected/no auto-create; first link requires local proof; MFA interaction follows policy; subsequent Google login reaches the same principal; no privilege/access gain; normal NIP/email login and exact mapping remain intact |
+| MFA / trusted device | 3.1–3.2, 5.6–5.12; combine disabled-user negative behavior with 3.6/6.2 when practical | Privileged MFA and recovery behavior; expiry/tamper/invalidation; password/TOTP replacement invalidation; disabled identity denial; ordinary-vs-privileged policy; Google parity. Existing 5.1–5.5 remain PASS |
+| Browser security | 7.1–7.4 + F-BROWSER | No persisted bearer/OIDC secret material; Hub and trusted-device cookie metadata match accepted contracts |
+
+Other historical rows such as non-Employee/manager/HC-admin persona expansion, missing-access variants already covered by accepted revoke behavior, fixture bookkeeping, and Keycloak-outage rehearsal remain issue #9 backlog. Keycloak outage 9.1–9.3 must still never be run against production; an isolated/production-like target is required if that backlog is pursued. They do not block Foundation closure unless a new mandatory test reveals a material regression that makes them relevant again.
 
 Tamper/replay, user/realm mismatch, proof rotation, and signing-key fail-closed behavior are also requirements of HUB-IMPL-012. Existing automated coverage must be referenced for those exact invariants; it must not masquerade as production browser execution. Any required controlled runtime exercise follows the approved isolated-target procedure in the UAT guide.
 
 ## Foundation delta register
 
-These IDs supplement rather than renumber the historical 58 rows. Every row is currently NOT_RUN unless evidence is explicitly recorded later.
+These IDs supplement rather than renumber the historical 58 rows. Only the rows below are additional current closure requirements.
 
 | ID | Required evidence | Layer / routing |
 | --- | --- | --- |
-| F-REC | After a supported reset, fresh login with the new password succeeds; old password is rejected; no credential exposure in evidence/error/storage | Production synthetic browser. Combine with 5.8 to avoid duplicate resets; retain existing 3.3–3.5 evidence |
+| F-REC | After a supported reset, fresh login with the new password succeeds; old password is rejected; no credential exposure in evidence/error/storage | Production synthetic browser. Combine with password-reset trust invalidation to avoid duplicate resets; retain existing 3.3–3.5 evidence |
 | F-BROWSER | Hub transaction/session cookie host-only, Secure, HttpOnly, SameSite=Lax, Path=/; no OIDC material in local/session storage, IndexedDB or application-managed cache | Production browser; current Hub contract HUB-IMPL-016. Keycloak native in-memory adapter tokens are not persistent storage |
-| F-ADMIN | Authorized platform admin can use the existing Administrasi SQ surface; ordinary identity denied direct admin entry; platform admin does not acquire HCIS domain privilege | Browser + approved expected-access snapshot; synthetic fixtures, no real-user role changes |
-| F-LOGOUT | Hub and HCIS logout each terminate their own app session and Akun SQ session; cross-application behavior is observed and compared with the accepted global-logout policy | Production browser with both applications open; refresh protected data, not only cached page display. Unexpected surviving access is a defect, not an assumed PASS |
-| F-OPS | Reconcile current component/runtime provenance, backup and isolated restore references, rollback/recovery ownership, privileged recovery/custody and original cutover-record gaps | Existing accepted operational evidence may be reused for the exact behavior. Missing references remain pending. Do not trigger cutover/restore or expose secrets just to fill a table |
 | F-REVIEW | Review diff, pass relevant CI, owner-authorized merge, source-of-truth approval, and stale-PR cleanup | GitHub; no deployment needed for docs-only changes |
 
-F-OPS distinguishes an existing documented path from a performed restore. Preserve the bounded legacy-credential policy of ADR-0005; this documentation task neither verifies nor changes retained HCIS credentials. An authorized operator must reconcile any missing record rather than silently extending a retention window or performing destructive cleanup.
+Core Administrasi SQ, logout, HCIS launch/Application Access, Account Console, and deployment/rollback documentation already have qualifying evidence in the top-level exit checklist and are not assigned duplicate mandatory UAT rows here. If the mandatory identity/security UAT exposes a regression in one of those areas, reopen only the affected gate and diagnose the root cause.
 
 ## PR reconciliation
 
@@ -96,7 +97,7 @@ PR #12 and #42 are preserved as discovery/proposal and do not block this package
 | Production component provenance | Latest known: deployment evidence 2026-09-21; final reconciliation PENDING |
 | Mandatory scenario results and evidence references | PENDING; retained PASS results above are not reset |
 | Failed/NOT_RUN/BLOCKED required items | Present; see registers above |
-| Backup/rollback operational evidence and custodian | PENDING reconciliation |
+| Backup/rollback operational path | Documented path PASS via HUB-IMPL-016 runbook + deployment evidence; no separate restore rehearsal required for this Foundation closure |
 | Synthetic fixture state restoration/cleanup | PENDING; no cleanup by this documentation task |
 | Acceptance owner sign-off and timestamp | NOT GIVEN |
 | Permission to start next phase | NOT GIVEN by this record |
