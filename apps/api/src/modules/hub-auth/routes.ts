@@ -76,7 +76,25 @@ export function registerHubAuthRoutes(
     reply.header("Cache-Control", "no-store");
     const returnPath = request.query.returnTo === "account" ? "/account" : "/";
     try {
-      const result = await hubAuth.beginLogin(undefined, returnPath);
+      let replaceSessionToken: string | null = null;
+      if (returnPath === "/account") {
+        const candidate = readCookie(request.headers.cookie, HUB_SESSION_COOKIE_NAME);
+        if (candidate) {
+          try {
+            await hubAuth.getSession(candidate);
+            replaceSessionToken = candidate;
+          } catch (error) {
+            if (!(error instanceof HubAuthError && error.statusCode === 401)) {
+              throw error;
+            }
+          }
+        }
+      }
+      const result = await hubAuth.beginLogin(
+        undefined,
+        returnPath,
+        replaceSessionToken,
+      );
       reply.header("Set-Cookie", result.setCookie);
       return reply.redirect(result.authorizationUrl.href);
     } catch {
@@ -98,7 +116,7 @@ export function registerHubAuthRoutes(
     const sessionToken = readCookie(request.headers.cookie, HUB_SESSION_COOKIE_NAME);
     try {
       await hubAuth.getSession(sessionToken);
-      const result = await hubAuth.beginLogin(action, "/account");
+      const result = await hubAuth.beginLogin(action, "/account", sessionToken);
       reply.header("Set-Cookie", result.setCookie);
       return reply.redirect(result.authorizationUrl.href);
     } catch (error) {
@@ -333,7 +351,7 @@ export function registerHubAuthRoutes(
         delegated.accessToken,
         request.params.fieldName,
       );
-      const login = await hubAuth.beginLogin(action, "/account");
+      const login = await hubAuth.beginLogin(action, "/account", sessionToken);
       reply.header("Set-Cookie", login.setCookie);
       return reply.send({ authorizationUrl: login.authorizationUrl.href });
     } catch (error) {
@@ -428,7 +446,7 @@ export function registerHubAuthRoutes(
         delegated.accessToken,
         request.params.providerAlias,
       );
-      const login = await hubAuth.beginLogin(action, "/account");
+      const login = await hubAuth.beginLogin(action, "/account", sessionToken);
       reply.header("Set-Cookie", login.setCookie);
       return reply.send({ authorizationUrl: login.authorizationUrl.href });
     } catch (error) {
@@ -462,7 +480,11 @@ export function registerHubAuthRoutes(
           operation: request.params.operation,
         },
       );
-      const login = await hubAuth.beginLogin(action as HubOidcAction, "/account");
+      const login = await hubAuth.beginLogin(
+        action as HubOidcAction,
+        "/account",
+        sessionToken,
+      );
       reply.header("Set-Cookie", login.setCookie);
       return reply.send({ authorizationUrl: login.authorizationUrl.href });
     } catch (error) {
@@ -485,7 +507,7 @@ export function registerHubAuthRoutes(
         delegated.accessToken,
         request.params.credentialId,
       );
-      const login = await hubAuth.beginLogin(action, "/account");
+      const login = await hubAuth.beginLogin(action, "/account", sessionToken);
       reply.header("Set-Cookie", login.setCookie);
       return reply.send({ authorizationUrl: login.authorizationUrl.href });
     } catch (error) {
