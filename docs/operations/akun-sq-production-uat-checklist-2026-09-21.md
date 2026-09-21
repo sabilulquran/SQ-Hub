@@ -1,7 +1,7 @@
 # Akun SQ / SQ Hub — panduan UAT delta production, 21 September 2026
 
-**Status:** READY AS A PROCEDURE; execution results remain NOT_RUN unless evidence already exists.  
-**Contracts:** HUB-IMPL-003/011/012/016/017, Staff authentication policy.  
+**Status:** READY AS A PROCEDURE; execution results remain NOT_RUN unless evidence already exists.
+**Contracts:** HUB-IMPL-003/011/012/016/017, Staff authentication policy.
 **Ledger:** [Foundation closure](foundation-v1-closure.md). This guide does not authorize production deployment, realm-wide configuration changes, real-user mutations, or service outages.
 
 ## 1. Jangan mengulang pekerjaan yang sudah terbukti
