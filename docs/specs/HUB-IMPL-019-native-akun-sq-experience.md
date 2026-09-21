@@ -116,7 +116,7 @@ Baseline action yang diterima:
 - `idp_link:<provider>` hanya setelah provider diverifikasi tersedia bagi user;
 - `delete_credential:<credentialId>` hanya setelah credential diverifikasi milik user dan removable.
 
-Mutation profil, session logout, consent revoke, credential label, dan unlink account dilakukan lewat Account API sebagai user yang sama. Semua mutation endpoint native:
+Mutation profil, session logout, consent revoke, dan unlink account dilakukan lewat Account API sebagai user yang sama. Semua mutation endpoint native:
 - same-origin only;
 - mengambil target resource server-side sebelum mutation untuk bounded ownership;
 - tidak menerima actor/subject/issuer dari browser;
