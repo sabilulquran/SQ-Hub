@@ -50,6 +50,7 @@ export const accountFixture: AccountSnapshot = {
         readOnly: true,
         multivalued: false,
         values: ["19870001"],
+        requiredAction: null,
       },
       {
         name: "firstName",
@@ -58,6 +59,7 @@ export const accountFixture: AccountSnapshot = {
         readOnly: false,
         multivalued: false,
         values: ["Ahmad"],
+        requiredAction: null,
       },
       {
         name: "lastName",
@@ -66,6 +68,7 @@ export const accountFixture: AccountSnapshot = {
         readOnly: false,
         multivalued: false,
         values: ["Fikri"],
+        requiredAction: null,
       },
       {
         name: "email",
@@ -74,6 +77,7 @@ export const accountFixture: AccountSnapshot = {
         readOnly: false,
         multivalued: false,
         values: ["ahmad.fikri@example.test"],
+        requiredAction: "UPDATE_EMAIL",
       },
     ],
   },
