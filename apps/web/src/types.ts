@@ -28,6 +28,7 @@ export interface AccountProfileField {
   readOnly: boolean;
   multivalued: boolean;
   values: string[];
+  requiredAction: "UPDATE_EMAIL" | null;
 }
 
 export interface AccountCredential {
