@@ -99,6 +99,25 @@ function credentialLabel(item: AccountCredentialType): string {
   return item.label.replace(/^\$\{(.+)\}$/, "$1");
 }
 
+function credentialDescription(item: AccountCredentialType): string {
+  const type = item.type.toLowerCase();
+  if (type === "password") {
+    return "Perbarui kata sandi yang digunakan untuk masuk ke Akun SQ.";
+  }
+  if (type === "otp" || type.includes("totp")) {
+    return "Kelola aplikasi authenticator untuk verifikasi dua langkah.";
+  }
+  if (type.includes("recovery")) {
+    return "Kelola kode cadangan untuk memulihkan akses saat authenticator tidak tersedia.";
+  }
+  if (type.includes("webauthn") || type.includes("passkey")) {
+    return "Kelola passkey atau kunci keamanan yang terdaftar pada akun.";
+  }
+  return item.helpText && !item.helpText.includes("${")
+    ? item.helpText
+    : "Kelola metode keamanan yang tersedia untuk akun ini.";
+}
+
 function formatDate(value: number | null): string {
   if (!value) return "Belum tersedia";
   const date = new Date(value < 10_000_000_000 ? value * 1000 : value);
@@ -549,7 +568,7 @@ function SecuritySection({
                     {credentialLabel(container)}
                   </h3>
                   <p className="mt-1 text-xs leading-5 text-muted-foreground">
-                    {container.helpText || "Kelola metode keamanan untuk akun ini."}
+                    {credentialDescription(container)}
                   </p>
                   {container.credentials.length > 0 ? (
                     <div className="mt-3 space-y-2">
