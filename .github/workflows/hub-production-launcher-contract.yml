@@ -105,6 +105,18 @@ jobs:
           grep -Fq 'sudo -n docker image inspect "$tag"' "$helper"
           grep -Fq 'STOP: required immutable image is unavailable:' "$helper"
           grep -Fq 'STOP: refusing non-digest or empty image for' "$helper"
+          grep -Fq 'wait_runtime_probe "$hub_project" api api' "$helper"
+          grep -Fq 'wait_runtime_probe "$hub_project" web web' "$helper"
+          grep -Fq "fetch('http://127.0.0.1:3100/health')" "$helper"
+          grep -Fq 'wget -qO- http://127.0.0.1/healthz' "$helper"
+          if grep -Fq 'curl --fail --silent http://127.0.0.1:18200/health' "$helper"; then
+            echo "Production deploy helper must not require host-published API smoke port" >&2
+            exit 1
+          fi
+          if grep -Fq 'curl --fail --silent http://127.0.0.1:18201/healthz' "$helper"; then
+            echo "Production deploy helper must not require host-published web smoke port" >&2
+            exit 1
+          fi
           grep -Fq 'if ! api_digest="$(pull_digest "$api_repo" "$api_sha")"; then' "$helper"
           grep -Fq 'if ! web_digest="$(pull_digest "$web_repo" "$web_sha")"; then' "$helper"
           grep -Fq 'fetch-depth: 0' "$api_publisher"
