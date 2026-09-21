@@ -169,7 +169,7 @@ export class KeycloakAccountSelfService {
         requiredAction:
           name === "email" &&
           record(field.annotations)["kc.required.action.supported"] === true
-            ? "UPDATE_EMAIL"
+            ? ("UPDATE_EMAIL" as const)
             : null,
       };
     }).filter((field) => field.name);
