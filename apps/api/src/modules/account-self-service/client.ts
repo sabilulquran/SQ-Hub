@@ -426,8 +426,12 @@ export class KeycloakAccountSelfService {
       ? container.createAction
       : container.updateAction;
     if (!action) throw new AccountSelfServiceError(400, "CREDENTIAL_ACTION_NOT_AVAILABLE");
-    if (!/^[A-Za-z0-9_.-]+$/.test(action)) {
-      throw new AccountSelfServiceError(400, "CREDENTIAL_ACTION_INVALID");
+    if (
+      action !== "UPDATE_PASSWORD" &&
+      action !== "CONFIGURE_TOTP" &&
+      action !== "CONFIGURE_RECOVERY_AUTHN_CODES"
+    ) {
+      throw new AccountSelfServiceError(400, "CREDENTIAL_ACTION_UNSUPPORTED");
     }
     return action;
   }
