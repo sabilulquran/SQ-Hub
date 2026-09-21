@@ -160,20 +160,23 @@ The workflow must:
 - require an exact 40-character SHA that equals current `origin/main`;
 - require the literal confirmations `DEPLOY_PRODUCTION` and `BACKUP_VERIFIED`;
 - run behind GitHub Environment `production`;
-- use SSH credentials and runtime paths from GitHub environment/repository secrets, never from committed files;
+- use only SSH connection material from GitHub Environment secrets; production runtime paths are explicit verified source-of-truth paths, not secret values;
+- target the operator-verified root-owned runtime bundle at `/var/www/sq-hub-production`, using `compose.hub.json` for API/web and `compose.identity.json` for Keycloak;
+- require the SSH deployment user to pass `sudo -n true`; file and Compose mutation is performed only through non-interactive sudo;
 - resolve API, web, and Akun SQ/Keycloak source SHAs independently from the requested main SHA;
 - pull only organization-owned exact-SHA GHCR tags, then resolve and persist immutable `@sha256:` digests for production;
 - compare desired image IDs with the currently running containers and make documentation-only releases a runtime no-op;
 - deploy API, web, and identity as independent scopes; an unqualified whole-stack `docker compose up` is forbidden;
-- preserve the existing production Hub env and production Keycloak env through mode-600 rollback copies during a run;
-- fail closed when the production worktree is dirty, required runtime files are missing, component images are absent, the production Keycloak compose path cannot render the requested image, or public health checks fail;
+- preserve the existing production Compose JSON files through root-owned rollback copies before mutation;
+- mutate only the `services.api.image`, `services.web.image`, and `services.keycloak.image` JSON fields; all environment, network, command, volume, database, and proxy settings remain untouched;
+- fail closed when non-interactive sudo is unavailable, the verified runtime bundle/files or expected service/project labels do not match, component images are absent, Compose validation fails, or public health checks fail;
 - automatically attempt image/config rollback for services recreated during a failed run without destructively rolling back databases;
 - verify Hub health, exact production OIDC issuer discovery, and HCIS public reachability before reporting PASS;
 - logout the production VPS from GHCR when the workflow finishes.
 
 The workflow intentionally derives component SHAs instead of assuming every `main` commit has three newly built images. The API/web/Keycloak publisher workflows already produce immutable `sha-<component-source-sha>` tags when their respective source paths change. A documentation-only merge therefore advances repository source of truth without manufacturing or redeploying identical runtime images.
 
-Identity image rollout is supported only when production supplies an explicit existing Keycloak env file and Compose file through protected GitHub secrets. The workflow may update only the `SQ_HUB_KEYCLOAK_IMAGE` runtime image reference and recreate the existing `keycloak` service. It does not automatically reconcile realm settings, Google credentials, SMTP credentials, users, roles, Application Access, or domain authorization.
+Identity image rollout targets only the existing root-owned `/var/www/sq-hub-production/compose.identity.json` service `keycloak` in Compose project `sq-hub-keycloak-production`. The workflow changes only its image field and recreates only `keycloak`; `keycloak-db` is never recreated by this path. It does not reconcile realm settings, Google credentials, SMTP credentials, users, roles, Application Access, or domain authorization.
 
 ## Deployment and rollback contract
 
@@ -237,6 +240,8 @@ Repository source may prepare non-secret master-realm Forgot Password and SMTP c
 15. No production runtime, DNS, Keycloak, HCIS, database, or secret is changed by the PR itself.
 16. A guarded manual GitHub Actions deployment workflow validates exact current-main SHA, production approval, backup attestation, component-specific immutable images, service-scoped recreation, public health, and rollback behavior.
 17. Documentation-only main changes resolve to the existing component image SHAs and do not force API/web/Keycloak recreation.
+18. Production automation matches the operator-verified root-owned runtime bundle `/var/www/sq-hub-production`; it does not require a Git checkout or production env file to be readable by the SSH user.
+19. Runtime mutation is limited to image fields in `compose.hub.json` and `compose.identity.json`, with root-owned backup copies created before deployment.
 
 ## Non-goals
 

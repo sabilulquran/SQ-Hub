@@ -49,10 +49,6 @@ jobs:
       BACKUP_CONFIRMATION: ${{ inputs.backup_confirmation }}
       PROD_HOST: ${{ secrets.SQ_HUB_PROD_HOST }}
       PROD_USER: ${{ secrets.SQ_HUB_PROD_USER }}
-      PROD_REPO_PATH: ${{ secrets.SQ_HUB_PROD_REPO_PATH }}
-      HUB_ENV_FILE: ${{ secrets.SQ_HUB_PROD_ENV_FILE }}
-      KEYCLOAK_ENV_FILE: ${{ secrets.SQ_HUB_PROD_KEYCLOAK_ENV_FILE }}
-      KEYCLOAK_COMPOSE_FILE: ${{ secrets.SQ_HUB_PROD_KEYCLOAK_COMPOSE_FILE }}
       GHCR_USER: ${{ github.actor }}
       GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       API_REPO: ghcr.io/sabilulquran/sq-hub-api
@@ -98,8 +94,6 @@ jobs:
 
           test -n "$PROD_HOST"
           test -n "$PROD_USER"
-          test -n "$PROD_REPO_PATH"
-
           bash -n tools/production/deploy_from_github.sh
 
       - name: Resolve component source SHAs
@@ -140,11 +134,17 @@ jobs:
           printf '%s\n' "$SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
           chmod 600 ~/.ssh/known_hosts
 
-      - name: Authenticate VPS to GHCR temporarily
+      - name: Verify production sudo path
         shell: bash
         run: |
           set -euo pipefail
-          printf '%s' "$GHCR_TOKEN" | ssh "$PROD_USER@$PROD_HOST"             "docker login ghcr.io -u '$GHCR_USER' --password-stdin"
+          ssh "$PROD_USER@$PROD_HOST"             'sudo -n true && sudo -n test -r /var/www/sq-hub-production/compose.hub.json && sudo -n test -r /var/www/sq-hub-production/compose.identity.json'
+
+      - name: Authenticate root Docker client to GHCR temporarily
+        shell: bash
+        run: |
+          set -euo pipefail
+          printf '%s' "$GHCR_TOKEN" | ssh "$PROD_USER@$PROD_HOST"             "sudo -n docker login ghcr.io -u '$GHCR_USER' --password-stdin"
 
       - name: Deploy and verify
         shell: bash
@@ -155,10 +155,10 @@ jobs:
         run: |
           set -euo pipefail
 
-          ssh "$PROD_USER@$PROD_HOST" bash -s --             "$PROD_REPO_PATH"             "$TARGET_SHA"             "$DEPLOY_SCOPE"             "$HUB_ENV_FILE"             "$KEYCLOAK_ENV_FILE"             "$KEYCLOAK_COMPOSE_FILE"             "$API_REPO"             "$WEB_REPO"             "$KEYCLOAK_REPO"             "$API_SOURCE_SHA"             "$WEB_SOURCE_SHA"             "$IDENTITY_SOURCE_SHA"             < tools/production/deploy_from_github.sh
+          ssh "$PROD_USER@$PROD_HOST" bash -s --             "$TARGET_SHA"             "$DEPLOY_SCOPE"             "$API_REPO"             "$WEB_REPO"             "$KEYCLOAK_REPO"             "$API_SOURCE_SHA"             "$WEB_SOURCE_SHA"             "$IDENTITY_SOURCE_SHA"             < tools/production/deploy_from_github.sh
 
-      - name: Logout VPS from GHCR
+      - name: Logout root Docker client from GHCR
         if: always()
         shell: bash
         run: |
-          ssh "$PROD_USER@$PROD_HOST" 'docker logout ghcr.io >/dev/null 2>&1 || true'
+          ssh "$PROD_USER@$PROD_HOST" 'sudo -n docker logout ghcr.io >/dev/null 2>&1 || true'
