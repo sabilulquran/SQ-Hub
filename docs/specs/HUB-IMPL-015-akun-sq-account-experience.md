@@ -1,7 +1,7 @@
 # HUB-IMPL-015 — Akun SQ account experience
 
-**Status:** ACCEPTED — login/theme contract retained; user-facing Account Console superseded by HUB-IMPL-019 on 21 September 2026  
-**Owner:** Product Owner SQ Hub/HCIS — Human Capital YSQ  
+**Status:** ACCEPTED — login/theme contract retained; user-facing Account Console superseded by HUB-IMPL-019 on 21 September 2026
+**Owner:** Product Owner SQ Hub/HCIS — Human Capital YSQ
 **Target:** Keycloak 26.7.2 staging realm `sq-staff-staging`
 
 ## Tujuan
