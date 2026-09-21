@@ -60,8 +60,9 @@ describe("native Akun SQ account route", () => {
     expect(html).toContain("Windows");
     expect(html).toContain("Android");
     expect(html).toContain("Keluar dari semua sesi lain");
-    expect(html).toContain("session-mobile-preview");
-    expect(html).not.toContain("session-current-preview&quot;>Keluar");
+    expect(html).toContain("Digunakan oleh: SQ Hub, HCIS");
+    expect(html).toContain("Digunakan oleh: HCIS");
+    expect((html.match(/>Keluar<\/button>/g) ?? []).length).toBe(1);
   });
 
   it("separates SQ application access from identity-connected applications and consent", () => {
