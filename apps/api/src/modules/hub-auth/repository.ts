@@ -20,6 +20,7 @@ export interface HubSessionIdentity {
 
 export interface HubSessionRecord extends HubSessionIdentity {
   sessionId: string;
+  accountRefreshTokenCiphertext: string | null;
   createdAt: Date;
   expiresAt: Date;
 }
@@ -37,10 +38,12 @@ export interface HubAuthStore {
   createSession(input: {
     tokenHash: string;
     identity: HubSessionIdentity;
+    accountRefreshTokenCiphertext: string | null;
     expiresAt: Date;
     context: HubRequestContext;
   }): Promise<HubSessionRecord>;
   getSession(tokenHash: string, idleSeconds: number): Promise<HubSessionRecord | null>;
+  updateAccountRefreshToken(sessionId: string, ciphertext: string): Promise<void>;
   revokeSession(tokenHash: string, context: HubRequestContext): Promise<void>;
 }
 
@@ -48,6 +51,7 @@ interface TransactionRow {
   state: string;
   codeVerifier: string;
   nonce: string;
+  returnPath: "/" | "/account" | null;
   expiresAt: Date;
 }
 
@@ -59,6 +63,7 @@ interface SessionRow {
   username: string | null;
   email: string | null;
   emailVerified: boolean | null;
+  accountRefreshTokenCiphertext: string | null;
   createdAt: Date;
   expiresAt: Date;
 }
@@ -74,8 +79,8 @@ export class PgHubAuthRepository implements HubAuthStore {
     await this.pool.query(
       `
         INSERT INTO hub_oidc_transactions (
-          id, token_hash, state, code_verifier, nonce, expires_at
-        ) VALUES ($1, $2, $3, $4, $5, $6)
+          id, token_hash, state, code_verifier, nonce, return_path, expires_at
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7)
       `,
       [
         randomUUID(),
@@ -83,6 +88,7 @@ export class PgHubAuthRepository implements HubAuthStore {
         input.transaction.state,
         input.transaction.codeVerifier,
         input.transaction.nonce,
+        input.transaction.returnPath ?? null,
         input.expiresAt,
       ],
     );
@@ -100,6 +106,7 @@ export class PgHubAuthRepository implements HubAuthStore {
           state,
           code_verifier AS "codeVerifier",
           nonce,
+          return_path AS "returnPath",
           expires_at AS "expiresAt"
       `,
       [tokenHash],
@@ -111,6 +118,7 @@ export class PgHubAuthRepository implements HubAuthStore {
         state: row.state,
         codeVerifier: row.codeVerifier,
         nonce: row.nonce,
+        ...(row.returnPath ? { returnPath: row.returnPath } : {}),
       },
       expiresAt: row.expiresAt,
     };
@@ -119,6 +127,7 @@ export class PgHubAuthRepository implements HubAuthStore {
   async createSession(input: {
     tokenHash: string;
     identity: HubSessionIdentity;
+    accountRefreshTokenCiphertext: string | null;
     expiresAt: Date;
     context: HubRequestContext;
   }): Promise<HubSessionRecord> {
@@ -137,10 +146,11 @@ export class PgHubAuthRepository implements HubAuthStore {
             username,
             email,
             email_verified,
+            account_refresh_token_ciphertext,
             expires_at,
             ip_address,
             user_agent
-          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
           RETURNING
             id AS "sessionId",
             identity_issuer AS "identityIssuer",
@@ -149,6 +159,7 @@ export class PgHubAuthRepository implements HubAuthStore {
             username,
             email,
             email_verified AS "emailVerified",
+            account_refresh_token_ciphertext AS "accountRefreshTokenCiphertext",
             created_at AS "createdAt",
             expires_at AS "expiresAt"
         `,
@@ -161,6 +172,7 @@ export class PgHubAuthRepository implements HubAuthStore {
           input.identity.username,
           input.identity.email,
           input.identity.emailVerified,
+          input.accountRefreshTokenCiphertext,
           input.expiresAt,
           input.context.ipAddress,
           input.context.userAgent,
@@ -192,6 +204,7 @@ export class PgHubAuthRepository implements HubAuthStore {
         username: row.username,
         email: row.email,
         emailVerified: row.emailVerified,
+        accountRefreshTokenCiphertext: row.accountRefreshTokenCiphertext,
         createdAt: row.createdAt,
         expiresAt: row.expiresAt,
       };
@@ -214,6 +227,7 @@ export class PgHubAuthRepository implements HubAuthStore {
           username,
           email,
           email_verified AS "emailVerified",
+          account_refresh_token_ciphertext AS "accountRefreshTokenCiphertext",
           created_at AS "createdAt",
           expires_at AS "expiresAt"
         FROM hub_sessions
@@ -241,9 +255,22 @@ export class PgHubAuthRepository implements HubAuthStore {
       username: row.username,
       email: row.email,
       emailVerified: row.emailVerified,
+      accountRefreshTokenCiphertext: row.accountRefreshTokenCiphertext,
       createdAt: row.createdAt,
       expiresAt: row.expiresAt,
     };
+  }
+
+  async updateAccountRefreshToken(sessionId: string, ciphertext: string): Promise<void> {
+    await this.pool.query(
+      `
+        UPDATE hub_sessions
+        SET account_refresh_token_ciphertext = $2
+        WHERE id = $1
+          AND revoked_at IS NULL
+      `,
+      [sessionId, ciphertext],
+    );
   }
 
   async revokeSession(tokenHash: string, context: HubRequestContext): Promise<void> {
