@@ -305,11 +305,12 @@ Run it only from an authorized production administration context with the approv
 Expected safe evidence:
 
 ```text
+NATIVE_ACCOUNT_CAPABILITY_BASELINE_PASS realm=sq-staff
 NATIVE_ACCOUNT_SCOPE_MAPPING_PASS realm=sq-staff client=sq-hub
 NATIVE_ACCOUNT_AUDIENCE_PASS realm=sq-staff client=sq-hub audience=account
 ```
 
-The helper fails if `sq-hub` already carries broader account-client role scope than the HUB-IMPL-019 allowlist. Do not automatically delete unexpected scope; stop and review it.
+The helper fails if `sq-hub` already carries broader account-client role scope than the HUB-IMPL-019 allowlist. It also fails if Organizations, user-managed resources/UMA, Verifiable Credentials, or Delete Account are active, because native Foundation does not yet claim parity for those capabilities. Do not automatically delete/disable unexpected capability or scope; stop and review it.
 
 This reconciliation is realm-data mutation and therefore remains separate from `.github/workflows/deploy-production.yml`, whose identity scope only rolls the reviewed Keycloak image. Green CI does not establish production reconciliation.
 
