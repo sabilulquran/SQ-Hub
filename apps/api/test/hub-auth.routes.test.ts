@@ -113,6 +113,31 @@ describe("SQ Hub browser auth routes", () => {
     expect(response.headers["set-cookie"]).toContain("HttpOnly");
   });
 
+  it("binds account reauthentication to the current Hub session", async () => {
+    let replacementToken: string | null | undefined;
+    const app = appWithHub(
+      fakeHub({
+        beginLogin: async (_action, _returnPath, replaceSessionToken) => {
+          replacementToken = replaceSessionToken;
+          return {
+            authorizationUrl: new URL("https://login.example.test/authorize"),
+            setCookie: "sq_hub_oidc_tx=opaque; Path=/; HttpOnly; SameSite=Lax; Secure",
+          };
+        },
+      }),
+    );
+
+    const response = await app.inject({
+      method: "GET",
+      url: "/auth/oidc/start?returnTo=account",
+      headers: { cookie: "sq_hub_session=opaque" },
+    });
+    await app.close();
+
+    expect(response.statusCode).toBe(302);
+    expect(replacementToken).toBe("opaque");
+  });
+
   it("returns the authorized workspace without an identity subject field", async () => {
     const app = appWithHub(fakeHub());
     const response = await app.inject({
@@ -387,10 +412,12 @@ describe("SQ Hub browser auth routes", () => {
 
   it("starts only the allowlisted password account action", async () => {
     let requestedAction: HubOidcAction | undefined;
+    let replacementToken: string | null | undefined;
     const app = appWithHub(
       fakeHub({
-        beginLogin: async (action) => {
+        beginLogin: async (action, _returnPath, replaceSessionToken) => {
           requestedAction = action;
+          replacementToken = replaceSessionToken;
           return {
             authorizationUrl: new URL("https://login.example.test/authorize"),
             setCookie: "sq_hub_oidc_tx=opaque; Path=/; HttpOnly; SameSite=Lax; Secure",
@@ -409,6 +436,7 @@ describe("SQ Hub browser auth routes", () => {
     expect(response.statusCode).toBe(302);
     expect(response.headers.location).toBe("https://login.example.test/authorize");
     expect(requestedAction).toBe("UPDATE_PASSWORD");
+    expect(replacementToken).toBe("opaque");
   });
 
   it("rejects arbitrary account actions before creating an OIDC transaction", async () => {
