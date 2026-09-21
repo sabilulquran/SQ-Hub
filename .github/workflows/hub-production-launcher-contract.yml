@@ -5,6 +5,8 @@ on:
     paths:
       - ".github/workflows/hub-production-launcher-contract.yml"
       - ".github/workflows/deploy-production.yml"
+      - ".github/workflows/publish-api-staging-image.yml"
+      - ".github/workflows/publish-web-staging-image.yml"
       - "tools/production/deploy_from_github.sh"
       - "tools/production/**"
       - "infra/docker-compose.production.yml"
@@ -28,6 +30,8 @@ on:
     paths:
       - ".github/workflows/hub-production-launcher-contract.yml"
       - ".github/workflows/deploy-production.yml"
+      - ".github/workflows/publish-api-staging-image.yml"
+      - ".github/workflows/publish-web-staging-image.yml"
       - "tools/production/deploy_from_github.sh"
       - "tools/production/**"
       - "infra/docker-compose.production.yml"
@@ -64,8 +68,12 @@ jobs:
         run: |
           set -euo pipefail
           deploy='.github/workflows/deploy-production.yml'
+          api_publisher='.github/workflows/publish-api-staging-image.yml'
+          web_publisher='.github/workflows/publish-web-staging-image.yml'
           helper='tools/production/deploy_from_github.sh'
           test -f "$deploy"
+          test -f "$api_publisher"
+          test -f "$web_publisher"
           test -f "$helper"
           bash -n "$helper"
           ruby -e 'require "yaml"; YAML.load_file(ARGV[0], aliases: true)' "$deploy"
@@ -95,6 +103,16 @@ jobs:
             exit 1
           fi
           grep -Fq 'sudo -n docker image inspect "$tag"' "$helper"
+          grep -Fq 'STOP: required immutable image is unavailable:' "$helper"
+          grep -Fq 'STOP: refusing non-digest or empty image for' "$helper"
+          grep -Fq 'if ! api_digest="$(pull_digest "$api_repo" "$api_sha")"; then' "$helper"
+          grep -Fq 'if ! web_digest="$(pull_digest "$web_repo" "$web_sha")"; then' "$helper"
+          grep -Fq 'component_sha="$(git log -1 --format=%H "$build_sha" -- apps/api package.json package-lock.json)"' "$api_publisher"
+          grep -Fq 'component_sha="$(git log -1 --format=%H "$build_sha" -- apps/web package.json package-lock.json)"' "$web_publisher"
+          grep -Fq '$IMAGE_NAME:sha-$component_sha' "$api_publisher"
+          grep -Fq '$IMAGE_NAME:sha-$component_sha' "$web_publisher"
+          grep -Fq 'API_COMPONENT_IMAGE_PUBLISH_PASS' "$api_publisher"
+          grep -Fq 'WEB_COMPONENT_IMAGE_PUBLISH_PASS' "$web_publisher"
           grep -Fq 'set_compose_image "$hub_compose" api "$api_digest"' "$helper"
           grep -Fq 'set_compose_image "$hub_compose" web "$web_digest"' "$helper"
           grep -Fq 'set_compose_image "$identity_compose" keycloak "$kc_digest"' "$helper"
@@ -116,6 +134,8 @@ jobs:
         run: |
           if git grep -n -I -E '(BEGIN (RSA|OPENSSH|EC|DSA) PRIVATE KEY|AKIA[0-9A-Z]{16}|client[_ -]?secret[[:space:]]*[:=][[:space:]]*[A-Za-z0-9+/=_-]{24,}|password[[:space:]]*[:=][[:space:]]*[A-Za-z0-9+/=_-]{24,})' -- \
             .github/workflows/deploy-production.yml \
+            .github/workflows/publish-api-staging-image.yml \
+            .github/workflows/publish-web-staging-image.yml \
             tools/production/deploy_from_github.sh \
             infra/docker-compose.production.yml \
             infra/production.env.example \
