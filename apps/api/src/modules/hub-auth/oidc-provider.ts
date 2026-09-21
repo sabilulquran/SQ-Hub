@@ -10,6 +10,7 @@ export interface HubOidcProviderOptions {
 
 export type HubOidcAction =
   | "UPDATE_PASSWORD"
+  | "UPDATE_EMAIL"
   | "CONFIGURE_TOTP"
   | "CONFIGURE_RECOVERY_AUTHN_CODES"
   | `idp_link:${string}`
