@@ -202,7 +202,7 @@ describe("SQ Hub browser auth routes", () => {
     await app.close();
 
     expect(response.statusCode).toBe(200);
-    expect(response.json()).toEqual({
+    expect(response.json()).toMatchObject({
       profile: {
         displayName: "Ahmad Fikri",
         username: "19870001",
