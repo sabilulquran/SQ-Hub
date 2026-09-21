@@ -14,6 +14,7 @@ on:
       - "apps/api/**"
       - "package.json"
       - "package-lock.json"
+      - ".github/workflows/publish-api-staging-image.yml"
 
 permissions:
   contents: read
@@ -37,10 +38,31 @@ jobs:
         with:
           ref: ${{ github.event_name == 'workflow_dispatch' && inputs.source_ref || github.sha }}
 
-      - name: Resolve immutable source SHA
+      - name: Resolve immutable build and component source SHAs
         id: source
         shell: bash
-        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+        run: |
+          set -euo pipefail
+          build_sha="$(git rev-parse HEAD)"
+          component_sha="$(git log -1 --format=%H "$build_sha" -- apps/api package.json package-lock.json)"
+          test -n "$component_sha"
+
+          echo "build_sha=$build_sha" >> "$GITHUB_OUTPUT"
+          echo "component_sha=$component_sha" >> "$GITHUB_OUTPUT"
+          {
+            echo "tags<<EOF"
+            echo "$IMAGE_NAME:sha-$build_sha"
+            if [ "$component_sha" != "$build_sha" ]; then
+              echo "$IMAGE_NAME:sha-$component_sha"
+            fi
+            if [ "$GITHUB_EVENT_NAME" = "push" ]; then
+              echo "$IMAGE_NAME:staging"
+            fi
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+          echo "build_sha=$build_sha"
+          echo "component_source_sha=$component_sha"
 
       - name: Set up Node for API lockfile
         uses: actions/setup-node@v4
@@ -67,7 +89,7 @@ jobs:
           context: .
           file: apps/api/Dockerfile
           push: true
-          tags: ${{ env.IMAGE_NAME }}:sha-${{ steps.source.outputs.sha }}
+          tags: ${{ steps.source.outputs.tags }}
           labels: org.opencontainers.image.source=${{ env.OCI_SOURCE }}
           cache-from: type=gha,scope=api
           cache-to: type=gha,mode=max,scope=api
@@ -79,9 +101,13 @@ jobs:
           context: .
           file: apps/api/Dockerfile
           push: true
-          tags: |
-            ${{ env.IMAGE_NAME }}:staging
-            ${{ env.IMAGE_NAME }}:sha-${{ steps.source.outputs.sha }}
+          tags: ${{ steps.source.outputs.tags }}
           labels: org.opencontainers.image.source=${{ env.OCI_SOURCE }}
           cache-from: type=gha,scope=api
           cache-to: type=gha,mode=max,scope=api
+
+      - name: Verify immutable API component image exists
+        shell: bash
+        run: |
+          docker buildx imagetools inspect             "$IMAGE_NAME:sha-${{ steps.source.outputs.component_sha }}" >/dev/null
+          echo "API_COMPONENT_IMAGE_PUBLISH_PASS"
