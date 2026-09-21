@@ -3,7 +3,10 @@ import { describe, expect, it } from "vitest";
 import { buildApp } from "../src/app.js";
 import type { HubOidcAction } from "../src/modules/hub-auth/oidc-provider.js";
 import { HubAuthError, type HubAuthRuntime } from "../src/modules/hub-auth/service.js";
-import type { IdentityDirectory } from "../src/modules/identity-directory/client.js";
+import {
+  IdentityDirectoryError,
+  type IdentityDirectory,
+} from "../src/modules/identity-directory/client.js";
 
 const accountIssuer = "https://login.example.test/realms/staff";
 
@@ -24,7 +27,10 @@ const identityDirectory: IdentityDirectory = {
   }),
 };
 
-function appWithHub(hubAuth: HubAuthRuntime, directory: IdentityDirectory = identityDirectory) {
+function appWithHub(
+  hubAuth: HubAuthRuntime,
+  directory: IdentityDirectory | undefined = identityDirectory,
+) {
   return buildApp({
     accessService: {
       checkAccess: async () => ({
@@ -68,6 +74,9 @@ function fakeHub(overrides: Partial<HubAuthRuntime> = {}): HubAuthRuntime {
       issuer: accountIssuer,
       subject: "synthetic-subject",
       displayName: "Ahmad Fikri",
+      username: "19870001",
+      email: "synthetic@example.test",
+      emailVerified: true,
       createdAt: new Date("2026-09-18T00:00:00Z"),
       expiresAt: new Date("2026-09-18T12:00:00Z"),
     }),
@@ -158,6 +167,89 @@ describe("SQ Hub browser auth routes", () => {
     expect(response.body).not.toContain("synthetic-subject");
     expect(response.body).not.toContain("issuer");
     expect(response.body).not.toContain("/realms/");
+  });
+
+  it("keeps native account usable when the identity directory is unavailable", async () => {
+    const failingDirectory: IdentityDirectory = {
+      issuer: accountIssuer,
+      search: async () => [],
+      inspect: async () => {
+        throw new IdentityDirectoryError("synthetic directory outage");
+      },
+    };
+    const app = appWithHub(fakeHub(), failingDirectory);
+    const response = await app.inject({
+      method: "GET",
+      url: "/account",
+      headers: { cookie: "sq_hub_session=opaque" },
+    });
+    await app.close();
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({
+      profile: {
+        displayName: "Ahmad Fikri",
+        username: "19870001",
+        email: "synthetic@example.test",
+        emailVerified: true,
+      },
+      security: {
+        totpConfigured: null,
+        recoveryCodesConfigured: null,
+      },
+      applications: [
+        {
+          key: "hcis",
+          name: "HCIS",
+          canonicalUrl: "https://hcis.example",
+        },
+      ],
+    });
+  });
+
+  it("keeps native account usable for an older session without optional profile claims", async () => {
+    const app = appWithHub(
+      fakeHub({
+        getSession: async () => ({
+          sessionId: "session-legacy",
+          issuer: accountIssuer,
+          subject: "synthetic-subject",
+          displayName: "Ahmad Fikri",
+          username: null,
+          email: null,
+          emailVerified: null,
+          createdAt: new Date("2026-09-18T00:00:00Z"),
+          expiresAt: new Date("2026-09-18T12:00:00Z"),
+        }),
+      }),
+      {
+        issuer: accountIssuer,
+        search: async () => [],
+        inspect: async () => {
+          throw new IdentityDirectoryError("synthetic directory outage");
+        },
+      },
+    );
+    const response = await app.inject({
+      method: "GET",
+      url: "/account",
+      headers: { cookie: "sq_hub_session=opaque" },
+    });
+    await app.close();
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      profile: {
+        displayName: "Ahmad Fikri",
+        username: null,
+        email: null,
+        emailVerified: null,
+      },
+      security: {
+        totpConfigured: null,
+        recoveryCodesConfigured: null,
+      },
+    });
   });
 
   it("requires a valid Hub session before returning native account data", async () => {
