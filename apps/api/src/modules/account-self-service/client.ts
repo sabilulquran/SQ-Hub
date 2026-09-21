@@ -124,11 +124,6 @@ function numberValue(value: unknown): number | null {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 
-function stringArray(value: unknown): string[] {
-  if (!Array.isArray(value)) return [];
-  return value.filter((item): item is string => typeof item === "string");
-}
-
 function valuesForAttribute(source: JsonRecord, name: string): string[] {
   const raw = record(source.attributes)[name] ?? source[name];
   if (Array.isArray(raw)) {
