@@ -3,7 +3,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 KEYCLOAK_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
-ENV_FILE="${KEYCLOAK_ENV_FILE:-${KEYCLOAK_DIR}/.env.staging}"
+ENV_FILE="${KEYCLOAK_ENV_FILE-${KEYCLOAK_DIR}/.env.staging}"
 COMPOSE_FILE="${KEYCLOAK_COMPOSE_FILE:-${KEYCLOAK_DIR}/docker-compose.staging.yml}"
 REALM="${KEYCLOAK_REALM:-sq-staff-staging}"
 case "$REALM" in
@@ -33,10 +33,16 @@ fail() {
 command -v docker >/dev/null 2>&1 || fail "docker is required"
 command -v jq >/dev/null 2>&1 || fail "jq is required"
 [[ -f "$COMPOSE_FILE" ]] || fail "compose file not found"
-[[ -f "$ENV_FILE" ]] || fail "environment file not found"
+if [[ -n "$ENV_FILE" ]]; then
+  [[ -f "$ENV_FILE" ]] || fail "environment file not found"
+fi
 
 compose_exec() {
-  docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" exec -T keycloak "$@"
+  if [[ -n "$ENV_FILE" ]]; then
+    docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" exec -T keycloak "$@"
+  else
+    docker compose -f "$COMPOSE_FILE" exec -T keycloak "$@"
+  fi
 }
 
 compose_exec test -x "$KCADM" >/dev/null 2>&1 ||
