@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { buildApp } from "../src/app.js";
+import { KeycloakAccountSelfService } from "../src/modules/account-self-service/client.js";
 import type { HubOidcAction } from "../src/modules/hub-auth/oidc-provider.js";
 import { HubAuthError, type HubAuthRuntime } from "../src/modules/hub-auth/service.js";
 import {
@@ -30,6 +31,7 @@ const identityDirectory: IdentityDirectory = {
 function appWithHub(
   hubAuth: HubAuthRuntime,
   directory: IdentityDirectory | undefined = identityDirectory,
+  accountSelfService?: KeycloakAccountSelfService,
 ) {
   return buildApp({
     accessService: {
@@ -43,6 +45,7 @@ function appWithHub(
     hubAuth,
     hubRedirectUri: "https://hub-staging.sabilulquran.or.id/auth/callback",
     identityDirectory: directory,
+    accountSelfService,
   });
 }
 
@@ -171,7 +174,7 @@ describe("SQ Hub browser auth routes", () => {
       ],
       management: {
         available: false,
-        reauthRequired: true,
+        reauthRequired: false,
         credentials: [],
         devices: [],
         applications: [],
@@ -183,6 +186,28 @@ describe("SQ Hub browser auth routes", () => {
     expect(response.body).not.toContain("synthetic-subject");
     expect(response.body).not.toContain("issuer");
     expect(response.body).not.toContain("/realms/");
+  });
+
+  it("requires a fresh delegated account session for older Hub sessions", async () => {
+    const app = appWithHub(
+      fakeHub(),
+      identityDirectory,
+      new KeycloakAccountSelfService(accountIssuer),
+    );
+    const response = await app.inject({
+      method: "GET",
+      url: "/account",
+      headers: { cookie: "sq_hub_session=opaque" },
+    });
+    await app.close();
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      management: {
+        available: false,
+        reauthRequired: true,
+      },
+    });
   });
 
   it("keeps native account usable when the identity directory is unavailable", async () => {
