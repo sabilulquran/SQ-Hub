@@ -138,6 +138,8 @@ The workflow intentionally does not assume the latest documentation commit has f
 
 The existing publishers provide exact `sha-<source-sha>` images. Production deployment pulls those tags, resolves `@sha256:` digests, compares the desired image ID with the running container, and recreates only changed services. A docs-only release is therefore a runtime no-op.
 
+For recreated API/web services, the automated workflow verifies readiness **inside the recreated container** using the service-local health endpoint. It intentionally does not require host loopback ports `18200`/`18201`, because those are optional runtime conveniences rather than a stable invariant of the root-owned production bundle. Public `https://hub.sabilulquran.or.id/healthz` is still verified before PASS.
+
 ### Failure and rollback
 
 During a run, the workflow creates root-owned `.before-gha-<timestamp>` copies of the two production Compose JSON files and keeps previous container images local. It atomically changes only the image field for a selected service. If a recreated service or public health check fails, it restores the previous Compose file(s) and attempts image/config rollback for only services already recreated.
@@ -330,7 +332,7 @@ Do **not** run unqualified `docker compose up -d`.
 API acceptance before web:
 
 - container health is healthy;
-- loopback `/health` returns success;
+- container-local `/health` returns success; if the current runtime explicitly publishes the optional loopback smoke port, that host-local check may be recorded as additional evidence;
 - running image equals the recorded digest;
 - existing database service/container was not recreated by this action;
 - Keycloak and HCIS were not part of this Compose operation.
@@ -350,7 +352,7 @@ docker compose   --env-file infra/.env.production   -f infra/docker-compose.prod
 Required local checks before edge change:
 
 - web container healthy;
-- `http://127.0.0.1:18201/healthz` succeeds;
+- container-local `/healthz` succeeds; an optional host loopback check may be used only when that runtime actually publishes the smoke port;
 - API remains healthy;
 - exact callback path sent through the web boundary does not return SPA `index.html`;
 - running web image equals the target digest.

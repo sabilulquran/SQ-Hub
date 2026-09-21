@@ -171,7 +171,7 @@ The workflow must:
 - mutate only the `services.api.image`, `services.web.image`, and `services.keycloak.image` JSON fields; all environment, network, command, volume, database, and proxy settings remain untouched;
 - fail closed when non-interactive sudo is unavailable, the verified runtime bundle/files or expected service/project labels do not match, component images are absent, Compose validation fails, or public health checks fail;
 - automatically attempt image/config rollback for services recreated during a failed run without destructively rolling back databases;
-- verify Hub health, exact production OIDC issuer discovery, and HCIS public reachability before reporting PASS;
+- verify recreated API/web readiness from inside the actual containers, then verify Hub public health, exact production OIDC issuer discovery, and HCIS public reachability before reporting PASS;
 - logout the production VPS from GHCR when the workflow finishes.
 
 The workflow intentionally derives component SHAs instead of assuming every `main` commit has three newly built images. The API/web/Keycloak publisher workflows already produce immutable `sha-<component-source-sha>` tags when their respective source paths change. A documentation-only merge therefore advances repository source of truth without manufacturing or redeploying identical runtime images.
