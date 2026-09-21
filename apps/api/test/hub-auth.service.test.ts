@@ -63,9 +63,17 @@ class MemoryStore implements HubAuthStore {
     tokenHash: string;
     identity: HubSessionIdentity;
     accountRefreshTokenCiphertext: string | null;
+    replaceSessionTokenHash?: string | null;
     expiresAt: Date;
     context: HubRequestContext;
   }) {
+    if (input.replaceSessionTokenHash) {
+      if (!this.session || this.session.tokenHash !== input.replaceSessionTokenHash) {
+        throw new Error("replacement session is no longer active");
+      }
+      this.revokedHash = input.replaceSessionTokenHash;
+    }
+
     const record: HubSessionRecord = {
       sessionId: "session-001",
       issuer: input.identity.issuer,
@@ -251,6 +259,120 @@ describe("HubAuthService", () => {
         context,
       ),
     ).rejects.toMatchObject({ code: "OIDC_TRANSACTION_EXPIRED" });
+  });
+
+  it("binds an account action to the current principal and replaces the old Hub session", async () => {
+    const { auth, store } = service();
+    const initial = await auth.beginLogin(undefined, "/account");
+    const initialTransactionToken = cookieValue(
+      initial.setCookie,
+      HUB_OIDC_TRANSACTION_COOKIE_NAME,
+    );
+    const initialCompleted = await auth.completeLogin(
+      new URL("https://hub-staging.sabilulquran.or.id/auth/callback"),
+      initialTransactionToken,
+      context,
+    );
+    const oldSessionToken = cookieValue(
+      initialCompleted.setCookies[0]!,
+      HUB_SESSION_COOKIE_NAME,
+    );
+
+    const action = await auth.beginLogin(
+      "UPDATE_PASSWORD",
+      "/account",
+      oldSessionToken,
+    );
+    expect(store.transaction?.transaction.expectedSubject).toBe("opaque-subject");
+    expect(store.transaction?.transaction.expectedIssuer).toBe(
+      "https://login.sabilulquran.or.id/realms/sq-staff-staging",
+    );
+    expect(store.transaction?.transaction.replaceSessionTokenHash).toMatch(
+      /^[a-f0-9]{64}$/,
+    );
+    expect(store.transaction?.transaction.replaceSessionTokenHash).not.toBe(
+      oldSessionToken,
+    );
+
+    const actionTransactionToken = cookieValue(
+      action.setCookie,
+      HUB_OIDC_TRANSACTION_COOKIE_NAME,
+    );
+    const completed = await auth.completeLogin(
+      new URL("https://hub-staging.sabilulquran.or.id/auth/callback"),
+      actionTransactionToken,
+      context,
+    );
+    const newSessionToken = cookieValue(
+      completed.setCookies[0]!,
+      HUB_SESSION_COOKIE_NAME,
+    );
+
+    expect(newSessionToken).not.toBe(oldSessionToken);
+    expect(store.revokedHash).toMatch(/^[a-f0-9]{64}$/);
+    expect(store.revokedHash).not.toBe(oldSessionToken);
+    await expect(auth.getSession(oldSessionToken)).rejects.toMatchObject({
+      code: "UNAUTHENTICATED",
+    });
+    await expect(auth.getSession(newSessionToken)).resolves.toMatchObject({
+      subject: "opaque-subject",
+    });
+  });
+
+  it("rejects an identity switch while preserving the original Hub session", async () => {
+    const { auth, store, provider } = service();
+    const initial = await auth.beginLogin(undefined, "/account");
+    const initialTransactionToken = cookieValue(
+      initial.setCookie,
+      HUB_OIDC_TRANSACTION_COOKIE_NAME,
+    );
+    const initialCompleted = await auth.completeLogin(
+      new URL("https://hub-staging.sabilulquran.or.id/auth/callback"),
+      initialTransactionToken,
+      context,
+    );
+    const oldSessionToken = cookieValue(
+      initialCompleted.setCookies[0]!,
+      HUB_SESSION_COOKIE_NAME,
+    );
+
+    const action = await auth.beginLogin(
+      "UPDATE_PASSWORD",
+      "/account",
+      oldSessionToken,
+    );
+    const actionTransactionToken = cookieValue(
+      action.setCookie,
+      HUB_OIDC_TRANSACTION_COOKIE_NAME,
+    );
+    provider.completeAuthorization = async () => ({
+      identity: {
+        issuer: "https://login.sabilulquran.or.id/realms/sq-staff-staging",
+        subject: "different-subject",
+        displayName: "Different User",
+        username: "99999999",
+        email: "different@example.test",
+        emailVerified: true,
+      },
+      refreshToken: "different-refresh-token",
+    });
+
+    await expect(
+      auth.completeLogin(
+        new URL("https://hub-staging.sabilulquran.or.id/auth/callback"),
+        actionTransactionToken,
+        context,
+      ),
+    ).rejects.toMatchObject({
+      statusCode: 400,
+      code: "OIDC_IDENTITY_SWITCH_REJECTED",
+      returnPath: "/account",
+    });
+
+    expect(store.revokedHash).toBeNull();
+    await expect(auth.getSession(oldSessionToken)).resolves.toMatchObject({
+      subject: "opaque-subject",
+    });
   });
 
   it("preserves the native account return path when a provider action fails", async () => {
