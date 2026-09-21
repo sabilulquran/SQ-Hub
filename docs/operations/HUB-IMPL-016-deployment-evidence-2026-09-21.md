@@ -1,7 +1,7 @@
 # HUB-IMPL-016 — GitHub production deployment evidence, 21 September 2026
 
-**Result:** PASS untuk execution path NO-OP.  
-**Evidence source:** GitHub Actions run metadata, job steps, dan decoded job log yang dibaca melalui GitHub connector.  
+**Result:** PASS untuk execution path NO-OP.
+**Evidence source:** GitHub Actions run metadata, job steps, dan decoded job log yang dibaca melalui GitHub connector.
 **Independent live VPS/browser inspection by this documentation task:** NONE.
 
 ## Provenance
