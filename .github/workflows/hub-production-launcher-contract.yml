@@ -14,6 +14,8 @@ on:
       - "infra/reverse-proxy.caddy.production.example"
       - "infra/keycloak/clients/sq-hub-production.json"
       - "infra/keycloak/scripts/reconcile-hub-production-client.sh"
+      - "infra/keycloak/scripts/reconcile-native-account-self-service.sh"
+      - "infra/keycloak/scripts/reconcile-native-account-self-service.sh"
       - "infra/keycloak/scripts/verify-hub-production-secret-fingerprint.sh"
       - "infra/keycloak/scripts/reconcile-master-production-recovery.sh"
       - "infra/keycloak/realm/master-production-recovery.json"
@@ -142,6 +144,7 @@ jobs:
       - name: Validate production reconciliation script syntax
         run: |
           bash -n infra/keycloak/scripts/reconcile-hub-production-client.sh
+          bash -n infra/keycloak/scripts/reconcile-native-account-self-service.sh
           bash -n infra/keycloak/scripts/verify-hub-production-secret-fingerprint.sh
           bash -n infra/keycloak/scripts/reconcile-master-production-recovery.sh
 
@@ -160,6 +163,7 @@ jobs:
             infra/keycloak/realm/master-production-recovery.json \
             infra/keycloak/master-smtp.env.example \
             infra/keycloak/scripts/reconcile-hub-production-client.sh \
+            infra/keycloak/scripts/reconcile-native-account-self-service.sh \
             infra/keycloak/scripts/verify-hub-production-secret-fingerprint.sh \
             infra/keycloak/scripts/reconcile-master-production-recovery.sh \
             docs/specs/HUB-IMPL-016-hub-production-launcher.md \
