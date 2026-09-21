@@ -130,10 +130,18 @@ export function registerHubAuthRoutes(
       );
       reply.raw.setHeader("Set-Cookie", result.setCookies);
       return reply.redirect(result.returnPath);
-    } catch {
+    } catch (error) {
       reply.header("Set-Cookie", hubAuth.clearTransactionCookie());
+      const returnPath =
+        error instanceof HubAuthError && error.returnPath
+          ? error.returnPath
+          : accountAction
+            ? "/account"
+            : "/";
       return reply.redirect(
-        accountAction ? "/account?authError=oidc_failed" : "/?authError=oidc_failed",
+        returnPath === "/account"
+          ? "/account?authError=oidc_failed"
+          : "/?authError=oidc_failed",
       );
     }
   });
