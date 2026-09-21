@@ -97,7 +97,7 @@ Repository production Compose:
 - makes web readiness depend on API health;
 - retains the existing additive migration/seed startup path for the API.
 
-The operator must reconcile the current production API/database topology before applying Compose. A launcher release must not recreate the already-running SQ Hub database merely to add the web launcher.
+The operator must reconcile the current production API/database topology before applying Compose. The operator-verified runtime bundle currently includes an existing `postgres` service alongside `api` and `web`; that database service is runtime infrastructure, not a deployment target. A launcher release must never recreate, replace, or mutate the already-running SQ Hub database merely to deploy API/web.
 
 ## Reverse-proxy boundary
 
@@ -161,7 +161,7 @@ The workflow must:
 - require the literal confirmations `DEPLOY_PRODUCTION` and `BACKUP_VERIFIED`;
 - run behind GitHub Environment `production`;
 - use only SSH connection material from GitHub Environment secrets; production runtime paths are explicit verified source-of-truth paths, not secret values;
-- target the operator-verified root-owned runtime bundle at `/var/www/sq-hub-production`, using `compose.hub.json` for API/web and `compose.identity.json` for Keycloak;
+- target the operator-verified root-owned runtime bundle at `/var/www/sq-hub-production`, using `compose.hub.json` whose exact service set is `api`, `postgres`, `web`, and `compose.identity.json` for Keycloak;
 - require the SSH deployment user to pass `sudo -n true`; file and Compose mutation is performed only through non-interactive sudo;
 - resolve API, web, and Akun SQ/Keycloak source SHAs independently from the requested main SHA;
 - pull only organization-owned exact-SHA GHCR tags, then resolve and persist immutable `@sha256:` digests for production;
@@ -225,7 +225,7 @@ Repository source may prepare non-secret master-realm Forgot Password and SMTP c
 
 1. Production and staging Hub OIDC clients are explicit and distinct: `sq-hub` vs `sq-hub-staging`.
 2. Production issuer/origin/redirect/logout values are exact and contract-tested.
-3. Production Compose uses immutable API/web digest references and contains no Keycloak/HCIS/database service definition.
+3. Repository production Compose keeps database ownership external, while the operator-verified runtime bundle may retain its existing `postgres` service; deployment automation must mutate/recreate only `api` and `web`, never `postgres`.
 4. API/web host ports bind to loopback; no database port is exposed.
 5. Reverse-proxy example keeps callback/API server-side and routes the public host only to the web boundary.
 6. Desired production OIDC client state contains no secret and disables implicit/direct grant/service-account flows.
@@ -241,7 +241,7 @@ Repository source may prepare non-secret master-realm Forgot Password and SMTP c
 16. A guarded manual GitHub Actions deployment workflow validates exact current-main SHA, production approval, backup attestation, component-specific immutable images, service-scoped recreation, public health, and rollback behavior.
 17. Documentation-only main changes resolve to the existing component image SHAs and do not force API/web/Keycloak recreation.
 18. Production automation matches the operator-verified root-owned runtime bundle `/var/www/sq-hub-production`; it does not require a Git checkout or production env file to be readable by the SSH user.
-19. Runtime mutation is limited to image fields in `compose.hub.json` and `compose.identity.json`, with root-owned backup copies created before deployment.
+19. Runtime mutation is limited to image fields in `compose.hub.json` and `compose.identity.json`, with root-owned backup copies created before deployment; the existing `postgres` and `keycloak-db` services are never deployment targets.
 
 ## Non-goals
 

@@ -110,7 +110,7 @@ Production runtime paths are not secret and are fixed by the verified topology:
 - runtime directory: `/var/www/sq-hub-production`;
 - Hub Compose: `/var/www/sq-hub-production/compose.hub.json`;
 - identity Compose: `/var/www/sq-hub-production/compose.identity.json`;
-- Hub project/services: `sq-hub-production` → `api`, `web`;
+- Hub project/services: `sq-hub-production` → `postgres`, `api`, `web`;
 - identity project/services: `sq-hub-keycloak-production` → `keycloak-db`, `keycloak`.
 
 The runtime directory is root-owned and intentionally not readable as an ordinary SSH checkout. The workflow therefore does not require or assume a Git working tree on the VPS. It verifies `sudo -n`, validates the exact Compose service sets and running-container ownership labels, and uses sudo only for the root-owned runtime bundle and Docker operations.
@@ -158,7 +158,7 @@ Current production evidence supplied by the operator:
 
 - `/var/www/sq-hub-production` is a root-owned runtime bundle, **not** a Git checkout;
 - directory mode is `700`;
-- `compose.hub.json` is root-owned and defines exactly `api` + `web`;
+- `compose.hub.json` is root-owned and defines exactly `postgres` + `api` + `web`; `postgres` is existing runtime infrastructure and is never recreated by the GitHub deployment workflow;
 - `compose.identity.json` is root-owned and defines exactly `keycloak-db` + `keycloak`;
 - running API/web containers report Compose project `sq-hub-production` and config file `/var/www/sq-hub-production/compose.hub.json`;
 - running Keycloak reports project `sq-hub-keycloak-production` and config file `/var/www/sq-hub-production/compose.identity.json`;

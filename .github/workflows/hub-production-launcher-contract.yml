@@ -88,7 +88,12 @@ jobs:
           grep -Fq 'hub_compose="$runtime_dir/compose.hub.json"' "$helper"
           grep -Fq 'identity_compose="$runtime_dir/compose.identity.json"' "$helper"
           grep -Fq 'hub_project=sq-hub-production' "$helper"
+          grep -Fq "test \"\$hub_services\" = \$'api\\npostgres\\nweb'" "$helper"
           grep -Fq 'identity_project=sq-hub-keycloak-production' "$helper"
+          if grep -Fq -- '--force-recreate postgres' "$helper"; then
+            echo "Production deploy helper must never recreate postgres" >&2
+            exit 1
+          fi
           grep -Fq 'sudo -n docker image inspect "$tag"' "$helper"
           grep -Fq 'set_compose_image "$hub_compose" api "$api_digest"' "$helper"
           grep -Fq 'set_compose_image "$hub_compose" web "$web_digest"' "$helper"

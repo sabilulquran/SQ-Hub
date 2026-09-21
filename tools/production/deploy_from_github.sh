@@ -36,7 +36,7 @@ sudo -n test -r "$identity_compose"
 
 hub_services="$(sudo -n docker compose -f "$hub_compose" config --services | sort)"
 identity_services="$(sudo -n docker compose -f "$identity_compose" config --services | sort)"
-test "$hub_services" = $'api\nweb' || {
+test "$hub_services" = $'api\npostgres\nweb' || {
   echo "STOP: unexpected Hub production service set" >&2
   exit 1
 }
