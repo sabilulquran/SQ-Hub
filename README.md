@@ -17,7 +17,7 @@ Mulai dari catatan terkini:
 
 Baseline GitHub yang diperiksa: `d2de4411760c963df542a540c6e3e63eee37283e` (merge PR #87). CI dan Hub Production Launcher Contract PASS. Deploy SQ Hub Production run `35581490721` SUCCESS dengan API, web, dan identity **NO-OP**, karena image yang diinginkan sudah berjalan. Keberhasilan ini bukan pengujian recreate, rollback, recovery, Google, atau MFA.
 
-Evidence tidak dimulai dari nol. Ledger identity UAT terdahulu memiliki **27 PASS / 28 NOT_RUN / 3 BLOCKED**: di antaranya pengiriman email recovery, reset/single-use/expired-link, serta lima skenario dasar trusted-device sudah memiliki bukti production. Google, sisa MFA/trust, browser storage/cookie, dan beberapa persona/negative case tetap belum lengkap. Lihat ID dan batas reuse pada ledger, bukan hanya angka total.
+Evidence tidak dimulai dari nol. Ledger identity UAT terdahulu memiliki **27 PASS / 28 NOT_RUN / 3 BLOCKED**: di antaranya pengiriman email recovery, reset/single-use/expired-link, serta lima skenario dasar trusted-device sudah memiliki bukti production. Mandatory blocker Foundation sekarang adalah penyelesaian recovery E2E, Google existing-account/mapping regression, sisa MFA/trusted-device, dan browser storage/cookie security. Baris issue #9 lain yang tidak memetakan ke definisi selesai tersebut tetap backlog jujur, bukan PASS dan bukan blocker Foundation.
 
 SQ Hub production, login Akun SQ, HCIS launch/Application Access, Administrasi SQ surface, dan Account Console desktop/mobile memiliki evidence operator 18 September 2026. Pernyataan lama bahwa Hub belum memiliki DNS/web adalah snapshot historis, bukan kondisi terkini. [Catatan 18 September](docs/operations/project-status-2026-09-18.md) mempertahankan detailnya.
 
