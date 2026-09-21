@@ -316,6 +316,11 @@ export class KeycloakAccountSelfService {
           {
             readOnly: boolValue(field.readOnly),
             multivalued: boolValue(field.multivalued),
+            requiredAction:
+              stringValue(field.name) === "email" &&
+              record(field.annotations)["kc.required.action.supported"] === true
+                ? "UPDATE_EMAIL"
+                : null,
           },
         ] as const;
       }).filter(([name]) => name),
@@ -326,10 +331,7 @@ export class KeycloakAccountSelfService {
       if (!field || field.readOnly) {
         throw new AccountSelfServiceError(400, "PROFILE_FIELD_NOT_EDITABLE");
       }
-      if (
-        name === "email" &&
-        record(record(field).annotations)["kc.required.action.supported"] === true
-      ) {
+      if (field.requiredAction === "UPDATE_EMAIL") {
         throw new AccountSelfServiceError(400, "PROFILE_FIELD_REQUIRES_ACTION");
       }
       if (!field.multivalued && values.length > 1) {
