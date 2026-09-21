@@ -54,7 +54,7 @@ Operator memverifikasi provider alias `google`, link-only-existing flow, registr
 - **4.3 / 5.12:** Pada TOTP fixture dan profile tanpa valid trust, Google tidak melewati TOTP. Pada profile dengan valid trust, first factor tetap harus berhasil dan hanya TOTP boleh dilewati sesuai policy. Catat kedua jalur terpisah.
 - **4.4:** Logout penuh lalu login Google lagi. Operator memverifikasi exact identity dan HCIS principal sama sebelum/sesudah tanpa mengirim raw `sub` atau account ID. Marker `SAME_IDENTITY=true` dan `SAME_HCIS_PRINCIPAL=true` cukup bila dibandingkan secara nyata.
 - **4.5:** Bandingkan Application Access, Platform Administrator membership, realm/client role, dan HCIS authorization sebelum/sesudah. Semua tetap seperti baseline; tidak cukup hanya melihat homepage yang sama.
-- Regression: login NIP/email + password masih memakai identity yang sama. Unknown mapping/no-access negative case tetap fail closed (1.5, 6.3, 6.5).
+- Regression: login NIP/email + password masih memakai identity yang sama. Wrong/unknown mapping tetap fail closed (1.5/6.5). Missing Application Access yang sudah memiliki accepted revoke evidence tidak perlu diulang kecuali ada regression baru.
 
 Tidak mengaktifkan public self-registration, auto-link email, auto-create Staff, atau membuat Google sebagai authority role. Bila Google fixture cocok belum tersedia, kelompok ini BLOCKED, bukan PASS atau SKIP yang dianggap selesai.
 
@@ -88,13 +88,15 @@ Bila pengiriman gagal, catat waktu, origin/path tanpa query, dan error generik. 
 
 Jika expiry belum dapat dieksekusi aman, tandai BLOCKED dengan dependency expired-proof/isolated target. Jangan memalsukan elapsed 30 days atau menurunkan policy production. Dilarang menghentikan Keycloak production untuk 9.1–9.3; siapkan isolated/production-like target dan lakukan failure/restore secara terpisah sesuai operational approval.
 
-## 7. Batch E — authorization, logout, dan operational closure
+## 7. Penutupan setelah batch mandatory
 
-Persona remaining 1.4/2.2–2.4 memakai kemampuan domain yang sudah disepakati, termasuk satu akses diizinkan dan satu ditolak bila relevan. F-ADMIN membandingkan approved platform admin dengan ordinary Staff menggunakan direct entry ke admin surface yang ditemukan dari UI/source, bukan menebak URL dan bukan melakukan real-user role changes.
+Setelah browser baseline, recovery/password invalidation, Google/mapping, dan MFA/trusted-device selesai, cocokkan hasil ke [ledger closure](foundation-v1-closure.md). Jangan menambah pengujian production hanya untuk membuat seluruh historical issue #9 menjadi PASS.
 
-Untuk F-LOGOUT, buka Hub dan HCIS pada sesi synthetic yang sama. Logout dari Hub, lalu verifikasi sesi Hub/SSO dan refresh protected data HCIS; catat perilakunya. Ulangi arah HCIS -> Hub. Bandingkan dengan Staff authentication policy dan implementasi client, bukan hanya halaman yang masih tampil dari cache. Jangan menganggap RP logout otomatis membuktikan semua sesi aplikasi sudah hilang. Unexpected surviving access atau redirect loop adalah temuan yang harus dianalisis sebelum closure.
+Core Administrasi SQ, HCIS launch/Application Access, Account Console, dan logout sudah memiliki qualifying evidence yang dipertahankan. Tidak perlu mengulangnya sebagai batch terpisah kecuali salah satu mandatory test menunjukkan regression nyata. Bila regression muncul, catat skenario yang gagal, hentikan perluasan UAT yang bergantung padanya, lalu diagnosis root cause sebelum melanjutkan.
 
-Operator merujuk [deployment evidence](HUB-IMPL-016-deployment-evidence-2026-09-21.md) dan runbook untuk F-OPS: source/image identity, backup database dan isolated restore evidence, incident/rollback owner, privileged recovery/custody, dan gap historical cutover record. Compose backup bukan backup database; successful NO-OP bukan rollback rehearsal. Tidak ada perintah cutover ulang, database cleanup, service recreate, atau deployment dalam panduan ini.
+Historical rows seperti persona non-Employee/manager/HC-admin, fixture bookkeeping tambahan, missing-access variant yang tidak berbeda material dari revoke evidence, serta Keycloak outage 9.1–9.3 tetap backlog issue #9. Mereka tidak otomatis menjadi blocker Foundation. Khusus outage, jangan menghentikan atau mengisolasi Keycloak production; gunakan target terisolasi/production-like hanya bila backlog itu nanti dikerjakan.
+
+Rollback/backup operational path untuk Foundation dinilai dari kontrak/runbook deployment dan evidence run 35581490721. Compose backup reference bukan database backup, tetapi Foundation closure saat ini tidak mensyaratkan restore rehearsal baru. Jangan melakukan database restore, service recreate, cutover ulang, atau destructive credential cleanup hanya untuk menghasilkan evidence tambahan.
 
 ## 8. Format hasil yang aman
 
