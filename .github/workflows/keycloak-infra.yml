@@ -417,6 +417,92 @@ jobs:
             ] | sort)
           ' >/dev/null <<<"$mapped"
 
+          # Runtime proof: obtain an actual user token from the exact Hub client and
+          # call the official Account REST API. Direct grant is enabled only inside
+          # this disposable CI realm so production keeps directAccessGrantsEnabled=false.
+          synthetic_username=ci-native-account
+          synthetic_password=ci-native-account-password-only
+          synthetic_user_id="$(
+            docker compose --env-file "$KEYCLOAK_ENV_FILE" -f infra/keycloak/docker-compose.staging.yml \
+              exec -T keycloak /opt/keycloak/bin/kcadm.sh create users \
+              -r sq-staff-staging \
+              -s "username=$synthetic_username" \
+              -s enabled=true \
+              -s firstName=CI \
+              -s 'lastName=Native Account' \
+              -s email=ci-native-account@example.invalid \
+              -s emailVerified=true \
+              -i --config "$kcadm_config"
+          )"
+          test -n "$synthetic_user_id"
+
+          docker compose --env-file "$KEYCLOAK_ENV_FILE" -f infra/keycloak/docker-compose.staging.yml \
+            exec -T keycloak /opt/keycloak/bin/kcadm.sh set-password \
+            -r sq-staff-staging \
+            --userid "$synthetic_user_id" \
+            --new-password "$synthetic_password" \
+            --temporary=false \
+            --config "$kcadm_config" >/dev/null
+
+          docker compose --env-file "$KEYCLOAK_ENV_FILE" -f infra/keycloak/docker-compose.staging.yml \
+            exec -T keycloak /opt/keycloak/bin/kcadm.sh update "clients/$hub_uuid" \
+            -r sq-staff-staging -s directAccessGrantsEnabled=true \
+            --config "$kcadm_config" >/dev/null
+
+          hub_secret="$(
+            docker compose --env-file "$KEYCLOAK_ENV_FILE" -f infra/keycloak/docker-compose.staging.yml \
+              exec -T keycloak /opt/keycloak/bin/kcadm.sh get "clients/$hub_uuid/client-secret" \
+              -r sq-staff-staging --config "$kcadm_config" \
+              | jq -er '.value'
+          )"
+          account_token="$(
+            curl --fail --silent \
+              --header 'Content-Type: application/x-www-form-urlencoded' \
+              --data-urlencode client_id=sq-hub-staging \
+              --data-urlencode "client_secret=$hub_secret" \
+              --data-urlencode grant_type=password \
+              --data-urlencode "username=$synthetic_username" \
+              --data-urlencode "password=$synthetic_password" \
+              http://127.0.0.1:8080/realms/sq-staff-staging/protocol/openid-connect/token \
+              | jq -er '.access_token'
+          )"
+          test -n "$account_token"
+
+          token_payload="$(
+            TOKEN="$account_token" python3 - <<'PY'
+import base64
+import json
+import os
+
+payload = os.environ["TOKEN"].split(".")[1]
+payload += "=" * (-len(payload) % 4)
+print(json.dumps(json.loads(base64.urlsafe_b64decode(payload))))
+PY
+          )"
+          jq -e '
+            ((.aud | if type == "array" then . else [.] end) | index("account")) != null and
+            (.resource_access.account.roles | index("manage-account")) != null
+          ' >/dev/null <<<"$token_payload"
+
+          for account_path in \
+            '?userProfileMetadata=true' \
+            'credentials' \
+            'sessions/devices' \
+            'applications' \
+            'linked-accounts?linked=true&first=0&max=100'; do
+            curl --fail --silent \
+              -H "Authorization: Bearer $account_token" \
+              "http://127.0.0.1:8080/realms/sq-staff-staging/account/$account_path" \
+              >/dev/null
+          done
+          echo "NATIVE_ACCOUNT_RUNTIME_API_PASS"
+
+          docker compose --env-file "$KEYCLOAK_ENV_FILE" -f infra/keycloak/docker-compose.staging.yml \
+            exec -T keycloak /opt/keycloak/bin/kcadm.sh update "clients/$hub_uuid" \
+            -r sq-staff-staging -s directAccessGrantsEnabled=false \
+            --config "$kcadm_config" >/dev/null
+
+          unset hub_secret account_token token_payload synthetic_password
           docker compose --env-file "$KEYCLOAK_ENV_FILE" -f infra/keycloak/docker-compose.staging.yml \
             exec -T keycloak rm -f "$kcadm_config"
 
