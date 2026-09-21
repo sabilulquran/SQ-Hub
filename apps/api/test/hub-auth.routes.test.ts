@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { buildApp } from "../src/app.js";
 import { KeycloakAccountSelfService } from "../src/modules/account-self-service/client.js";
@@ -97,6 +97,10 @@ function fakeHub(overrides: Partial<HubAuthRuntime> = {}): HubAuthRuntime {
     ...overrides,
   };
 }
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
 
 describe("SQ Hub browser auth routes", () => {
   it("starts OIDC with an opaque HttpOnly transaction cookie", async () => {
@@ -309,6 +313,76 @@ describe("SQ Hub browser auth routes", () => {
 
     expect(response.statusCode).toBe(401);
     expect(response.json()).toEqual({ error: "UNAUTHENTICATED" });
+  });
+
+  it("starts UPDATE_EMAIL only after same-origin and provider metadata validation", async () => {
+    let requestedAction: HubOidcAction | undefined;
+    const accountSelfService = new KeycloakAccountSelfService(accountIssuer);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        new Response(
+          JSON.stringify({
+            email: "synthetic@example.test",
+            attributes: {},
+            userProfileMetadata: {
+              attributes: [
+                {
+                  name: "email",
+                  displayName: "email",
+                  readOnly: false,
+                  required: true,
+                  multivalued: false,
+                  annotations: { "kc.required.action.supported": true },
+                },
+              ],
+            },
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        ),
+      ),
+    );
+    const app = appWithHub(
+      fakeHub({
+        getAccountAccess: async () => ({
+          session: await fakeHub().getSession("opaque"),
+          accessToken: "short-lived-account-access",
+        }),
+        beginLogin: async (action) => {
+          requestedAction = action;
+          return {
+            authorizationUrl: new URL("https://login.example.test/authorize"),
+            setCookie: "sq_hub_oidc_tx=opaque; Path=/; HttpOnly; SameSite=Lax; Secure",
+          };
+        },
+      }),
+      identityDirectory,
+      accountSelfService,
+    );
+
+    const forbidden = await app.inject({
+      method: "POST",
+      url: "/account/profile/email/action",
+      headers: { cookie: "sq_hub_session=opaque" },
+    });
+    expect(forbidden.statusCode).toBe(403);
+    expect(requestedAction).toBeUndefined();
+
+    const accepted = await app.inject({
+      method: "POST",
+      url: "/account/profile/email/action",
+      headers: {
+        cookie: "sq_hub_session=opaque",
+        origin: "https://hub-staging.sabilulquran.or.id",
+      },
+    });
+    await app.close();
+
+    expect(accepted.statusCode).toBe(200);
+    expect(accepted.json()).toEqual({
+      authorizationUrl: "https://login.example.test/authorize",
+    });
+    expect(requestedAction).toBe("UPDATE_EMAIL");
   });
 
   it("starts only the allowlisted password account action", async () => {
