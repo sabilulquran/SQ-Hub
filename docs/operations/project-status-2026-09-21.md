@@ -65,7 +65,7 @@ Dokumen cutover lama tetap menyimpan histori `CUTOVER_BLOCKED` dan gap rekonsili
 
 PR #84 dibuat dari `42031c6d1bbe85b79de9d010cf9fa7f7e679f621`, head `fec71076e312b573ccd5ee28bf56dbd4cd246980`; metadata audit melaporkan `mergeable=false`. Main sudah maju 16 commit dari baseline tersebut, dengan perubahan deployment contract/runtime bundle.
 
-Selain baseline lama, PR #84 memiliki masalah isi: bahasa ACCEPTED terlalu luas, browser checks disebut opsional, beberapa matrix security terlewat, dan bukti recovery/trust 17 September tidak dibawa secara tepat. Karena itu paket ini dibangun ulang dari current main, bukan membawa branch lama secara buta. PR #84 harus ditutup sebagai superseded dengan tautan replacement setelah replacement berhasil dibuat; tidak di-merge. State cleanup dicatat pada [ledger closure](foundation-v1-closure.md).
+Selain baseline lama, PR #84 memiliki masalah isi: bahasa ACCEPTED terlalu luas, browser checks disebut opsional, beberapa matrix security terlewat, dan bukti recovery/trust 17 September tidak dibawa secara tepat. Karena itu paket ini dibangun ulang dari current main, bukan membawa branch lama secara buta. Replacement PR #88 sudah dibuat dari current main; PR #84 kemudian ditutup sebagai superseded dengan tautan ke #88 dan tidak di-merge. State cleanup dicatat pada [ledger closure](foundation-v1-closure.md).
 
 ## Langkah aktif
 
