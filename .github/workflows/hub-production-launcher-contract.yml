@@ -107,6 +107,8 @@ jobs:
           grep -Fq 'STOP: refusing non-digest or empty image for' "$helper"
           grep -Fq 'if ! api_digest="$(pull_digest "$api_repo" "$api_sha")"; then' "$helper"
           grep -Fq 'if ! web_digest="$(pull_digest "$web_repo" "$web_sha")"; then' "$helper"
+          grep -Fq 'fetch-depth: 0' "$api_publisher"
+          grep -Fq 'fetch-depth: 0' "$web_publisher"
           grep -Fq 'component_sha="$(git log -1 --format=%H "$build_sha" -- apps/api package.json package-lock.json)"' "$api_publisher"
           grep -Fq 'component_sha="$(git log -1 --format=%H "$build_sha" -- apps/web package.json package-lock.json)"' "$web_publisher"
           grep -Fq '$IMAGE_NAME:sha-$component_sha' "$api_publisher"
