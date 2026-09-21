@@ -94,10 +94,21 @@ jobs:
       - name: Verify native Akun SQ account boundary
         shell: bash
         run: |
-          grep -Fq 'Profil Saya' apps/web/src/AccountPage.tsx
-          grep -Fq 'Aplikasi Saya' apps/web/src/AccountPage.tsx
+          for label in             'Profil Saya'             'Keamanan'             'Sesi & Perangkat'             'Aplikasi'             'Akun Terhubung'; do
+            grep -Fq "$label" apps/web/src/AccountPage.tsx
+          done
+          grep -Fq 'Aplikasi SQ yang dapat Anda buka' apps/web/src/AccountPage.tsx
+          grep -Fq 'Aplikasi yang terhubung ke Akun SQ' apps/web/src/AccountPage.tsx
+          grep -Fq 'Keanggotaan' apps/web/src/AccountPage.tsx
           ! grep -Fq 'Keycloak' apps/web/src/AccountPage.tsx
           ! grep -Fq '/realms/' apps/web/src/AccountPage.tsx
+          grep -Fq 'getAccountAccess' apps/api/src/modules/hub-auth/service.ts
+          grep -Fq 'HubTokenVault' apps/api/src/modules/hub-auth/service.ts
+          grep -Fq 'KeycloakAccountSelfService' apps/api/src/modules/account-self-service/client.ts
+          grep -Fq 'ACCOUNT_REAUTH_REQUIRED' apps/api/src/modules/hub-auth/service.ts
+          grep -Fq 'idp_link:' apps/api/src/modules/account-self-service/client.ts
+          grep -Fq 'delete_credential:' apps/api/src/modules/account-self-service/client.ts
+          grep -Fq 'ACCOUNT_ORIGIN_FORBIDDEN' apps/api/src/modules/hub-auth/routes.ts
           grep -Fq 'password: "UPDATE_PASSWORD"' apps/api/src/modules/hub-auth/routes.ts
           grep -Fq 'totp: "CONFIGURE_TOTP"' apps/api/src/modules/hub-auth/routes.ts
           grep -Fq '"recovery-codes": "CONFIGURE_RECOVERY_AUTHN_CODES"' apps/api/src/modules/hub-auth/routes.ts
