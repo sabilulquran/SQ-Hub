@@ -1,5 +1,8 @@
 import type { FastifyInstance, FastifyRequest } from "fastify";
 
+import type { IdentityDirectory } from "../identity-directory/client.js";
+import { IdentityDirectoryError } from "../identity-directory/client.js";
+import type { HubOidcAction } from "./oidc-provider.js";
 import type { HubRequestContext } from "./repository.js";
 import {
   HUB_OIDC_TRANSACTION_COOKIE_NAME,
@@ -9,6 +12,12 @@ import {
   type HubAuthRuntime,
 } from "./service.js";
 
+const ACCOUNT_ACTIONS = {
+  password: "UPDATE_PASSWORD",
+  totp: "CONFIGURE_TOTP",
+  "recovery-codes": "CONFIGURE_RECOVERY_AUTHN_CODES",
+} as const satisfies Record<string, HubOidcAction>;
+
 function requestContext(request: FastifyRequest): HubRequestContext {
   return {
     ipAddress: request.ip || null,
@@ -16,19 +25,16 @@ function requestContext(request: FastifyRequest): HubRequestContext {
   };
 }
 
-export function accountConsoleUrlFromIssuer(issuer: string): URL {
-  const normalized = issuer.replace(/\/$/, "");
-  return new URL(`${normalized}/account/`);
+function normalizedIssuer(value: string): string {
+  return value.replace(/\/$/, "");
 }
 
 export function registerHubAuthRoutes(
   app: FastifyInstance,
   hubAuth: HubAuthRuntime,
   redirectUri: string,
-  accountIssuer: string,
+  identityDirectory?: IdentityDirectory,
 ) {
-  const accountConsoleUrl = accountConsoleUrlFromIssuer(accountIssuer);
-
   app.get("/auth/oidc/start", async (_request, reply) => {
     reply.header("Cache-Control", "no-store");
     try {
@@ -40,6 +46,27 @@ export function registerHubAuthRoutes(
     }
   });
 
+  app.get<{ Params: { action: string } }>("/auth/oidc/action/:action", async (request, reply) => {
+    reply.header("Cache-Control", "no-store");
+    const action = ACCOUNT_ACTIONS[request.params.action as keyof typeof ACCOUNT_ACTIONS];
+    if (!action) {
+      return reply.status(404).send({ error: "ACCOUNT_ACTION_NOT_FOUND" });
+    }
+
+    const sessionToken = readCookie(request.headers.cookie, HUB_SESSION_COOKIE_NAME);
+    try {
+      await hubAuth.getSession(sessionToken);
+      const result = await hubAuth.beginLogin(action);
+      reply.header("Set-Cookie", result.setCookie);
+      return reply.redirect(result.authorizationUrl.href);
+    } catch (error) {
+      if (error instanceof HubAuthError) {
+        return reply.status(error.statusCode).send({ error: error.code });
+      }
+      return reply.redirect("/account?authError=identity_unavailable");
+    }
+  });
+
   app.get("/auth/callback", { logLevel: "silent" }, async (request, reply) => {
     reply.header("Cache-Control", "no-store");
     const callbackUrl = new URL(request.url, new URL(redirectUri).origin);
@@ -47,6 +74,7 @@ export function registerHubAuthRoutes(
       request.headers.cookie,
       HUB_OIDC_TRANSACTION_COOKIE_NAME,
     );
+    const accountAction = callbackUrl.searchParams.has("kc_action");
 
     try {
       const result = await hubAuth.completeLogin(
@@ -55,10 +83,10 @@ export function registerHubAuthRoutes(
         requestContext(request),
       );
       reply.raw.setHeader("Set-Cookie", result.setCookies);
-      return reply.redirect("/");
+      return reply.redirect(accountAction ? "/account" : "/");
     } catch {
       reply.header("Set-Cookie", hubAuth.clearTransactionCookie());
-      return reply.redirect("/?authError=oidc_failed");
+      return reply.redirect(accountAction ? "/account?authError=oidc_failed" : "/?authError=oidc_failed");
     }
   });
 
@@ -79,11 +107,35 @@ export function registerHubAuthRoutes(
     reply.header("Cache-Control", "no-store");
     const sessionToken = readCookie(request.headers.cookie, HUB_SESSION_COOKIE_NAME);
     try {
-      await hubAuth.getSession(sessionToken);
-      return reply.redirect(accountConsoleUrl.href);
+      const session = await hubAuth.getSession(sessionToken);
+      if (!identityDirectory) {
+        return reply.status(503).send({ error: "ACCOUNT_UNAVAILABLE" });
+      }
+
+      const [identity, workspace] = await Promise.all([
+        identityDirectory.inspect(session.subject),
+        hubAuth.getWorkspace(sessionToken),
+      ]);
+      if (!identity || normalizedIssuer(identity.identity.issuer) !== normalizedIssuer(session.issuer)) {
+        return reply.status(503).send({ error: "ACCOUNT_UNAVAILABLE" });
+      }
+
+      return reply.send({
+        profile: {
+          displayName: identity.displayName,
+          username: identity.username,
+          email: identity.email,
+          emailVerified: identity.emailVerified,
+        },
+        security: identity.security,
+        applications: workspace.applications,
+      });
     } catch (error) {
       if (error instanceof HubAuthError) {
         return reply.status(error.statusCode).send({ error: error.code });
+      }
+      if (error instanceof IdentityDirectoryError) {
+        return reply.status(503).send({ error: "ACCOUNT_UNAVAILABLE" });
       }
       throw error;
     }
