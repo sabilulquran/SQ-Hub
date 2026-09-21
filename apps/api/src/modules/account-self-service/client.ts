@@ -428,12 +428,13 @@ export class KeycloakAccountSelfService {
     const linked = this.mapLinkedAccounts(
       await this.json(accessToken, "linked-accounts?linked=true&first=0&max=100"),
     );
-    if (!linked.some((account) => account.providerAlias === providerAlias)) {
+    const account = linked.find((item) => item.providerAlias === providerAlias);
+    if (!account) {
       throw new AccountSelfServiceError(404, "LINKED_ACCOUNT_NOT_FOUND");
     }
     await this.voidRequest(
       accessToken,
-      `linked-accounts/${encodeURIComponent(providerAlias)}`,
+      `linked-accounts/${encodeURIComponent(account.providerName)}`,
       { method: "DELETE" },
     );
   }
