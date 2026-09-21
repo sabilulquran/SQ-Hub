@@ -328,6 +328,34 @@ describe("KeycloakAccountSelfService", () => {
     expect(calls.at(-1)?.url).toContain("/account/sessions/owned-session");
   });
 
+  it("unlinks a provider by the provider-owned name after validating the browser alias", async () => {
+    const calls = installFetch({
+      "/realms/staff/account/linked-accounts?linked=true&first=0&max=100": [
+        {
+          connected: true,
+          providerAlias: "google",
+          providerName: "google-oauth2",
+          displayName: "Google",
+          linkedUsername: "ahmad@example.test",
+          social: true,
+        },
+      ],
+      "/realms/staff/account/linked-accounts/google-oauth2": { status: 204 },
+    });
+    const client = new KeycloakAccountSelfService(issuer);
+
+    await client.unlinkAccount(token, "google");
+
+    expect(calls.at(-1)).toMatchObject({
+      method: "DELETE",
+      url: "https://login.example.test/realms/staff/account/linked-accounts/google-oauth2",
+    });
+    await expect(client.unlinkAccount(token, "unknown")).rejects.toMatchObject({
+      statusCode: 404,
+      code: "LINKED_ACCOUNT_NOT_FOUND",
+    });
+  });
+
   it("only exposes provider-reported link actions and supported credential actions", async () => {
     installFetch({
       "/realms/staff/account/linked-accounts?linked=false&first=0&max=100": [
