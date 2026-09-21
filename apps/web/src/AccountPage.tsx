@@ -429,7 +429,7 @@ function ProfileSection({
   onMutate: AccountContentProps["onMutate"];
 }) {
   const fields = account.profile.fields;
-  const editable = fields.filter((field) => !field.readOnly);
+  const editable = fields.filter((field) => !field.readOnly && !field.requiredAction);
   const initial = useMemo(
     () => Object.fromEntries(fields.map((field) => [field.name, field.values.join("\n")])),
     [fields],
@@ -487,25 +487,39 @@ function ProfileSection({
               {field.multivalued ? (
                 <textarea
                   rows={3}
-                  readOnly={field.readOnly}
+                  readOnly={field.readOnly || Boolean(field.requiredAction)}
                   value={values[field.name] ?? ""}
                   onChange={(event) =>
                     setValues((current) => ({ ...current, [field.name]: event.target.value }))
                   }
-                  className={inputClass(field.readOnly)}
+                  className={inputClass(field.readOnly || Boolean(field.requiredAction))}
                 />
               ) : (
                 <input
                   type={field.name === "email" ? "email" : "text"}
-                  readOnly={field.readOnly}
+                  readOnly={field.readOnly || Boolean(field.requiredAction)}
                   value={values[field.name] ?? ""}
                   onChange={(event) =>
                     setValues((current) => ({ ...current, [field.name]: event.target.value }))
                   }
-                  className={inputClass(field.readOnly)}
+                  className={inputClass(field.readOnly || Boolean(field.requiredAction))}
                 />
               )}
-              {field.readOnly ? (
+              {field.requiredAction ? (
+                <button
+                  type="button"
+                  onClick={() =>
+                    void onMutate("Membuka proses perubahan email", {
+                      url: `/api/account/profile/${encodeURIComponent(field.name)}/action`,
+                      body: {},
+                      redirect: true,
+                    })
+                  }
+                  className="mt-2 inline-flex min-h-9 items-center justify-center rounded-lg border border-border bg-white px-3 py-1.5 text-xs font-bold text-brand-primary-deep transition hover:bg-brand-primary-pale focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                >
+                  Ubah email
+                </button>
+              ) : field.readOnly ? (
                 <span className="mt-1 block text-[11px] text-muted-foreground">
                   Dikelola oleh sistem.
                 </span>
