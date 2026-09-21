@@ -38,6 +38,34 @@ describe("native Akun SQ account route", () => {
     expect(html).not.toContain("kc_action=");
   });
 
+  it("renders the account shell and security actions when profile enrichment is unavailable", () => {
+    const html = renderToStaticMarkup(
+      <AccountPage
+        workspace={workspaceFixture}
+        previewAccount={{
+          ...accountFixture,
+          profile: {
+            displayName: "Ahmad Fikri",
+            username: null,
+            email: null,
+            emailVerified: null,
+          },
+          security: {
+            totpConfigured: null,
+            recoveryCodesConfigured: null,
+          },
+        }}
+      />,
+    );
+
+    expect(html).toContain("Profil Saya");
+    expect(html).toContain("Keamanan");
+    expect(html).toContain("Aplikasi Saya");
+    expect(html).toContain("Belum tersedia");
+    expect(html).toContain("Detail status keamanan belum dapat diverifikasi");
+    expect(html).toContain('href="/api/auth/oidc/action/password"');
+  });
+
   it("marks Akun as the active mobile destination", () => {
     const html = renderToStaticMarkup(
       <AccountPage workspace={workspaceFixture} previewAccount={accountFixture} />,
