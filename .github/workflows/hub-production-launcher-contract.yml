@@ -106,6 +106,8 @@ jobs:
           grep -Fq 'STOP: required immutable image is unavailable:' "$helper"
           grep -Fq 'STOP: refusing non-digest or empty image for' "$helper"
           grep -Fq 'wait_runtime_probe "$hub_project" api api' "$helper"
+          grep -Fq 'run --rm -T --no-deps api node apps/api/dist/db/migrate.js' "$helper"
+          grep -Fq 'API_MIGRATION_PASS source=$api_sha' "$helper"
           grep -Fq 'wait_runtime_probe "$hub_project" web web' "$helper"
           grep -Fq "fetch('http://127.0.0.1:3100/health')" "$helper"
           grep -Fq 'wget -qO- http://127.0.0.1/healthz' "$helper"
