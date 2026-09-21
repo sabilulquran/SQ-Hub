@@ -353,6 +353,73 @@ jobs:
           docker compose --env-file "$KEYCLOAK_ENV_FILE" -f infra/keycloak/docker-compose.staging.yml \
             exec -T keycloak rm -f "$kcadm_config"
 
+      - name: Reconcile and verify native account self-service scope
+        shell: bash
+        run: |
+          kcadm_config=/tmp/sq-hub-native-account-ci.kcadm
+
+          docker compose \
+            --env-file "$KEYCLOAK_ENV_FILE" \
+            -f infra/keycloak/docker-compose.staging.yml \
+            -f infra/keycloak/docker-compose.bootstrap.yml \
+            exec -T keycloak \
+            sh -ceu '
+              /opt/keycloak/bin/kcadm.sh config credentials \
+                --config "$1" \
+                --server http://127.0.0.1:8080 \
+                --realm master \
+                --user "$KC_BOOTSTRAP_ADMIN_USERNAME" \
+                --password "$KC_BOOTSTRAP_ADMIN_PASSWORD" >/dev/null
+            ' sh "$kcadm_config"
+
+          for pass in first second; do
+            output="$(
+              KEYCLOAK_REALM=sq-staff-staging \
+              SQ_HUB_CLIENT_ID=sq-hub-staging \
+              KEYCLOAK_KCADM_CONFIG="$kcadm_config" \
+              KEYCLOAK_ENV_FILE="$KEYCLOAK_ENV_FILE" \
+                bash infra/keycloak/scripts/reconcile-native-account-self-service.sh
+            )"
+            printf '%s\n' "$output"
+            grep -Fq 'NATIVE_ACCOUNT_SCOPE_MAPPING_PASS realm=sq-staff-staging client=sq-hub-staging' <<<"$output"
+            grep -Fq 'NATIVE_ACCOUNT_AUDIENCE_PASS realm=sq-staff-staging client=sq-hub-staging audience=account' <<<"$output"
+          done
+
+          hub_uuid="$(
+            docker compose --env-file "$KEYCLOAK_ENV_FILE" -f infra/keycloak/docker-compose.staging.yml \
+              exec -T keycloak /opt/keycloak/bin/kcadm.sh get clients \
+              -r sq-staff-staging -q clientId=sq-hub-staging --config "$kcadm_config" \
+              | jq -er 'if length == 1 then .[0].id else error("Hub client ambiguous") end'
+          )"
+          account_uuid="$(
+            docker compose --env-file "$KEYCLOAK_ENV_FILE" -f infra/keycloak/docker-compose.staging.yml \
+              exec -T keycloak /opt/keycloak/bin/kcadm.sh get clients \
+              -r sq-staff-staging -q clientId=account --config "$kcadm_config" \
+              | jq -er 'if length == 1 then .[0].id else error("account client ambiguous") end'
+          )"
+
+          mapped="$(
+            docker compose --env-file "$KEYCLOAK_ENV_FILE" -f infra/keycloak/docker-compose.staging.yml \
+              exec -T keycloak /opt/keycloak/bin/kcadm.sh get \
+              "clients/$hub_uuid/scope-mappings/clients/$account_uuid" \
+              -r sq-staff-staging --config "$kcadm_config"
+          )"
+          jq -e '
+            ([.[].name] | sort) ==
+            ([
+              "manage-account",
+              "manage-account-links",
+              "manage-consent",
+              "view-applications",
+              "view-consent",
+              "view-groups",
+              "view-profile"
+            ] | sort)
+          ' >/dev/null <<<"$mapped"
+
+          docker compose --env-file "$KEYCLOAK_ENV_FILE" -f infra/keycloak/docker-compose.staging.yml \
+            exec -T keycloak rm -f "$kcadm_config"
+
       - name: Reconcile and verify least-privilege directory client
         shell: bash
         run: |
