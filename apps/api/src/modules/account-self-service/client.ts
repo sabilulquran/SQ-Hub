@@ -330,10 +330,14 @@ export class KeycloakAccountSelfService {
       }
     }
 
+    const standardFields = new Set(["username", "email", "firstName", "lastName"]);
+    const customFields = Object.entries(fields).filter(
+      ([name]) => !standardFields.has(name),
+    );
     const attributes = {
       ...record(current.attributes),
       ...Object.fromEntries(
-        Object.entries(fields).map(([name, values]) => [
+        customFields.map(([name, values]) => [
           name,
           values.map((value) => value.trim()),
         ]),
@@ -346,9 +350,9 @@ export class KeycloakAccountSelfService {
     };
     delete payload.userProfileMetadata;
 
-    for (const name of ["username", "email", "firstName", "lastName"]) {
+    for (const name of standardFields) {
       if (fields[name]) {
-        payload[name] = fields[name]?.[0] ?? "";
+        payload[name] = fields[name]?.[0]?.trim() ?? "";
       }
     }
 
