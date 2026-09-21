@@ -1,9 +1,9 @@
 # Akun SQ + SQ Hub Foundation v1 — closure ledger
 
-**Overall:** OPEN — NOT ACCEPTED / NOT CLOSED.  
-**Audit date:** 2026-09-21.  
-**Audited main:** `d2de4411760c963df542a540c6e3e63eee37283e`.  
-**Acceptance owner:** Product Owner SQ Hub/HCIS — Human Capital YSQ.  
+**Overall:** OPEN — NOT ACCEPTED / NOT CLOSED.
+**Audit date:** 2026-09-21.
+**Audited main:** `d2de4411760c963df542a540c6e3e63eee37283e`.
+**Acceptance owner:** Product Owner SQ Hub/HCIS — Human Capital YSQ.
 **Execution roles:** GitHub reviewer for repository evidence; approved production operator for runtime; product owner/approved tester for browser evidence.
 
 This is the current closure control record, not a certificate that Foundation is finished. No unchecked or unexecuted item is PASS by implication.
