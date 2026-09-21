@@ -21,6 +21,20 @@ export interface WorkspaceSnapshot {
   capabilities: WorkspaceCapabilities;
 }
 
+export interface AccountSnapshot {
+  profile: {
+    displayName: string;
+    username: string;
+    email: string | null;
+    emailVerified: boolean;
+  };
+  security: {
+    totpConfigured: boolean | null;
+    recoveryCodesConfigured: boolean | null;
+  };
+  applications: WorkspaceApplication[];
+}
+
 export interface AdminApplication {
   key: string;
   name: string;
