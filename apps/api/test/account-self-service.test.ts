@@ -88,6 +88,14 @@ describe("KeycloakAccountSelfService", () => {
               readOnly: false,
               multivalued: false,
             },
+            {
+              name: "email",
+              displayName: "email",
+              required: true,
+              readOnly: false,
+              multivalued: false,
+              annotations: { "kc.required.action.supported": true },
+            },
           ],
         },
       },
@@ -180,6 +188,7 @@ describe("KeycloakAccountSelfService", () => {
         readOnly: true,
         multivalued: false,
         values: ["19870001"],
+        requiredAction: null,
       },
       {
         name: "firstName",
@@ -188,6 +197,16 @@ describe("KeycloakAccountSelfService", () => {
         readOnly: false,
         multivalued: false,
         values: ["Ahmad"],
+        requiredAction: null,
+      },
+      {
+        name: "email",
+        label: "email",
+        required: true,
+        readOnly: false,
+        multivalued: false,
+        values: ["ahmad@example.test"],
+        requiredAction: "UPDATE_EMAIL",
       },
     ]);
     expect(snapshot.credentials[0]?.credentials[0]?.id).toBe("cred-otp-1");
@@ -228,6 +247,42 @@ describe("KeycloakAccountSelfService", () => {
     ).rejects.toMatchObject({
       statusCode: 400,
       code: "PROFILE_FIELD_NOT_EDITABLE",
+    });
+  });
+
+  it("routes provider-managed email changes through UPDATE_EMAIL instead of direct profile mutation", async () => {
+    installFetch({
+      "/realms/staff/account/?userProfileMetadata=true": {
+        email: "ahmad@example.test",
+        attributes: {},
+        userProfileMetadata: {
+          attributes: [
+            {
+              name: "email",
+              displayName: "email",
+              readOnly: false,
+              required: true,
+              multivalued: false,
+              annotations: { "kc.required.action.supported": true },
+            },
+          ],
+        },
+      },
+    });
+    const client = new KeycloakAccountSelfService(issuer);
+
+    await expect(client.resolveProfileAction(token, "email")).resolves.toBe(
+      "UPDATE_EMAIL",
+    );
+    await expect(
+      client.updateProfile(token, { email: ["baru@example.test"] }),
+    ).rejects.toMatchObject({
+      statusCode: 400,
+      code: "PROFILE_FIELD_REQUIRES_ACTION",
+    });
+    await expect(client.resolveProfileAction(token, "username")).rejects.toMatchObject({
+      statusCode: 404,
+      code: "PROFILE_ACTION_NOT_AVAILABLE",
     });
   });
 
