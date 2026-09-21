@@ -11,12 +11,15 @@ export interface HubOidcProviderOptions {
 export type HubOidcAction =
   | "UPDATE_PASSWORD"
   | "CONFIGURE_TOTP"
-  | "CONFIGURE_RECOVERY_AUTHN_CODES";
+  | "CONFIGURE_RECOVERY_AUTHN_CODES"
+  | `idp_link:${string}`
+  | `delete_credential:${string}`;
 
 export interface HubOidcAuthorizationTransaction {
   state: string;
   codeVerifier: string;
   nonce: string;
+  returnPath?: "/" | "/account";
 }
 
 export interface HubOidcIdentity {
@@ -28,6 +31,11 @@ export interface HubOidcIdentity {
   emailVerified: boolean | null;
 }
 
+export interface HubOidcCompletion {
+  identity: HubOidcIdentity;
+  refreshToken: string | null;
+}
+
 export interface HubOidcProviderLike {
   createAuthorizationRequest(action?: HubOidcAction): Promise<{
     url: URL;
@@ -36,7 +44,11 @@ export interface HubOidcProviderLike {
   completeAuthorization(
     currentUrl: URL,
     transaction: HubOidcAuthorizationTransaction,
-  ): Promise<HubOidcIdentity>;
+  ): Promise<HubOidcCompletion>;
+  refreshAccountAccess(refreshToken: string): Promise<{
+    accessToken: string;
+    refreshToken: string | null;
+  }>;
   buildLogoutUrl(): Promise<URL>;
 }
 
@@ -77,7 +89,7 @@ export class HubOidcProvider implements HubOidcProviderLike {
   async completeAuthorization(
     currentUrl: URL,
     transaction: HubOidcAuthorizationTransaction,
-  ): Promise<HubOidcIdentity> {
+  ): Promise<HubOidcCompletion> {
     const configuration = await this.getConfiguration();
     const tokens = await oidc.authorizationCodeGrant(configuration, currentUrl, {
       pkceCodeVerifier: transaction.codeVerifier,
@@ -110,12 +122,37 @@ export class HubOidcProvider implements HubOidcProviderLike {
         : null;
 
     return {
-      issuer: this.issuer,
-      subject: claims.sub,
-      displayName,
-      username: preferredUsername || null,
-      email,
-      emailVerified,
+      identity: {
+        issuer: this.issuer,
+        subject: claims.sub,
+        displayName,
+        username: preferredUsername || null,
+        email,
+        emailVerified,
+      },
+      refreshToken:
+        typeof tokens.refresh_token === "string" && tokens.refresh_token
+          ? tokens.refresh_token
+          : null,
+    };
+  }
+
+  async refreshAccountAccess(refreshToken: string): Promise<{
+    accessToken: string;
+    refreshToken: string | null;
+  }> {
+    const configuration = await this.getConfiguration();
+    const tokens = await oidc.refreshTokenGrant(configuration, refreshToken);
+    if (typeof tokens.access_token !== "string" || !tokens.access_token) {
+      throw new Error("OIDC refresh response did not contain an access token");
+    }
+
+    return {
+      accessToken: tokens.access_token,
+      refreshToken:
+        typeof tokens.refresh_token === "string" && tokens.refresh_token
+          ? tokens.refresh_token
+          : null,
     };
   }
 
