@@ -469,15 +469,7 @@ jobs:
           test -n "$account_token"
 
           token_payload="$(
-            TOKEN="$account_token" python3 - <<'PY'
-import base64
-import json
-import os
-
-payload = os.environ["TOKEN"].split(".")[1]
-payload += "=" * (-len(payload) % 4)
-print(json.dumps(json.loads(base64.urlsafe_b64decode(payload))))
-PY
+            TOKEN="$account_token" python3 -c 'import base64,json,os; p=os.environ["TOKEN"].split(".")[1]; p += "=" * (-len(p) % 4); print(json.dumps(json.loads(base64.urlsafe_b64decode(p))))'
           )"
           jq -e '
             ((.aud | if type == "array" then . else [.] end) | index("account")) != null and
