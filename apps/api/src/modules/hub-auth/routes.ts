@@ -172,6 +172,7 @@ export function registerHubAuthRoutes(
           readOnly: boolean;
           multivalued: boolean;
           values: string[];
+          requiredAction: "UPDATE_EMAIL" | null;
         }>,
       };
       let security = {
@@ -308,6 +309,29 @@ export function registerHubAuthRoutes(
       const delegated = await hubAuth.getAccountAccess(sessionToken);
       await accountSelfService.updateProfile(delegated.accessToken, parsed.data.fields);
       return reply.send({ updated: true });
+    } catch (error) {
+      return sendAccountError(reply, error);
+    }
+  });
+
+  app.post<{ Params: { fieldName: string } }>("/account/profile/:fieldName/action", async (request, reply) => {
+    reply.header("Cache-Control", "no-store");
+    if (!requireSameOrigin(request, allowedOrigin)) {
+      return reply.status(403).send({ error: "ACCOUNT_ORIGIN_FORBIDDEN" });
+    }
+    if (!accountSelfService) {
+      return reply.status(503).send({ error: "ACCOUNT_MANAGEMENT_UNAVAILABLE" });
+    }
+    const sessionToken = readCookie(request.headers.cookie, HUB_SESSION_COOKIE_NAME);
+    try {
+      const delegated = await hubAuth.getAccountAccess(sessionToken);
+      const action = await accountSelfService.resolveProfileAction(
+        delegated.accessToken,
+        request.params.fieldName,
+      );
+      const login = await hubAuth.beginLogin(action, "/account");
+      reply.header("Set-Cookie", login.setCookie);
+      return reply.send({ authorizationUrl: login.authorizationUrl.href });
     } catch (error) {
       return sendAccountError(reply, error);
     }
