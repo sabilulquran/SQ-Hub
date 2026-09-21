@@ -86,7 +86,6 @@ export interface LinkedAccount {
 export interface AccountGroup {
   name: string;
   path: string;
-  direct: boolean;
 }
 
 export interface AccountSelfServiceSnapshot {
@@ -271,7 +270,6 @@ export class KeycloakAccountSelfService {
       return {
         name: stringValue(group.name) ?? "",
         path: stringValue(group.path) ?? "",
-        direct: Boolean(stringValue(group.id)),
       };
     }).filter((group) => group.name && group.path);
 
