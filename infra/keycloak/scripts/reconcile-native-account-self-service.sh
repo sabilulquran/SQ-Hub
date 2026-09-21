@@ -134,7 +134,8 @@ case "$(jq 'length' <<<"$mapper_matches")" in
     ;;
   1)
     mapper_id="$(jq -er '.[0].id' <<<"$mapper_matches")"
-    printf '%s' "$mapper_payload" |
+    mapper_update_payload="$(jq --arg id "$mapper_id" '. + {id: $id}' <<<"$mapper_payload")"
+    printf '%s' "$mapper_update_payload" |
       kcadm update "clients/$hub_uuid/protocol-mappers/models/$mapper_id" -r "$REALM" -f - >/dev/null ||
       fail "unable to update account audience mapper"
     ;;
@@ -165,7 +166,8 @@ jq -e --arg name "$MAPPER_NAME" '
   )] | length == 1
 ' >/dev/null <<<"$verify_mappers" || fail "account audience mapper verification failed"
 
-unset hub_json account_json hub_client account_roles desired_roles current_scope missing_scope   mappers mapper_matches mapper_payload verify_scope verify_mappers
+unset hub_json account_json hub_client account_roles desired_roles current_scope missing_scope \
+  mappers mapper_matches mapper_payload mapper_update_payload verify_scope verify_mappers
 
 printf 'NATIVE_ACCOUNT_SCOPE_MAPPING_PASS realm=%s client=%s\n' "$REALM" "$CLIENT_ID"
 printf 'NATIVE_ACCOUNT_AUDIENCE_PASS realm=%s client=%s audience=account\n' "$REALM" "$CLIENT_ID"
