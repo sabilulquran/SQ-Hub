@@ -559,7 +559,7 @@ export class KeycloakAccountSelfService {
     } catch (error) {
       if (
         error instanceof AccountSelfServiceError &&
-        (error.statusCode === 403 || error.statusCode === 404)
+        (error.statusCode === 404 || error.code === "ACCOUNT_SCOPE_NOT_READY")
       ) {
         return [];
       }
