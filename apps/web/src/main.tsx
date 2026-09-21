@@ -1,11 +1,12 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 
-import { AccountTransitionPage } from "@/AccountTransitionPage";
+import { AccountPage } from "@/AccountPage";
 import { AdminCenterPage } from "@/AdminCenterPage";
 import { NotFoundPage, WorkspaceApp } from "@/WorkspaceApp";
 import { WorkspaceShell } from "@/WorkspaceShell";
 import {
+  accountFixture,
   emptyWorkspaceFixture,
   ordinaryWorkspaceFixture,
   workspaceFixture,
@@ -43,7 +44,7 @@ function renderPreviewApp() {
     return <AdminCenterPage workspace={fixture} previewApplications={previewApplications} />;
   }
   if (route === "account") {
-    return <AccountTransitionPage workspace={fixture} preview />;
+    return <AccountPage workspace={fixture} previewAccount={accountFixture} />;
   }
   if (route === "home" || route === "apps") {
     return (
