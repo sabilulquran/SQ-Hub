@@ -326,7 +326,10 @@ describe("KeycloakAccountSelfService", () => {
     const calls = installFetch({
       "/realms/staff/account/sessions/devices": [
         {
-          sessions: [{ id: "owned-session" }],
+          sessions: [
+            { id: "current-session", current: true },
+            { id: "owned-session", current: false },
+          ],
         },
       ],
       "/realms/staff/account/sessions/owned-session": { status: 204 },
@@ -336,6 +339,10 @@ describe("KeycloakAccountSelfService", () => {
     await expect(client.logoutSession(token, "foreign-session")).rejects.toMatchObject({
       statusCode: 404,
       code: "SESSION_NOT_FOUND",
+    });
+    await expect(client.logoutSession(token, "current-session")).rejects.toMatchObject({
+      statusCode: 400,
+      code: "CURRENT_SESSION_REQUIRES_ACCOUNT_LOGOUT",
     });
     await client.logoutSession(token, "owned-session");
 
