@@ -284,7 +284,8 @@ export class PgHubAuthRepository implements HubAuthStore {
       }>(
         `
           UPDATE hub_sessions
-          SET revoked_at = now()
+          SET revoked_at = now(),
+              account_refresh_token_ciphertext = NULL
           WHERE token_hash = $1
             AND revoked_at IS NULL
           RETURNING
