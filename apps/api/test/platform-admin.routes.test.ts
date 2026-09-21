@@ -14,6 +14,7 @@ const session = {
   username: "19870099",
   email: "platform-admin@example.test",
   emailVerified: true,
+  accountRefreshTokenCiphertext: null,
   createdAt: new Date("2026-08-31T01:00:00Z"),
   expiresAt: new Date("2026-08-31T12:00:00Z"),
 };
@@ -37,13 +38,16 @@ function fakeHub(overrides: Partial<HubAuthRuntime> = {}): HubAuthRuntime {
       authorizationUrl: new URL("https://login.example.test/authorize"),
       setCookie: "sq_hub_oidc_tx=opaque",
     }),
-    completeLogin: async () => ({ setCookies: [] }),
+    completeLogin: async () => ({ setCookies: [], returnPath: "/" }),
     getWorkspace: async () => ({
       user: { displayName: session.displayName, initials: "SP" },
       applications: [],
       capabilities: { platformAdministration: true },
     }),
     getSession: async () => session,
+    getAccountAccess: async () => {
+      throw new HubAuthError(428, "ACCOUNT_REAUTH_REQUIRED", "not needed in admin tests");
+    },
     logout: async () => ({ clearCookie: "sq_hub_session=", logoutUrl: null }),
     clearTransactionCookie: () => "sq_hub_oidc_tx=",
     ...overrides,
