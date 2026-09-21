@@ -82,13 +82,22 @@ pull_digest() {
   image_repo=$1
   source_sha=$2
   tag="$image_repo:sha-$source_sha"
-  sudo -n docker pull "$tag" >/dev/null
+
+  if ! sudo -n docker pull "$tag" >/dev/null; then
+    echo "STOP: required immutable image is unavailable: $tag" >&2
+    return 1
+  fi
+
   digest="$(
     sudo -n docker image inspect "$tag" --format '{{range .RepoDigests}}{{println .}}{{end}}' |
       grep -F "$image_repo@sha256:" |
       head -n 1
   )"
-  test -n "$digest"
+  if [ -z "$digest" ]; then
+    echo "STOP: pulled image has no repository digest: $tag" >&2
+    return 1
+  fi
+
   printf '%s' "$digest"
 }
 
@@ -125,6 +134,14 @@ set_compose_image() {
   file=$1
   service=$2
   image=$3
+
+  case "$image" in
+    *@sha256:*) ;;
+    *)
+      echo "STOP: refusing non-digest or empty image for $service" >&2
+      return 1
+      ;;
+  esac
 
   sudo -n python3 - "$file" "$service" "$image" <<'PY'
 import json
@@ -195,7 +212,9 @@ web_change=0
 kc_change=0
 
 if [ "$need_api" = 1 ]; then
-  api_digest="$(pull_digest "$api_repo" "$api_sha")"
+  if ! api_digest="$(pull_digest "$api_repo" "$api_sha")"; then
+    exit 1
+  fi
   api_cid="$(compose_container "$hub_project" api)"
   if [ "$(running_image_id "$api_cid")" != "$(image_id_for_ref "$api_digest")" ]; then
     api_change=1
@@ -203,7 +222,9 @@ if [ "$need_api" = 1 ]; then
 fi
 
 if [ "$need_web" = 1 ]; then
-  web_digest="$(pull_digest "$web_repo" "$web_sha")"
+  if ! web_digest="$(pull_digest "$web_repo" "$web_sha")"; then
+    exit 1
+  fi
   web_cid="$(compose_container "$hub_project" web)"
   if [ "$(running_image_id "$web_cid")" != "$(image_id_for_ref "$web_digest")" ]; then
     web_change=1
@@ -211,7 +232,9 @@ if [ "$need_web" = 1 ]; then
 fi
 
 if [ "$need_kc" = 1 ]; then
-  kc_digest="$(pull_digest "$kc_repo" "$kc_sha")"
+  if ! kc_digest="$(pull_digest "$kc_repo" "$kc_sha")"; then
+    exit 1
+  fi
   kc_cid="$(compose_container "$identity_project" keycloak)"
   if [ "$(running_image_id "$kc_cid")" != "$(image_id_for_ref "$kc_digest")" ]; then
     kc_change=1
