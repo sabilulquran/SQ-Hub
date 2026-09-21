@@ -417,13 +417,28 @@ export class KeycloakAccountSelfService {
 
   async logoutSession(accessToken: string, sessionId: string): Promise<void> {
     const devices = await this.json(accessToken, "sessions/devices");
-    const exists = (Array.isArray(devices) ? devices : []).some((item) => {
-      const sessions = Array.isArray(record(item).sessions) ? record(item).sessions as unknown[] : [];
-      return sessions.some(
-        (session) => stringValue(record(session).id) === sessionId,
+    let ownedSession: JsonRecord | null = null;
+    for (const item of Array.isArray(devices) ? devices : []) {
+      const sessions = Array.isArray(record(item).sessions)
+        ? (record(item).sessions as unknown[])
+        : [];
+      const match = sessions
+        .map((session) => record(session))
+        .find((session) => stringValue(session.id) === sessionId);
+      if (match) {
+        ownedSession = match;
+        break;
+      }
+    }
+    if (!ownedSession) {
+      throw new AccountSelfServiceError(404, "SESSION_NOT_FOUND");
+    }
+    if (boolValue(ownedSession.current)) {
+      throw new AccountSelfServiceError(
+        400,
+        "CURRENT_SESSION_REQUIRES_ACCOUNT_LOGOUT",
       );
-    });
-    if (!exists) throw new AccountSelfServiceError(404, "SESSION_NOT_FOUND");
+    }
     await this.voidRequest(
       accessToken,
       `sessions/${encodeURIComponent(sessionId)}`,
