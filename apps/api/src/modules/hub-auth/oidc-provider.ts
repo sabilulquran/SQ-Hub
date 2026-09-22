@@ -8,13 +8,33 @@ export interface HubOidcProviderOptions {
   postLogoutRedirectUri: string;
 }
 
+declare const providerCredentialActionBrand: unique symbol;
+
+export type ProviderCredentialAction = string & {
+  readonly [providerCredentialActionBrand]: true;
+};
+
+const RESERVED_PROVIDER_CREDENTIAL_ACTIONS = new Set([
+  "delete_account",
+  "UPDATE_EMAIL",
+]);
+
+export function providerCredentialAction(
+  value: string,
+): ProviderCredentialAction | null {
+  if (!/^[A-Za-z0-9_.-]{1,128}$/.test(value)) return null;
+  if (RESERVED_PROVIDER_CREDENTIAL_ACTIONS.has(value)) return null;
+  return value as ProviderCredentialAction;
+}
+
 export type HubOidcAction =
   | "UPDATE_PASSWORD"
   | "UPDATE_EMAIL"
   | "CONFIGURE_TOTP"
   | "CONFIGURE_RECOVERY_AUTHN_CODES"
   | `idp_link:${string}`
-  | `delete_credential:${string}`;
+  | `delete_credential:${string}`
+  | ProviderCredentialAction;
 
 export interface HubOidcAuthorizationTransaction {
   state: string;
