@@ -411,6 +411,75 @@ describe("SQ Hub browser auth routes", () => {
     expect(requestedAction).toBe("UPDATE_EMAIL");
   });
 
+  it("starts a credential action only from fresh provider metadata", async () => {
+    let requestedAction: HubOidcAction | undefined;
+    let replacementToken: string | null | undefined;
+    const accountSelfService = new KeycloakAccountSelfService(accountIssuer);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: string | URL | Request) => {
+        const url =
+          input instanceof Request
+            ? input.url
+            : input instanceof URL
+              ? input.href
+              : input;
+        if (new URL(url).pathname.endsWith("/account/credentials")) {
+          return new Response(
+            JSON.stringify([
+              {
+                type: "webauthn-passwordless",
+                category: "passwordless",
+                displayName: "webauthn-passwordless-display-name",
+                createAction: "webauthn-register-passwordless",
+                updateAction: "",
+                removeable: true,
+                userCredentialMetadatas: [],
+              },
+            ]),
+            { status: 200, headers: { "Content-Type": "application/json" } },
+          );
+        }
+        throw new Error(`unexpected fetch: ${url}`);
+      }),
+    );
+    const app = appWithHub(
+      fakeHub({
+        getAccountAccess: async () => ({
+          session: await fakeHub().getSession("opaque"),
+          accessToken: "short-lived-account-access",
+        }),
+        beginLogin: async (action, _returnPath, replaceSessionToken) => {
+          requestedAction = action;
+          replacementToken = replaceSessionToken;
+          return {
+            authorizationUrl: new URL("https://login.example.test/authorize"),
+            setCookie: "sq_hub_oidc_tx=opaque; Path=/; HttpOnly; SameSite=Lax; Secure",
+          };
+        },
+      }),
+      identityDirectory,
+      accountSelfService,
+    );
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/account/credentials/webauthn-passwordless/create",
+      headers: {
+        cookie: "sq_hub_session=opaque",
+        origin: "https://hub-staging.sabilulquran.or.id",
+      },
+    });
+    await app.close();
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({
+      authorizationUrl: "https://login.example.test/authorize",
+    });
+    expect(requestedAction).toBe("webauthn-register-passwordless");
+    expect(replacementToken).toBe("opaque");
+  });
+
   it("starts only the allowlisted password account action", async () => {
     let requestedAction: HubOidcAction | undefined;
     let replacementToken: string | null | undefined;
