@@ -255,7 +255,7 @@ jobs:
           "$CHROME" --headless=new --no-sandbox --disable-gpu --allow-file-access-from-files --window-size=1440,900 --screenshot=visual-akun-sq/account-sessions.png "file://$PWD/tools/visual/akun-sq-account-fixture.html?mode=sessions"
           "$CHROME" --headless=new --no-sandbox --disable-gpu --allow-file-access-from-files --window-size=390,844 --screenshot=visual-akun-sq/account-mobile.png "file://$PWD/tools/visual/akun-sq-account-fixture.html?mode=security"
 
-          test "$(find visual-akun-sq -name '*.png' | wc -l)" -eq 10
+          test "$(find visual-akun-sq -name '*.png' | wc -l)" -eq 12
 
       - name: Upload Akun SQ visual evidence
         if: github.event_name == 'pull_request'
