@@ -840,11 +840,32 @@ function DeviceCard({
                 {session.browser || "Sesi browser"}
                 {session.current ? " · sesi saat ini" : ""}
               </p>
-              <p className="mt-1 break-words text-[11px] leading-5 text-muted-foreground">
-                {session.clients.length > 0
-                  ? `Digunakan oleh: ${session.clients.join(", ")}`
-                  : "Tidak ada detail aplikasi."}
-              </p>
+              <dl className="mt-2 grid min-w-0 gap-x-4 gap-y-1 text-[11px] leading-5 text-muted-foreground sm:grid-cols-2 lg:grid-cols-3">
+                <div className="min-w-0">
+                  <dt className="font-semibold text-foreground/80">Alamat IP</dt>
+                  <dd className="break-all">{session.ipAddress || "Belum tersedia"}</dd>
+                </div>
+                <div className="min-w-0">
+                  <dt className="font-semibold text-foreground/80">Aktivitas terakhir</dt>
+                  <dd>{formatDate(session.lastAccessAt)}</dd>
+                </div>
+                <div className="min-w-0">
+                  <dt className="font-semibold text-foreground/80">Mulai</dt>
+                  <dd>{formatDate(session.startedAt)}</dd>
+                </div>
+                <div className="min-w-0">
+                  <dt className="font-semibold text-foreground/80">Berakhir</dt>
+                  <dd>{formatDate(session.expiresAt)}</dd>
+                </div>
+                <div className="min-w-0 sm:col-span-2">
+                  <dt className="font-semibold text-foreground/80">Aplikasi</dt>
+                  <dd className="break-words">
+                    {session.clients.length > 0
+                      ? session.clients.join(", ")
+                      : "Tidak ada detail aplikasi."}
+                  </dd>
+                </div>
+              </dl>
             </div>
             {!session.current ? (
               confirmSessionId === session.id ? (
@@ -959,12 +980,25 @@ function IdentityApplicationCard({
   application: AccountIdentityApplication;
   onMutate: AccountContentProps["onMutate"];
 }) {
+  const [confirmConsent, setConfirmConsent] = useState(false);
   return (
     <div className="rounded-xl border border-border/70 p-4">
       <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-start">
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
-            <h3 className="text-sm font-bold">{application.name}</h3>
+            {application.effectiveUrl ? (
+              <a
+                href={application.effectiveUrl}
+                target="_blank"
+                rel="noreferrer noopener"
+                className="inline-flex min-w-0 items-center gap-1.5 text-sm font-bold text-brand-primary-deep hover:underline"
+              >
+                <span className="truncate">{application.name}</span>
+                <ChevronRight className="h-4 w-4 shrink-0" aria-hidden="true" />
+              </a>
+            ) : (
+              <h3 className="text-sm font-bold">{application.name}</h3>
+            )}
             <span className={[
               "rounded-full px-2 py-1 text-[11px] font-bold",
               application.inUse
@@ -972,6 +1006,10 @@ function IdentityApplicationCard({
                 : "bg-muted text-muted-foreground",
             ].join(" ")}>
               {application.inUse ? "Sedang digunakan" : "Tidak aktif"}
+            </span>
+            <span className="rounded-full bg-muted px-2 py-1 text-[11px] font-semibold text-muted-foreground">
+              {application.userConsentRequired ? "Aplikasi pihak ketiga" : "Aplikasi internal"}
+              {application.offlineAccess ? " · akses offline" : ""}
             </span>
           </div>
           {application.description ? (
@@ -991,20 +1029,57 @@ function IdentityApplicationCard({
               ))}
             </div>
           ) : null}
+          {application.consent ? (
+            <p className="mt-2 text-[11px] leading-5 text-muted-foreground">
+              Persetujuan diberikan {formatDate(application.consent.createdAt)}
+              {application.consent.lastUpdatedAt &&
+              application.consent.lastUpdatedAt !== application.consent.createdAt
+                ? ` · diperbarui ${formatDate(application.consent.lastUpdatedAt)}`
+                : ""}
+            </p>
+          ) : null}
+          {application.consent || application.offlineAccess ? (
+            <p className="mt-2 text-[11px] leading-5 text-muted-foreground">
+              Mencabut persetujuan identitas tidak menghapus hak akses aplikasi yang diberikan melalui SQ Hub.
+            </p>
+          ) : null}
         </div>
         {application.consent || application.offlineAccess ? (
-          <button
-            type="button"
-            onClick={() =>
-              void onMutate("Mencabut persetujuan aplikasi", {
-                url: `/api/account/applications/${encodeURIComponent(application.clientId)}/consent`,
-                method: "DELETE",
-              })
-            }
-            className={dangerButtonClass}
-          >
-            Cabut akses
-          </button>
+          confirmConsent ? (
+            <div className="flex max-w-full flex-wrap items-center gap-2 rounded-xl border border-red-200 bg-red-50 px-3 py-2">
+              <span className="text-[11px] font-semibold text-red-800">
+                Cabut persetujuan aplikasi ini?
+              </span>
+              <button
+                type="button"
+                onClick={() => setConfirmConsent(false)}
+                className={secondaryButtonClass}
+              >
+                Batal
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setConfirmConsent(false);
+                  void onMutate("Mencabut persetujuan aplikasi", {
+                    url: `/api/account/applications/${encodeURIComponent(application.clientId)}/consent`,
+                    method: "DELETE",
+                  });
+                }}
+                className={dangerButtonClass}
+              >
+                Ya, cabut
+              </button>
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setConfirmConsent(true)}
+              className={dangerButtonClass}
+            >
+              Cabut persetujuan
+            </button>
+          )
         ) : null}
       </div>
     </div>
