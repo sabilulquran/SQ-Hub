@@ -333,7 +333,10 @@ function AccountContent({
     { key: "security" as const, label: "Keamanan", icon: ShieldCheck },
     { key: "sessions" as const, label: "Sesi & Perangkat", icon: Smartphone },
     { key: "applications" as const, label: "Aplikasi", icon: AppWindow },
-    { key: "linked" as const, label: "Akun Terhubung", icon: Link2 },
+    ...(account.management.linkedAccounts.length > 0 ||
+    account.management.availableAccountLinks.length > 0
+      ? [{ key: "linked" as const, label: "Akun Terhubung", icon: Link2 }]
+      : []),
     ...(account.management.groups.length > 0
       ? [{ key: "groups" as const, label: "Keanggotaan", icon: UsersRound }]
       : []),
