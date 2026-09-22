@@ -42,8 +42,8 @@ export interface AccountCredentialType {
   category: string;
   label: string;
   helpText: string;
-  createAction: string | null;
-  updateAction: string | null;
+  canCreate: boolean;
+  canUpdate: boolean;
   removeable: boolean;
   credentials: AccountCredential[];
 }
