@@ -44,6 +44,15 @@ export const accountFixture: AccountSnapshot = {
     emailVerified: true,
     fields: [
       {
+        name: "locale",
+        label: "locale",
+        required: false,
+        readOnly: false,
+        multivalued: false,
+        values: ["id"],
+        requiredAction: null,
+      },
+      {
         name: "username",
         label: "username",
         required: true,
@@ -80,6 +89,7 @@ export const accountFixture: AccountSnapshot = {
         requiredAction: "UPDATE_EMAIL",
       },
     ],
+    supportedLocales: ["id"],
   },
   security: {
     totpConfigured: true,
