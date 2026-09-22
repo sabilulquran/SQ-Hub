@@ -161,7 +161,12 @@ export class PgHubAuthRepository implements HubAuthStore {
       await client.query("BEGIN");
       const sessionId = randomUUID();
       let replacedSession:
-        | { sessionId: string; identityIssuer: string; identitySubject: string }
+        | {
+            sessionId: string;
+            identityIssuer: string;
+            identitySubject: string;
+            expiresAt: Date;
+          }
         | undefined;
 
       if (input.replaceSessionTokenHash) {
@@ -169,6 +174,7 @@ export class PgHubAuthRepository implements HubAuthStore {
           sessionId: string;
           identityIssuer: string;
           identitySubject: string;
+          expiresAt: Date;
         }>(
           `
             UPDATE hub_sessions
@@ -182,7 +188,8 @@ export class PgHubAuthRepository implements HubAuthStore {
             RETURNING
               id AS "sessionId",
               identity_issuer AS "identityIssuer",
-              identity_subject AS "identitySubject"
+              identity_subject AS "identitySubject",
+              expires_at AS "expiresAt"
           `,
           [
             input.replaceSessionTokenHash,
@@ -195,6 +202,8 @@ export class PgHubAuthRepository implements HubAuthStore {
           throw new Error("Hub session selected for replacement is no longer active or changed identity");
         }
       }
+
+      const effectiveExpiresAt = replacedSession?.expiresAt ?? input.expiresAt;
 
       const result = await client.query<SessionRow>(
         `
@@ -234,7 +243,7 @@ export class PgHubAuthRepository implements HubAuthStore {
           input.identity.email,
           input.identity.emailVerified,
           input.accountRefreshTokenCiphertext,
-          input.expiresAt,
+          effectiveExpiresAt,
           input.context.ipAddress,
           input.context.userAgent,
         ],
