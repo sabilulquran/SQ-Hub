@@ -654,7 +654,7 @@ function SecuritySection({
                   )}
                 </div>
                 <div className="flex shrink-0 flex-wrap gap-2">
-                  {container.createAction ? (
+                  {container.canCreate ? (
                     <button
                       type="button"
                       onClick={() =>
@@ -669,7 +669,7 @@ function SecuritySection({
                       Tambah
                     </button>
                   ) : null}
-                  {container.updateAction ? (
+                  {container.canUpdate ? (
                     <button
                       type="button"
                       onClick={() =>
