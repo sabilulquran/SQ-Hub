@@ -1,3 +1,8 @@
+import {
+  providerCredentialAction,
+  type ProviderCredentialAction,
+} from "../hub-auth/oidc-provider.js";
+
 export class AccountSelfServiceError extends Error {
   constructor(
     public readonly statusCode: number,
@@ -29,11 +34,17 @@ export interface AccountCredentialType {
   category: string;
   label: string;
   helpText: string;
-  createAction: string | null;
-  updateAction: string | null;
+  canCreate: boolean;
+  canUpdate: boolean;
   removeable: boolean;
   credentials: AccountCredential[];
 }
+interface ProviderCredentialType
+  extends Omit<AccountCredentialType, "canCreate" | "canUpdate"> {
+  createAction: ProviderCredentialAction | null;
+  updateAction: ProviderCredentialAction | null;
+}
+
 
 export interface AccountSession {
   id: string;
@@ -136,17 +147,6 @@ function numberValue(value: unknown): number | null {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 
-const SUPPORTED_CREDENTIAL_ACTIONS = new Set([
-  "UPDATE_PASSWORD",
-  "CONFIGURE_TOTP",
-  "CONFIGURE_RECOVERY_AUTHN_CODES",
-]);
-
-function supportedCredentialAction(value: unknown): string | null {
-  const action = stringValue(value);
-  return action && SUPPORTED_CREDENTIAL_ACTIONS.has(action) ? action : null;
-}
-
 function valuesForAttribute(source: JsonRecord, name: string): string[] {
   const raw = record(source.attributes)[name] ?? source[name];
   if (Array.isArray(raw)) {
@@ -205,29 +205,13 @@ export class KeycloakAccountSelfService {
       };
     }).filter((field) => field.name);
 
-    const credentials = (Array.isArray(credentialsRaw) ? credentialsRaw : []).map((item) => {
-      const container = record(item);
-      const userCredentials = Array.isArray(container.userCredentialMetadatas)
-        ? container.userCredentialMetadatas
-        : [];
-      return {
-        type: stringValue(container.type) ?? "unknown",
-        category: stringValue(container.category) ?? "other",
-        label: stringValue(container.displayName) ?? stringValue(container.type) ?? "Credential",
-        helpText: stringValue(container.helptext) ?? "",
-        createAction: supportedCredentialAction(container.createAction),
-        updateAction: supportedCredentialAction(container.updateAction),
-        removeable: boolValue(container.removeable),
-        credentials: userCredentials.map((entry) => {
-          const credential = record(record(entry).credential);
-          return {
-            id: stringValue(credential.id) ?? "",
-            label: stringValue(credential.userLabel),
-            createdAt: numberValue(credential.createdDate),
-          };
-        }).filter((credential) => credential.id),
-      };
-    });
+    const credentials = this.mapCredentialTypes(credentialsRaw).map(
+      ({ createAction, updateAction, ...container }) => ({
+        ...container,
+        canCreate: Boolean(createAction),
+        canUpdate: Boolean(updateAction),
+      }),
+    );
 
     const devices = (Array.isArray(devicesRaw) ? devicesRaw : []).map((item) => {
       const device = record(item);
@@ -503,20 +487,18 @@ export class KeycloakAccountSelfService {
   async resolveCredentialAction(
     accessToken: string,
     input: { type: string; operation: "create" | "update" },
-  ): Promise<string> {
+  ): Promise<ProviderCredentialAction> {
     const credentials = await this.snapshotCredentials(accessToken);
     const container = credentials.find((item) => item.type === input.type);
-    if (!container) throw new AccountSelfServiceError(404, "CREDENTIAL_TYPE_NOT_FOUND");
-    const action = input.operation === "create"
-      ? container.createAction
-      : container.updateAction;
-    if (!action) throw new AccountSelfServiceError(400, "CREDENTIAL_ACTION_NOT_AVAILABLE");
-    if (
-      action !== "UPDATE_PASSWORD" &&
-      action !== "CONFIGURE_TOTP" &&
-      action !== "CONFIGURE_RECOVERY_AUTHN_CODES"
-    ) {
-      throw new AccountSelfServiceError(400, "CREDENTIAL_ACTION_UNSUPPORTED");
+    if (!container) {
+      throw new AccountSelfServiceError(404, "CREDENTIAL_TYPE_NOT_FOUND");
+    }
+    const action =
+      input.operation === "create"
+        ? container.createAction
+        : container.updateAction;
+    if (!action) {
+      throw new AccountSelfServiceError(400, "CREDENTIAL_ACTION_NOT_AVAILABLE");
     }
     return action;
   }
@@ -537,30 +519,46 @@ export class KeycloakAccountSelfService {
     return `delete_credential:${credentialId}`;
   }
 
-  private async snapshotCredentials(accessToken: string): Promise<AccountCredentialType[]> {
-    const raw = await this.json(accessToken, "credentials");
+  private async snapshotCredentials(
+    accessToken: string,
+  ): Promise<ProviderCredentialType[]> {
+    return this.mapCredentialTypes(await this.json(accessToken, "credentials"));
+  }
+
+  private mapCredentialTypes(raw: unknown): ProviderCredentialType[] {
     const items = Array.isArray(raw) ? raw : [];
     return items.map((item) => {
       const container = record(item);
       const userCredentials = Array.isArray(container.userCredentialMetadatas)
         ? container.userCredentialMetadatas
         : [];
+      const createActionValue = stringValue(container.createAction);
+      const updateActionValue = stringValue(container.updateAction);
       return {
         type: stringValue(container.type) ?? "unknown",
         category: stringValue(container.category) ?? "other",
-        label: stringValue(container.displayName) ?? stringValue(container.type) ?? "Credential",
+        label:
+          stringValue(container.displayName) ??
+          stringValue(container.type) ??
+          "Credential",
         helpText: stringValue(container.helptext) ?? "",
-        createAction: supportedCredentialAction(container.createAction),
-        updateAction: supportedCredentialAction(container.updateAction),
+        createAction: createActionValue
+          ? providerCredentialAction(createActionValue)
+          : null,
+        updateAction: updateActionValue
+          ? providerCredentialAction(updateActionValue)
+          : null,
         removeable: boolValue(container.removeable),
-        credentials: userCredentials.map((entry) => {
-          const credential = record(record(entry).credential);
-          return {
-            id: stringValue(credential.id) ?? "",
-            label: stringValue(credential.userLabel),
-            createdAt: numberValue(credential.createdDate),
-          };
-        }).filter((credential) => credential.id),
+        credentials: userCredentials
+          .map((entry) => {
+            const credential = record(record(entry).credential);
+            return {
+              id: stringValue(credential.id) ?? "",
+              label: stringValue(credential.userLabel),
+              createdAt: numberValue(credential.createdDate),
+            };
+          })
+          .filter((credential) => credential.id),
       };
     });
   }
