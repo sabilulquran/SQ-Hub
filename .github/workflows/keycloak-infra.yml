@@ -479,6 +479,7 @@ jobs:
 
           curl --fail --silent \
             -H "Authorization: Bearer $account_token" \
+            -H 'Accept: application/json' \
             'http://127.0.0.1:8080/realms/sq-staff-staging/account/credentials' \
             > /tmp/native-account-credentials.json
           jq -e '
@@ -504,6 +505,7 @@ jobs:
             'linked-accounts?linked=false&first=0&max=100'; do
             curl --fail --silent \
               -H "Authorization: Bearer $account_token" \
+              -H 'Accept: application/json' \
               "http://127.0.0.1:8080/realms/sq-staff-staging/account/$account_path" \
               >/dev/null
           done
