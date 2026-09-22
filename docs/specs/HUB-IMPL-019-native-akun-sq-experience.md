@@ -30,6 +30,7 @@ Baseline parity untuk Foundation:
 
 ### 1. Profil Saya
 - tampilkan metadata profil yang diizinkan Account API;
+- bila provider mengembalikan daftar locale, field bahasa memakai pilihan locale provider, bukan input teks bebas;
 - field read-only tetap read-only;
 - field editable dapat disimpan dari native Akun SQ;
 - NIP/username tidak boleh dibuat editable bila metadata provider menandainya read-only;
@@ -42,7 +43,7 @@ Baseline parity untuk Foundation:
 - jangan menyembunyikan credential type aktif hanya karena native UI tidak mengenal labelnya.
 
 ### 3. Sesi & Perangkat
-- tampilkan device/session activity yang benar dari Account API;
+- tampilkan device/session activity yang benar dari Account API, termasuk IP, waktu mulai, aktivitas terakhir, waktu berakhir, dan aplikasi sesi bila tersedia;
 - tandai current device/current session;
 - user dapat mengakhiri sesi lain secara individual;
 - user dapat mengakhiri semua sesi lain;
@@ -53,7 +54,7 @@ Dua konsep wajib dipisahkan:
 - **Aplikasi SQ yang dapat Anda buka** berasal dari SQ Hub Application Access;
 - **Aplikasi yang terhubung ke Akun SQ** berasal dari identity Account API dan dapat memiliki consent/offline access.
 
-Bila provider mengizinkan, user dapat mencabut consent melalui native Akun SQ. Mencabut consent tidak boleh dimaknai sebagai mencabut Application Access.
+Bila provider mengizinkan, user dapat mencabut consent melalui native Akun SQ dengan konfirmasi eksplisit. Mencabut consent tidak boleh dimaknai sebagai mencabut Application Access. Effective URL provider hanya boleh dirender sebagai tautan bila memakai skema HTTP/HTTPS.
 
 ### 5. Akun Terhubung
 - tampilkan identity provider yang terhubung, termasuk Google bila dikonfigurasi;
