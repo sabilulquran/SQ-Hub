@@ -111,6 +111,13 @@ jobs:
           grep -Fq 'ACCOUNT_REAUTH_REQUIRED' apps/api/src/modules/hub-auth/service.ts
           grep -Fq 'idp_link:' apps/api/src/modules/account-self-service/client.ts
           grep -Fq 'delete_credential:' apps/api/src/modules/account-self-service/client.ts
+          grep -Fq 'providerCredentialAction' apps/api/src/modules/account-self-service/client.ts
+          grep -Fq 'canCreate: boolean' apps/web/src/types.ts
+          grep -Fq 'canUpdate: boolean' apps/web/src/types.ts
+          ! grep -Fq 'createAction:' apps/web/src/types.ts
+          ! grep -Fq 'updateAction:' apps/web/src/types.ts
+          ! grep -Fq 'container.createAction' apps/web/src/AccountPage.tsx
+          ! grep -Fq 'container.updateAction' apps/web/src/AccountPage.tsx
           grep -Fq 'ACCOUNT_ORIGIN_FORBIDDEN' apps/api/src/modules/hub-auth/routes.ts
           grep -Fq 'password: "UPDATE_PASSWORD"' apps/api/src/modules/hub-auth/routes.ts
           grep -Fq 'totp: "CONFIGURE_TOTP"' apps/api/src/modules/hub-auth/routes.ts
