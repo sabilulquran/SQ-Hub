@@ -2,9 +2,19 @@ FROM maven:3.9.11-eclipse-temurin-21-alpine AS trusted-device-builder
 
 WORKDIR /workspace
 COPY infra/keycloak/providers/trusted-device/pom.xml ./pom.xml
-RUN mvn --batch-mode --no-transfer-progress dependency:go-offline
+RUN set -eux; \
+    for attempt in 1 2 3; do \
+      mvn --batch-mode --no-transfer-progress dependency:go-offline && exit 0; \
+      if [ "$attempt" -eq 3 ]; then exit 1; fi; \
+      sleep "$((attempt * 5))"; \
+    done
 COPY infra/keycloak/providers/trusted-device/src ./src
-RUN mvn --batch-mode --no-transfer-progress verify
+RUN set -eux; \
+    for attempt in 1 2 3; do \
+      mvn --batch-mode --no-transfer-progress verify && exit 0; \
+      if [ "$attempt" -eq 3 ]; then exit 1; fi; \
+      sleep "$((attempt * 5))"; \
+    done
 
 FROM quay.io/keycloak/keycloak:26.7.2 AS builder
 
