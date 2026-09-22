@@ -633,3 +633,50 @@ input[type="submit"].btn-primary {
     padding-bottom: 1rem !important;
   }
 }
+
+/* HUB-IMPL-019: keep provider-owned passkey and other required actions inside Akun SQ. */
+.pf-v5-c-button.pf-m-secondary,
+#cancelWebAuthnAIA {
+  min-height: 3rem !important;
+  border: 1px solid var(--sq-line-strong) !important;
+  border-radius: .65rem !important;
+  background: #fff !important;
+  color: var(--sq-primary-dark) !important;
+  font-size: .86rem !important;
+  font-weight: 700 !important;
+  box-shadow: none !important;
+}
+
+.pf-v5-c-button.pf-m-secondary:hover,
+#cancelWebAuthnAIA:hover {
+  border-color: #9fb2c0 !important;
+  background: #f9fbfc !important;
+}
+
+.pf-v5-c-button.pf-m-secondary:focus-visible,
+#cancelWebAuthnAIA:focus-visible {
+  border-color: var(--sq-primary) !important;
+  outline: 0 !important;
+  box-shadow: 0 0 0 4px var(--sq-focus) !important;
+}
+
+#register,
+#kc-webauthn-settings-form,
+#registerWebAuthn,
+#cancelWebAuthnAIA {
+  width: 100% !important;
+  min-width: 0 !important;
+}
+
+#kc-webauthn-settings-form {
+  margin-top: .65rem !important;
+}
+
+@media (max-width: 640px) {
+  #registerWebAuthn,
+  #cancelWebAuthnAIA {
+    white-space: normal !important;
+    overflow-wrap: anywhere;
+  }
+}
+
