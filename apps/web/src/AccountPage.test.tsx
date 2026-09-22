@@ -108,6 +108,24 @@ describe("native Akun SQ account route", () => {
     expect(html).not.toContain("Keycloak");
   });
 
+  it("hides linked-account navigation when the provider exposes no linked-account capability", () => {
+    const html = renderToStaticMarkup(
+      <AccountPage
+        workspace={workspaceFixture}
+        previewAccount={{
+          ...accountFixture,
+          management: {
+            ...accountFixture.management,
+            linkedAccounts: [],
+            availableAccountLinks: [],
+          },
+        }}
+      />,
+    );
+
+    expect(html).not.toContain(">Akun Terhubung</span>");
+  });
+
   it("renders group membership only when the capability has data", () => {
     const withGroups = renderToStaticMarkup(
       <AccountPage workspace={workspaceFixture} previewAccount={accountFixture} />,
