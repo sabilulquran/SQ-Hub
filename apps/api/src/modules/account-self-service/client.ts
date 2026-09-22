@@ -121,6 +121,17 @@ function boolValue(value: unknown): boolean {
   return value === true;
 }
 
+function safeHttpUrl(value: unknown): string | null {
+  const raw = stringValue(value);
+  if (!raw) return null;
+  try {
+    const url = new URL(raw);
+    return url.protocol === "https:" || url.protocol === "http:" ? url.href : null;
+  } catch {
+    return null;
+  }
+}
+
 function numberValue(value: unknown): number | null {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
@@ -262,7 +273,7 @@ export class KeycloakAccountSelfService {
         clientId,
         name: stringValue(application.clientName) ?? clientId,
         description: stringValue(application.description),
-        effectiveUrl: stringValue(application.effectiveUrl),
+        effectiveUrl: safeHttpUrl(application.effectiveUrl),
         inUse: boolValue(application.inUse),
         userConsentRequired: boolValue(application.userConsentRequired),
         offlineAccess: boolValue(application.offlineAccess),
