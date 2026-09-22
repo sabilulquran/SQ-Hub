@@ -22,6 +22,8 @@ describe("native Akun SQ account route", () => {
     }
     expect(html).toContain("NIP / ID masuk");
     expect(html).toContain("Simpan perubahan");
+    expect(html).toContain("Bahasa Indonesia");
+    expect(html).toContain("<select");
     expect(html).not.toContain("Keycloak");
     expect(html).not.toContain("/realms/");
     expect(html).not.toContain("subject");
