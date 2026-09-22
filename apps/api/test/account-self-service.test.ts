@@ -171,6 +171,15 @@ describe("KeycloakAccountSelfService", () => {
           userConsentRequired: false,
           offlineAccess: false,
         },
+        {
+          clientId: "unsafe-preview",
+          clientName: "Unsafe preview",
+          description: "Synthetic unsafe URL test",
+          effectiveUrl: "javascript:alert(1)",
+          inUse: false,
+          userConsentRequired: false,
+          offlineAccess: false,
+        },
       ],
       "/realms/staff/account/linked-accounts?linked=true&first=0&max=100": [
         {
@@ -245,6 +254,8 @@ describe("KeycloakAccountSelfService", () => {
     });
     expect(snapshot.devices[0]?.sessions[0]?.current).toBe(true);
     expect(snapshot.applications[0]?.name).toBe("SQ Hub");
+    expect(snapshot.applications[0]?.effectiveUrl).toBe("https://hub.example.test/");
+    expect(snapshot.applications[1]?.effectiveUrl).toBeNull();
     expect(snapshot.linkedAccounts[0]?.providerAlias).toBe("google");
     expect(snapshot.groups[0]).toEqual({
       name: "Human Capital",
