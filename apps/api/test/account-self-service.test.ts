@@ -435,6 +435,20 @@ describe("KeycloakAccountSelfService", () => {
     expect(calls.at(-1)?.url).toContain("/account/sessions/owned-session");
   });
 
+  it("logs out other sessions through the provider bulk session endpoint", async () => {
+    const calls = installFetch({
+      "/realms/staff/account/sessions": { status: 204 },
+    });
+    const client = new KeycloakAccountSelfService(issuer);
+
+    await client.logoutOtherSessions(token);
+
+    expect(calls.at(-1)).toMatchObject({
+      method: "DELETE",
+      url: "https://login.example.test/realms/staff/account/sessions",
+    });
+  });
+
   it("unlinks a provider by the provider-owned name after validating the browser alias", async () => {
     const calls = installFetch({
       "/realms/staff/account/linked-accounts?linked=true&first=0&max=100": [
