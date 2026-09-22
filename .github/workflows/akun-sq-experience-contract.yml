@@ -158,6 +158,13 @@ jobs:
                 exit 1
               }
             fi
+            if [ "$mode" = "passkey" ]; then
+              grep -Fq 'data-passkey-actions="true"' "$output" || {
+                echo "Passkey actions are not stacked/full-width in $output" >&2
+                grep -oE 'data-[a-z-]+="[^"]*"' "$output" || true
+                exit 1
+              }
+            fi
           }
 
           verify_account() {
@@ -192,6 +199,8 @@ jobs:
           verify_login 360 844 totp
           verify_login 390 844 totp
           verify_login 412 844 totp
+          verify_login 390 844 passkey
+          verify_login 1280 720 passkey
 
           verify_account 320 844 security
           verify_account 360 844 security
@@ -232,6 +241,8 @@ jobs:
           "$CHROME" --headless=new --no-sandbox --disable-gpu --allow-file-access-from-files --window-size=1280,720 --screenshot=visual-akun-sq/login-totp-trusted.png "file://$PWD/tools/visual/akun-sq-login-fixture.html?mode=totp"
           "$CHROME" --headless=new --no-sandbox --disable-gpu --allow-file-access-from-files --window-size=1280,720 --screenshot=visual-akun-sq/login-forgot.png "file://$PWD/tools/visual/akun-sq-login-fixture.html?mode=forgot"
           "$CHROME" --headless=new --no-sandbox --disable-gpu --allow-file-access-from-files --window-size=1280,720 --screenshot=visual-akun-sq/login-reset.png "file://$PWD/tools/visual/akun-sq-login-fixture.html?mode=reset"
+          "$CHROME" --headless=new --no-sandbox --disable-gpu --allow-file-access-from-files --window-size=1280,720 --screenshot=visual-akun-sq/login-passkey.png "file://$PWD/tools/visual/akun-sq-login-fixture.html?mode=passkey"
+          "$CHROME" --headless=new --no-sandbox --disable-gpu --allow-file-access-from-files --window-size=390,844 --screenshot=visual-akun-sq/login-passkey-mobile.png "file://$PWD/tools/visual/akun-sq-login-fixture.html?mode=passkey"
           "$CHROME" --headless=new --no-sandbox --disable-gpu --allow-file-access-from-files --window-size=1440,900 --screenshot=visual-akun-sq/account-overview.png "file://$PWD/tools/visual/akun-sq-account-fixture.html?mode=overview"
           "$CHROME" --headless=new --no-sandbox --disable-gpu --allow-file-access-from-files --window-size=1440,900 --screenshot=visual-akun-sq/account-security.png "file://$PWD/tools/visual/akun-sq-account-fixture.html?mode=security"
           "$CHROME" --headless=new --no-sandbox --disable-gpu --allow-file-access-from-files --window-size=1440,900 --screenshot=visual-akun-sq/account-sessions.png "file://$PWD/tools/visual/akun-sq-account-fixture.html?mode=sessions"
