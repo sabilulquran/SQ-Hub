@@ -126,12 +126,12 @@ describe("KeycloakAccountSelfService", () => {
           ],
         },
         {
-          type: "future-passkey",
+          type: "webauthn-passwordless",
           category: "passwordless",
-          displayName: "future-passkey-display-name",
-          helptext: "Provider capability not yet accepted by HUB-IMPL-019.",
-          createAction: "UNREVIEWED_ACTION",
-          updateAction: "UNREVIEWED_UPDATE",
+          displayName: "webauthn-passwordless-display-name",
+          helptext: "Passkey",
+          createAction: "webauthn-register-passwordless",
+          updateAction: "",
           removeable: false,
           userCredentialMetadatas: [],
         },
@@ -248,10 +248,13 @@ describe("KeycloakAccountSelfService", () => {
     expect(snapshot.profile.supportedLocales).toEqual(["id"]);
     expect(snapshot.credentials[0]?.credentials[0]?.id).toBe("cred-otp-1");
     expect(snapshot.credentials[1]).toMatchObject({
-      type: "future-passkey",
-      createAction: null,
-      updateAction: null,
+      type: "webauthn-passwordless",
+      canCreate: true,
+      canUpdate: false,
     });
+    expect(JSON.stringify(snapshot.credentials)).not.toContain(
+      "webauthn-register-passwordless",
+    );
     expect(snapshot.devices[0]?.sessions[0]?.current).toBe(true);
     expect(snapshot.applications[0]?.name).toBe("SQ Hub");
     expect(snapshot.applications[0]?.effectiveUrl).toBe("https://hub.example.test/");
@@ -428,8 +431,14 @@ describe("KeycloakAccountSelfService", () => {
           userCredentialMetadatas: [],
         },
         {
-          type: "future-passkey",
-          createAction: "UNREVIEWED_ACTION",
+          type: "webauthn-passwordless",
+          createAction: "webauthn-register-passwordless",
+          updateAction: "",
+          userCredentialMetadatas: [],
+        },
+        {
+          type: "unsafe-delete",
+          createAction: "delete_account",
           updateAction: "",
           userCredentialMetadatas: [],
         },
@@ -451,9 +460,18 @@ describe("KeycloakAccountSelfService", () => {
     ).resolves.toBe("UPDATE_PASSWORD");
     await expect(
       client.resolveCredentialAction(token, {
-        type: "future-passkey",
+        type: "webauthn-passwordless",
         operation: "create",
       }),
-    ).rejects.toBeInstanceOf(AccountSelfServiceError);
+    ).resolves.toBe("webauthn-register-passwordless");
+    await expect(
+      client.resolveCredentialAction(token, {
+        type: "unsafe-delete",
+        operation: "create",
+      }),
+    ).rejects.toMatchObject({
+      statusCode: 400,
+      code: "CREDENTIAL_ACTION_NOT_AVAILABLE",
+    });
   });
 });
