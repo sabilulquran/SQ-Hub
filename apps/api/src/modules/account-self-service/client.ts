@@ -95,6 +95,7 @@ export interface AccountSelfServiceSnapshot {
     email: string | null;
     emailVerified: boolean | null;
     fields: AccountProfileField[];
+    supportedLocales: string[];
   };
   credentials: AccountCredentialType[];
   devices: AccountDevice[];
@@ -152,16 +153,25 @@ export class KeycloakAccountSelfService {
   }
 
   async snapshot(accessToken: string): Promise<AccountSelfServiceSnapshot> {
-    const [profileRaw, credentialsRaw, devicesRaw, applicationsRaw, linkedRaw, availableRaw, groupsRaw] =
-      await Promise.all([
-        this.json(accessToken, "?userProfileMetadata=true"),
-        this.json(accessToken, "credentials"),
-        this.json(accessToken, "sessions/devices"),
-        this.json(accessToken, "applications"),
-        this.json(accessToken, "linked-accounts?linked=true&first=0&max=100"),
-        this.json(accessToken, "linked-accounts?linked=false&first=0&max=100"),
-        this.optionalJson(accessToken, "groups"),
-      ]);
+    const [
+      profileRaw,
+      credentialsRaw,
+      devicesRaw,
+      applicationsRaw,
+      linkedRaw,
+      availableRaw,
+      groupsRaw,
+      localesRaw,
+    ] = await Promise.all([
+      this.json(accessToken, "?userProfileMetadata=true"),
+      this.json(accessToken, "credentials"),
+      this.json(accessToken, "sessions/devices"),
+      this.json(accessToken, "applications"),
+      this.json(accessToken, "linked-accounts?linked=true&first=0&max=100"),
+      this.json(accessToken, "linked-accounts?linked=false&first=0&max=100"),
+      this.optionalJson(accessToken, "groups"),
+      this.optionalJson(accessToken, "supportedLocales"),
+    ]);
 
     const profileRecord = record(profileRaw);
     const metadata = record(profileRecord.userProfileMetadata);
@@ -300,6 +310,10 @@ export class KeycloakAccountSelfService {
             ? profileRecord.emailVerified
             : null,
         fields,
+        supportedLocales: (Array.isArray(localesRaw) ? localesRaw : [])
+          .filter((locale): locale is string => typeof locale === "string")
+          .map((locale) => locale.trim())
+          .filter(Boolean),
       },
       credentials,
       devices,
