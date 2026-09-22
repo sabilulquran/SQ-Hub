@@ -44,6 +44,7 @@ describe("native Akun SQ account route", () => {
     expect(html).toContain("Kata sandi");
     expect(html).toContain("Verifikasi dua langkah");
     expect(html).toContain("Kode pemulihan");
+    expect(html).toContain("Passkey");
     expect(html).toContain("Kelola");
     expect(html).toContain("Hapus");
     expect(html).not.toContain("kc_action=");
