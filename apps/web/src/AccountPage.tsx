@@ -328,16 +328,25 @@ function AccountContent({
     input: { url: string; method?: string; body?: unknown; redirect?: boolean },
   ) => void | Promise<void>;
 }) {
+  const hasLinkedAccounts =
+    account.management.linkedAccounts.length > 0 ||
+    account.management.availableAccountLinks.length > 0;
+  const hasGroups = account.management.groups.length > 0;
+  const visibleSection =
+    (section === "linked" && !hasLinkedAccounts) ||
+    (section === "groups" && !hasGroups)
+      ? "profile"
+      : section;
+
   const items = [
     { key: "profile" as const, label: "Profil Saya", icon: UserRound },
     { key: "security" as const, label: "Keamanan", icon: ShieldCheck },
     { key: "sessions" as const, label: "Sesi & Perangkat", icon: Smartphone },
     { key: "applications" as const, label: "Aplikasi", icon: AppWindow },
-    ...(account.management.linkedAccounts.length > 0 ||
-    account.management.availableAccountLinks.length > 0
+    ...(hasLinkedAccounts
       ? [{ key: "linked" as const, label: "Akun Terhubung", icon: Link2 }]
       : []),
-    ...(account.management.groups.length > 0
+    ...(hasGroups
       ? [{ key: "groups" as const, label: "Keanggotaan", icon: UsersRound }]
       : []),
   ];
@@ -351,7 +360,7 @@ function AccountContent({
         <div className="-mx-1 flex max-w-full gap-2 overflow-x-auto px-1 pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden lg:mx-0 lg:block lg:space-y-1 lg:overflow-visible lg:px-0 lg:pb-0">
           {items.map((item) => {
             const Icon = item.icon;
-            const active = section === item.key;
+            const active = visibleSection === item.key;
             return (
               <button
                 key={item.key}
@@ -384,22 +393,22 @@ function AccountContent({
         {mutation.status === "success" ? <Notice positive>{mutation.message}</Notice> : null}
         {mutation.status === "error" ? <Notice>{mutation.message}</Notice> : null}
 
-        {section === "profile" ? (
+        {visibleSection === "profile" ? (
           <ProfileSection account={account} onMutate={onMutate} />
         ) : null}
-        {section === "security" ? (
+        {visibleSection === "security" ? (
           <SecuritySection account={account} onMutate={onMutate} />
         ) : null}
-        {section === "sessions" ? (
+        {visibleSection === "sessions" ? (
           <SessionsSection account={account} onMutate={onMutate} />
         ) : null}
-        {section === "applications" ? (
+        {visibleSection === "applications" ? (
           <ApplicationsSection account={account} onMutate={onMutate} />
         ) : null}
-        {section === "linked" ? (
+        {visibleSection === "linked" ? (
           <LinkedAccountsSection account={account} onMutate={onMutate} />
         ) : null}
-        {section === "groups" ? <GroupsSection account={account} /> : null}
+        {visibleSection === "groups" ? <GroupsSection account={account} /> : null}
       </div>
     </div>
   );
