@@ -127,6 +127,7 @@ describe("native Akun SQ account route", () => {
             email: null,
             emailVerified: null,
             fields: [],
+            supportedLocales: [],
           },
           security: {
             totpConfigured: null,
