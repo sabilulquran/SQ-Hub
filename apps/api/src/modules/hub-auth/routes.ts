@@ -482,11 +482,7 @@ export function registerHubAuthRoutes(
           operation: request.params.operation,
         },
       );
-      const login = await hubAuth.beginLogin(
-        action as HubOidcAction,
-        "/account",
-        sessionToken,
-      );
+      const login = await hubAuth.beginLogin(action, "/account", sessionToken);
       reply.header("Set-Cookie", login.setCookie);
       return reply.send({ authorizationUrl: login.authorizationUrl.href });
     } catch (error) {
