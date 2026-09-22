@@ -477,12 +477,31 @@ jobs:
             (.resource_access.account.roles | index("manage-account")) != null
           ' >/dev/null <<<"$token_payload"
 
+          curl --fail --silent \
+            -H "Authorization: Bearer $account_token" \
+            'http://127.0.0.1:8080/realms/sq-staff-staging/account/credentials' \
+            > /tmp/native-account-credentials.json
+          jq -e '
+            def safe_action:
+              . == null or . == "" or
+              (
+                type == "string" and
+                test("^[A-Za-z0-9_.-]{1,128}$") and
+                ((ascii_downcase == "delete_account" or ascii_downcase == "update_email") | not)
+              );
+            type == "array" and
+            all(.[]; ([.createAction, .updateAction] | all(safe_action)))
+          ' /tmp/native-account-credentials.json
+          echo "NATIVE_ACCOUNT_CREDENTIAL_ACTION_METADATA_PASS"
+
           for account_path in \
             '?userProfileMetadata=true' \
-            'credentials' \
+            'supportedLocales' \
             'sessions/devices' \
             'applications' \
-            'linked-accounts?linked=true&first=0&max=100'; do
+            'groups' \
+            'linked-accounts?linked=true&first=0&max=100' \
+            'linked-accounts?linked=false&first=0&max=100'; do
             curl --fail --silent \
               -H "Authorization: Bearer $account_token" \
               "http://127.0.0.1:8080/realms/sq-staff-staging/account/$account_path" \
@@ -496,6 +515,7 @@ jobs:
             --config "$kcadm_config" >/dev/null
 
           unset hub_secret account_token token_payload synthetic_password
+          rm -f /tmp/native-account-credentials.json
           docker compose --env-file "$KEYCLOAK_ENV_FILE" -f infra/keycloak/docker-compose.staging.yml \
             exec -T keycloak rm -f "$kcadm_config"
 
