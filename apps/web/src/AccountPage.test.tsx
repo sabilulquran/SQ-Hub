@@ -126,6 +126,28 @@ describe("native Akun SQ account route", () => {
     expect(html).not.toContain(">Akun Terhubung</span>");
   });
 
+  it("falls back to profile when a stale conditional section is no longer available", () => {
+    const html = renderToStaticMarkup(
+      <AccountPage
+        workspace={workspaceFixture}
+        previewAccount={{
+          ...accountFixture,
+          management: {
+            ...accountFixture.management,
+            linkedAccounts: [],
+            availableAccountLinks: [],
+            groups: [],
+          },
+        }}
+        previewSection="linked"
+      />,
+    );
+
+    expect(html).toContain("Tinjau dan perbarui informasi akun");
+    expect(html).not.toContain(">Akun Terhubung</span>");
+    expect(html).not.toContain(">Keanggotaan</span>");
+  });
+
   it("renders group membership only when the capability has data", () => {
     const withGroups = renderToStaticMarkup(
       <AccountPage workspace={workspaceFixture} previewAccount={accountFixture} />,
