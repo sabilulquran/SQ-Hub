@@ -126,7 +126,7 @@ Hasil AIA kembali ke native Akun SQ dan status dibaca ulang server-side. Redirec
 
 Setiap re-auth atau required action yang dimulai dari sesi Hub aktif harus diikat server-side ke hash sesi tersebut dan principal `issuer + sub` saat flow dimulai. Callback:
 - menolak bila principal hasil OIDC berbeda;
-- membuat sesi Hub pengganti dan merevoke sesi lama serta menghapus delegated refresh token lama dalam transaksi penyimpanan yang sama;
+- membuat sesi Hub pengganti dan merevoke sesi lama serta menghapus delegated refresh token lama dalam transaksi penyimpanan yang sama; persistence layer juga mensyaratkan issuer + sub lama sama dengan identity pengganti;
 - gagal membuat sesi pengganti bila sesi yang hendak diganti sudah tidak aktif;
 - tidak mengirim hash sesi, `sub`, atau refresh token tersebut ke browser.
 
