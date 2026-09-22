@@ -1,7 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
-  AccountSelfServiceError,
   KeycloakAccountSelfService,
 } from "../src/modules/account-self-service/client.js";
 
