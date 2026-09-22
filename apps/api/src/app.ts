@@ -16,6 +16,8 @@ import type { HubAuthRuntime } from "./modules/hub-auth/service.js";
 import type { IdentityDirectory } from "./modules/identity-directory/client.js";
 import { registerPlatformAdminRoutes } from "./modules/platform-admin/routes.js";
 import type { PlatformAdminService } from "./modules/platform-admin/service.js";
+import { registerStaffLifecycleRoutes } from "./modules/staff-lifecycle/routes.js";
+import type { StaffLifecycleService } from "./modules/staff-lifecycle/service.js";
 
 const checkBodySchema = z
   .object({
@@ -37,6 +39,7 @@ export function buildApp(input: {
     "listApplications" | "getAccess" | "grant" | "revoke" | "listAudit"
   >;
   identityDirectory?: IdentityDirectory;
+  staffLifecycle?: StaffLifecycleService;
   logger?: boolean;
 }) {
   const app = Fastify({ logger: input.logger ?? false });
@@ -91,6 +94,15 @@ export function buildApp(input: {
       ...(input.adminAllowedOrigin ? { allowedOrigin: input.adminAllowedOrigin } : {}),
       ...(input.adminApplicationAccess ? { applicationAccess: input.adminApplicationAccess } : {}),
       ...(input.identityDirectory ? { identityDirectory: input.identityDirectory } : {}),
+    });
+  }
+
+  if (input.hubAuth && input.platformAdmin && input.staffLifecycle) {
+    registerStaffLifecycleRoutes(app, {
+      hubAuth: input.hubAuth,
+      platformAdmin: input.platformAdmin,
+      service: input.staffLifecycle,
+      ...(input.adminAllowedOrigin ? { allowedOrigin: input.adminAllowedOrigin } : {}),
     });
   }
 
