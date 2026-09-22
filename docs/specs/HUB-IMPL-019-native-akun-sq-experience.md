@@ -28,6 +28,23 @@ Native Akun SQ **tidak boleh menjadi subset read-only** dari Account Console yan
 
 Baseline parity untuk Foundation:
 
+### Parity matrix Account Console → Akun SQ native
+
+| Account Console 26.7.2 | Akun SQ native | Visibility/contract |
+| --- | --- | --- |
+| Personal info | **Profil Saya** | selalu tersedia; editability mengikuti metadata Account API |
+| Signing in / credentials | **Keamanan** | selalu tersedia; credential container/action mengikuti metadata provider |
+| Device activity | **Sesi & Perangkat** | selalu tersedia; current session dilindungi |
+| Applications | **Aplikasi** | native selalu menampilkan Application Access SQ; identity applications/consent ditambahkan bila Account API tersedia |
+| Linked accounts | **Akun Terhubung** | hanya tampil bila provider linked/available memang ada |
+| Groups | **Keanggotaan** | hanya tampil bila group membership provider benar-benar ada |
+| Organizations | belum native | rollout **STOP** bila realm live mengaktifkannya |
+| Resources / UMA | belum native | rollout **STOP** bila realm live mengaktifkannya |
+| Verifiable Credentials | belum native | rollout **STOP** bila realm live mengaktifkannya |
+| Delete Account | belum native | rollout **STOP** bila required action live aktif |
+
+Route/bookmark menuju section kondisional yang sudah tidak tersedia harus kembali ke **Profil Saya**, bukan membuka halaman kosong.
+
 ### 1. Profil Saya
 - tampilkan metadata profil yang diizinkan Account API;
 - bila provider mengembalikan daftar locale, field bahasa memakai pilihan locale provider, bukan input teks bebas;
@@ -236,7 +253,7 @@ HUB-IMPL-019 tidak:
 ## Acceptance criteria
 
 1. Mengklik **Kelola Akun SQ** dari Hub membuka native `/account`, tidak redirect ke provider Account Console.
-2. Native navigation baseline memuat Profil Saya, Keamanan, Sesi & Perangkat, Aplikasi, dan Akun Terhubung; Keanggotaan muncul bila data group tersedia.
+2. Native navigation selalu memuat Profil Saya, Keamanan, Sesi & Perangkat, dan Aplikasi; Akun Terhubung hanya muncul bila linked/available provider ada, dan Keanggotaan hanya muncul bila data group tersedia. Capability kondisional yang belum native harus memblokir rollout bila aktif di realm.
 3. Profil editable mengikuti metadata read-only/required/multivalued provider; field biasa disimpan melalui Account API, sedangkan email memakai `UPDATE_EMAIL` bila provider menandainya sebagai required-action-managed.
 4. Credential container aktif tidak dihilangkan; password/TOTP/recovery/passkey maupun credential type provider lain menampilkan create/update capability yang provider laporkan, sedangkan exact action ID selalu diselesaikan ulang server-side dan tidak datang dari browser.
 5. Device/session inventory berasal dari provider; non-current session dapat diakhiri dan semua sesi lain dapat diakhiri; individual deletion untuk current session ditolak server-side.
