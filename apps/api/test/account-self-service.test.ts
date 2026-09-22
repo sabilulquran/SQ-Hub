@@ -269,6 +269,56 @@ describe("KeycloakAccountSelfService", () => {
     expect(JSON.stringify(snapshot)).not.toContain(token);
   });
 
+  it("keeps unknown credential types visible without exposing unsafe provider actions", async () => {
+    installFetch({
+      "/realms/staff/account/?userProfileMetadata=true": {
+        username: "19870001",
+        attributes: {},
+        userProfileMetadata: { attributes: [] },
+      },
+      "/realms/staff/account/credentials": [
+        {
+          type: "future-factor",
+          category: "future",
+          displayName: "Future factor",
+          helptext: "A future provider credential",
+          createAction: "delete_account",
+          updateAction: "future factor with spaces",
+          removeable: false,
+          userCredentialMetadatas: [],
+        },
+      ],
+      "/realms/staff/account/sessions/devices": [],
+      "/realms/staff/account/applications": [],
+      "/realms/staff/account/linked-accounts?linked=true&first=0&max=100": [],
+      "/realms/staff/account/linked-accounts?linked=false&first=0&max=100": [],
+      "/realms/staff/account/groups": [],
+      "/realms/staff/account/supportedLocales": ["id"],
+    });
+    const client = new KeycloakAccountSelfService(issuer);
+
+    const snapshot = await client.snapshot(token);
+
+    expect(snapshot.credentials).toHaveLength(1);
+    expect(snapshot.credentials[0]).toMatchObject({
+      type: "future-factor",
+      canCreate: false,
+      canUpdate: false,
+    });
+    expect(JSON.stringify(snapshot.credentials)).not.toContain("delete_account");
+    expect(JSON.stringify(snapshot.credentials)).not.toContain("future factor with spaces");
+
+    await expect(
+      client.resolveCredentialAction(token, {
+        type: "future-factor",
+        operation: "create",
+      }),
+    ).rejects.toMatchObject({
+      statusCode: 400,
+      code: "CREDENTIAL_ACTION_NOT_AVAILABLE",
+    });
+  });
+
   it("keeps the required Account API snapshot usable when optional groups are forbidden", async () => {
     installFetch({
       "/realms/staff/account/?userProfileMetadata=true": {
