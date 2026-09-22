@@ -182,7 +182,7 @@ export class HubAuthService implements HubAuthRuntime {
       ? this.tokenVault.seal(completed.refreshToken)
       : null;
 
-    await this.repository.createSession({
+    const createdSession = await this.repository.createSession({
       tokenHash: hashOpaqueToken(sessionToken),
       identity: completed.identity,
       accountRefreshTokenCiphertext: encryptedRefreshToken,
@@ -190,6 +190,13 @@ export class HubAuthService implements HubAuthRuntime {
       expiresAt: new Date(Date.now() + this.maxSeconds * 1000),
       context,
     });
+    const sessionCookieMaxAge = Math.max(
+      1,
+      Math.min(
+        this.maxSeconds,
+        Math.floor((createdSession.expiresAt.getTime() - Date.now()) / 1000),
+      ),
+    );
 
     return {
       returnPath: stored.transaction.returnPath ?? "/",
@@ -197,7 +204,7 @@ export class HubAuthService implements HubAuthRuntime {
         buildCookie(
           HUB_SESSION_COOKIE_NAME,
           sessionToken,
-          this.maxSeconds,
+          sessionCookieMaxAge,
           this.secureCookies,
         ),
         clearCookie(HUB_OIDC_TRANSACTION_COOKIE_NAME, this.secureCookies),
