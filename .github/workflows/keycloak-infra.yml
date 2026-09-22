@@ -130,7 +130,7 @@ jobs:
           test "$status" = "200"
           grep -Fq 'Akun SQ' /tmp/akun-sq-login.html
           grep -Fq 'Masuk ke Akun SQ' /tmp/akun-sq-login.html
-          grep -Fq 'css/akun-sq-login-be6b1a63ccf6.css' /tmp/akun-sq-login.html
+          grep -Fq 'css/akun-sq-login-845cd4b107a4.css' /tmp/akun-sq-login.html
           ! grep -Fq 'css/sq-account-hcis-d8e0fab49a38.css' /tmp/akun-sq-login.html
           ! grep -Fq 'css/sq-identity-066c6982e041.css' /tmp/akun-sq-login.html
           ! grep -Fq 'css/sq-account-41ad9ff20ec3.css' /tmp/akun-sq-login.html
@@ -350,6 +350,174 @@ jobs:
             ([.[] | select(.providerId == "auth-otp-form" and .requirement == "ALTERNATIVE")] | length) == 1
           ' >/dev/null <<<"$executions_json"
 
+          docker compose --env-file "$KEYCLOAK_ENV_FILE" -f infra/keycloak/docker-compose.staging.yml \
+            exec -T keycloak rm -f "$kcadm_config"
+
+      - name: Reconcile and verify native account self-service scope
+        shell: bash
+        run: |
+          kcadm_config=/tmp/sq-hub-native-account-ci.kcadm
+
+          docker compose \
+            --env-file "$KEYCLOAK_ENV_FILE" \
+            -f infra/keycloak/docker-compose.staging.yml \
+            -f infra/keycloak/docker-compose.bootstrap.yml \
+            exec -T keycloak \
+            sh -ceu '
+              /opt/keycloak/bin/kcadm.sh config credentials \
+                --config "$1" \
+                --server http://127.0.0.1:8080 \
+                --realm master \
+                --user "$KC_BOOTSTRAP_ADMIN_USERNAME" \
+                --password "$KC_BOOTSTRAP_ADMIN_PASSWORD" >/dev/null
+            ' sh "$kcadm_config"
+
+          for pass in first second; do
+            output="$(
+              KEYCLOAK_REALM=sq-staff-staging \
+              SQ_HUB_CLIENT_ID=sq-hub-staging \
+              KEYCLOAK_KCADM_CONFIG="$kcadm_config" \
+              KEYCLOAK_ENV_FILE="$KEYCLOAK_ENV_FILE" \
+                bash infra/keycloak/scripts/reconcile-native-account-self-service.sh
+            )"
+            printf '%s\n' "$output"
+            grep -Fq 'NATIVE_ACCOUNT_CAPABILITY_BASELINE_PASS realm=sq-staff-staging' <<<"$output"
+            grep -Fq 'NATIVE_ACCOUNT_SCOPE_MAPPING_PASS realm=sq-staff-staging client=sq-hub-staging' <<<"$output"
+            grep -Fq 'NATIVE_ACCOUNT_AUDIENCE_PASS realm=sq-staff-staging client=sq-hub-staging audience=account' <<<"$output"
+          done
+
+          hub_uuid="$(
+            docker compose --env-file "$KEYCLOAK_ENV_FILE" -f infra/keycloak/docker-compose.staging.yml \
+              exec -T keycloak /opt/keycloak/bin/kcadm.sh get clients \
+              -r sq-staff-staging -q clientId=sq-hub-staging --config "$kcadm_config" \
+              | jq -er 'if length == 1 then .[0].id else error("Hub client ambiguous") end'
+          )"
+          account_uuid="$(
+            docker compose --env-file "$KEYCLOAK_ENV_FILE" -f infra/keycloak/docker-compose.staging.yml \
+              exec -T keycloak /opt/keycloak/bin/kcadm.sh get clients \
+              -r sq-staff-staging -q clientId=account --config "$kcadm_config" \
+              | jq -er 'if length == 1 then .[0].id else error("account client ambiguous") end'
+          )"
+
+          mapped="$(
+            docker compose --env-file "$KEYCLOAK_ENV_FILE" -f infra/keycloak/docker-compose.staging.yml \
+              exec -T keycloak /opt/keycloak/bin/kcadm.sh get \
+              "clients/$hub_uuid/scope-mappings/clients/$account_uuid" \
+              -r sq-staff-staging --config "$kcadm_config"
+          )"
+          jq -e '
+            ([.[].name] | sort) ==
+            ([
+              "manage-account",
+              "manage-account-links",
+              "manage-consent",
+              "view-applications",
+              "view-consent",
+              "view-groups",
+              "view-profile"
+            ] | sort)
+          ' >/dev/null <<<"$mapped"
+
+          # Runtime proof: obtain an actual user token from the exact Hub client and
+          # call the official Account REST API. Direct grant is enabled only inside
+          # this disposable CI realm so production keeps directAccessGrantsEnabled=false.
+          synthetic_username=ci-native-account
+          synthetic_password=ci-native-account-password-only
+          synthetic_user_id="$(
+            docker compose --env-file "$KEYCLOAK_ENV_FILE" -f infra/keycloak/docker-compose.staging.yml \
+              exec -T keycloak /opt/keycloak/bin/kcadm.sh create users \
+              -r sq-staff-staging \
+              -s "username=$synthetic_username" \
+              -s enabled=true \
+              -s firstName=CI \
+              -s 'lastName=Native Account' \
+              -s email=ci-native-account@example.invalid \
+              -s emailVerified=true \
+              -i --config "$kcadm_config"
+          )"
+          test -n "$synthetic_user_id"
+
+          docker compose --env-file "$KEYCLOAK_ENV_FILE" -f infra/keycloak/docker-compose.staging.yml \
+            exec -T keycloak /opt/keycloak/bin/kcadm.sh set-password \
+            -r sq-staff-staging \
+            --userid "$synthetic_user_id" \
+            --new-password "$synthetic_password" \
+            --temporary=false \
+            --config "$kcadm_config" >/dev/null
+
+          docker compose --env-file "$KEYCLOAK_ENV_FILE" -f infra/keycloak/docker-compose.staging.yml \
+            exec -T keycloak /opt/keycloak/bin/kcadm.sh update "clients/$hub_uuid" \
+            -r sq-staff-staging -s directAccessGrantsEnabled=true \
+            --config "$kcadm_config" >/dev/null
+
+          hub_secret="$(
+            docker compose --env-file "$KEYCLOAK_ENV_FILE" -f infra/keycloak/docker-compose.staging.yml \
+              exec -T keycloak /opt/keycloak/bin/kcadm.sh get "clients/$hub_uuid/client-secret" \
+              -r sq-staff-staging --config "$kcadm_config" \
+              | jq -er '.value'
+          )"
+          account_token="$(
+            curl --fail --silent \
+              --header 'Content-Type: application/x-www-form-urlencoded' \
+              --data-urlencode client_id=sq-hub-staging \
+              --data-urlencode "client_secret=$hub_secret" \
+              --data-urlencode grant_type=password \
+              --data-urlencode "username=$synthetic_username" \
+              --data-urlencode "password=$synthetic_password" \
+              http://127.0.0.1:8080/realms/sq-staff-staging/protocol/openid-connect/token \
+              | jq -er '.access_token'
+          )"
+          test -n "$account_token"
+
+          token_payload="$(
+            TOKEN="$account_token" python3 -c 'import base64,json,os; p=os.environ["TOKEN"].split(".")[1]; p += "=" * (-len(p) % 4); print(json.dumps(json.loads(base64.urlsafe_b64decode(p))))'
+          )"
+          jq -e '
+            ((.aud | if type == "array" then . else [.] end) | index("account")) != null and
+            (.resource_access.account.roles | index("manage-account")) != null
+          ' >/dev/null <<<"$token_payload"
+
+          curl --fail --silent \
+            -H "Authorization: Bearer $account_token" \
+            -H 'Accept: application/json' \
+            'http://127.0.0.1:8080/realms/sq-staff-staging/account/credentials' \
+            > /tmp/native-account-credentials.json
+          jq -e '
+            def safe_action:
+              . == null or . == "" or
+              (
+                type == "string" and
+                test("^[A-Za-z0-9_.-]{1,128}$") and
+                ((ascii_downcase == "delete_account" or ascii_downcase == "update_email") | not)
+              );
+            type == "array" and
+            all(.[]; ([.createAction, .updateAction] | all(safe_action)))
+          ' /tmp/native-account-credentials.json
+          echo "NATIVE_ACCOUNT_CREDENTIAL_ACTION_METADATA_PASS"
+
+          for account_path in \
+            '?userProfileMetadata=true' \
+            'supportedLocales' \
+            'sessions/devices' \
+            'applications' \
+            'groups' \
+            'linked-accounts?linked=true&first=0&max=100' \
+            'linked-accounts?linked=false&first=0&max=100'; do
+            curl --fail --silent \
+              -H "Authorization: Bearer $account_token" \
+              -H 'Accept: application/json' \
+              "http://127.0.0.1:8080/realms/sq-staff-staging/account/$account_path" \
+              >/dev/null
+          done
+          echo "NATIVE_ACCOUNT_RUNTIME_API_PASS"
+
+          docker compose --env-file "$KEYCLOAK_ENV_FILE" -f infra/keycloak/docker-compose.staging.yml \
+            exec -T keycloak /opt/keycloak/bin/kcadm.sh update "clients/$hub_uuid" \
+            -r sq-staff-staging -s directAccessGrantsEnabled=false \
+            --config "$kcadm_config" >/dev/null
+
+          unset hub_secret account_token token_payload synthetic_password
+          rm -f /tmp/native-account-credentials.json
           docker compose --env-file "$KEYCLOAK_ENV_FILE" -f infra/keycloak/docker-compose.staging.yml \
             exec -T keycloak rm -f "$kcadm_config"
 

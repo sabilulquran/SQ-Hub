@@ -14,6 +14,7 @@ on:
       - "infra/reverse-proxy.caddy.production.example"
       - "infra/keycloak/clients/sq-hub-production.json"
       - "infra/keycloak/scripts/reconcile-hub-production-client.sh"
+      - "infra/keycloak/scripts/reconcile-native-account-self-service.sh"
       - "infra/keycloak/scripts/verify-hub-production-secret-fingerprint.sh"
       - "infra/keycloak/scripts/reconcile-master-production-recovery.sh"
       - "infra/keycloak/realm/master-production-recovery.json"
@@ -39,6 +40,7 @@ on:
       - "infra/reverse-proxy.caddy.production.example"
       - "infra/keycloak/clients/sq-hub-production.json"
       - "infra/keycloak/scripts/reconcile-hub-production-client.sh"
+      - "infra/keycloak/scripts/reconcile-native-account-self-service.sh"
       - "infra/keycloak/scripts/verify-hub-production-secret-fingerprint.sh"
       - "infra/keycloak/scripts/reconcile-master-production-recovery.sh"
       - "infra/keycloak/realm/master-production-recovery.json"
@@ -106,6 +108,8 @@ jobs:
           grep -Fq 'STOP: required immutable image is unavailable:' "$helper"
           grep -Fq 'STOP: refusing non-digest or empty image for' "$helper"
           grep -Fq 'wait_runtime_probe "$hub_project" api api' "$helper"
+          grep -Fq 'run --rm -T --no-deps api node apps/api/dist/db/migrate.js' "$helper"
+          grep -Fq 'API_MIGRATION_PASS source=$api_sha' "$helper"
           grep -Fq 'wait_runtime_probe "$hub_project" web web' "$helper"
           grep -Fq "fetch('http://127.0.0.1:3100/health')" "$helper"
           grep -Fq 'wget -qO- http://127.0.0.1/healthz' "$helper"
@@ -139,9 +143,18 @@ jobs:
 
       - name: Validate production reconciliation script syntax
         run: |
+          native_account_reconcile='infra/keycloak/scripts/reconcile-native-account-self-service.sh'
           bash -n infra/keycloak/scripts/reconcile-hub-production-client.sh
+          bash -n "$native_account_reconcile"
           bash -n infra/keycloak/scripts/verify-hub-production-secret-fingerprint.sh
           bash -n infra/keycloak/scripts/reconcile-master-production-recovery.sh
+          grep -Fq '(.organizationsEnabled // false) == false' "$native_account_reconcile"
+          grep -Fq '(.userManagedAccessAllowed // false) == false' "$native_account_reconcile"
+          grep -Fq '(.verifiableCredentialsEnabled // false) == false' "$native_account_reconcile"
+          grep -Fq 'delete_account' "$native_account_reconcile"
+          grep -Fq 'NATIVE_ACCOUNT_CAPABILITY_BASELINE_PASS' "$native_account_reconcile"
+          grep -Fq 'NATIVE_ACCOUNT_SCOPE_MAPPING_PASS' "$native_account_reconcile"
+          grep -Fq 'NATIVE_ACCOUNT_AUDIENCE_PASS' "$native_account_reconcile"
 
       - name: Secret scan for production launcher scope
         shell: bash
@@ -158,6 +171,7 @@ jobs:
             infra/keycloak/realm/master-production-recovery.json \
             infra/keycloak/master-smtp.env.example \
             infra/keycloak/scripts/reconcile-hub-production-client.sh \
+            infra/keycloak/scripts/reconcile-native-account-self-service.sh \
             infra/keycloak/scripts/verify-hub-production-secret-fingerprint.sh \
             infra/keycloak/scripts/reconcile-master-production-recovery.sh \
             docs/specs/HUB-IMPL-016-hub-production-launcher.md \

@@ -364,6 +364,10 @@ if [ "$need_kc" = 1 ]; then
 fi
 
 if [ "$api_change" = 1 ]; then
+  sudo -n docker compose -f "$hub_compose" \
+    run --rm -T --no-deps api node apps/api/dist/db/migrate.js
+  echo "API_MIGRATION_PASS source=$api_sha"
+
   deployed_api=1
   sudo -n docker compose -f "$hub_compose"     up -d --no-deps --no-build --pull never --force-recreate api
   wait_runtime_probe "$hub_project" api api

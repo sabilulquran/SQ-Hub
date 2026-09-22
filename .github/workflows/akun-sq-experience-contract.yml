@@ -46,14 +46,14 @@ jobs:
           login='infra/keycloak/themes/sq-hub/login'
           account='infra/keycloak/themes/sq-hub/account'
           grep -Fxq 'parent=keycloak.v2' "$login/theme.properties"
-          grep -Fxq 'styles=css/styles.css css/akun-sq-login-be6b1a63ccf6.css' "$login/theme.properties"
+          grep -Fxq 'styles=css/styles.css css/akun-sq-login-845cd4b107a4.css' "$login/theme.properties"
           grep -Fxq 'contentHashPattern=^css/akun-sq-login-[0-9a-f]{12}[.]css$' "$login/theme.properties"
           grep -Fxq 'parent=keycloak.v3' "$account/theme.properties"
           grep -Fxq 'styles=css/akun-sq-account-148467199d0b.css' "$account/theme.properties"
           grep -Fxq 'title=Akun SQ' "$account/theme.properties"
           grep -Fxq 'logo=img/ysq-mark.png' "$account/theme.properties"
           grep -Fq 'img/ysq-mark.png' "$login/footer.ftl"
-          test "$(git hash-object "$login/resources/css/akun-sq-login-be6b1a63ccf6.css" | cut -c1-12)" = be6b1a63ccf6
+          test "$(git hash-object "$login/resources/css/akun-sq-login-845cd4b107a4.css" | cut -c1-12)" = 845cd4b107a4
           grep -Fxq 'favicons.svg=img/favicon.svg' "$login/theme.properties"
           cmp -s "$login/resources/img/ysq-mark.png" apps/web/src/assets/brand/ysq-mark.png
           cmp -s "$account/resources/img/ysq-mark.png" apps/web/src/assets/brand/ysq-mark.png
@@ -75,6 +75,9 @@ jobs:
           grep -Fq 'name="otp"' "$theme/login-otp.ftl"
           grep -Fq 'name="trustDevice"' "$theme/login-otp.ftl"
           grep -Fxq 'loginTitle=Akun SQ' "$theme/messages/messages_id.properties"
+          grep -Fxq 'webauthn-registration-title=Tambahkan passkey' "$theme/messages/messages_id.properties"
+          grep -Fxq 'passkey-doAuthenticate=Masuk dengan passkey' "$theme/messages/messages_id.properties"
+          grep -Fq '#cancelWebAuthnAIA' "$theme/resources/css/akun-sq-login-845cd4b107a4.css"
           grep -Fxq "akunSqFooter=Satu akun untuk layanan digital Yayasan Sabilul Qur'an." "$theme/messages/messages_id.properties"
           grep -Fq '${msg("akunSqFooter")}' "$theme/footer.ftl"
 
@@ -94,10 +97,28 @@ jobs:
       - name: Verify native Akun SQ account boundary
         shell: bash
         run: |
-          grep -Fq 'Profil Saya' apps/web/src/AccountPage.tsx
-          grep -Fq 'Aplikasi Saya' apps/web/src/AccountPage.tsx
+          for label in             'Profil Saya'             'Keamanan'             'Sesi & Perangkat'             'Aplikasi'             'Akun Terhubung'; do
+            grep -Fq "$label" apps/web/src/AccountPage.tsx
+          done
+          grep -Fq 'Aplikasi SQ yang dapat Anda buka' apps/web/src/AccountPage.tsx
+          grep -Fq 'Aplikasi yang terhubung ke Akun SQ' apps/web/src/AccountPage.tsx
+          grep -Fq 'Keanggotaan' apps/web/src/AccountPage.tsx
           ! grep -Fq 'Keycloak' apps/web/src/AccountPage.tsx
           ! grep -Fq '/realms/' apps/web/src/AccountPage.tsx
+          grep -Fq 'getAccountAccess' apps/api/src/modules/hub-auth/service.ts
+          grep -Fq 'HubTokenVault' apps/api/src/modules/hub-auth/service.ts
+          grep -Fq 'KeycloakAccountSelfService' apps/api/src/modules/account-self-service/client.ts
+          grep -Fq 'ACCOUNT_REAUTH_REQUIRED' apps/api/src/modules/hub-auth/service.ts
+          grep -Fq 'idp_link:' apps/api/src/modules/account-self-service/client.ts
+          grep -Fq 'delete_credential:' apps/api/src/modules/account-self-service/client.ts
+          grep -Fq 'providerCredentialAction' apps/api/src/modules/account-self-service/client.ts
+          grep -Fq 'canCreate: boolean' apps/web/src/types.ts
+          grep -Fq 'canUpdate: boolean' apps/web/src/types.ts
+          ! grep -Fq 'createAction:' apps/web/src/types.ts
+          ! grep -Fq 'updateAction:' apps/web/src/types.ts
+          ! grep -Fq 'container.createAction' apps/web/src/AccountPage.tsx
+          ! grep -Fq 'container.updateAction' apps/web/src/AccountPage.tsx
+          grep -Fq 'ACCOUNT_ORIGIN_FORBIDDEN' apps/api/src/modules/hub-auth/routes.ts
           grep -Fq 'password: "UPDATE_PASSWORD"' apps/api/src/modules/hub-auth/routes.ts
           grep -Fq 'totp: "CONFIGURE_TOTP"' apps/api/src/modules/hub-auth/routes.ts
           grep -Fq '"recovery-codes": "CONFIGURE_RECOVERY_AUTHN_CODES"' apps/api/src/modules/hub-auth/routes.ts
@@ -113,7 +134,7 @@ jobs:
           ! grep -Fq 'Nilai Utsman' infra/keycloak/themes/sq-hub/login/footer.ftl
           ! grep -Fq 'sq-brand-values' infra/keycloak/themes/sq-hub/login/footer.ftl
           ! grep -Fqi 'SQ Identity' infra/keycloak/themes/sq-hub/login/footer.ftl
-          ! grep -Fq 'grid-template-columns: minmax(0, 3fr)' infra/keycloak/themes/sq-hub/login/resources/css/akun-sq-login-be6b1a63ccf6.css
+          ! grep -Fq 'grid-template-columns: minmax(0, 3fr)' infra/keycloak/themes/sq-hub/login/resources/css/akun-sq-login-845cd4b107a4.css
 
       - name: Verify rendered Akun SQ layout
         shell: bash
@@ -140,6 +161,13 @@ jobs:
             if [ "$mode" = "totp" ]; then
               grep -Fq 'data-totp-vertical="true"' "$output" || {
                 echo "TOTP layout is not vertical in $output" >&2
+                grep -oE 'data-[a-z-]+="[^"]*"' "$output" || true
+                exit 1
+              }
+            fi
+            if [ "$mode" = "passkey" ]; then
+              grep -Fq 'data-passkey-actions="true"' "$output" || {
+                echo "Passkey actions are not stacked/full-width in $output" >&2
                 grep -oE 'data-[a-z-]+="[^"]*"' "$output" || true
                 exit 1
               }
@@ -178,6 +206,8 @@ jobs:
           verify_login 360 844 totp
           verify_login 390 844 totp
           verify_login 412 844 totp
+          verify_login 390 844 passkey
+          verify_login 1280 720 passkey
 
           verify_account 320 844 security
           verify_account 360 844 security
@@ -218,12 +248,14 @@ jobs:
           "$CHROME" --headless=new --no-sandbox --disable-gpu --allow-file-access-from-files --window-size=1280,720 --screenshot=visual-akun-sq/login-totp-trusted.png "file://$PWD/tools/visual/akun-sq-login-fixture.html?mode=totp"
           "$CHROME" --headless=new --no-sandbox --disable-gpu --allow-file-access-from-files --window-size=1280,720 --screenshot=visual-akun-sq/login-forgot.png "file://$PWD/tools/visual/akun-sq-login-fixture.html?mode=forgot"
           "$CHROME" --headless=new --no-sandbox --disable-gpu --allow-file-access-from-files --window-size=1280,720 --screenshot=visual-akun-sq/login-reset.png "file://$PWD/tools/visual/akun-sq-login-fixture.html?mode=reset"
+          "$CHROME" --headless=new --no-sandbox --disable-gpu --allow-file-access-from-files --window-size=1280,720 --screenshot=visual-akun-sq/login-passkey.png "file://$PWD/tools/visual/akun-sq-login-fixture.html?mode=passkey"
+          "$CHROME" --headless=new --no-sandbox --disable-gpu --allow-file-access-from-files --window-size=390,844 --screenshot=visual-akun-sq/login-passkey-mobile.png "file://$PWD/tools/visual/akun-sq-login-fixture.html?mode=passkey"
           "$CHROME" --headless=new --no-sandbox --disable-gpu --allow-file-access-from-files --window-size=1440,900 --screenshot=visual-akun-sq/account-overview.png "file://$PWD/tools/visual/akun-sq-account-fixture.html?mode=overview"
           "$CHROME" --headless=new --no-sandbox --disable-gpu --allow-file-access-from-files --window-size=1440,900 --screenshot=visual-akun-sq/account-security.png "file://$PWD/tools/visual/akun-sq-account-fixture.html?mode=security"
           "$CHROME" --headless=new --no-sandbox --disable-gpu --allow-file-access-from-files --window-size=1440,900 --screenshot=visual-akun-sq/account-sessions.png "file://$PWD/tools/visual/akun-sq-account-fixture.html?mode=sessions"
           "$CHROME" --headless=new --no-sandbox --disable-gpu --allow-file-access-from-files --window-size=390,844 --screenshot=visual-akun-sq/account-mobile.png "file://$PWD/tools/visual/akun-sq-account-fixture.html?mode=security"
 
-          test "$(find visual-akun-sq -name '*.png' | wc -l)" -eq 10
+          test "$(find visual-akun-sq -name '*.png' | wc -l)" -eq 12
 
       - name: Upload Akun SQ visual evidence
         if: github.event_name == 'pull_request'

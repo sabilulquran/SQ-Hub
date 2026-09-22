@@ -145,6 +145,10 @@ jobs:
           check_no_overflow 390 844 http://127.0.0.1:4173/apps
           check_no_overflow 390 844 http://127.0.0.1:4173/account
           check_no_overflow 1280 720 http://127.0.0.1:4173/account
+          for section in security sessions applications linked groups; do
+            check_no_overflow 390 844 "http://127.0.0.1:4173/account?section=$section"
+            check_no_overflow 1280 720 "http://127.0.0.1:4173/account?section=$section"
+          done
 
           "$CHROME" --headless=new --no-sandbox --disable-gpu --virtual-time-budget=1000 --window-size=1440,900 --dump-dom 'http://127.0.0.1:4173/?preview=launcher&exercise=escape' > /tmp/launcher-escape.html
           grep -Fq 'data-preview-escape-restored="true"' /tmp/launcher-escape.html
@@ -163,8 +167,13 @@ jobs:
           "$CHROME" --headless=new --no-sandbox --disable-gpu --hide-scrollbars --window-size=1440,900 --screenshot=visual-smoke/sq-hub-ordinary-no-admin.png 'http://127.0.0.1:4173/?state=ordinary'
           "$CHROME" --headless=new --no-sandbox --disable-gpu --hide-scrollbars --window-size=1440,900 --screenshot=visual-smoke/akun-sq-native-account-desktop.png http://127.0.0.1:4173/account
           "$CHROME" --headless=new --no-sandbox --disable-gpu --hide-scrollbars --window-size=390,844 --screenshot=visual-smoke/akun-sq-native-account-mobile-390x844.png http://127.0.0.1:4173/account
+          "$CHROME" --headless=new --no-sandbox --disable-gpu --hide-scrollbars --window-size=390,844 --screenshot=visual-smoke/akun-sq-security-mobile-390x844.png 'http://127.0.0.1:4173/account?section=security'
+          "$CHROME" --headless=new --no-sandbox --disable-gpu --hide-scrollbars --window-size=390,844 --screenshot=visual-smoke/akun-sq-sessions-mobile-390x844.png 'http://127.0.0.1:4173/account?section=sessions'
+          "$CHROME" --headless=new --no-sandbox --disable-gpu --hide-scrollbars --window-size=390,844 --screenshot=visual-smoke/akun-sq-applications-mobile-390x844.png 'http://127.0.0.1:4173/account?section=applications'
+          "$CHROME" --headless=new --no-sandbox --disable-gpu --hide-scrollbars --window-size=390,844 --screenshot=visual-smoke/akun-sq-linked-mobile-390x844.png 'http://127.0.0.1:4173/account?section=linked'
+          "$CHROME" --headless=new --no-sandbox --disable-gpu --hide-scrollbars --window-size=390,844 --screenshot=visual-smoke/akun-sq-groups-mobile-390x844.png 'http://127.0.0.1:4173/account?section=groups'
 
-          test "$(find visual-smoke -name '*.png' | wc -l)" -eq 12
+          test "$(find visual-smoke -name '*.png' | wc -l)" -eq 17
 
       - name: Upload visual smoke screenshots
         if: github.event_name == 'pull_request'

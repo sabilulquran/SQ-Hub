@@ -1,6 +1,7 @@
 import Fastify from "fastify";
 import { z } from "zod";
 
+import type { KeycloakAccountSelfService } from "./modules/account-self-service/client.js";
 import {
   MachineAuthError,
   readBearerToken,
@@ -37,6 +38,7 @@ export function buildApp(input: {
     "listApplications" | "getAccess" | "grant" | "revoke" | "listAudit"
   >;
   identityDirectory?: IdentityDirectory;
+  accountSelfService?: KeycloakAccountSelfService;
   logger?: boolean;
 }) {
   const app = Fastify({ logger: input.logger ?? false });
@@ -80,6 +82,7 @@ export function buildApp(input: {
       input.hubAuth,
       input.hubRedirectUri,
       input.identityDirectory,
+      input.accountSelfService,
     );
   }
 

@@ -22,32 +22,71 @@ Pengguna boleh berpindah dari `hub.sabilulquran.or.id` ke `login.sabilulquran.or
 6. Istilah **Keycloak**, realm key, client ID, issuer internals, PatternFly naming, dan copy teknis provider tidak boleh muncul pada UI pengguna normal.
 7. Responsive mobile adalah acceptance requirement, bukan enhancement setelah desktop.
 
-## User-facing information architecture
+## Feature-parity contract
 
-Akun SQ native menyediakan empat area yang mudah dipahami:
+Native Akun SQ **tidak boleh menjadi subset read-only** dari Account Console yang digantikannya. Setiap capability self-service yang aktif dan diberikan kepada Staff oleh realm/Account API harus tetap tersedia melalui native Akun SQ, dengan bahasa dan visual SQ.
+
+Baseline parity untuk Foundation:
+
+### Parity matrix Account Console → Akun SQ native
+
+| Account Console 26.7.2 | Akun SQ native | Visibility/contract |
+| --- | --- | --- |
+| Personal info | **Profil Saya** | selalu tersedia; editability mengikuti metadata Account API |
+| Signing in / credentials | **Keamanan** | selalu tersedia; credential container/action mengikuti metadata provider |
+| Device activity | **Sesi & Perangkat** | selalu tersedia; current session dilindungi |
+| Applications | **Aplikasi** | native selalu menampilkan Application Access SQ; identity applications/consent ditambahkan bila Account API tersedia |
+| Linked accounts | **Akun Terhubung** | hanya tampil bila provider linked/available memang ada |
+| Groups | **Keanggotaan** | hanya tampil bila group membership provider benar-benar ada |
+| Organizations | belum native | rollout **STOP** bila realm live mengaktifkannya |
+| Resources / UMA | belum native | rollout **STOP** bila realm live mengaktifkannya |
+| Verifiable Credentials | belum native | rollout **STOP** bila realm live mengaktifkannya |
+| Delete Account | belum native | rollout **STOP** bila required action live aktif |
+
+Route/bookmark menuju section kondisional yang sudah tidak tersedia harus kembali ke **Profil Saya**, bukan membuka halaman kosong.
 
 ### 1. Profil Saya
-Menampilkan informasi akun yang relevan bagi pengguna:
-- nama;
-- NIP/username login;
-- email;
-- status verifikasi email.
-
-Jangan menampilkan `issuer`, `sub`, realm, client ID, UUID, atau identifier teknis.
+- tampilkan metadata profil yang diizinkan Account API;
+- bila provider mengembalikan daftar locale, field bahasa memakai pilihan locale provider, bukan input teks bebas;
+- field read-only tetap read-only;
+- field editable dapat disimpan dari native Akun SQ;
+- NIP/username tidak boleh dibuat editable bila metadata provider menandainya read-only;
+- validasi provider tetap menjadi source of truth.
 
 ### 2. Keamanan
-Menampilkan status sederhana:
-- verifikasi dua langkah aktif / belum aktif / status belum dapat diverifikasi;
-- kode pemulihan tersedia / belum tersedia / status belum dapat diverifikasi;
-- entry point untuk tindakan keamanan yang didukung.
+- tampilkan seluruh credential container yang diberikan Account API;
+- password, TOTP/authenticator, recovery code, passkey/WebAuthn, dan credential type lain yang benar-benar dilaporkan provider tetap dapat dibuat/diperbarui sesuai metadata/action provider;
+- browser hanya menerima availability `canCreate/canUpdate`, bukan ID required action provider;
+- saat user memilih Tambah/Kelola, backend membaca ulang metadata Account API dan hanya kemudian memulai exact provider action;
+- credential yang memang removable dapat dihapus melalui required action resmi;
+- jangan menyembunyikan credential type aktif hanya karena native UI tidak mengenal labelnya.
 
-Tindakan sensitif tetap diproses oleh identity engine melalui flow resmi. Native UI hanya menjadi launcher dan presentation layer.
+### 3. Sesi & Perangkat
+- tampilkan device/session activity yang benar dari Account API, termasuk IP, waktu mulai, aktivitas terakhir, waktu berakhir, dan aplikasi sesi bila tersedia;
+- tandai current device/current session;
+- user dapat mengakhiri sesi lain secara individual;
+- user dapat mengakhiri semua sesi lain;
+- current session tidak diberi tombol single-session logout yang menipu **dan backend menolak individual DELETE terhadap current session**; logout current identity tetap menggunakan flow logout Akun SQ.
 
-### 3. Login & perangkat
-Foundation boleh menampilkan penjelasan kebijakan login/perangkat terpercaya dan status yang memang tersedia dengan aman. Jangan mengarang daftar device/session jika backend belum memiliki data yang dapat dipercaya.
+### 4. Aplikasi
+Dua konsep wajib dipisahkan:
+- **Aplikasi SQ yang dapat Anda buka** berasal dari SQ Hub Application Access;
+- **Aplikasi yang terhubung ke Akun SQ** berasal dari identity Account API dan dapat memiliki consent/offline access.
 
-### 4. Aplikasi Saya
-Menampilkan aplikasi yang saat ini dapat dibuka berdasarkan SQ Hub Application Access. Ini bukan daftar role/permission domain.
+Bila provider mengizinkan, user dapat mencabut consent melalui native Akun SQ dengan konfirmasi eksplisit. Mencabut consent tidak boleh dimaknai sebagai mencabut Application Access. Effective URL provider hanya boleh dirender sebagai tautan bila memakai skema HTTP/HTTPS.
+
+### 5. Akun Terhubung
+- tampilkan identity provider yang terhubung, termasuk Google bila dikonfigurasi;
+- tampilkan provider yang tersedia untuk dihubungkan;
+- link menggunakan Application Initiated Action resmi dan kontrak Google existing-account-link-only;
+- unlink hanya dilakukan terhadap provider yang server verifikasi memang terhubung pada user tersebut.
+
+### 6. Capability kondisional
+Capability provider lain seperti group membership hanya muncul bila Account API/realm benar-benar mengaktifkan dan mengembalikan capability tersebut.
+
+Organizations, verifiable credentials, resources/UMA, atau delete-account **tidak dianggap baseline aktif** hanya karena Keycloak mendukungnya secara umum. Jika capability tersebut diaktifkan kemudian, spec/CI native harus diperluas sebelum Account Console provider dinonaktifkan untuk capability itu.
+
+Jangan menampilkan `issuer`, `sub`, realm UUID, credential secret, raw token, atau identifier internal yang tidak membantu user.
 
 ## Authentication presentation contract
 
@@ -66,30 +105,51 @@ Semua flow berikut harus terlihat sebagai Akun SQ:
 
 Theme boleh mewarisi template provider untuk menjaga keamanan/protocol ownership, tetapi inheritance tersebut tidak boleh terlihat sebagai Keycloak/PatternFly product UI.
 
-## Native account API
+## Native account BFF and delegated Account API
 
-Browser Akun SQ menggunakan server-side Hub session yang sudah ada. API self-service:
+Browser Akun SQ menggunakan opaque server-side Hub session yang sudah ada. Browser **tidak** menjadi OIDC client untuk Account API.
+
+Backend:
 - memvalidasi `sq_hub_session`;
-- menyimpan atribut profil aman dari login OIDC (`preferred_username`, email, status verifikasi email) bersama server-side Hub session; raw token tetap tidak disimpan;
-- bila identity directory tersedia, memperkaya status profil/security berdasarkan opaque `issuer + sub` server-side;
-- bila identity directory sedang gagal/tidak tersedia, native account **tetap merender** dari session + Application Access dan menandai detail keamanan yang belum dapat diverifikasi sebagai unknown;
-- hanya mengembalikan browser-safe profile/security summary;
-- tidak mengembalikan raw `sub`, access token, refresh token, credential, OTP secret, recovery code, service credential, atau Keycloak admin metadata;
-- fail closed bila session invalid;
-- tidak mengubah Application Access atau domain authorization.
+- menerima refresh token hanya dari server-side Authorization Code + PKCE exchange;
+- mengenkripsi refresh token at-rest dengan authenticated encryption sebelum disimpan bersama Hub session;
+- tidak menyimpan access token jangka panjang;
+- saat self-service dibutuhkan, menukar refresh token server-side untuk short-lived access token lalu memanggil **official Keycloak Account REST API sebagai user yang sama**;
+- menyimpan rotated refresh token kembali dalam bentuk terenkripsi;
+- tidak memakai service account/admin credential untuk bertindak sebagai semua pegawai;
+- memetakan response provider menjadi DTO browser-safe dan tidak meneruskan payload mentah provider;
+- bila delegated account capability belum tersedia pada session lama, mengembalikan `ACCOUNT_REAUTH_REQUIRED`, bukan membuka scope atau fallback admin;
+- bila identity directory gagal, profil dasar + Application Access tetap dapat dirender; directory bukan authority self-service credential/session;
+- fail closed bila Hub session invalid.
 
-## Security actions
+Browser response tidak boleh berisi raw `sub`, issuer, access token, refresh token, ID token, credential secret, OTP secret, recovery code, client secret, atau admin metadata.
 
-Untuk action yang didukung Keycloak Application Initiated Actions (AIA), SQ Hub boleh memulai OIDC authorization request dengan allowlist action eksplisit. Tidak ada arbitrary `kc_action` dari query user.
+## Security actions and mutation boundary
 
-Allowlist Foundation:
-- update password;
-- configure TOTP;
-- configure recovery authentication codes.
+Untuk action sensitif yang memang dimiliki identity engine, SQ Hub memulai Application Initiated Action (AIA) berdasarkan metadata Account API dan **validasi server-side**. Tidak ada arbitrary `kc_action` dari query browser.
 
-Hasil action harus kembali ke Akun SQ. Browser tidak boleh menyimpan token OIDC di `localStorage` / `sessionStorage`.
+Action yang diterima:
+- fixed Foundation action `UPDATE_PASSWORD`, `CONFIGURE_TOTP`, dan `CONFIGURE_RECOVERY_AUTHN_CODES`;
+- `UPDATE_EMAIL` hanya bila metadata profil provider menandai email mendukung required action tersebut;
+- credential create/update action lain hanya bila **exact action itu dibaca ulang server-side dari Account API untuk credential type + operation yang dipilih user**; browser tidak mengirim action ID;
+- provider-reported credential action harus berupa required-action ID sederhana dan tidak boleh memakai jalur reserved seperti `delete_account`, `UPDATE_EMAIL`, `idp_link:*`, atau `delete_credential:*`;
+- `idp_link:<provider>` hanya setelah provider diverifikasi tersedia bagi user;
+- `delete_credential:<credentialId>` hanya setelah credential diverifikasi milik user dan removable.
 
-AIA bukan bukti bahwa action benar-benar selesai. Native page harus membaca ulang status server-side setelah kembali dan tidak boleh menganggap sukses hanya karena redirect.
+Mutation profil, session logout, consent revoke, dan unlink account dilakukan lewat Account API sebagai user yang sama. Semua mutation endpoint native:
+- same-origin only;
+- mengambil target resource server-side sebelum mutation untuk bounded ownership;
+- tidak menerima actor/subject/issuer dari browser;
+- tidak mengubah Application Access atau domain role.
+
+Hasil AIA kembali ke native Akun SQ dan status dibaca ulang server-side. Redirect sukses bukan bukti sendiri bahwa action berhasil.
+
+Setiap re-auth atau required action yang dimulai dari sesi Hub aktif harus diikat server-side ke hash sesi tersebut dan principal `issuer + sub` saat flow dimulai. Callback:
+- menolak bila principal hasil OIDC berbeda;
+- membuat sesi Hub pengganti dan merevoke sesi lama serta menghapus delegated refresh token lama dalam transaksi penyimpanan yang sama; persistence layer juga mensyaratkan issuer + sub lama sama dengan identity pengganti;
+- mewarisi absolute expiry sesi Hub lama saat replacement, sehingga required action/reauth tidak memperpanjang batas maksimum sesi secara diam-diam;
+- gagal membuat sesi pengganti bila sesi yang hendak diganti sudah tidak aktif;
+- tidak mengirim hash sesi, `sub`, atau refresh token tersebut ke browser.
 
 ## Google account boundary
 
@@ -138,30 +198,75 @@ Copy yang disarankan:
 - "Keamanan", bukan terminology provider;
 - "Aplikasi Saya", bukan technical client/session vocabulary.
 
+## Least-privilege token contract
+
+Client Hub tetap confidential Authorization Code + PKCE, `fullScopeAllowed=false`, tanpa direct access grant dan tanpa service account.
+
+Delegated Account API memerlukan:
+- access-token audience `account`;
+- scope mapping hanya untuk baseline account roles:
+  - `manage-account`;
+  - `view-profile`;
+  - `manage-account-links`;
+  - `view-applications`;
+  - `view-consent`;
+  - `manage-consent`;
+  - `view-groups`.
+
+`delete-account`, verifiable-credential roles, realm-management, dan broad admin roles tidak boleh ditambahkan untuk HUB-IMPL-019.
+
+Repository menyediakan idempotent reconciliation untuk scope/audience dan CI harus membuktikan tidak ada account-role scope yang lebih luas dari allowlist.
+
+### Production reconciliation handoff
+
+Production **tidak** mengubah scope/audience sebagai side effect dari rollout image Keycloak. Perubahan realm tetap menjadi aksi operator berizin yang terpisah.
+
+Sebelum native self-service dinyatakan siap di production, operator wajib menjalankan:
+
+`infra/keycloak/scripts/reconcile-native-account-self-service.sh`
+
+terhadap exact realm `sq-staff`, client `sq-hub`, dan Compose identity production yang sudah dirender. Untuk root-owned runtime bundle saat ini, helper mendukung `KEYCLOAK_COMPOSE_FILE=/var/www/sq-hub-production/compose.identity.json` dan `KEYCLOAK_ENV_FILE=""` agar tidak mengasumsikan file env staging. Helper tetap mensyaratkan authenticated `kcadm` config yang sudah tersedia **di dalam** container Keycloak dan tidak mengelola credential administrator.
+
+Aksi production harus:
+- dijalankan dari reviewed source SHA yang sama dengan release;
+- fail closed bila Organizations, user-managed resources/UMA, Verifiable Credentials, atau Delete Account ternyata aktif; capability tersebut harus dipetakan native lebih dulu sebelum rollout dilanjutkan;
+- hanya menambah/menjaga tujuh role account-client allowlist dan audience `account`;
+- fail closed bila ada role account-client lain yang sudah terscope ke `sq-hub`;
+- tidak mengubah HCIS client, Google provider, trusted-device flow, MFA, realm key/issuer, theme, atau client secret;
+- merekam hanya marker `NATIVE_ACCOUNT_CAPABILITY_BASELINE_PASS`, `NATIVE_ACCOUNT_SCOPE_MAPPING_PASS`, dan `NATIVE_ACCOUNT_AUDIENCE_PASS`, tanpa token/secret/raw user data.
+
+Green CI membuktikan helper dan disposable Keycloak behavior, tetapi **bukan** bukti bahwa reconciliation production sudah dijalankan.
+
 ## Out of scope
 
 HUB-IMPL-019 tidak:
 - mengganti Keycloak sebagai IdP;
-- membuat custom OAuth/OIDC implementation;
-- memindahkan password/MFA secrets ke SQ Hub;
+- membuat custom password/TOTP/recovery verifier;
+- memindahkan credential secret atau MFA secret ke SQ Hub;
+- menggunakan Keycloak Admin API/service account sebagai mekanisme self-service pegawai;
 - menjadikan SQ Hub pemilik role HCIS;
 - mengimplementasikan Organization Directory;
 - mengubah Identity Lifecycle;
 - menyatukan external identity/SQ Portal;
-- membuat session/device inventory palsu jika API belum mendukung data yang benar.
+- mengaktifkan capability Account Console yang sebelumnya tidak aktif hanya demi mengejar jumlah menu.
 
 ## Acceptance criteria
 
-1. Mengklik **Kelola Akun SQ** dari Hub membuka native `/account`, tidak redirect ke `/realms/.../account/`.
-2. Native page menampilkan Profil Saya, ringkasan Keamanan, dan Aplikasi Saya dari data server-side yang sah; kegagalan optional identity-directory enrichment tidak boleh menjatuhkan seluruh halaman.
-3. Response account browser tidak mengandung `subject`, issuer, token, credential, OTP secret, recovery code, atau client secret.
-4. Password/TOTP/recovery launcher hanya menggunakan action allowlist dan tidak menerima arbitrary redirect/action dari browser.
-5. Authentication/required-action pages tidak menampilkan brand/copy Keycloak pada active UI.
-6. Browser auth/session contract HUB Foundation tetap berlaku: server-side code exchange, opaque HttpOnly Hub cookie, no token storage.
-7. Layout Akun SQ lulus visual smoke desktop dan 390×844 tanpa overflow.
-8. Existing Hub launcher, Application Access, Admin Center, logout, and domain authorization tidak berubah secara semantik.
-9. Unit/integration tests mencakup account session enforcement, safe account response, action allowlist, native route rendering, serta fallback saat identity directory tidak tersedia.
-10. Production rollout memerlukan evidence runtime terpisah; CI tidak boleh dinyatakan sebagai production acceptance.
+1. Mengklik **Kelola Akun SQ** dari Hub membuka native `/account`, tidak redirect ke provider Account Console.
+2. Native navigation selalu memuat Profil Saya, Keamanan, Sesi & Perangkat, dan Aplikasi; Akun Terhubung hanya muncul bila linked/available provider ada, dan Keanggotaan hanya muncul bila data group tersedia. Capability kondisional yang belum native harus memblokir rollout bila aktif di realm.
+3. Profil editable mengikuti metadata read-only/required/multivalued provider; field biasa disimpan melalui Account API, sedangkan email memakai `UPDATE_EMAIL` bila provider menandainya sebagai required-action-managed.
+4. Credential container aktif tidak dihilangkan; password/TOTP/recovery/passkey maupun credential type provider lain menampilkan create/update capability yang provider laporkan, sedangkan exact action ID selalu diselesaikan ulang server-side dan tidak datang dari browser.
+5. Device/session inventory berasal dari provider; non-current session dapat diakhiri dan semua sesi lain dapat diakhiri; individual deletion untuk current session ditolak server-side.
+6. SQ Application Access dan identity-connected applications/consents ditampilkan sebagai dua konsep berbeda.
+7. Linked provider dapat dihubungkan/diputus hanya setelah ownership/availability diverifikasi server-side.
+8. Hub access token untuk self-service memiliki audience `account` dan account-role scope tepat sesuai allowlist, dengan `fullScopeAllowed=false`.
+9. Refresh token delegated disimpan terenkripsi at-rest; access/refresh/ID token tidak pernah dikirim ke browser atau disimpan di browser storage.
+10. Account mutation endpoints same-origin dan tidak menerima arbitrary subject/issuer/action/redirect dari browser.
+11. Authentication/required-action pages tetap berwajah Akun SQ tanpa brand/copy Keycloak pada active UI.
+12. Layout setiap baseline section lulus visual smoke desktop dan 390×844 tanpa horizontal overflow.
+13. Existing Hub launcher, Application Access, Admin Center, logout, dan domain authorization tidak berubah semantik.
+14. Unit/integration tests mencakup encryption/rotation, resource ownership validation, read-only profile enforcement, account reauth fallback, same-principal Hub-session replacement, current-session logout guard, and parity navigation.
+15. Production rollout memerlukan reconciliation scope/audience + runtime evidence terpisah; CI tidak boleh dinyatakan sebagai production acceptance.
 
 ## Rollback
 

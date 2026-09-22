@@ -6,6 +6,7 @@ import type {
   HubRequestContext,
   HubSessionRecord,
 } from "./repository.js";
+import { HubTokenVault } from "./token-vault.js";
 import type { HubWorkspaceApplicationSource } from "./workspace-repository.js";
 
 export const HUB_SESSION_COOKIE_NAME = "sq_hub_session";
@@ -31,6 +32,7 @@ export class HubAuthError extends Error {
     public readonly statusCode: number,
     public readonly code: string,
     message: string,
+    public readonly returnPath?: "/" | "/account",
   ) {
     super(message);
     this.name = "HubAuthError";
@@ -38,14 +40,22 @@ export class HubAuthError extends Error {
 }
 
 export interface HubAuthRuntime {
-  beginLogin(action?: HubOidcAction): Promise<{ authorizationUrl: URL; setCookie: string }>;
+  beginLogin(
+    action?: HubOidcAction,
+    returnPath?: "/" | "/account",
+    replaceSessionToken?: string | null,
+  ): Promise<{ authorizationUrl: URL; setCookie: string }>;
   completeLogin(
     callbackUrl: URL,
     transactionToken: string | null,
     context: HubRequestContext,
-  ): Promise<{ setCookies: string[] }>;
+  ): Promise<{ setCookies: string[]; returnPath: "/" | "/account" }>;
   getWorkspace(sessionToken: string | null): Promise<HubWorkspaceSnapshot>;
   getSession(sessionToken: string | null): Promise<HubSessionRecord>;
+  getAccountAccess(sessionToken: string | null): Promise<{
+    session: HubSessionRecord;
+    accessToken: string;
+  }>;
   logout(
     sessionToken: string | null,
     context: HubRequestContext,
@@ -73,6 +83,7 @@ export class HubAuthService implements HubAuthRuntime {
       transactionTtlMinutes: number;
       secureCookies: boolean;
     },
+    private readonly tokenVault: HubTokenVault,
     private readonly platformAdmin?: HubPlatformAdminCapabilitySource,
   ) {
     this.idleSeconds = options.sessionIdleHours * 60 * 60;
@@ -81,12 +92,29 @@ export class HubAuthService implements HubAuthRuntime {
     this.secureCookies = options.secureCookies;
   }
 
-  async beginLogin(action?: HubOidcAction): Promise<{ authorizationUrl: URL; setCookie: string }> {
+  async beginLogin(
+    action?: HubOidcAction,
+    returnPath: "/" | "/account" = "/",
+    replaceSessionToken?: string | null,
+  ): Promise<{ authorizationUrl: URL; setCookie: string }> {
     const request = await this.oidcProvider.createAuthorizationRequest(action);
     const transactionToken = generateOpaqueToken();
+    const replacementSession = replaceSessionToken
+      ? await this.getRequiredSession(replaceSessionToken)
+      : null;
     await this.repository.createTransaction({
       tokenHash: hashOpaqueToken(transactionToken),
-      transaction: request.transaction,
+      transaction: {
+        ...request.transaction,
+        returnPath,
+        ...(replacementSession && replaceSessionToken
+          ? {
+              replaceSessionTokenHash: hashOpaqueToken(replaceSessionToken),
+              expectedIssuer: replacementSession.issuer,
+              expectedSubject: replacementSession.subject,
+            }
+          : {}),
+      },
       expiresAt: new Date(Date.now() + this.transactionTtlMs),
     });
 
@@ -105,7 +133,7 @@ export class HubAuthService implements HubAuthRuntime {
     callbackUrl: URL,
     transactionToken: string | null,
     context: HubRequestContext,
-  ): Promise<{ setCookies: string[] }> {
+  ): Promise<{ setCookies: string[]; returnPath: "/" | "/account" }> {
     if (!transactionToken) {
       throw new HubAuthError(400, "OIDC_TRANSACTION_MISSING", "Transaksi masuk tidak ditemukan.");
     }
@@ -115,24 +143,68 @@ export class HubAuthService implements HubAuthRuntime {
       throw new HubAuthError(400, "OIDC_TRANSACTION_EXPIRED", "Transaksi masuk sudah berakhir.");
     }
 
-    const identity = await this.oidcProvider.completeAuthorization(
-      callbackUrl,
-      stored.transaction,
-    );
+    let completed;
+    try {
+      completed = await this.oidcProvider.completeAuthorization(
+        callbackUrl,
+        stored.transaction,
+      );
+    } catch {
+      throw new HubAuthError(
+        400,
+        "OIDC_COMPLETION_FAILED",
+        "Proses masuk Akun SQ belum dapat diselesaikan.",
+        stored.transaction.returnPath ?? "/",
+      );
+    }
+    if (
+      stored.transaction.expectedIssuer ||
+      stored.transaction.expectedSubject
+    ) {
+      const sameIdentity =
+        Boolean(stored.transaction.expectedIssuer) &&
+        Boolean(stored.transaction.expectedSubject) &&
+        normalizeIssuer(completed.identity.issuer) ===
+          normalizeIssuer(stored.transaction.expectedIssuer!) &&
+        completed.identity.subject === stored.transaction.expectedSubject;
+      if (!sameIdentity) {
+        throw new HubAuthError(
+          400,
+          "OIDC_IDENTITY_SWITCH_REJECTED",
+          "Aksi Akun SQ harus diselesaikan oleh akun yang sama.",
+          stored.transaction.returnPath ?? "/",
+        );
+      }
+    }
+
     const sessionToken = generateOpaqueToken();
-    await this.repository.createSession({
+    const encryptedRefreshToken = completed.refreshToken
+      ? this.tokenVault.seal(completed.refreshToken)
+      : null;
+
+    const createdSession = await this.repository.createSession({
       tokenHash: hashOpaqueToken(sessionToken),
-      identity,
+      identity: completed.identity,
+      accountRefreshTokenCiphertext: encryptedRefreshToken,
+      replaceSessionTokenHash: stored.transaction.replaceSessionTokenHash ?? null,
       expiresAt: new Date(Date.now() + this.maxSeconds * 1000),
       context,
     });
+    const sessionCookieMaxAge = Math.max(
+      1,
+      Math.min(
+        this.maxSeconds,
+        Math.floor((createdSession.expiresAt.getTime() - Date.now()) / 1000),
+      ),
+    );
 
     return {
+      returnPath: stored.transaction.returnPath ?? "/",
       setCookies: [
         buildCookie(
           HUB_SESSION_COOKIE_NAME,
           sessionToken,
-          this.maxSeconds,
+          sessionCookieMaxAge,
           this.secureCookies,
         ),
         clearCookie(HUB_OIDC_TRANSACTION_COOKIE_NAME, this.secureCookies),
@@ -168,6 +240,46 @@ export class HubAuthService implements HubAuthRuntime {
 
   getSession(sessionToken: string | null): Promise<HubSessionRecord> {
     return this.getRequiredSession(sessionToken);
+  }
+
+  async getAccountAccess(sessionToken: string | null): Promise<{
+    session: HubSessionRecord;
+    accessToken: string;
+  }> {
+    const session = await this.getRequiredSession(sessionToken);
+    if (!session.accountRefreshTokenCiphertext) {
+      throw new HubAuthError(
+        428,
+        "ACCOUNT_REAUTH_REQUIRED",
+        "Masuk ulang diperlukan untuk mengelola Akun SQ.",
+      );
+    }
+
+    let refreshToken: string;
+    try {
+      refreshToken = this.tokenVault.open(session.accountRefreshTokenCiphertext);
+    } catch {
+      throw new HubAuthError(
+        428,
+        "ACCOUNT_REAUTH_REQUIRED",
+        "Sesi kelola akun tidak dapat digunakan lagi.",
+      );
+    }
+
+    try {
+      const refreshed = await this.oidcProvider.refreshAccountAccess(refreshToken);
+      if (refreshed.refreshToken && refreshed.refreshToken !== refreshToken) {
+        const ciphertext = this.tokenVault.seal(refreshed.refreshToken);
+        await this.repository.updateAccountRefreshToken(session.sessionId, ciphertext);
+      }
+      return { session, accessToken: refreshed.accessToken };
+    } catch {
+      throw new HubAuthError(
+        428,
+        "ACCOUNT_REAUTH_REQUIRED",
+        "Masuk ulang diperlukan untuk memperbarui izin kelola akun.",
+      );
+    }
   }
 
   async logout(
@@ -212,6 +324,10 @@ export function readCookie(header: string | undefined, name: string): string | n
     if (rawName === name) return rawValue.join("=") || null;
   }
   return null;
+}
+
+function normalizeIssuer(value: string): string {
+  return value.replace(/\/+$/, "");
 }
 
 function generateOpaqueToken(): string {

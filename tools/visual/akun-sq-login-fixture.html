@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Akun SQ visual fixture</title>
-  <link rel="stylesheet" href="../../infra/keycloak/themes/sq-hub/login/resources/css/akun-sq-login-be6b1a63ccf6.css">
+  <link rel="stylesheet" href="../../infra/keycloak/themes/sq-hub/login/resources/css/akun-sq-login-845cd4b107a4.css">
 </head>
 <body class="login-pf">
   <div class="pf-v5-c-login">
@@ -76,6 +76,15 @@
         field("Ulangi kata sandi baru", "password", "", "password-confirm") +
         '<div id="kc-form-buttons">' + submit("Simpan") + '</div>'
       );
+    } else if (mode === "passkey") {
+      title.textContent = "Tambahkan passkey";
+      state.innerHTML =
+        '<p class="instruction">Gunakan passkey untuk masuk dengan aman pada perangkat yang mendukung.</p>' +
+        '<form id="register" class="pf-v5-c-form"></form>' +
+        '<input type="submit" class="pf-v5-c-button pf-m-primary" id="registerWebAuthn" value="Tambahkan passkey">' +
+        '<form id="kc-webauthn-settings-form" class="pf-v5-c-form">' +
+        '<button type="button" class="pf-v5-c-button pf-m-secondary" id="cancelWebAuthnAIA">Batal</button>' +
+        '</form>';
     } else {
       state.innerHTML =
         '<div class="pf-v5-c-login__main-footer">' +
@@ -93,8 +102,9 @@
       const root = document.documentElement;
       const card = document.querySelector(".pf-v5-c-login__main").getBoundingClientRect();
       const logoBox = logo.getBoundingClientRect();
-      const primary = document.querySelector("#kc-login");
-      const formBox = primary.closest("form").getBoundingClientRect();
+      const primary = document.querySelector("#kc-login, #registerWebAuthn");
+      const formReference = primary.closest("form") || document.querySelector(".pf-v5-c-login__main-body");
+      const formBox = formReference.getBoundingClientRect();
       const primaryBox = primary.getBoundingClientRect();
 
       document.body.dataset.horizontal = String(root.scrollWidth > root.clientWidth + 1);
@@ -113,6 +123,14 @@
           otpGroup.bottom <= trustGroup.top + 1 &&
           trustGroup.bottom <= buttonGroup.top + 1 &&
           primaryBox.width / formBox.width >= 0.96
+        );
+      }
+      if (mode === "passkey") {
+        const cancel = document.querySelector("#cancelWebAuthnAIA").getBoundingClientRect();
+        document.body.dataset.passkeyActions = String(
+          primaryBox.width / formBox.width >= 0.96 &&
+          cancel.width / formBox.width >= 0.96 &&
+          primaryBox.bottom <= cancel.top + 1
         );
       }
     }

@@ -1,6 +1,7 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { buildApp } from "../src/app.js";
+import { KeycloakAccountSelfService } from "../src/modules/account-self-service/client.js";
 import type { HubOidcAction } from "../src/modules/hub-auth/oidc-provider.js";
 import { HubAuthError, type HubAuthRuntime } from "../src/modules/hub-auth/service.js";
 import {
@@ -30,6 +31,7 @@ const identityDirectory: IdentityDirectory = {
 function appWithHub(
   hubAuth: HubAuthRuntime,
   directory: IdentityDirectory | undefined = identityDirectory,
+  accountSelfService?: KeycloakAccountSelfService,
 ) {
   return buildApp({
     accessService: {
@@ -43,6 +45,7 @@ function appWithHub(
     hubAuth,
     hubRedirectUri: "https://hub-staging.sabilulquran.or.id/auth/callback",
     identityDirectory: directory,
+    accountSelfService,
   });
 }
 
@@ -57,6 +60,7 @@ function fakeHub(overrides: Partial<HubAuthRuntime> = {}): HubAuthRuntime {
         "sq_hub_session=opaque; Path=/; HttpOnly; SameSite=Lax; Secure",
         "sq_hub_oidc_tx=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0; Secure",
       ],
+      returnPath: "/account",
     }),
     getWorkspace: async () => ({
       user: { displayName: "Ahmad Fikri", initials: "AF" },
@@ -77,9 +81,13 @@ function fakeHub(overrides: Partial<HubAuthRuntime> = {}): HubAuthRuntime {
       username: "19870001",
       email: "synthetic@example.test",
       emailVerified: true,
+      accountRefreshTokenCiphertext: null,
       createdAt: new Date("2026-09-18T00:00:00Z"),
       expiresAt: new Date("2026-09-18T12:00:00Z"),
     }),
+    getAccountAccess: async () => {
+      throw new HubAuthError(428, "ACCOUNT_REAUTH_REQUIRED", "synthetic old session");
+    },
     logout: async () => ({
       clearCookie: "sq_hub_session=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0; Secure",
       logoutUrl: new URL("https://login.example.test/logout"),
@@ -90,6 +98,10 @@ function fakeHub(overrides: Partial<HubAuthRuntime> = {}): HubAuthRuntime {
   };
 }
 
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
+
 describe("SQ Hub browser auth routes", () => {
   it("starts OIDC with an opaque HttpOnly transaction cookie", async () => {
     const app = appWithHub(fakeHub());
@@ -99,6 +111,31 @@ describe("SQ Hub browser auth routes", () => {
     expect(response.statusCode).toBe(302);
     expect(response.headers.location).toBe("https://login.example.test/authorize");
     expect(response.headers["set-cookie"]).toContain("HttpOnly");
+  });
+
+  it("binds account reauthentication to the current Hub session", async () => {
+    let replacementToken: string | null | undefined;
+    const app = appWithHub(
+      fakeHub({
+        beginLogin: async (_action, _returnPath, replaceSessionToken) => {
+          replacementToken = replaceSessionToken;
+          return {
+            authorizationUrl: new URL("https://login.example.test/authorize"),
+            setCookie: "sq_hub_oidc_tx=opaque; Path=/; HttpOnly; SameSite=Lax; Secure",
+          };
+        },
+      }),
+    );
+
+    const response = await app.inject({
+      method: "GET",
+      url: "/auth/oidc/start?returnTo=account",
+      headers: { cookie: "sq_hub_session=opaque" },
+    });
+    await app.close();
+
+    expect(response.statusCode).toBe(302);
+    expect(replacementToken).toBe("opaque");
   });
 
   it("returns the authorized workspace without an identity subject field", async () => {
@@ -151,6 +188,8 @@ describe("SQ Hub browser auth routes", () => {
         username: "19870001",
         email: "synthetic@example.test",
         emailVerified: true,
+        fields: [],
+        supportedLocales: [],
       },
       security: {
         totpConfigured: true,
@@ -163,10 +202,42 @@ describe("SQ Hub browser auth routes", () => {
           canonicalUrl: "https://hcis.example",
         },
       ],
+      management: {
+        available: false,
+        reauthRequired: false,
+        credentials: [],
+        devices: [],
+        applications: [],
+        linkedAccounts: [],
+        availableAccountLinks: [],
+        groups: [],
+      },
     });
     expect(response.body).not.toContain("synthetic-subject");
     expect(response.body).not.toContain("issuer");
     expect(response.body).not.toContain("/realms/");
+  });
+
+  it("requires a fresh delegated account session for older Hub sessions", async () => {
+    const app = appWithHub(
+      fakeHub(),
+      identityDirectory,
+      new KeycloakAccountSelfService(accountIssuer),
+    );
+    const response = await app.inject({
+      method: "GET",
+      url: "/account",
+      headers: { cookie: "sq_hub_session=opaque" },
+    });
+    await app.close();
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      management: {
+        available: false,
+        reauthRequired: true,
+      },
+    });
   });
 
   it("keeps native account usable when the identity directory is unavailable", async () => {
@@ -186,12 +257,13 @@ describe("SQ Hub browser auth routes", () => {
     await app.close();
 
     expect(response.statusCode).toBe(200);
-    expect(response.json()).toEqual({
+    expect(response.json()).toMatchObject({
       profile: {
         displayName: "Ahmad Fikri",
         username: "19870001",
         email: "synthetic@example.test",
         emailVerified: true,
+        fields: [],
       },
       security: {
         totpConfigured: null,
@@ -218,6 +290,7 @@ describe("SQ Hub browser auth routes", () => {
           username: null,
           email: null,
           emailVerified: null,
+          accountRefreshTokenCiphertext: null,
           createdAt: new Date("2026-09-18T00:00:00Z"),
           expiresAt: new Date("2026-09-18T12:00:00Z"),
         }),
@@ -244,6 +317,7 @@ describe("SQ Hub browser auth routes", () => {
         username: null,
         email: null,
         emailVerified: null,
+        fields: [],
       },
       security: {
         totpConfigured: null,
@@ -267,12 +341,153 @@ describe("SQ Hub browser auth routes", () => {
     expect(response.json()).toEqual({ error: "UNAUTHENTICATED" });
   });
 
-  it("starts only the allowlisted password account action", async () => {
+  it("starts UPDATE_EMAIL only after same-origin and provider metadata validation", async () => {
     let requestedAction: HubOidcAction | undefined;
+    const accountSelfService = new KeycloakAccountSelfService(accountIssuer);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        new Response(
+          JSON.stringify({
+            email: "synthetic@example.test",
+            attributes: {},
+            userProfileMetadata: {
+              attributes: [
+                {
+                  name: "email",
+                  displayName: "email",
+                  readOnly: false,
+                  required: true,
+                  multivalued: false,
+                  annotations: { "kc.required.action.supported": true },
+                },
+              ],
+            },
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        ),
+      ),
+    );
     const app = appWithHub(
       fakeHub({
+        getAccountAccess: async () => ({
+          session: await fakeHub().getSession("opaque"),
+          accessToken: "short-lived-account-access",
+        }),
         beginLogin: async (action) => {
           requestedAction = action;
+          return {
+            authorizationUrl: new URL("https://login.example.test/authorize"),
+            setCookie: "sq_hub_oidc_tx=opaque; Path=/; HttpOnly; SameSite=Lax; Secure",
+          };
+        },
+      }),
+      identityDirectory,
+      accountSelfService,
+    );
+
+    const forbidden = await app.inject({
+      method: "POST",
+      url: "/account/profile/email/action",
+      headers: { cookie: "sq_hub_session=opaque" },
+    });
+    expect(forbidden.statusCode).toBe(403);
+    expect(requestedAction).toBeUndefined();
+
+    const accepted = await app.inject({
+      method: "POST",
+      url: "/account/profile/email/action",
+      headers: {
+        cookie: "sq_hub_session=opaque",
+        origin: "https://hub-staging.sabilulquran.or.id",
+      },
+    });
+    await app.close();
+
+    expect(accepted.statusCode).toBe(200);
+    expect(accepted.json()).toEqual({
+      authorizationUrl: "https://login.example.test/authorize",
+    });
+    expect(requestedAction).toBe("UPDATE_EMAIL");
+  });
+
+  it("starts a credential action only from fresh provider metadata", async () => {
+    let requestedAction: HubOidcAction | undefined;
+    let replacementToken: string | null | undefined;
+    const accountSelfService = new KeycloakAccountSelfService(accountIssuer);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: string | URL | Request) => {
+        const url =
+          input instanceof Request
+            ? input.url
+            : input instanceof URL
+              ? input.href
+              : input;
+        if (new URL(url).pathname.endsWith("/account/credentials")) {
+          return new Response(
+            JSON.stringify([
+              {
+                type: "webauthn-passwordless",
+                category: "passwordless",
+                displayName: "webauthn-passwordless-display-name",
+                createAction: "webauthn-register-passwordless",
+                updateAction: "",
+                removeable: true,
+                userCredentialMetadatas: [],
+              },
+            ]),
+            { status: 200, headers: { "Content-Type": "application/json" } },
+          );
+        }
+        throw new Error(`unexpected fetch: ${url}`);
+      }),
+    );
+    const app = appWithHub(
+      fakeHub({
+        getAccountAccess: async () => ({
+          session: await fakeHub().getSession("opaque"),
+          accessToken: "short-lived-account-access",
+        }),
+        beginLogin: async (action, _returnPath, replaceSessionToken) => {
+          requestedAction = action;
+          replacementToken = replaceSessionToken;
+          return {
+            authorizationUrl: new URL("https://login.example.test/authorize"),
+            setCookie: "sq_hub_oidc_tx=opaque; Path=/; HttpOnly; SameSite=Lax; Secure",
+          };
+        },
+      }),
+      identityDirectory,
+      accountSelfService,
+    );
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/account/credentials/webauthn-passwordless/create",
+      headers: {
+        cookie: "sq_hub_session=opaque",
+        origin: "https://hub-staging.sabilulquran.or.id",
+      },
+    });
+    await app.close();
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({
+      authorizationUrl: "https://login.example.test/authorize",
+    });
+    expect(requestedAction).toBe("webauthn-register-passwordless");
+    expect(replacementToken).toBe("opaque");
+  });
+
+  it("starts only the allowlisted password account action", async () => {
+    let requestedAction: HubOidcAction | undefined;
+    let replacementToken: string | null | undefined;
+    const app = appWithHub(
+      fakeHub({
+        beginLogin: async (action, _returnPath, replaceSessionToken) => {
+          requestedAction = action;
+          replacementToken = replaceSessionToken;
           return {
             authorizationUrl: new URL("https://login.example.test/authorize"),
             setCookie: "sq_hub_oidc_tx=opaque; Path=/; HttpOnly; SameSite=Lax; Secure",
@@ -291,6 +506,7 @@ describe("SQ Hub browser auth routes", () => {
     expect(response.statusCode).toBe(302);
     expect(response.headers.location).toBe("https://login.example.test/authorize");
     expect(requestedAction).toBe("UPDATE_PASSWORD");
+    expect(replacementToken).toBe("opaque");
   });
 
   it("rejects arbitrary account actions before creating an OIDC transaction", async () => {
@@ -330,6 +546,30 @@ describe("SQ Hub browser auth routes", () => {
 
     expect(response.statusCode).toBe(302);
     expect(response.headers.location).toBe("/account");
+  });
+
+  it("returns a failed account action to native Akun SQ even without kc_action in callback", async () => {
+    const app = appWithHub(
+      fakeHub({
+        completeLogin: async () => {
+          throw new HubAuthError(
+            400,
+            "OIDC_COMPLETION_FAILED",
+            "synthetic cancellation",
+            "/account",
+          );
+        },
+      }),
+    );
+    const response = await app.inject({
+      method: "GET",
+      url: "/auth/callback?error=access_denied&state=synthetic",
+      headers: { cookie: "sq_hub_oidc_tx=opaque" },
+    });
+    await app.close();
+
+    expect(response.statusCode).toBe(302);
+    expect(response.headers.location).toBe("/account?authError=oidc_failed");
   });
 
   it("clears the local session and returns the official OIDC logout URL", async () => {
