@@ -67,11 +67,13 @@ class MemoryStore implements HubAuthStore {
     expiresAt: Date;
     context: HubRequestContext;
   }) {
+    let effectiveExpiresAt = input.expiresAt;
     if (input.replaceSessionTokenHash) {
       if (!this.session || this.session.tokenHash !== input.replaceSessionTokenHash) {
         throw new Error("replacement session is no longer active");
       }
       this.revokedHash = input.replaceSessionTokenHash;
+      effectiveExpiresAt = this.session.record.expiresAt;
     }
 
     const record: HubSessionRecord = {
@@ -84,7 +86,7 @@ class MemoryStore implements HubAuthStore {
       emailVerified: input.identity.emailVerified,
       accountRefreshTokenCiphertext: input.accountRefreshTokenCiphertext,
       createdAt: new Date(),
-      expiresAt: input.expiresAt,
+      expiresAt: effectiveExpiresAt,
     };
     this.session = { tokenHash: input.tokenHash, identity: input.identity, record };
     return record;
@@ -317,6 +319,47 @@ describe("HubAuthService", () => {
     await expect(auth.getSession(newSessionToken)).resolves.toMatchObject({
       subject: "opaque-subject",
     });
+  });
+
+  it("caps replacement session cookie lifetime to the previous absolute expiry", async () => {
+    const { auth, store } = service();
+    const initial = await auth.beginLogin(undefined, "/account");
+    const initialTransactionToken = cookieValue(
+      initial.setCookie,
+      HUB_OIDC_TRANSACTION_COOKIE_NAME,
+    );
+    const initialCompleted = await auth.completeLogin(
+      new URL("https://hub-staging.sabilulquran.or.id/auth/callback"),
+      initialTransactionToken,
+      context,
+    );
+    const oldSessionToken = cookieValue(
+      initialCompleted.setCookies[0]!,
+      HUB_SESSION_COOKIE_NAME,
+    );
+    store.session!.record.expiresAt = new Date(Date.now() + 30 * 60 * 1000);
+
+    const action = await auth.beginLogin(
+      "UPDATE_PASSWORD",
+      "/account",
+      oldSessionToken,
+    );
+    const actionTransactionToken = cookieValue(
+      action.setCookie,
+      HUB_OIDC_TRANSACTION_COOKIE_NAME,
+    );
+    const completed = await auth.completeLogin(
+      new URL("https://hub-staging.sabilulquran.or.id/auth/callback"),
+      actionTransactionToken,
+      context,
+    );
+
+    const maxAge = Number(
+      /Max-Age=(\d+)/.exec(completed.setCookies[0] ?? "")?.[1] ?? "0",
+    );
+    expect(maxAge).toBeGreaterThan(0);
+    expect(maxAge).toBeLessThanOrEqual(30 * 60);
+    expect(maxAge).toBeGreaterThan(29 * 60);
   });
 
   it("rejects an identity switch while preserving the original Hub session", async () => {
