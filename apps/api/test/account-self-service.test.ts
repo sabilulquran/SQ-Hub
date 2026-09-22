@@ -255,6 +255,7 @@ describe("KeycloakAccountSelfService", () => {
     expect(JSON.stringify(snapshot.credentials)).not.toContain(
       "webauthn-register-passwordless",
     );
+    expect(JSON.stringify(snapshot.credentials)).not.toContain("CONFIGURE_TOTP");
     expect(snapshot.devices[0]?.sessions[0]?.current).toBe(true);
     expect(snapshot.applications[0]?.name).toBe("SQ Hub");
     expect(snapshot.applications[0]?.effectiveUrl).toBe("https://hub.example.test/");
@@ -438,7 +439,13 @@ describe("KeycloakAccountSelfService", () => {
         },
         {
           type: "unsafe-delete",
-          createAction: "delete_account",
+          createAction: "DELETE_ACCOUNT",
+          updateAction: "",
+          userCredentialMetadatas: [],
+        },
+        {
+          type: "unsafe-email",
+          createAction: "Update_Email",
           updateAction: "",
           userCredentialMetadatas: [],
         },
@@ -467,6 +474,15 @@ describe("KeycloakAccountSelfService", () => {
     await expect(
       client.resolveCredentialAction(token, {
         type: "unsafe-delete",
+        operation: "create",
+      }),
+    ).rejects.toMatchObject({
+      statusCode: 400,
+      code: "CREDENTIAL_ACTION_NOT_AVAILABLE",
+    });
+    await expect(
+      client.resolveCredentialAction(token, {
+        type: "unsafe-email",
         operation: "create",
       }),
     ).rejects.toMatchObject({
