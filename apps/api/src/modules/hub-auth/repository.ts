@@ -175,6 +175,8 @@ export class PgHubAuthRepository implements HubAuthStore {
             SET revoked_at = now(),
                 account_refresh_token_ciphertext = NULL
             WHERE token_hash = $1
+              AND identity_issuer = $2
+              AND identity_subject = $3
               AND revoked_at IS NULL
               AND expires_at > now()
             RETURNING
@@ -182,11 +184,15 @@ export class PgHubAuthRepository implements HubAuthStore {
               identity_issuer AS "identityIssuer",
               identity_subject AS "identitySubject"
           `,
-          [input.replaceSessionTokenHash],
+          [
+            input.replaceSessionTokenHash,
+            input.identity.issuer,
+            input.identity.subject,
+          ],
         );
         replacedSession = replacement.rows[0];
         if (!replacedSession) {
-          throw new Error("Hub session selected for replacement is no longer active");
+          throw new Error("Hub session selected for replacement is no longer active or changed identity");
         }
       }
 
