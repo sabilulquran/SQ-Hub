@@ -105,8 +105,8 @@ export const accountFixture: AccountSnapshot = {
         category: "basic-authentication",
         label: "password-display-name",
         helpText: "Gunakan kata sandi yang kuat untuk Akun SQ.",
-        createAction: null,
-        updateAction: "UPDATE_PASSWORD",
+        canCreate: false,
+        canUpdate: true,
         removeable: false,
         credentials: [
           {
@@ -121,8 +121,8 @@ export const accountFixture: AccountSnapshot = {
         category: "two-factor",
         label: "otp-display-name",
         helpText: "Authenticator melindungi akun dengan verifikasi tambahan.",
-        createAction: "CONFIGURE_TOTP",
-        updateAction: null,
+        canCreate: true,
+        canUpdate: false,
         removeable: true,
         credentials: [
           {
@@ -137,8 +137,8 @@ export const accountFixture: AccountSnapshot = {
         category: "two-factor",
         label: "recovery-authn-codes-display-name",
         helpText: "Kode pemulihan digunakan bila authenticator tidak tersedia.",
-        createAction: "CONFIGURE_RECOVERY_AUTHN_CODES",
-        updateAction: "CONFIGURE_RECOVERY_AUTHN_CODES",
+        canCreate: true,
+        canUpdate: true,
         removeable: false,
         credentials: [
           {
