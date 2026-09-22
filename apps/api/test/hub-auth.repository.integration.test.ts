@@ -91,6 +91,55 @@ describe("Hub session replacement persistence", () => {
     expect(audit.rows.filter((row) => row.action === "hub.auth.session.replaced")).toHaveLength(1);
   });
 
+  it("does not replace an active session when the new identity differs", async () => {
+    const oldTokenHash = "e".repeat(64);
+    const newTokenHash = "f".repeat(64);
+
+    await repository.createSession({
+      tokenHash: oldTokenHash,
+      identity,
+      accountRefreshTokenCiphertext: "sealed-old-refresh",
+      expiresAt: new Date(Date.now() + 60 * 60 * 1000),
+      context,
+    });
+
+    await expect(
+      repository.createSession({
+        tokenHash: newTokenHash,
+        identity: { ...identity, subject: "different-subject" },
+        accountRefreshTokenCiphertext: "sealed-new-refresh",
+        replaceSessionTokenHash: oldTokenHash,
+        expiresAt: new Date(Date.now() + 60 * 60 * 1000),
+        context,
+      }),
+    ).rejects.toThrow("changed identity");
+
+    const result = await pool.query<{
+      tokenHash: string;
+      ciphertext: string | null;
+      revokedAt: Date | null;
+    }>(
+      `
+        SELECT
+          token_hash AS "tokenHash",
+          account_refresh_token_ciphertext AS ciphertext,
+          revoked_at AS "revokedAt"
+        FROM hub_sessions
+        WHERE token_hash IN ($1, $2)
+        ORDER BY token_hash
+      `,
+      [oldTokenHash, newTokenHash],
+    );
+
+    expect(result.rows).toEqual([
+      {
+        tokenHash: oldTokenHash,
+        ciphertext: "sealed-old-refresh",
+        revokedAt: null,
+      },
+    ]);
+  });
+
   it("rolls back the new session when the replacement target is no longer active", async () => {
     const newTokenHash = "c".repeat(64);
 
