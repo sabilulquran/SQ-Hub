@@ -53,7 +53,7 @@ jobs:
           grep -Fxq 'title=Akun SQ' "$account/theme.properties"
           grep -Fxq 'logo=img/ysq-mark.png' "$account/theme.properties"
           grep -Fq 'img/ysq-mark.png' "$login/footer.ftl"
-          test "$(git hash-object "$login/resources/css/akun-sq-login-a7cdc6626ac7.css" | cut -c1-12)" = be6b1a63ccf6
+          test "$(git hash-object "$login/resources/css/akun-sq-login-a7cdc6626ac7.css" | cut -c1-12)" = a7cdc6626ac7
           grep -Fxq 'favicons.svg=img/favicon.svg' "$login/theme.properties"
           cmp -s "$login/resources/img/ysq-mark.png" apps/web/src/assets/brand/ysq-mark.png
           cmp -s "$account/resources/img/ysq-mark.png" apps/web/src/assets/brand/ysq-mark.png
@@ -75,6 +75,9 @@ jobs:
           grep -Fq 'name="otp"' "$theme/login-otp.ftl"
           grep -Fq 'name="trustDevice"' "$theme/login-otp.ftl"
           grep -Fxq 'loginTitle=Akun SQ' "$theme/messages/messages_id.properties"
+          grep -Fxq 'webauthn-registration-title=Tambahkan passkey' "$theme/messages/messages_id.properties"
+          grep -Fxq 'passkey-doAuthenticate=Masuk dengan passkey' "$theme/messages/messages_id.properties"
+          grep -Fq '#cancelWebAuthnAIA' "$theme/resources/css/akun-sq-login-a7cdc6626ac7.css"
           grep -Fxq "akunSqFooter=Satu akun untuk layanan digital Yayasan Sabilul Qur'an." "$theme/messages/messages_id.properties"
           grep -Fq '${msg("akunSqFooter")}' "$theme/footer.ftl"
 
