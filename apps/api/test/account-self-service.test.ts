@@ -75,6 +75,13 @@ describe("KeycloakAccountSelfService", () => {
         userProfileMetadata: {
           attributes: [
             {
+              name: "locale",
+              displayName: "locale",
+              required: false,
+              readOnly: false,
+              multivalued: false,
+            },
+            {
               name: "username",
               displayName: "username",
               required: true,
@@ -179,6 +186,7 @@ describe("KeycloakAccountSelfService", () => {
       "/realms/staff/account/groups": [
         { id: "group-1", name: "Human Capital", path: "/Human Capital" },
       ],
+      "/realms/staff/account/supportedLocales": ["id"],
     });
     const client = new KeycloakAccountSelfService(issuer);
 
@@ -191,6 +199,15 @@ describe("KeycloakAccountSelfService", () => {
       emailVerified: true,
     });
     expect(snapshot.profile.fields).toEqual([
+      {
+        name: "locale",
+        label: "locale",
+        required: false,
+        readOnly: false,
+        multivalued: false,
+        values: ["id"],
+        requiredAction: null,
+      },
       {
         name: "username",
         label: "username",
@@ -219,6 +236,7 @@ describe("KeycloakAccountSelfService", () => {
         requiredAction: "UPDATE_EMAIL",
       },
     ]);
+    expect(snapshot.profile.supportedLocales).toEqual(["id"]);
     expect(snapshot.credentials[0]?.credentials[0]?.id).toBe("cred-otp-1");
     expect(snapshot.credentials[1]).toMatchObject({
       type: "future-passkey",
@@ -249,12 +267,14 @@ describe("KeycloakAccountSelfService", () => {
       "/realms/staff/account/linked-accounts?linked=true&first=0&max=100": [],
       "/realms/staff/account/linked-accounts?linked=false&first=0&max=100": [],
       "/realms/staff/account/groups": { status: 403 },
+      "/realms/staff/account/supportedLocales": ["id"],
     });
     const client = new KeycloakAccountSelfService(issuer);
 
     const snapshot = await client.snapshot(token);
 
     expect(snapshot.profile.username).toBe("19870001");
+    expect(snapshot.profile.supportedLocales).toEqual(["id"]);
     expect(snapshot.groups).toEqual([]);
   });
 
