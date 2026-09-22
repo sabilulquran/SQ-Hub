@@ -133,6 +133,16 @@ export const accountFixture: AccountSnapshot = {
         ],
       },
       {
+        type: "webauthn-passwordless",
+        category: "passwordless",
+        label: "webauthn-passwordless-display-name",
+        helpText: "Gunakan passkey untuk metode masuk yang didukung Akun SQ.",
+        canCreate: true,
+        canUpdate: false,
+        removeable: true,
+        credentials: [],
+      },
+      {
         type: "recovery-authn-code",
         category: "two-factor",
         label: "recovery-authn-codes-display-name",
