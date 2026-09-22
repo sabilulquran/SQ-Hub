@@ -15,7 +15,6 @@ on:
       - "infra/keycloak/clients/sq-hub-production.json"
       - "infra/keycloak/scripts/reconcile-hub-production-client.sh"
       - "infra/keycloak/scripts/reconcile-native-account-self-service.sh"
-      - "infra/keycloak/scripts/reconcile-native-account-self-service.sh"
       - "infra/keycloak/scripts/verify-hub-production-secret-fingerprint.sh"
       - "infra/keycloak/scripts/reconcile-master-production-recovery.sh"
       - "infra/keycloak/realm/master-production-recovery.json"
@@ -41,6 +40,7 @@ on:
       - "infra/reverse-proxy.caddy.production.example"
       - "infra/keycloak/clients/sq-hub-production.json"
       - "infra/keycloak/scripts/reconcile-hub-production-client.sh"
+      - "infra/keycloak/scripts/reconcile-native-account-self-service.sh"
       - "infra/keycloak/scripts/verify-hub-production-secret-fingerprint.sh"
       - "infra/keycloak/scripts/reconcile-master-production-recovery.sh"
       - "infra/keycloak/realm/master-production-recovery.json"
@@ -143,10 +143,18 @@ jobs:
 
       - name: Validate production reconciliation script syntax
         run: |
+          native_account_reconcile='infra/keycloak/scripts/reconcile-native-account-self-service.sh'
           bash -n infra/keycloak/scripts/reconcile-hub-production-client.sh
-          bash -n infra/keycloak/scripts/reconcile-native-account-self-service.sh
+          bash -n "$native_account_reconcile"
           bash -n infra/keycloak/scripts/verify-hub-production-secret-fingerprint.sh
           bash -n infra/keycloak/scripts/reconcile-master-production-recovery.sh
+          grep -Fq '(.organizationsEnabled // false) == false' "$native_account_reconcile"
+          grep -Fq '(.userManagedAccessAllowed // false) == false' "$native_account_reconcile"
+          grep -Fq '(.verifiableCredentialsEnabled // false) == false' "$native_account_reconcile"
+          grep -Fq 'delete_account' "$native_account_reconcile"
+          grep -Fq 'NATIVE_ACCOUNT_CAPABILITY_BASELINE_PASS' "$native_account_reconcile"
+          grep -Fq 'NATIVE_ACCOUNT_SCOPE_MAPPING_PASS' "$native_account_reconcile"
+          grep -Fq 'NATIVE_ACCOUNT_AUDIENCE_PASS' "$native_account_reconcile"
 
       - name: Secret scan for production launcher scope
         shell: bash
