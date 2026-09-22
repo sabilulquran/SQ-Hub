@@ -108,6 +108,7 @@ export interface AccountSnapshot {
     email: string | null;
     emailVerified: boolean | null;
     fields: AccountProfileField[];
+    supportedLocales: string[];
   };
   security: {
     totpConfigured: boolean | null;
