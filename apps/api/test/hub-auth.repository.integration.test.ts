@@ -33,12 +33,13 @@ describe("Hub session replacement persistence", () => {
   it("revokes the previous session and clears its delegated token atomically", async () => {
     const oldTokenHash = "a".repeat(64);
     const newTokenHash = "b".repeat(64);
+    const originalExpiry = new Date(Date.now() + 30 * 60 * 1000);
 
     await repository.createSession({
       tokenHash: oldTokenHash,
       identity,
       accountRefreshTokenCiphertext: "sealed-old-refresh",
-      expiresAt: new Date(Date.now() + 60 * 60 * 1000),
+      expiresAt: originalExpiry,
       context,
     });
 
@@ -47,7 +48,7 @@ describe("Hub session replacement persistence", () => {
       identity,
       accountRefreshTokenCiphertext: "sealed-new-refresh",
       replaceSessionTokenHash: oldTokenHash,
-      expiresAt: new Date(Date.now() + 60 * 60 * 1000),
+      expiresAt: new Date(Date.now() + 2 * 60 * 60 * 1000),
       context,
     });
 
@@ -55,12 +56,14 @@ describe("Hub session replacement persistence", () => {
       tokenHash: string;
       ciphertext: string | null;
       revokedAt: Date | null;
+      expiresAt: Date;
     }>(
       `
         SELECT
           token_hash AS "tokenHash",
           account_refresh_token_ciphertext AS ciphertext,
-          revoked_at AS "revokedAt"
+          revoked_at AS "revokedAt",
+          expires_at AS "expiresAt"
         FROM hub_sessions
         WHERE token_hash IN ($1, $2)
         ORDER BY token_hash
@@ -79,6 +82,7 @@ describe("Hub session replacement persistence", () => {
       ciphertext: "sealed-new-refresh",
       revokedAt: null,
     });
+    expect(sessions.rows[1]?.expiresAt.getTime()).toBe(originalExpiry.getTime());
 
     const audit = await pool.query<{ action: string }>(
       `
