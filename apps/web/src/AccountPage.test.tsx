@@ -62,8 +62,13 @@ describe("native Akun SQ account route", () => {
     expect(html).toContain("Windows");
     expect(html).toContain("Android");
     expect(html).toContain("Keluar dari semua sesi lain");
-    expect(html).toContain("Digunakan oleh: SQ Hub, HCIS");
-    expect(html).toContain("Digunakan oleh: HCIS");
+    expect(html).toContain("Alamat IP");
+    expect(html).toContain("192.0.2.10");
+    expect(html).toContain("Aktivitas terakhir");
+    expect(html).toContain("Mulai");
+    expect(html).toContain("Berakhir");
+    expect(html).toContain("SQ Hub, HCIS");
+    expect(html).toContain("HCIS");
     expect((html.match(/>Keluar<\/button>/g) ?? []).length).toBe(1);
   });
 
@@ -80,8 +85,11 @@ describe("native Akun SQ account route", () => {
     expect(html).toContain("Aplikasi yang terhubung ke Akun SQ");
     expect(html).toContain("HCIS");
     expect(html).toContain("Aplikasi Mitra");
-    expect(html).toContain("Cabut akses");
+    expect(html).toContain("Cabut persetujuan");
     expect(html).toContain("Profil dasar");
+    expect(html).toContain("Aplikasi pihak ketiga");
+    expect(html).toContain("tidak menghapus hak akses aplikasi");
+    expect(html).toContain('href="https://partner.example.test/"');
   });
 
   it("renders linked identities without exposing provider implementation details", () => {
