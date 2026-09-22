@@ -16,14 +16,14 @@ export type ProviderCredentialAction = string & {
 
 const RESERVED_PROVIDER_CREDENTIAL_ACTIONS = new Set([
   "delete_account",
-  "UPDATE_EMAIL",
+  "update_email",
 ]);
 
 export function providerCredentialAction(
   value: string,
 ): ProviderCredentialAction | null {
   if (!/^[A-Za-z0-9_.-]{1,128}$/.test(value)) return null;
-  if (RESERVED_PROVIDER_CREDENTIAL_ACTIONS.has(value)) return null;
+  if (RESERVED_PROVIDER_CREDENTIAL_ACTIONS.has(value.toLowerCase())) return null;
   return value as ProviderCredentialAction;
 }
 
