@@ -88,6 +88,14 @@ function friendlyProfileLabel(field: AccountProfileField): string {
   return mapping[raw] ?? raw.replace(/[_-]+/g, " ");
 }
 
+function localeLabel(locale: string): string {
+  const labels: Record<string, string> = {
+    id: "Bahasa Indonesia",
+    en: "English",
+  };
+  return labels[locale] ?? locale;
+}
+
 function credentialLabel(item: AccountCredentialType): string {
   const type = item.type.toLowerCase();
   if (type === "password") return "Kata sandi";
@@ -484,7 +492,29 @@ function ProfileSection({
                 {friendlyProfileLabel(field)}
                 {field.required ? <span aria-label="wajib">*</span> : null}
               </span>
-              {field.multivalued ? (
+              {field.name === "locale" && account.profile.supportedLocales.length > 0 ? (
+                <select
+                  disabled={field.readOnly || Boolean(field.requiredAction)}
+                  value={values[field.name] ?? ""}
+                  onChange={(event) =>
+                    setValues((current) => ({ ...current, [field.name]: event.target.value }))
+                  }
+                  className={inputClass(field.readOnly || Boolean(field.requiredAction))}
+                >
+                  <option value="">Pilih bahasa</option>
+                  {(values[field.name] ?? "") &&
+                  !account.profile.supportedLocales.includes(values[field.name] ?? "") ? (
+                    <option value={values[field.name] ?? ""}>
+                      {localeLabel(values[field.name] ?? "")}
+                    </option>
+                  ) : null}
+                  {account.profile.supportedLocales.map((locale) => (
+                    <option key={locale} value={locale}>
+                      {localeLabel(locale)}
+                    </option>
+                  ))}
+                </select>
+              ) : field.multivalued ? (
                 <textarea
                   rows={3}
                   readOnly={field.readOnly || Boolean(field.requiredAction)}
