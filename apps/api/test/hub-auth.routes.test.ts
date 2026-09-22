@@ -189,6 +189,7 @@ describe("SQ Hub browser auth routes", () => {
         email: "synthetic@example.test",
         emailVerified: true,
         fields: [],
+        supportedLocales: [],
       },
       security: {
         totpConfigured: true,
