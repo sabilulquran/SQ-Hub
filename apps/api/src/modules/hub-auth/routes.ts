@@ -196,6 +196,7 @@ export function registerHubAuthRoutes(
           values: string[];
           requiredAction: "UPDATE_EMAIL" | null;
         }>,
+        supportedLocales: [] as string[],
       };
       let security = {
         totpConfigured: null as boolean | null,
@@ -215,6 +216,7 @@ export function registerHubAuthRoutes(
               email: identity.email,
               emailVerified: identity.emailVerified,
               fields: profile.fields,
+              supportedLocales: profile.supportedLocales,
             };
             security = identity.security;
           }
