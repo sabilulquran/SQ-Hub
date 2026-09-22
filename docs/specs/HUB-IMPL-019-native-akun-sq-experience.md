@@ -38,7 +38,9 @@ Baseline parity untuk Foundation:
 
 ### 2. Keamanan
 - tampilkan seluruh credential container yang diberikan Account API;
-- password, TOTP/authenticator, dan recovery code tetap dapat dibuat/diperbarui sesuai metadata/action provider;
+- password, TOTP/authenticator, recovery code, passkey/WebAuthn, dan credential type lain yang benar-benar dilaporkan provider tetap dapat dibuat/diperbarui sesuai metadata/action provider;
+- browser hanya menerima availability `canCreate/canUpdate`, bukan ID required action provider;
+- saat user memilih Tambah/Kelola, backend membaca ulang metadata Account API dan hanya kemudian memulai exact provider action;
 - credential yang memang removable dapat dihapus melalui required action resmi;
 - jangan menyembunyikan credential type aktif hanya karena native UI tidak mengenal labelnya.
 
@@ -109,11 +111,11 @@ Browser response tidak boleh berisi raw `sub`, issuer, access token, refresh tok
 
 Untuk action sensitif yang memang dimiliki identity engine, SQ Hub memulai Application Initiated Action (AIA) berdasarkan metadata Account API dan **validasi server-side**. Tidak ada arbitrary `kc_action` dari query browser.
 
-Baseline action yang diterima:
-- `UPDATE_PASSWORD`;
+Action yang diterima:
+- fixed Foundation action `UPDATE_PASSWORD`, `CONFIGURE_TOTP`, dan `CONFIGURE_RECOVERY_AUTHN_CODES`;
 - `UPDATE_EMAIL` hanya bila metadata profil provider menandai email mendukung required action tersebut;
-- `CONFIGURE_TOTP`;
-- `CONFIGURE_RECOVERY_AUTHN_CODES`;
+- credential create/update action lain hanya bila **exact action itu dibaca ulang server-side dari Account API untuk credential type + operation yang dipilih user**; browser tidak mengirim action ID;
+- provider-reported credential action harus berupa required-action ID sederhana dan tidak boleh memakai jalur reserved seperti `delete_account`, `UPDATE_EMAIL`, `idp_link:*`, atau `delete_credential:*`;
 - `idp_link:<provider>` hanya setelah provider diverifikasi tersedia bagi user;
 - `delete_credential:<credentialId>` hanya setelah credential diverifikasi milik user dan removable.
 
@@ -236,7 +238,7 @@ HUB-IMPL-019 tidak:
 1. Mengklik **Kelola Akun SQ** dari Hub membuka native `/account`, tidak redirect ke provider Account Console.
 2. Native navigation baseline memuat Profil Saya, Keamanan, Sesi & Perangkat, Aplikasi, dan Akun Terhubung; Keanggotaan muncul bila data group tersedia.
 3. Profil editable mengikuti metadata read-only/required/multivalued provider; field biasa disimpan melalui Account API, sedangkan email memakai `UPDATE_EMAIL` bila provider menandainya sebagai required-action-managed.
-4. Credential container aktif tidak dihilangkan; password/TOTP/recovery memakai provider action yang sudah diverifikasi server-side.
+4. Credential container aktif tidak dihilangkan; password/TOTP/recovery/passkey maupun credential type provider lain menampilkan create/update capability yang provider laporkan, sedangkan exact action ID selalu diselesaikan ulang server-side dan tidak datang dari browser.
 5. Device/session inventory berasal dari provider; non-current session dapat diakhiri dan semua sesi lain dapat diakhiri; individual deletion untuk current session ditolak server-side.
 6. SQ Application Access dan identity-connected applications/consents ditampilkan sebagai dua konsep berbeda.
 7. Linked provider dapat dihubungkan/diputus hanya setelah ownership/availability diverifikasi server-side.
