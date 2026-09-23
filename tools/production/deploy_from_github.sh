@@ -365,7 +365,7 @@ fi
 
 if [ "$api_change" = 1 ]; then
   sudo -n docker compose -f "$hub_compose" \
-    run --rm -T --no-deps api node apps/api/dist/db/migrate.js
+    run --rm -T --no-deps api node apps/api/dist/db/migrate.js </dev/null
   echo "API_MIGRATION_PASS source=$api_sha"
 
   deployed_api=1
