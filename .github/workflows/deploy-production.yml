@@ -155,7 +155,18 @@ jobs:
         run: |
           set -euo pipefail
 
-          ssh "$PROD_USER@$PROD_HOST" bash -s --             "$TARGET_SHA"             "$DEPLOY_SCOPE"             "$API_REPO"             "$WEB_REPO"             "$KEYCLOAK_REPO"             "$API_SOURCE_SHA"             "$WEB_SOURCE_SHA"             "$IDENTITY_SOURCE_SHA"             < tools/production/deploy_from_github.sh
+          deploy_log="$(mktemp)"
+          trap 'rm -f "$deploy_log"' EXIT
+
+          ssh "$PROD_USER@$PROD_HOST" bash -s --             "$TARGET_SHA"             "$DEPLOY_SCOPE"             "$API_REPO"             "$WEB_REPO"             "$KEYCLOAK_REPO"             "$API_SOURCE_SHA"             "$WEB_SOURCE_SHA"             "$IDENTITY_SOURCE_SHA"             < tools/production/deploy_from_github.sh | tee "$deploy_log"
+
+          grep -Fq 'SQ_HUB_PRODUCTION_DEPLOY_PASS' "$deploy_log" || {
+            echo "Production helper exited without SQ_HUB_PRODUCTION_DEPLOY_PASS" >&2
+            exit 1
+          }
+
+          rm -f "$deploy_log"
+          trap - EXIT
 
       - name: Logout root Docker client from GHCR
         if: always()
