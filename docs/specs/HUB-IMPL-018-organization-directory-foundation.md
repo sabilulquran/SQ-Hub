@@ -404,7 +404,66 @@ Consumer rollback:
 17. No secret or production person data is committed/logged.
 18. No merge or deployment is implied by specification acceptance.
 
-## Runtime status
+## Runtime implementation details
+
+Runtime SQ Hub mengikuti exact wire schema HCIS PR #86 head
+`f66fe8597b16c36af98cc1bf56230cbe5bef221e` dan kontrak Hub PR #97 head
+`523a8f913fa4f7a3bd5b95a20f2e184fb3bc5ed1`. Schema disalin sebagai local contract,
+bukan shared package/runtime dependency lintas repository. Golden fixture sintetis
+dibuat dari fungsi producer pada head tersebut; digest mencakup `schemaVersion`,
+`source`, `asOf`, `counts`, `units`, `positions`, `people` dengan urutan field
+producer (termasuk urutan field nested). `generatedAt` tidak masuk digest.
+
+Persistence v1 memakai satu row JSONB projection dan tombstones di PostgreSQL.
+Pembacaan satu row memberi snapshot konsisten untuk seluruh response. Transaction
+advisory lock diambil sebelum pull sampai commit agar dua instance/CLI tidak
+melakukan fetch/apply berlomba. Lock sibuk melewati run tanpa fetch. Tidak ada
+ordered delta cursor; full pull tetap mekanisme reconciliation.
+
+Guard terhadap source regression membandingkan tuple canonical HCIS
+`effectiveOn, publishedAt, createdAt, snapshotId` dan melarang `asOf` mundur.
+Perubahan person dengan tuple sama tetap diterima berdasarkan perubahan digest.
+Rollback source ke revision lebih tua memerlukan recovery operator; runtime tidak
+menganggapnya fresh secara otomatis.
+
+Read serialization v1:
+- list/search: `{ items, nextCursor, directory }`;
+- detail/person-by-identity: `{ item, directory }`;
+- ancestry: `{ items, directory }`, requested unit ke root;
+- `active` default `true`, `limit` default 25/maksimum 100;
+- `q` substring case-insensitive (unit name atau person displayName/employeeNumber);
+- `unitId` memfilter current primary unit person;
+- unit active search memperhitungkan inclusive effective interval pada projection `asOf`;
+- source `active` person dipertahankan, bukan ditebak dari employmentStatus atau tanggal;
+- cursor opaque terikat version/filter/limit; jika berubah, `400 INVALID_REQUEST`
+  dan consumer memulai ulang pagination;
+- missing source entity menjadi tombstone minimum: id + name/title/displayName,
+  `active=false`, `sourceAbsent=true`; identity refs/NIP/placement lama tidak dipertahankan;
+- tombstone dapat dibaca via id/inactive search; ancestry tanpa fakta hierarchy
+  current gagal `409`, identity lookup tidak memakai mapping tombstone;
+- stale mulai age `>= 900` detik; `staleForSeconds` adalah detik lewat threshold,
+  bukan total umur projection; `synchronizedAt` tetap waktu commit sukses terakhir;
+- setiap response memakai `Cache-Control: no-store`.
+
+Audience read Hub dikonfigurasi secara terpisah dari producer HCIS, recommended
+`sq-hub-organization-directory`; required scope tetap `organization-directory.read`.
+Verifier juga mewajibkan expiry, RS256, dan tidak menerima `azp/client_id` konflik.
+Allowlist hanya diisi client service-account-only; provisioning menonaktifkan
+standard/direct/implicit login flows. Tidak ada browser grant/cookie untuk read API.
+
+`ORG_DIRECTORY_SYNC_ENABLED=0` dan `ORG_DIRECTORY_READ_ENABLED=0` adalah default
+Hub. HCIS tetap memakai `ORG_DIRECTORY_EXPORT_ENABLED=0`; Hub tidak mengubah gate HCIS.
+Scheduler melakukan satu full pull saat startup enabled, lalu 5 menit setelah run
+selesai. Error transient/auth/schema menunggu cadence normal; source request 4xx
+selain 401/403/429 menghentikan scheduler sampai konfigurasi diperbaiki dan proses
+direstart. Manual reconciliation memakai CLI dan lock/validator/apply yang sama.
+HTTP token dibatasi 10 detik; snapshot 15 detik/16 MiB, redirect ditolak. Batas
+kapasitas perlu direview operator sebelum activation bila volume melebihi limit.
+
+Migration, provisioning, rollback/recovery, dan acceptance environment berada di
+[runbook runtime](../operations/organization-directory-runtime.md).
+
+## Runtime delivery status
 
 Contract v1: **ACCEPTED**.
 

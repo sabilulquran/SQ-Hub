@@ -12,7 +12,8 @@
     "migrate": "node --env-file-if-exists=.env.local --import tsx src/db/migrate.ts",
     "seed": "node --env-file-if-exists=.env.local --import tsx src/db/seed.ts",
     "access:admin": "node --env-file-if-exists=.env.local --import tsx src/cli/access-admin.ts",
-    "platform:admin": "node --env-file-if-exists=.env.local --import tsx src/cli/platform-admin.ts"
+    "platform:admin": "node --env-file-if-exists=.env.local --import tsx src/cli/platform-admin.ts",
+    "directory:admin": "node --env-file-if-exists=.env.local --import tsx src/cli/organization-directory.ts"
   },
   "dependencies": {
     "fastify": "5.12.1",

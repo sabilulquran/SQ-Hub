@@ -1,0 +1,84 @@
+{
+  "schemaVersion": "hcis-organization-directory.v1",
+  "source": {
+    "system": "hcis",
+    "snapshotId": "00000000-0000-4000-8000-000000000101",
+    "effectiveOn": "2026-09-01",
+    "publishedAt": "2026-09-01T01:00:00.000Z",
+    "createdAt": "2026-08-25T01:00:00.000Z"
+  },
+  "asOf": "2026-09-24",
+  "version": "sha256:3b14cbf84ed7634068053692288620675da8b3d16e6b458823cf3f696eaeca39",
+  "generatedAt": "2026-09-24T01:30:00.000Z",
+  "counts": {
+    "units": 2,
+    "positions": 1,
+    "people": 2
+  },
+  "units": [
+    {
+      "id": "hcis:org-node:00000000-0000-4000-8000-000000000104",
+      "name": "Yayasan Demo",
+      "nodeType": "ROOT",
+      "parentUnitId": null,
+      "active": true,
+      "effectiveFrom": "2026-01-01",
+      "effectiveTo": null
+    },
+    {
+      "id": "hcis:org-node:00000000-0000-4000-8000-000000000106",
+      "name": "Unit Demo",
+      "nodeType": "UNIT",
+      "parentUnitId": "hcis:org-node:00000000-0000-4000-8000-000000000104",
+      "active": true,
+      "effectiveFrom": "2026-01-01",
+      "effectiveTo": null
+    }
+  ],
+  "positions": [
+    {
+      "id": "hcis:org-position:00000000-0000-4000-8000-000000000110",
+      "unitId": "hcis:org-node:00000000-0000-4000-8000-000000000106",
+      "title": "Koordinator Demo",
+      "parentPositionId": null,
+      "active": true,
+      "effectiveFrom": "2026-01-01",
+      "effectiveTo": null
+    }
+  ],
+  "people": [
+    {
+      "id": "hcis:employee:00000000-0000-4000-8000-000000000115",
+      "employeeNumber": "DEMO-001",
+      "displayName": "Pegawai Demo Satu",
+      "active": true,
+      "employmentStatus": "Tetap",
+      "startedOn": "2025-01-01",
+      "endedOn": null,
+      "currentPrimaryUnitId": "hcis:org-node:00000000-0000-4000-8000-000000000106",
+      "structuralPositionIds": [
+        "hcis:org-position:00000000-0000-4000-8000-000000000110"
+      ],
+      "primaryStructuralPositionId": "hcis:org-position:00000000-0000-4000-8000-000000000110",
+      "identityRefs": [
+        {
+          "issuer": "https://identity.example.test/realms/demo",
+          "subject": "opaque-demo-subject"
+        }
+      ]
+    },
+    {
+      "id": "hcis:employee:00000000-0000-4000-8000-000000000116",
+      "employeeNumber": "DEMO-002",
+      "displayName": "Pegawai Demo Dua",
+      "active": false,
+      "employmentStatus": "Kontrak",
+      "startedOn": "2025-06-01",
+      "endedOn": null,
+      "currentPrimaryUnitId": null,
+      "structuralPositionIds": [],
+      "primaryStructuralPositionId": null,
+      "identityRefs": []
+    }
+  ]
+}
