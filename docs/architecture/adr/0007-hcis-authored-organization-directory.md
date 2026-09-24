@@ -142,20 +142,11 @@ Implementasi mendatang harus berlangsung bertahap:
 
 Tidak boleh ada dual-write atau import/cutover yang menjadikan Hub master organisasi.
 
-## Open decisions — DISCOVERY / TBD
+## Implementation contract v1
 
-Belum diputuskan:
+Discovery untuk implementasi v1 ditutup oleh **HUB-IMPL-018** pada 24 September 2026 setelah audit model HCIS. Keputusan v1 adalah pull full snapshot, namespaced stable identifiers yang diturunkan dari HCIS stable keys/employee UUID, content-addressed version, dedicated Keycloak client-credentials identity, atomic projection, full-pull reconciliation, target sync 5 menit, stale threshold 15 menit, dan last-known-good.
 
-- SLA sinkronisasi/freshness;
-- identifier global lintas aplikasi dan mapping dari identifier HCIS;
-- snapshot versus delta contract;
-- exact versioning scheme;
-- conflict/gap handling;
-- retention/history policy;
-- exact reconciliation cadence/mechanism;
-- recovery thresholds dan operational alerting.
-
-Identifier HCIS yang ada **tidak otomatis** dianggap cocok sebagai identifier global lintas aplikasi; harus diaudit sebelum implementation.
+ADR ini tetap menjadi boundary ownership. Exact wire schema, privacy projection, Aset SQ read endpoints, deactivation/tombstone behavior, rollout, dan recovery mengikuti HUB-IMPL-018 + HCIS ORG-006. Perubahan fundamental seperti delta/event bus, pemindahan authoring, atau central approval engine membutuhkan keputusan arsitektur baru.
 
 ## Relationship to ADR-0001
 
