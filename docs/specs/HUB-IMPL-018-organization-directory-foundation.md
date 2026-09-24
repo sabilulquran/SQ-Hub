@@ -1,11 +1,11 @@
 # HUB-IMPL-018 — Organization Directory v1
 
-**Status:** ACCEPTED  
-**Product:** SQ Hub  
-**Area:** Organization integration / shared directory  
-**Decision date:** 2026-09-24  
-**Depends on:** ADR-0001, ADR-0007, Foundation PRD, ownership and integration boundary  
-**Source contract:** HCIS ORG-006  
+**Status:** ACCEPTED
+**Product:** SQ Hub
+**Area:** Organization integration / shared directory
+**Decision date:** 2026-09-24
+**Depends on:** ADR-0001, ADR-0007, Foundation PRD, ownership and integration boundary
+**Source contract:** HCIS ORG-006
 **First named consumer:** Aset SQ (`application_key=aset-sq`, production origin `https://aset.sabilulquran.or.id`)
 
 ## Outcome
