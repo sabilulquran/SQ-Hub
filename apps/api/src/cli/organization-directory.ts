@@ -17,7 +17,7 @@ try {
   if (command === "status") {
     const projection = await repository.read();
     const latestAttempt = (await pool.query(`SELECT attempt_id, started_at, finished_at, result,
-      source_snapshot_id, source_version, as_of, counts, error_category, synchronized_at
+      source_snapshot_id, source_version, as_of::text AS as_of, counts, error_category, synchronized_at
       FROM organization_directory_sync_attempts ORDER BY finished_at DESC LIMIT 1`)).rows[0] ?? null;
     console.log(JSON.stringify({ ...(projection ? { directory: directoryMetadata(projection, new Date()), counts: projection.snapshot.counts } : { error: "DIRECTORY_UNAVAILABLE" }), latestAttempt }));
     if (!projection) process.exitCode = 1;

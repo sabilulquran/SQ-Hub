@@ -1,4 +1,6 @@
 import pg from "pg";
+import { execFileSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import { PgOrganizationDirectory } from "../src/modules/organization-directory/repository.js";
 import { contentVersion, DirectorySyncError } from "../src/modules/organization-directory/validation.js";
@@ -16,6 +18,16 @@ beforeEach(async () => {
 afterAll(() => pool.end());
 
 describe("HUB-IMPL-018 PostgreSQL atomic projection", () => {
+  it("reports safe CLI status with date-only asOf across host timezones", async () => {
+    await repo.synchronize(asOf, async () => fixture());
+    const output = execFileSync(process.execPath, ["--import", "tsx", "src/cli/organization-directory.ts", "status"], {
+      cwd: fileURLToPath(new URL("..", import.meta.url)), encoding: "utf8", env: { ...process.env, TZ: "Asia/Jakarta" },
+    });
+    const status = JSON.parse(output);
+    expect(status.directory.asOf).toBe(asOf);
+    expect(status.latestAttempt.as_of).toBe(asOf);
+    expect(output).not.toMatch(/Pegawai|DEMO-001|opaque-demo-subject/);
+  });
   it("bootstraps actual HCIS final-head fixture and idempotently retries without rewriting content", async () => {
     expect(await repo.read()).toBeNull();
     expect((await repo.synchronize(asOf, async () => fixture()))?.result).toBe("APPLIED");
