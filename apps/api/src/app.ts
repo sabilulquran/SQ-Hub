@@ -17,6 +17,7 @@ import type { HubAuthRuntime } from "./modules/hub-auth/service.js";
 import type { IdentityDirectory } from "./modules/identity-directory/client.js";
 import { registerPlatformAdminRoutes } from "./modules/platform-admin/routes.js";
 import type { PlatformAdminService } from "./modules/platform-admin/service.js";
+import { DIRECTORY_PREFIX, registerOrganizationDirectoryRoutes } from "./modules/organization-directory/routes.js";
 
 const checkBodySchema = z
   .object({
@@ -40,8 +41,17 @@ export function buildApp(input: {
   identityDirectory?: IdentityDirectory;
   accountSelfService?: KeycloakAccountSelfService;
   logger?: boolean;
+  organizationDirectory?: Parameters<typeof registerOrganizationDirectoryRoutes>[1];
 }) {
-  const app = Fastify({ logger: input.logger ?? false });
+  const app = Fastify({ logger: input.logger ? {
+    serializers: {
+      req(request) {
+        return { method: request.method, url: request.url?.startsWith(DIRECTORY_PREFIX) ? DIRECTORY_PREFIX : request.url };
+      },
+    },
+  } : false });
+
+  if (input.organizationDirectory) registerOrganizationDirectoryRoutes(app, input.organizationDirectory);
 
   app.get("/health", async () => ({ status: "ok" }));
 

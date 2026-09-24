@@ -37,7 +37,7 @@ Menyediakan foundation lintas aplikasi yang cukup untuk menghubungkan HCIS dan a
 - Hub dapat melayani last-known-good projection saat HCIS sementara tidak tersedia dengan metadata source/version/synchronized_at atau as_of/staleness.
 - Hub bukan central approval engine. Approval policy/workflow/delegation/escalation/domain authorization/audit keputusan tetap di aplikasi domain.
 - Domain app yang me-resolve approver dari fakta organisasi menyimpan resolved-approver snapshot beserta organization version/effective time ketika transaksi diajukan.
-- SLA, global identifier, snapshot/delta, conflict handling, dan retention tetap DISCOVERY/TBD di HUB-IMPL-018.
+- Kontrak v1 identifier, full snapshot, reconciliation, dan freshness mengikuti HUB-IMPL-018 **ACCEPTED**. Retention/history serta SLA deployment tetap TBD.
 
 ### HUB-FND-004 Application Registry
 SQ Hub menyimpan registry aplikasi yang bergabung dalam ekosistem, minimum:
@@ -119,10 +119,7 @@ Implementation pertama mengikuti `docs/product/implementation-wave-1.md` dan tig
 Engineering stack mengikuti ADR-0006 dan staging naming untuk Wave 1 menggunakan `login-staging.`, `hub-staging.`, dan `hcis-staging.sabilulquran.or.id`.
 
 ## Open decisions
-- Organization Directory SLA/freshness;
-- global identifier lintas aplikasi dan mapping dari identifier HCIS;
-- snapshot versus delta contract;
-- conflict handling dan retention/history;
+- Organization Directory SLA deployment dan retention/history (kontrak v1 identifier, full snapshot, reconciliation, target cadence 5 menit/stale 15 menit sudah ditetapkan HUB-IMPL-018);
 - Keycloak production version pin setelah staging verification dan operational sizing;
 - exact implementation technology and versioning strategy for distributable shared design packages;
 - full Application Access administration UI/workflow beyond the Wave 1 operator path.
@@ -134,6 +131,6 @@ Engineering stack mengikuti ADR-0006 dan staging naming untuk Wave 1 menggunakan
 - HCIS authentication migration: ADR-0005 + `docs/migration/hcis-auth-cutover-plan.md`.
 - SQ Hub engineering stack: ADR-0006.
 - Wave 1 scope/contracts: `docs/product/implementation-wave-1.md` + `docs/specs/HUB-IMPL-00*.md`.
-- Organization ownership/directory boundary: ADR-0007 + `HUB-IMPL-018` (DISCOVERY).
+- Organization ownership/directory boundary: ADR-0007 + `HUB-IMPL-018` (ACCEPTED v1; activation/deployment memerlukan acceptance terpisah).
 
 Open decisions harus ditutup melalui domain/security specification atau ADR sebelum implementasi terkait dimulai.
