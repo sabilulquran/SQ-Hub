@@ -73,7 +73,7 @@ reconcile_client() {
   local mapper_name="$4"
   local audience="$5"
   local clients client_count client_uuid client_payload mapper_payload mappers mapper_matches mapper_count mapper_uuid
-  local default_scopes optional_scopes stored_secret verify_client verify_mapper
+  local default_scopes optional_scopes stored_secret verify_client verify_mapper existing_client
 
   clients="$(kcadm get clients -r "${REALM}" -q "clientId=${client_id}")" \
     || fail "unable to query ${client_id}"
@@ -103,7 +103,16 @@ reconcile_client() {
       | kcadm create clients -r "${REALM}" -f - >/dev/null
   elif [[ "${client_count}" == "1" ]]; then
     client_uuid="$(jq -er '.[0].id' <<<"${clients}")"
-    printf '%s' "${client_payload}" | kcadm update "clients/${client_uuid}" -r "${REALM}" -f - >/dev/null
+    existing_client="$(jq -er '.[0]' <<<"${clients}")"
+    stored_secret="$(kcadm get "clients/${client_uuid}/client-secret" -r "${REALM}" | jq -er '.value')"
+    if ! jq -e '
+      .enabled == true and .publicClient == false and .bearerOnly == false and
+      .standardFlowEnabled == false and .implicitFlowEnabled == false and
+      .directAccessGrantsEnabled == false and .serviceAccountsEnabled == true and
+      .fullScopeAllowed == false
+    ' >/dev/null <<<"${existing_client}" || [[ "${stored_secret}" != "${client_secret}" ]]; then
+      printf '%s' "${client_payload}" | kcadm update "clients/${client_uuid}" -r "${REALM}" -f - >/dev/null
+    fi
   else
     fail "${client_id} is ambiguous"
   fi
