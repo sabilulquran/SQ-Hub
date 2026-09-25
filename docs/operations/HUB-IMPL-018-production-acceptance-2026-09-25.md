@@ -59,6 +59,17 @@ read a fresh projection.
   Its exact closure head passed local typecheck, lint, 136 API tests, 11 web
   tests, and API/web builds. GitHub Actions was infrastructure-blocked before
   executing steps by account billing/spending-limit enforcement.
+- Read-only Aset SQ production probes on 25 September 2026 verified:
+  - `/healthz` returned `200 OK`;
+  - `/api/v1/foundation/status` returned
+    `implementation=production-directory-consumer` and
+    `productionIntegrationConfigured=true`;
+  - its integration modes were `identity=oidc`,
+    `applicationAccess=sq-hub`, and `organizationDirectory=sq-hub`;
+  - unauthenticated `/api/v1/session` returned `401 UNAUTHENTICATED`.
+
+These probes establish current consumer configuration and denial behavior. They
+do not replace an authenticated Directory read or exact-identity browser smoke.
 
 ## Evidence still required
 
