@@ -24,6 +24,8 @@ jobs:
       KEYCLOAK_BOOTSTRAP_ADMIN_USERNAME: ci-bootstrap-admin
       KEYCLOAK_BOOTSTRAP_ADMIN_PASSWORD: ci-bootstrap-admin-password-only
       KEYCLOAK_DIRECTORY_CLIENT_SECRET: ci-directory-client-secret-only
+      ORG_DIRECTORY_PULL_CLIENT_SECRET: ci-org-directory-pull-secret-only
+      ORG_DIRECTORY_READER_CLIENT_SECRET: ci-org-directory-reader-secret-only
       GOOGLE_CLIENT_ID: ci-google-client-id-only
       GOOGLE_CLIENT_SECRET: ci-google-client-secret-only
       KEYCLOAK_HOSTNAME: http://127.0.0.1:8080
@@ -598,6 +600,81 @@ jobs:
 
           unset directory_token synthetic_user_id
           rm -f /tmp/directory-users.json /tmp/directory-user.json
+          docker compose --env-file "$KEYCLOAK_ENV_FILE" -f infra/keycloak/docker-compose.staging.yml \
+            exec -T keycloak rm -f "$kcadm_config"
+
+      - name: Reconcile and verify Organization Directory machine clients
+        shell: bash
+        run: |
+          kcadm_config=/tmp/sq-hub-organization-directory-ci.kcadm
+
+          docker compose \
+            --env-file "$KEYCLOAK_ENV_FILE" \
+            -f infra/keycloak/docker-compose.staging.yml \
+            -f infra/keycloak/docker-compose.bootstrap.yml \
+            exec -T keycloak \
+            sh -ceu '
+              /opt/keycloak/bin/kcadm.sh config credentials \
+                --config "$1" \
+                --server http://127.0.0.1:8080 \
+                --realm master \
+                --user "$KC_BOOTSTRAP_ADMIN_USERNAME" \
+                --password "$KC_BOOTSTRAP_ADMIN_PASSWORD" >/dev/null
+            ' sh "$kcadm_config"
+
+          expected_output="$(printf '%s\n' \
+            ORGANIZATION_DIRECTORY_SCOPE_PASS \
+            ORGANIZATION_DIRECTORY_CLIENTS_PASS \
+            ORGANIZATION_DIRECTORY_LEAST_PRIVILEGE_PASS)"
+          for pass in first second; do
+            output="$(
+              KEYCLOAK_KCADM_CONFIG="$kcadm_config" \
+              ORG_DIRECTORY_PULL_CLIENT_SECRET="$ORG_DIRECTORY_PULL_CLIENT_SECRET" \
+              ORG_DIRECTORY_READER_CLIENT_SECRET="$ORG_DIRECTORY_READER_CLIENT_SECRET" \
+                bash infra/keycloak/scripts/reconcile-organization-directory-clients.sh
+            )"
+            printf '%s\n' "$output"
+            test "$output" = "$expected_output"
+          done
+
+          verify_token() {
+            client_id="$1"
+            client_secret="$2"
+            expected_audience="$3"
+            token="$(
+              curl --fail --silent \
+                --header 'Content-Type: application/x-www-form-urlencoded' \
+                --data-urlencode "client_id=$client_id" \
+                --data-urlencode "client_secret=$client_secret" \
+                --data-urlencode grant_type=client_credentials \
+                --data-urlencode scope=organization-directory.read \
+                http://127.0.0.1:8080/realms/sq-staff-staging/protocol/openid-connect/token \
+                | jq -er '.access_token'
+            )"
+            payload="$(
+              TOKEN="$token" python3 -c \
+                'import base64,json,os; p=os.environ["TOKEN"].split(".")[1]; p += "=" * (-len(p) % 4); print(json.dumps(json.loads(base64.urlsafe_b64decode(p))))'
+            )"
+            jq -e \
+              --arg client_id "$client_id" \
+              --arg audience "$expected_audience" '
+                .iss == "http://127.0.0.1:8080/realms/sq-staff-staging" and
+                .azp == $client_id and
+                ((.aud | if type == "array" then . else [.] end) | index($audience)) != null and
+                (.scope | split(" ") | index("organization-directory.read")) != null
+              ' >/dev/null <<<"$payload"
+            unset token payload
+          }
+
+          verify_token \
+            sq-hub-organization-directory-staging \
+            "$ORG_DIRECTORY_PULL_CLIENT_SECRET" \
+            hcis-organization-directory
+          verify_token \
+            aset-sq-directory-staging \
+            "$ORG_DIRECTORY_READER_CLIENT_SECRET" \
+            sq-hub-organization-directory-staging
+
           docker compose --env-file "$KEYCLOAK_ENV_FILE" -f infra/keycloak/docker-compose.staging.yml \
             exec -T keycloak rm -f "$kcadm_config"
 
