@@ -28,6 +28,7 @@ export function createKeycloakMachineTokenVerifier(input: {
   issuer: string;
   audience: string;
   allowedClients: ReadonlySet<string>;
+  requiredScope?: string;
 }): VerifyMachineToken {
   const issuer = input.issuer.replace(/\/$/, "");
   const jwksUrl = new URL(`${issuer}/protocol/openid-connect/certs`);
@@ -65,7 +66,10 @@ export function createKeycloakMachineTokenVerifier(input: {
     let timer: ReturnType<typeof setTimeout> | undefined;
     try {
       const { payload } = await Promise.race([
-        jwtVerify(token, active.jwks, { issuer, audience: input.audience }),
+        jwtVerify(token, active.jwks, {
+          issuer, audience: input.audience,
+          ...(input.requiredScope ? { requiredClaims: ["exp"], algorithms: ["RS256"] } : {}),
+        }),
         new Promise<never>((_resolve, reject) => {
           timer = setTimeout(() => {
             discard(active);
@@ -88,6 +92,13 @@ export function createKeycloakMachineTokenVerifier(input: {
 
       if (!clientId || !input.allowedClients.has(clientId)) {
         throw new MachineAuthError("FORBIDDEN_CLIENT", "machine client is not allowed");
+      }
+
+      if (input.requiredScope && (
+        typeof payload.scope !== "string" || !payload.scope.split(/\s+/).includes(input.requiredScope)
+        || (typeof payload.azp === "string" && typeof payload.client_id === "string" && payload.azp !== payload.client_id)
+      )) {
+        throw new MachineAuthError("FORBIDDEN_CLIENT", "machine scope or client is not allowed");
       }
 
       return { clientId };

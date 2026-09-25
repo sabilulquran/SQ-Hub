@@ -37,7 +37,7 @@ Boundary wajib:
 - Keycloak bukan organization master;
 - aplikasi lain seperti Finance dan Workspace membaca shared Organization Directory dari Hub sebagai default distribution path;
 - last-known-good projection boleh dilayani saat HCIS sementara tidak tersedia, tetapi source/version/synchronized_at atau as_of/staleness harus terlihat;
-- SLA, global identifier, snapshot/delta, conflict handling, dan retention tetap DISCOVERY/TBD pada HUB-IMPL-018.
+- Kontrak v1 identifier, pull full snapshot, reconciliation, dan freshness ditetapkan HUB-IMPL-018 **ACCEPTED**; SLA deployment dan retention/history tetap TBD.
 
 ### Approval/workflow boundary
 SQ Hub bukan central approval engine. Hub hanya menyediakan fakta organisasi yang dapat dipakai domain app untuk menentukan kandidat approver atau scope.

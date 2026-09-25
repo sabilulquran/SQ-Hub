@@ -13,9 +13,15 @@ import { PgHubWorkspaceRepository } from "./modules/hub-auth/workspace-repositor
 import { KeycloakIdentityDirectory } from "./modules/identity-directory/client.js";
 import { PgPlatformAdminRepository } from "./modules/platform-admin/repository.js";
 import { PlatformAdminService } from "./modules/platform-admin/service.js";
+import { loadDirectoryConfig } from "./modules/organization-directory/config.js";
+import { createDirectoryPull } from "./modules/organization-directory/client.js";
+import { PgOrganizationDirectory } from "./modules/organization-directory/repository.js";
+import { startDirectoryScheduler } from "./modules/organization-directory/scheduler.js";
 
 const config = loadConfig();
 const pool = createPool(config.databaseUrl);
+const directoryConfig = loadDirectoryConfig();
+const directory = new PgOrganizationDirectory(pool);
 const repository = new PgApplicationAccessRepository(pool);
 const accessService = new ApplicationAccessService(repository);
 const platformAdmin = new PlatformAdminService(new PgPlatformAdminRepository(pool));
@@ -66,10 +72,18 @@ const app = buildApp({
   identityDirectory,
   accountSelfService,
   logger: true,
+  ...(directoryConfig.read ? { organizationDirectory: {
+    read: () => directory.read(),
+    verifyMachineToken: createKeycloakMachineTokenVerifier(directoryConfig.read),
+  } } : {}),
 });
+
+const pullDirectory = directoryConfig.sync ? createDirectoryPull(directoryConfig.sync) : null;
+let stopDirectory: (() => Promise<void>) | undefined;
 
 const shutdown = async (signal: string) => {
   app.log.info({ signal }, "shutting down");
+  await stopDirectory?.();
   await app.close();
   await pool.end();
   process.exit(0);
@@ -80,6 +94,10 @@ process.on("SIGTERM", () => void shutdown("SIGTERM"));
 
 try {
   await app.listen({ port: config.port, host: "0.0.0.0" });
+  if (pullDirectory) stopDirectory = startDirectoryScheduler({
+    reconcile: (asOf) => directory.synchronize(asOf, pullDirectory),
+    report: (attempt) => app.log.info(attempt, "organization directory synchronization"),
+  });
 } catch (error) {
   app.log.error(error);
   await pool.end();
