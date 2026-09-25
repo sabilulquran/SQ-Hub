@@ -85,6 +85,19 @@ read a fresh projection.
   - logout traversed the Akun SQ end-session confirmation, cleared the local
     application session, and returned to the Akun SQ login page.
 
+### Human Capital source acceptance
+
+- Production Organization Designer was inspected for business date
+  `2026-09-25`. It identified the current source as the published snapshot
+  `Restrukturisasi 2026-08-27`, effective `2026-08-27`.
+- On 25 September 2026, the authorized Human Capital/operator explicitly gave
+  interim acceptance for that effective ORG-004 structure to be used by SQ Hub
+  Organization Directory. The acceptance is limited to Directory publication
+  and explicitly does **not** activate ORG-004 approval rollout `STRUCTURE`.
+- This acceptance applies to the inspected current snapshot only. A later
+  structure revision requires its normal HCIS authoring/publication governance
+  and does not inherit this evidence automatically.
+
 The unauthenticated probes establish current consumer configuration and denial
 behavior. The subsequent browser acceptance supplies the consumer-side
 authenticated smoke; it does not replace the operator's direct Hub
@@ -94,7 +107,7 @@ status/reconciliation evidence.
 
 ### Operator: HCIS source acceptance
 
-- [ ] Human Capital records acceptance of the real ORG-004 production snapshot.
+- [x] Human Capital records acceptance of the real ORG-004 production snapshot.
 - [ ] Confirm `ORG_DIRECTORY_EXPORT_ENABLED=1` without printing secret values.
 - [ ] Record one sanitized authenticated producer probe with source revision,
       `asOf`, counts, and digest only.
