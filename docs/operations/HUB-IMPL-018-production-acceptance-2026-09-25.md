@@ -136,6 +136,41 @@ behavior. The subsequent browser acceptance supplies the consumer-side
 authenticated smoke; it does not replace the operator's direct Hub
 status/reconciliation evidence.
 
+### Staging readiness recovery
+
+- Before changing staging, the stopped Hub PostgreSQL volume, stopped HCIS
+  PostgreSQL volume, and both service configurations were copied into the
+  root-only directory
+  `/var/backups/sq-hub/staging-recovery-20260925T034243Z`. The volume archive
+  SHA-256 values are respectively
+  `b2adc9d8bb9d6d477dba32d61b4fdd604b2352492ae9dffa9082051f5a3162b6`
+  and
+  `5a312a6bd69a33734ad123a4f7eb6e60a393166af6305ec4c4dec2e51d64eb63`.
+- The previous Hub staging outage was traced to host-port collision: the
+  stopped staging definition still bound `18100/18101`, which are now occupied
+  by production. Staging bindings were moved to unused `18110/18111`; public
+  routing continues through the existing isolated Docker network alias.
+- Hub staging was restored with the already-present, immutable production API
+  digest
+  `sha256:a09fa81621c85e5548e5753e378e63753a4beb453e6f0c63280d953ca82a675f`.
+  PostgreSQL, API, and web all reported healthy and the public API health route
+  returned `200`. The Directory CLI is present and returned
+  `DIRECTORY_UNAVAILABLE`, confirming the migration/runtime exists but no
+  staging LKG has been bootstrapped yet.
+- HCIS staging was restored with the already-present producer-capable API image
+  `sha-532b623e57acc837fb534719736d3a8442a2a9f8`. Its migration runner completed,
+  PostgreSQL/API/web all reported healthy, and the public health route returned
+  `200`.
+- Directory gates were deliberately not activated during recovery. The HCIS
+  staging producer route returned `503 ORGANIZATION_DIRECTORY_EXPORT_DISABLED`
+  with `Cache-Control: no-store`; the Hub staging read route remained absent.
+  This preserves fail-closed behavior until dedicated staging service
+  identities are provisioned.
+- A read-only Keycloak metadata audit found no Directory machine clients in
+  realm `sq-staff-staging`. Staging activation therefore still requires the
+  separate Hub-pull and consumer-reader clients defined by HUB-IMPL-018; an
+  existing browser or unrelated machine identity will not be reused.
+
 ## Evidence still required
 
 ### Operator: HCIS source acceptance
