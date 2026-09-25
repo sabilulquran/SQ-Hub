@@ -171,6 +171,44 @@ status/reconciliation evidence.
   separate Hub-pull and consumer-reader clients defined by HUB-IMPL-018; an
   existing browser or unrelated machine identity will not be reused.
 
+### Staging activation and resilience rehearsal
+
+- The operator imported the dedicated `sq-staff-staging` realm through the
+  authenticated Keycloak Admin Console. The Directory pull client
+  `sq-hub-organization-directory-staging` and reader client
+  `aset-sq-directory-staging` are separate confidential service-account
+  clients. Browser, implicit, and password grants are disabled; full scope is
+  disabled; both use only the explicitly requested
+  `organization-directory.read` scope and distinct audience mappers.
+- Sanitized client-credentials inspection verified the exact staging issuer,
+  client identifier, required scope, and audiences
+  `hcis-organization-directory` and
+  `sq-hub-organization-directory-staging`. No credential or token value was
+  recorded.
+- Root-only activation configuration was backed up under
+  `/var/backups/sq-hub/staging-directory-activation-20260925T042149Z`.
+  Dedicated Compose overlays enabled only the staging producer, synchronization,
+  and read gates. The edge routes for the two internal Directory prefixes were
+  validated before reload; production Hub health remained `200`.
+- Because the recovered HCIS staging database contained no organization change
+  set, a staging-only synthetic fixture was published for business date
+  `2026-09-25`. It contains two units and two positions, creates no `STRUCTURE`
+  rollout row, and does not copy production organization or employee data.
+- The initial full reconciliation returned `APPLIED` with counts
+  `units=2`, `positions=2`, `people=1` and version
+  `sha256:ab22489ef21552bc76ee10407972b6fe7cdfde2b0c3be2c860b0955f852ed963`.
+  The immediate second reconciliation returned `UNCHANGED`; status reported
+  `source=hcis`, `asOf=2026-09-25`, and `stale=false`.
+- The public staging read boundary denied a missing token with `401`, denied a
+  producer token carrying the HCIS audience with `401`, and returned `200` to
+  the dedicated reader token. Only item count and Directory metadata were
+  inspected; no person row or response body was recorded.
+- With the HCIS export gate deliberately disabled in staging, reconciliation
+  recorded `FAILED` with category `source_unavailable` while preserving the
+  same version, counts, source date, and prior synchronization timestamp.
+  A simultaneous manual reconciliation returned `BUSY`, proving the
+  single-flight guard without a parallel write.
+
 ## Evidence still required
 
 ### Operator: HCIS source acceptance
@@ -215,12 +253,12 @@ or any person row into this ledger.
 
 ### Staging rehearsal
 
-- [ ] Source unavailable preserves the previous LKG projection.
+- [x] Source unavailable preserves the previous LKG projection.
 - [ ] At the 15-minute boundary the projection reports `stale=true`.
 - [ ] Invalid payload, digest/count mismatch, hierarchy cycle, identity
       ambiguity, source regression, and storage failure do not replace LKG.
 - [ ] Corrected source/config permits the next full reconciliation.
-- [ ] Concurrent reconciliation returns `BUSY` rather than writing in parallel.
+- [x] Concurrent reconciliation returns `BUSY` rather than writing in parallel.
 
 Deliberate failure injection belongs in staging, not production.
 
@@ -230,9 +268,16 @@ Deliberate failure injection belongs in staging, not production.
       `organization_directory_sync_attempts` together.
 - [x] Restore them into an isolated non-production database and verify
       version/digest/counts/status.
-- [ ] Record monitoring for no-LKG, stale, source auth/unavailable, contract
+- [x] Record monitoring for no-LKG, stale, source auth/unavailable, contract
       validation, source regression, and storage failures.
-- [ ] Demonstrate one safe alert delivery test.
+- [x] Demonstrate one safe alert delivery test.
+
+The production monitor runs every 15 minutes and remains quiet while state is
+healthy and unchanged. Its actionable categories cover no-LKG, stale,
+`source_auth`, `source_unavailable`, `source_request`, `contract_validation`,
+`source_regression`, and `storage`. The one-time safe channel test was delivered
+successfully; subsequent runs use change-only notification and never inject a
+production failure.
 
 ## Closure gate
 
