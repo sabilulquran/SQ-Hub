@@ -94,13 +94,13 @@ reconcile_client() {
       directAccessGrantsEnabled: false,
       serviceAccountsEnabled: true,
       fullScopeAllowed: false,
-      defaultClientScopes: [],
-      optionalClientScopes: [],
       secret: $secret
     }')"
 
   if [[ "${client_count}" == "0" ]]; then
-    printf '%s' "${client_payload}" | kcadm create clients -r "${REALM}" -f - >/dev/null
+    printf '%s' "${client_payload}" \
+      | jq '. + {defaultClientScopes: [], optionalClientScopes: []}' \
+      | kcadm create clients -r "${REALM}" -f - >/dev/null
   elif [[ "${client_count}" == "1" ]]; then
     client_uuid="$(jq -er '.[0].id' <<<"${clients}")"
     printf '%s' "${client_payload}" | kcadm update "clients/${client_uuid}" -r "${REALM}" -f - >/dev/null
