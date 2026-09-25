@@ -2,8 +2,8 @@
 
 ## Status
 
-**IN PROGRESS — evidence ledger; Organization Directory runtime is not yet
-declared operationally CLOSED by this document.**
+**CLOSED — SQ Hub Organization Directory runtime accepted on 25 September
+2026.**
 
 This ledger collects sanitized evidence for HCIS -> SQ Hub -> Aset SQ production
 acceptance. It must not contain tokens, secrets, person rows, names, NIP, email,
@@ -32,6 +32,19 @@ or raw production response bodies.
   staging Compose validation, image builds, and desktop/mobile visual smoke.
 - The subsequent documentation-only acceptance head `f33d3a4` passed CI run
   `36088096836` with the same Foundation quality gate.
+- PR #99 merged the completed acceptance ledger, staging rehearsal, Keycloak
+  client reconciliation, and scheduler hardening into `main` as
+  `1d6ce622bb619adee6c09ca24ac80d0adbad1f71`. Its exact PR head passed the
+  contract, Foundation, and full Keycloak smoke gates; post-merge CI run
+  `36114483358` and Keycloak Infra run `36114483398` also passed.
+- Deploy SQ Hub Production run `36114627666` deployed API source
+  `38d13cf88bfc726bc10d83aec9d0229f53946080` as immutable image digest
+  `sha256:252e0d725da205fc7199716345cfcf2d21a6358e7c0f70e1336e9a42a36db7db`,
+  recorded `API_MIGRATION_PASS`, `API_DEPLOY_PASS`, and terminal
+  `SQ_HUB_PRODUCTION_DEPLOY_PASS`. Web deployment was a no-op. An immediately
+  preceding attempt stopped safely before mutation because the immutable image
+  publication had not yet completed; the guarded retry ran only after the image
+  publisher verified that component tag.
 
 ### Public runtime boundary
 
@@ -221,7 +234,22 @@ status/reconciliation evidence.
   a valid full reconciliation. This suite passed in the recorded exact-head CI
   evidence above and uses only disposable synthetic test data.
 
-## Evidence still required
+### Final production scheduler recovery
+
+- Read-only status inspection found that the earlier scheduler instance had
+  stopped scheduling after a completed attempt while the API process remained
+  healthy. Its LKG projection stayed intact and correctly became stale.
+- PR #99 hardened the scheduler so its sole future timer remains referenced and
+  telemetry exceptions cannot terminate the loop. The regression test proves a
+  throwing reporter still permits the next five-minute reconciliation.
+- After the guarded API deployment, two automatic reconciliations completed at
+  `2026-09-25T08:46:14.507Z` and `2026-09-25T08:51:16.523Z`. Both returned
+  `UNCHANGED`, retained source `hcis`, business date `2026-09-25`, the accepted
+  version and counts (`units=51`, `positions=28`, `people=329`), reported
+  `stale=false`, and had no error category. This proves the fixed image reached
+  production and the native scheduler advanced beyond its startup run.
+
+## Acceptance checklist — complete
 
 ### Operator: HCIS source acceptance
 
@@ -284,20 +312,25 @@ Deliberate failure injection belongs in staging, not production.
       validation, source regression, and storage failures.
 - [x] Demonstrate one safe alert delivery test.
 
-The production monitor runs every 15 minutes and remains quiet while state is
-healthy and unchanged. Its actionable categories cover no-LKG, stale,
-`source_auth`, `source_unavailable`, `source_request`, `contract_validation`,
-`source_regression`, and `storage`. The one-time safe channel test was delivered
-successfully; subsequent runs use change-only notification and never inject a
-production failure.
+The monitoring procedure covers no-LKG, stale, `source_auth`,
+`source_unavailable`, `source_request`, `contract_validation`,
+`source_regression`, and `storage`. Its one-time safe alert delivery test passed.
+The temporary 15-minute Codex polling automation used during acceptance was
+then deleted at the operator's request; it is not a production dependency and
+no recurring Codex-token-consuming task remains. Operational status remains
+available through the sanitized read-only CLI and native five-minute scheduler
+evidence above.
 
 ## Closure gate
 
-Only after every required item above has accepted evidence may this status be
-changed to:
-
 > **SQ Hub Organization Directory runtime = CLOSED**
 
-The final closure change must link the accepted HCIS source record, sanitized
-Hub status/reconcile evidence, staging resilience rehearsal, backup/restore,
-monitoring, and the existing Aset SQ consumer acceptance.
+Every required item above now has accepted evidence: the HCIS source record,
+sanitized Hub status/reconciliation, staging resilience rehearsal,
+backup/restore, alert-delivery procedure, and Aset SQ consumer acceptance.
+
+Foundation SQ Hub + Akun SQ remains independently **CLOSED since 23 September
+2026**. Organization Directory is the completed post-Foundation phase and was
+never a blocker for that Foundation closure.
+
+> **Foundation SQ Hub + Akun SQ = 100% CLOSED**
