@@ -97,6 +97,12 @@ read a fresh projection.
 - This acceptance applies to the inspected current snapshot only. A later
   structure revision requires its normal HCIS authoring/publication governance
   and does not inherit this evidence automatically.
+- A read-only unauthenticated probe of the exact production ORG-006 snapshot
+  route returned JSON `401 INVALID_TOKEN` with `Cache-Control: no-store`. The
+  reviewed producer checks its export gate before authentication and would
+  return `503 ORGANIZATION_DIRECTORY_EXPORT_DISABLED` while disabled. This
+  therefore confirms the export gate is enabled without exposing environment
+  values, and confirms a missing/invalid machine credential is denied.
 
 The unauthenticated probes establish current consumer configuration and denial
 behavior. The subsequent browser acceptance supplies the consumer-side
@@ -108,10 +114,10 @@ status/reconciliation evidence.
 ### Operator: HCIS source acceptance
 
 - [x] Human Capital records acceptance of the real ORG-004 production snapshot.
-- [ ] Confirm `ORG_DIRECTORY_EXPORT_ENABLED=1` without printing secret values.
+- [x] Confirm `ORG_DIRECTORY_EXPORT_ENABLED=1` without printing secret values.
 - [ ] Record one sanitized authenticated producer probe with source revision,
       `asOf`, counts, and digest only.
-- [ ] Record invalid/missing producer credentials being denied.
+- [x] Record invalid/missing producer credentials being denied.
 - [ ] Confirm production has no legacy or synthetic fallback.
 
 ### Operator: Hub activation and reconciliation
