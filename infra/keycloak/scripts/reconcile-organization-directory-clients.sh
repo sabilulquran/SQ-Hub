@@ -161,8 +161,16 @@ reconcile_client() {
       | kcadm create "clients/${client_uuid}/protocol-mappers/models" -r "${REALM}" -f - >/dev/null
   elif [[ "${mapper_count}" == "1" ]]; then
     mapper_uuid="$(jq -er '.[0].id' <<<"${mapper_matches}")"
-    printf '%s' "${mapper_payload}" \
-      | kcadm update "clients/${client_uuid}/protocol-mappers/models/${mapper_uuid}" -r "${REALM}" -f - >/dev/null
+    if ! jq -e --arg audience "${audience}" '
+      .[0].protocolMapper == "oidc-audience-mapper" and
+      .[0].config["included.client.audience"] == $audience and
+      .[0].config["id.token.claim"] == "false" and
+      .[0].config["access.token.claim"] == "true" and
+      .[0].config["introspection.token.claim"] == "true"
+    ' >/dev/null <<<"${mapper_matches}"; then
+      printf '%s' "${mapper_payload}" \
+        | kcadm update "clients/${client_uuid}/protocol-mappers/models/${mapper_uuid}" -r "${REALM}" -f - >/dev/null
+    fi
   else
     fail "${client_id} audience mapper is ambiguous"
   fi
