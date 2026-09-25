@@ -27,6 +27,9 @@ or raw production response bodies.
   - `API_DEPLOY_PASS source=623b81525a02ae1803012945e2941fbc285c7b51`;
   - terminal `SQ_HUB_PRODUCTION_DEPLOY_PASS`.
 - Post-merge `main` CI run `35956308762` passed.
+- Acceptance-ledger exact-head CI run `36087933188` passed on 25 September
+  2026, including migration/idempotency, typecheck, lint, tests, builds,
+  staging Compose validation, image builds, and desktop/mobile visual smoke.
 
 ### Public runtime boundary
 
