@@ -4,7 +4,9 @@
 
 Foundation SQ Hub / Akun SQ dinyatakan **CLOSED** berdasarkan gabungan evidence repository, production reconciliation, deployment production, dan browser UAT operator pada 23 September 2026.
 
-Penutupan ini berlaku untuk baseline Foundation yang menjadi blocker sebelum fase lanjutan. Penutupan ini tidak berarti Identity Lifecycle, Organization Directory runtime, SQ Portal, atau fase lanjutan lain sudah diimplementasikan.
+Penutupan ini berlaku untuk baseline Foundation yang menjadi blocker sebelum fase lanjutan. Foundation tetap **CLOSED sejak 23 September 2026** dan tidak bergantung pada penyelesaian fase lanjutan seperti Identity Lifecycle, Organization Directory, SQ Portal, atau pekerjaan setelahnya.
+
+Organization Directory adalah fase pasca-Foundation dan **bukan blocker Foundation closure**. Kontrak dan runtime Directory belum menjadi bagian dari evidence penutupan 23 September; keduanya kemudian diselesaikan melalui PR #97 dan #98 pada 24 September 2026 dan runtime API beserta migration Directory telah terpasang ke production melalui Deploy SQ Hub Production run `35956645261` yang berakhir `SQ_HUB_PRODUCTION_DEPLOY_PASS`.
 
 ## Repository dan CI
 
@@ -79,6 +81,10 @@ Dengan evidence tersebut, native Akun SQ telah dibuktikan usable di production u
 
 **FOUNDATION_CLOSED — 2026-09-23**
 
+**Foundation SQ Hub + Akun SQ = 100% CLOSED**
+
+Status ini final sejak 23 September 2026. Penyelesaian dan deployment Organization Directory sesudah tanggal tersebut adalah progres fase berikutnya, bukan prasyarat yang menunda atau membuka kembali Foundation closure.
+
 Dasar penutupan:
 
 1. source dan regression gates sudah merged dan hijau;
@@ -97,14 +103,25 @@ Dua catatan visual tetap dibawa ke backlog dan **tidak menahan Foundation closur
 
 Catatan di atas belum diimplementasikan pada closure ini.
 
+## Perkembangan pasca-closure: Organization Directory
+
+Setelah Foundation ditutup:
+
+- PR #97, **docs(HUB-IMPL-018): accept Organization Directory v1 contract**, merged pada 24 September 2026;
+- PR #98, **feat(HUB-IMPL-018): Organization Directory runtime and read API**, merged pada 24 September 2026;
+- Deploy SQ Hub Production run `35956645261` terhadap merge commit PR #98 berhasil menerapkan `0006_organization_directory.sql`, men-deploy runtime API Directory, dan mencapai terminal `SQ_HUB_PRODUCTION_DEPLOY_PASS`.
+
+Evidence ini menyatakan runtime dan migration Directory sudah terpasang di production. Dokumen closure Foundation ini tidak memperluas klaim menjadi aktivasi sync/read gate, HCIS production export, bootstrap data, atau onboarding consumer; masing-masing tetap mengikuti acceptance dan konfigurasi operasional Organization Directory.
+
 ## Batas klaim
 
 Penutupan Foundation ini tidak menyatakan fase lanjutan berikut sudah selesai atau aktif:
 
 - Identity Lifecycle;
-- Organization Directory runtime;
 - SQ Portal / external identity;
 - capability Account Console non-baseline yang sengaja diblokir oleh HUB-IMPL-019;
 - polish lintas aplikasi yang dicatat di atas.
+
+Organization Directory tidak tercantum sebagai pekerjaan yang belum diimplementasikan karena kontrak dan runtime-nya telah diselesaikan setelah closure sebagaimana dicatat di atas. Pemisahan fase tersebut mempertahankan fakta bahwa Directory tidak pernah menjadi blocker Foundation closure.
 
 Pekerjaan fase berikutnya boleh dimulai setelah closure ini diterima, tanpa mengubah ownership boundary yang sudah ditetapkan: Keycloak tetap identity engine, SQ Hub tetap shared platform/launcher, dan HCIS tetap authority untuk data serta struktur kepegawaian.
