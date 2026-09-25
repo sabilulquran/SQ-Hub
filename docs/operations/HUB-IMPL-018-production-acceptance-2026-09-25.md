@@ -30,6 +30,8 @@ or raw production response bodies.
 - Acceptance-ledger exact-head CI run `36087933188` passed on 25 September
   2026, including migration/idempotency, typecheck, lint, tests, builds,
   staging Compose validation, image builds, and desktop/mobile visual smoke.
+- The subsequent documentation-only acceptance head `f33d3a4` passed CI run
+  `36088096836` with the same Foundation quality gate.
 
 ### Public runtime boundary
 
@@ -70,9 +72,23 @@ read a fresh projection.
   - its integration modes were `identity=oidc`,
     `applicationAccess=sq-hub`, and `organizationDirectory=sq-hub`;
   - unauthenticated `/api/v1/session` returned `401 UNAUTHENTICATED`.
+- A sanitized authenticated browser acceptance on 25 September 2026 verified:
+  - Aset Saya loaded successfully for the current OIDC identity without an
+    identity-mapping, synthetic-data, or unconfigured warning;
+  - the asset registration form loaded a non-empty owning-unit selector from
+    the production Directory;
+  - the custody form loaded a non-empty person selector from the production
+    Directory;
+  - no asset or custody record was created or changed during the checks;
+  - localStorage and sessionStorage contained no keys, and JavaScript could
+    read no cookie names;
+  - logout traversed the Akun SQ end-session confirmation, cleared the local
+    application session, and returned to the Akun SQ login page.
 
-These probes establish current consumer configuration and denial behavior. They
-do not replace an authenticated Directory read or exact-identity browser smoke.
+The unauthenticated probes establish current consumer configuration and denial
+behavior. The subsequent browser acceptance supplies the consumer-side
+authenticated smoke; it does not replace the operator's direct Hub
+status/reconciliation evidence.
 
 ## Evidence still required
 
@@ -108,12 +124,12 @@ or any person row into this ledger.
 
 ### Browser handoff: Aset SQ
 
-- [ ] User renews the Aset SQ login session in the existing browser tab.
-- [ ] Verify Aset Saya loads through exact OIDC identity relation.
-- [ ] Verify Directory-dependent unit and person selectors load without a
+- [x] User renews the Aset SQ login session in the existing browser tab.
+- [x] Verify Aset Saya loads through exact OIDC identity relation.
+- [x] Verify Directory-dependent unit and person selectors load without a
       synthetic/unconfigured warning.
-- [ ] Verify browser storage remains free of access/refresh/machine tokens.
-- [ ] Verify logout clears the local application session and returns through
+- [x] Verify browser storage remains free of access/refresh/machine tokens.
+- [x] Verify logout clears the local application session and returns through
       the Akun SQ end-session flow.
 
 ### Staging rehearsal
