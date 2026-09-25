@@ -103,6 +103,33 @@ read a fresh projection.
   return `503 ORGANIZATION_DIRECTORY_EXPORT_DISABLED` while disabled. This
   therefore confirms the export gate is enabled without exposing environment
   values, and confirms a missing/invalid machine credential is denied.
+- The production Hub runtime gates were inspected by key only and both reported
+  enabled: `ORG_DIRECTORY_SYNC_ENABLED=1` and
+  `ORG_DIRECTORY_READ_ENABLED=1`; no credential value was printed.
+- A sanitized production `directory:admin status` followed by two manual full
+  reconciliations verified:
+  - source `hcis`, source snapshot ID
+    `0280b609-d26e-490e-a9cc-2338af6f3154`, business date `2026-09-25`;
+  - version
+    `sha256:ac9dc1d021640671f0ca31a2e7fc4b81d0f01b97dc89e9276988a2cc3b1e940f`;
+  - counts `units=51`, `positions=28`, `people=329`;
+  - both manual results were `UNCHANGED`, with the final successful
+    synchronization at `2026-09-25T03:29:35.190Z`;
+  - `stale=false`, `staleForSeconds=0`, and no error category.
+- The authenticated full pull selected the accepted published ORG-004 snapshot
+  and returned the exact HCIS content-addressed metadata. The reviewed producer
+  has no legacy or synthetic fallback path, and none was observed in production.
+- A focused custom-format PostgreSQL backup captured
+  `organization_directory_projection` and
+  `organization_directory_sync_attempts` together at
+  `/var/backups/sq-hub/database/organization-directory-20260925T033211Z/organization-directory.dump`.
+  The root-owned file is mode `600`, size `38940` bytes, with SHA-256
+  `1d6a28ecfc1a0c34eda071df6a4cbc4d139391ce2d7cc93c836c949912b37424`.
+- The backup was restored with `--no-owner --no-privileges` into a temporary
+  PostgreSQL 17 container with no network and tmpfs storage. Restored source,
+  version, business date, counts, synchronization time, and all 255 attempt rows
+  matched the backup; the temporary container was removed after
+  `ISOLATED_RESTORE_PASS`.
 
 The unauthenticated probes establish current consumer configuration and denial
 behavior. The subsequent browser acceptance supplies the consumer-side
@@ -115,20 +142,20 @@ status/reconciliation evidence.
 
 - [x] Human Capital records acceptance of the real ORG-004 production snapshot.
 - [x] Confirm `ORG_DIRECTORY_EXPORT_ENABLED=1` without printing secret values.
-- [ ] Record one sanitized authenticated producer probe with source revision,
+- [x] Record one sanitized authenticated producer probe with source revision,
       `asOf`, counts, and digest only.
 - [x] Record invalid/missing producer credentials being denied.
-- [ ] Confirm production has no legacy or synthetic fallback.
+- [x] Confirm production has no legacy or synthetic fallback.
 
 ### Operator: Hub activation and reconciliation
 
-- [ ] Confirm `ORG_DIRECTORY_SYNC_ENABLED=1` and
+- [x] Confirm `ORG_DIRECTORY_SYNC_ENABLED=1` and
       `ORG_DIRECTORY_READ_ENABLED=1` without printing secret values.
-- [ ] Record sanitized `directory:admin status` output.
-- [ ] Run `directory:admin reconcile` and record success metadata only.
-- [ ] Run it again and record the idempotent `UNCHANGED` outcome.
-- [ ] Confirm Hub counts/digest match the accepted HCIS snapshot.
-- [ ] Confirm `source=hcis`, valid SHA-256 version, current `asOf`,
+- [x] Record sanitized `directory:admin status` output.
+- [x] Run `directory:admin reconcile` and record success metadata only.
+- [x] Run it again and record the idempotent `UNCHANGED` outcome.
+- [x] Confirm Hub counts/digest match the accepted HCIS snapshot.
+- [x] Confirm `source=hcis`, valid SHA-256 version, current `asOf`,
       `synchronizedAt`, and `stale=false`.
 
 Built-image commands:
@@ -164,9 +191,9 @@ Deliberate failure injection belongs in staging, not production.
 
 ### Backup, restore, and monitoring
 
-- [ ] Back up `organization_directory_projection` and
+- [x] Back up `organization_directory_projection` and
       `organization_directory_sync_attempts` together.
-- [ ] Restore them into an isolated non-production database and verify
+- [x] Restore them into an isolated non-production database and verify
       version/digest/counts/status.
 - [ ] Record monitoring for no-LKG, stale, source auth/unavailable, contract
       validation, source regression, and storage failures.
