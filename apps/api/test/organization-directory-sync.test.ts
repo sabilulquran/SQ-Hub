@@ -69,3 +69,15 @@ it.each(["source_auth", "contract_validation", "source_request"])("does not aggr
   expect(reconcile).toHaveBeenCalledTimes(errorCategory === "source_request" ? 1 : 2);
   await stop();
 });
+
+it("keeps scheduling when reporting telemetry throws", async () => {
+  vi.useFakeTimers();
+  const reconcile = vi.fn().mockResolvedValue({ result: "UNCHANGED", errorCategory: null });
+  const stop = startDirectoryScheduler({
+    reconcile,
+    report: () => { throw new Error("synthetic telemetry failure"); },
+  });
+  await vi.advanceTimersByTimeAsync(300_000);
+  expect(reconcile).toHaveBeenCalledTimes(2);
+  await stop();
+});

@@ -94,6 +94,8 @@ reconcile_client() {
       directAccessGrantsEnabled: false,
       serviceAccountsEnabled: true,
       fullScopeAllowed: false,
+      defaultClientScopes: [],
+      optionalClientScopes: [],
       secret: $secret
     }')"
 
@@ -155,6 +157,15 @@ reconcile_client() {
   else
     fail "${client_id} audience mapper is ambiguous"
   fi
+
+  # Keycloak may attach realm defaults while creating/updating a client. Run
+  # the removal after every client mutation as well, so verification observes
+  # the final least-privilege state on both the first and subsequent runs.
+  default_scopes="$(kcadm get "clients/${client_uuid}/default-client-scopes" -r "${REALM}")"
+  while IFS= read -r default_scope_uuid; do
+    [[ -z "${default_scope_uuid}" ]] && continue
+    kcadm delete "clients/${client_uuid}/default-client-scopes/${default_scope_uuid}" -r "${REALM}" >/dev/null
+  done < <(jq -r '.[].id' <<<"${default_scopes}")
 
   verify_client="$(kcadm get "clients/${client_uuid}" -r "${REALM}")"
   verify_mapper="$(kcadm get "clients/${client_uuid}/protocol-mappers/models" -r "${REALM}")"

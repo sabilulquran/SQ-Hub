@@ -208,6 +208,18 @@ status/reconciliation evidence.
   same version, counts, source date, and prior synchronization timestamp.
   A simultaneous manual reconciliation returned `BUSY`, proving the
   single-flight guard without a parallel write.
+- The preserved staging projection crossed the exact 15-minute freshness
+  boundary and reported `stale=true` while retaining the same version and
+  counts. After the HCIS staging export gate was restored, a full
+  reconciliation at `2026-09-25T08:10:26.013Z` returned `UNCHANGED` and status
+  returned to `stale=false` without replacing the LKG.
+- The PostgreSQL integration suite exercised invalid schema, digest/count
+  mismatch, broken references, duplicate identifiers, hierarchy cycles,
+  identity ambiguity, invalid/future dates, source regression, and an injected
+  storage failure. Every rejected attempt preserved the exact prior projection
+  and successful-sync timestamp; the storage-failure case then recovered with
+  a valid full reconciliation. This suite passed in the recorded exact-head CI
+  evidence above and uses only disposable synthetic test data.
 
 ## Evidence still required
 
@@ -254,10 +266,10 @@ or any person row into this ledger.
 ### Staging rehearsal
 
 - [x] Source unavailable preserves the previous LKG projection.
-- [ ] At the 15-minute boundary the projection reports `stale=true`.
-- [ ] Invalid payload, digest/count mismatch, hierarchy cycle, identity
+- [x] At the 15-minute boundary the projection reports `stale=true`.
+- [x] Invalid payload, digest/count mismatch, hierarchy cycle, identity
       ambiguity, source regression, and storage failure do not replace LKG.
-- [ ] Corrected source/config permits the next full reconciliation.
+- [x] Corrected source/config permits the next full reconciliation.
 - [x] Concurrent reconciliation returns `BUSY` rather than writing in parallel.
 
 Deliberate failure injection belongs in staging, not production.

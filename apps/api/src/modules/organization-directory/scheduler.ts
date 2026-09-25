@@ -11,14 +11,20 @@ export function startDirectoryScheduler(input: {
   let stopped = false;
   let timer: ReturnType<typeof setTimeout> | undefined;
   let inFlight: Promise<void> = Promise.resolve();
+  function report(attempt: SyncAttempt | { result: "FAILED"; errorCategory: "storage" }) {
+    // Observability must never be able to kill the synchronization loop.
+    try { input.report(attempt); } catch { /* keep the scheduler alive */ }
+  }
   function run() {
     inFlight = (async () => {
       try {
         const result = await input.reconcile(jakartaBusinessDate((input.now ?? (() => new Date()))()));
-        if (result) input.report(result);
+        if (result) report(result);
         if (result?.errorCategory === "source_request") stopped = true;
-      } catch { input.report({ result: "FAILED", errorCategory: "storage" }); }
-      if (!stopped) { timer = setTimeout(run, 300_000); timer.unref(); }
+      } catch { report({ result: "FAILED", errorCategory: "storage" }); }
+      // Keep this timer referenced. The API process is the scheduler owner and
+      // must not silently lose its only future reconciliation handle.
+      if (!stopped) timer = setTimeout(run, 300_000);
     })();
   }
   run();
