@@ -102,6 +102,7 @@
       const root = document.documentElement;
       const card = document.querySelector(".pf-v5-c-login__main").getBoundingClientRect();
       const logoBox = logo.getBoundingClientRect();
+      document.body.dataset.logoRect = `${Math.round(logoBox.width)}x${Math.round(logoBox.height)}`;
       const primary = document.querySelector("#kc-login, #registerWebAuthn");
       const formReference = primary.closest("form") || document.querySelector(".pf-v5-c-login__main-body");
       const formBox = formReference.getBoundingClientRect();
