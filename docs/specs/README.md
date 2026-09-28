@@ -22,6 +22,7 @@ Indeks ini membantu maintainer membedakan specification yang sudah berada di `ma
 | HUB-IMPL-016 | [SQ Hub production launcher release package](HUB-IMPL-016-hub-production-launcher.md) | **ACCEPTED**; repository contract/runbook untuk launcher production, tanpa klaim deployment live. |
 | HUB-IMPL-017 | [SQ Hub + Akun SQ navigation experience](HUB-IMPL-017-sq-hub-akun-sq-navigation-experience.md) | Lihat status pada specification. |
 | HUB-IMPL-018 | [Organization Directory v1](HUB-IMPL-018-organization-directory-foundation.md) | **ACCEPTED**; full-snapshot HCIS -> Hub contract, service identity, LKG/staleness, dan read contract untuk consumer termasuk Aset SQ. |
+| HUB-IMPL-020 | [Cross-system Visual Polish](HUB-IMPL-020-cross-system-visual-polish.md) | **ACCEPTED** atas permintaan pengguna; enhancement visual non-blocking pasca-closure. Foundation dan Organization Directory tetap **CLOSED**. |
 
 ## ID proposal aktif yang belum berada di `main`
 
