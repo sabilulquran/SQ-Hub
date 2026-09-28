@@ -1,5 +1,14 @@
 # Status UAT identity SQ Hub — 2026-09-17
 
+> **HISTORICAL SNAPSHOT / SUPERSEDED FOR CURRENT STATUS.** This document preserves
+> the 17 September 2026 UAT ledger, including every `NOT_RUN` and `BLOCKED` result.
+> Its instruction to keep Issue #9 open is no longer current. Foundation SQ Hub +
+> Akun SQ remains **100% CLOSED since 23 September 2026**; see
+> [`project-status-2026-09-23.md`](./project-status-2026-09-23.md). The three
+> Keycloak-outage scenarios are not required in production; they become new work
+> only if separately scoped as a reliability/security rehearsal on an approved
+> safe target.
+
 Dokumen ini merekonsiliasi bukti UAT identity agar skenario yang sudah dilaksanakan dan diterima tidak kembali dijadwalkan hanya karena dipindahkan ke matriks production. Ledger rinci tetap berada di [`HUB-IMPL-003-production-cutover.md`](./HUB-IMPL-003-production-cutover.md), sedangkan bukti live staging yang diterima berada di [`HUB-IMPL-003-staging-uat-evidence.md`](./HUB-IMPL-003-staging-uat-evidence.md).
 
 ## Ringkasan untuk pembaca non-engineer

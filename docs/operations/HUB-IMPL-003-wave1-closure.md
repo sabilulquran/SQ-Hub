@@ -1,7 +1,18 @@
 # HUB-IMPL-003 Wave 1 closure map
 
-**Status:** PREPARED — acceptance automation/runbook hardening only  
-**Issue:** #9 remains authoritative and OPEN  
+> **HISTORICAL / SUPERSEDED.** This map preserves the unchecked Issue #9 state and
+> closure mechanics as they existed during Wave 1 preparation. It is not an active
+> closure checklist. Foundation SQ Hub + Akun SQ remains **100% CLOSED since 23
+> September 2026**; see
+> [`project-status-2026-09-23.md`](./project-status-2026-09-23.md). Issue #9 can be
+> closed as superseded without claiming that any historical `NOT_RUN` or `BLOCKED`
+> row passed. In particular, Keycloak-outage rehearsal is not required in
+> production and becomes new work only under a separately approved
+> reliability/security rehearsal scope.
+
+**Historical status:** PREPARED — acceptance automation/runbook hardening only
+
+**Historical Issue state:** #9 was authoritative and OPEN
 **Production cutover:** NOT AUTHORIZED  
 **Canonical staging issuer:** `https://login.sabilulquran.or.id/realms/sq-staff-staging`
 
@@ -91,6 +102,6 @@ The already-checked missing/revoked Application Access and logout items retain t
 - Keycloak **live staging** backup/restore remains outstanding even though `.github/workflows/keycloak-infra.yml` already exercises backup/disposable-restore mechanics in CI. Run `tools/wave1/keycloak-backup-restore.sh` against staging and retain only sanitized markers.
 - Exact staging issuer is continuously checkable without secrets using `tools/wave1/staging-preflight.sh`.
 
-## Closure rule
+## Historical closure rule
 
-Wave 1 remains blocked until all required live/browser/operator results have actually been executed and recorded. `tools/wave1/verify_contract.py` and the dedicated Wave 1 CI workflow validate only that the closure machinery is internally consistent; they do **not** convert `MANUAL_STAGING_REQUIRED`, `HUMAN_BROWSER_UAT`, secret-control, or production-authorization items into PASS.
+At the time of this map, Wave 1 was treated as blocked until all required live/browser/operator results had actually been executed and recorded. `tools/wave1/verify_contract.py` and the dedicated Wave 1 CI workflow validate only that the closure machinery is internally consistent; they do **not** convert `MANUAL_STAGING_REQUIRED`, `HUMAN_BROWSER_UAT`, secret-control, or production-authorization items into PASS. This historical rule was superseded by the accepted Foundation closure record linked above; the underlying unexecuted results remain unchanged.

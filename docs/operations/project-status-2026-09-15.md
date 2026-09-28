@@ -1,5 +1,11 @@
 # Status proyek SQ Hub — 2026-09-15
 
+> **HISTORICAL SNAPSHOT / SUPERSEDED FOR CURRENT STATUS.** Statements below about
+> Issue #9, `CUTOVER_BLOCKED`, and next steps are accurate only for the 15
+> September 2026 evidence window. They are not the current Foundation status.
+> Foundation SQ Hub + Akun SQ remains **100% CLOSED since 23 September 2026**;
+> see [`project-status-2026-09-23.md`](./project-status-2026-09-23.md).
+
 Dokumen ini merangkum kondisi proyek berdasarkan dua kelompok bukti yang harus dibaca terpisah:
 
 1. **Bukti GitHub** yang diperiksa pada 15 September 2026: repository `sabilulquran/SQ-Hub`, `main`, PR, issue, specification, runbook, dan GitHub Actions.
