@@ -110,7 +110,7 @@
       document.body.dataset.horizontal = String(root.scrollWidth > root.clientWidth + 1);
       document.body.dataset.logoLoaded = String(logo.complete && logo.naturalWidth > 0 && logo.naturalHeight > 0);
       document.body.dataset.logoSize = String(
-        logoBox.width >= 48 && logoBox.width <= 56 && logoBox.height >= 48 && logoBox.height <= 56
+        logoBox.width >= 60 && logoBox.width <= 64 && logoBox.height >= 60 && logoBox.height <= 64
       );
       document.body.dataset.primaryFull = String(primaryBox.width / formBox.width >= 0.96);
       document.body.dataset.cardCompact = String(card.width <= 456 && card.height < Math.max(700, innerHeight - 8));

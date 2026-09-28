@@ -64,6 +64,7 @@ Each per-application review must record findings for: logo/brand mark; header/ma
 ## Acceptance criteria
 
 - Official logo and product lockup are proportionate, legible, uncropped, and aligned on desktop and mobile.
+- Akun SQ login uses the existing YSQ mark at 60px with its product and organization labels enlarged to 17px and 12.5px, respectively.
 - Header height/padding, container width, typography, semantic color, radius, shadow, and spacing follow accepted SQ/HCIS patterns.
 - Navigation and primary cards/forms/states feel like one SQ product family while retaining product-owned wording and behavior.
 - At the three target viewports, no horizontal overflow, clipped controls/navigation, crowded important text, undersized primary touch targets, or off-viewport dialogs.
