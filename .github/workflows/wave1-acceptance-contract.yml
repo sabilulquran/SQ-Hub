@@ -45,9 +45,14 @@ jobs:
             bash -n "$script"
           done
 
-      - name: Assert no live acceptance is inferred
+      - name: Assert historical evidence and supersession are explicit
         run: |
           grep -Fq 'MANUAL_STAGING_REQUIRED' docs/operations/HUB-IMPL-003-wave1-closure.md
           grep -Fq 'HUMAN_BROWSER_UAT' docs/operations/HUB-IMPL-003-wave1-closure.md
+          grep -Fq 'HISTORICAL / SUPERSEDED' docs/operations/HUB-IMPL-003-wave1-closure.md
+          grep -Fq 'project-status-2026-09-23.md' docs/operations/HUB-IMPL-003-wave1-closure.md
+          grep -Fq 'HISTORICAL / SUPERSEDED' docs/operations/HUB-IMPL-003-production-cutover.md
           grep -Fq 'CUTOVER_BLOCKED' docs/operations/HUB-IMPL-003-production-cutover.md
-          echo 'WAVE1_CI_CONTRACT_ONLY_PASS'
+          grep -Fq 'not an active production runbook' docs/operations/HUB-IMPL-003-production-cutover.md
+          grep -Fq 'do not need to be executed in production' docs/operations/HUB-IMPL-003-production-cutover.md
+          echo 'WAVE1_HISTORICAL_CONTRACT_PASS'

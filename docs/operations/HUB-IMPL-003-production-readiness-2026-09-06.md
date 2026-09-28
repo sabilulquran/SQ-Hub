@@ -1,6 +1,15 @@
 # Wave 1 staging readiness evidence — 2026-09-06
 
-**Status:** IN PROGRESS — technical acceptance incomplete; production untouched.
+> **HISTORICAL / SUPERSEDED.** This is a point-in-time staging-readiness record
+> from 6 September 2026, not current production status or an active cutover
+> checklist. Preserve every result and unexecuted scenario below as dated
+> evidence. Foundation SQ Hub + Akun SQ remains **100% CLOSED since 23 September
+> 2026**; use [`project-status-2026-09-23.md`](./project-status-2026-09-23.md) for
+> current Foundation closure. Organization Directory was a separate
+> post-Foundation phase and is closed in
+> [`HUB-IMPL-018-production-acceptance-2026-09-25.md`](./HUB-IMPL-018-production-acceptance-2026-09-25.md).
+
+**Historical status on 2026-09-06:** IN PROGRESS — technical acceptance incomplete; production untouched.
 **Specifications:** HUB-IMPL-002, HUB-IMPL-003, HUB-IMPL-010.
 **Scope:** staging only. This record does not authorize production cutover.
 

@@ -1,6 +1,22 @@
 # HUB-IMPL-003 HCIS production cutover preparation
 
-**Status:** PREPARATION ONLY — `CUTOVER_BLOCKED`  
+> **HISTORICAL / SUPERSEDED — not an active production runbook.** This document
+> preserves the preparation ledger and evidence state recorded through 17
+> September 2026. Its `CUTOVER_BLOCKED` markers describe that preparation period;
+> they are **not** the current production or Foundation status. Foundation SQ Hub
+> + Akun SQ remains **100% CLOSED since 23 September 2026**; see
+> [`project-status-2026-09-23.md`](./project-status-2026-09-23.md). Organization
+> Directory was a post-Foundation phase, never a Foundation blocker, and is also
+> closed; see
+> [`HUB-IMPL-018-production-acceptance-2026-09-25.md`](./HUB-IMPL-018-production-acceptance-2026-09-25.md).
+>
+> The `NOT_RUN`/`BLOCKED` Keycloak-outage scenarios below remain truthful
+> historical evidence. They do not need to be executed in production and must not
+> be relabeled `PASS`. They become new work only if an owner explicitly scopes a
+> separate reliability/security rehearsal on an approved isolated or
+> production-like target.
+
+**Historical status:** PREPARATION ONLY — `CUTOVER_BLOCKED`
 **Production authorization:** NOT GRANTED by this document  
 **Execution owner:** designated production change owner after explicit approval
 
@@ -408,7 +424,7 @@ Codex must not execute production mutations until the product/change owner expli
 
 For C6/C7, the repository provides no authorization to stop production services. Rows 9.1-9.3 remain `BLOCKED` because the accepted staging evidence covered SQ Hub access-check failure, not a Keycloak outage. Row 9.4 is satisfied by the accepted live staging SQ Hub outage rehearsal and must not be repeated in production merely to change the environment label.
 
-### Owner decisions and remaining inputs
+### Historical owner decisions and remaining inputs
 
 The owner role, bounded C3/C4 authorization, production prohibition for C6/C7, rollback escalation, synthetic persona, mapping, active-access baseline, completed C2, and completed HCIS-local part of C3 are recorded above. Do not repeat C4 in production: the exact revoke/new-login denial/existing-session/restore behavior is already covered by accepted live staging evidence.
 
@@ -423,7 +439,7 @@ The remaining work is limited to real deltas:
 5. execute Keycloak outage rows `9.1`-`9.3` only in an isolated/production-like target; they are explicitly excluded from production execution;
 6. retain issue #9 as the backlog tracker until the deferred scenarios have qualifying evidence. It does not block the current release under the product-owner exception.
 
-### Consistency and invented-requirement audit
+### Historical consistency and invented-requirement audit
 
 No new authentication or authorization behavior is introduced by this packet. The scenarios above are direct operationalization of the accepted product/domain boundary, ADR-0003, ADR-0005, `HUB-IMPL-003`, `HUB-IMPL-011`, `HUB-IMPL-012`, Staff authentication policy, security baseline, issue #9 gates, and the requested production UAT scope.
 

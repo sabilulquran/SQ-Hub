@@ -39,7 +39,9 @@ def main() -> None:
         require(path.exists(), f"required Wave 1 closure file missing: {path.relative_to(ROOT)}")
 
     closure = (ROOT / "docs/operations/HUB-IMPL-003-wave1-closure.md").read_text(encoding="utf-8")
-    require("#9 remains authoritative and OPEN" in closure, "closure doc must preserve issue #9 authority")
+    require("HISTORICAL / SUPERSEDED" in closure, "closure doc must be marked historical/superseded")
+    require("#9 was authoritative and OPEN" in closure, "closure doc must preserve the historical issue #9 state")
+    require("project-status-2026-09-23.md" in closure, "closure doc must point to current Foundation closure")
     require("HUMAN_BROWSER_UAT" in closure, "closure doc must distinguish human/browser UAT")
     require("OPERATOR_SECRET_CONTROL" in closure, "closure doc must distinguish secret-control checks")
     require("PRODUCTION_AUTHORIZATION" in closure, "closure doc must distinguish production authorization")
@@ -89,7 +91,14 @@ def main() -> None:
     require("persona keys must be unique" in persona_tool, "persona tool must reject duplicate personas")
 
     cutover = (ROOT / "docs/operations/HUB-IMPL-003-production-cutover.md").read_text(encoding="utf-8")
-    require("CUTOVER_BLOCKED" in cutover, "production runbook must fail closed while Wave 1 is incomplete")
+    require("HISTORICAL / SUPERSEDED" in cutover, "production runbook must be marked historical/superseded")
+    require("not an active production runbook" in cutover, "production runbook must not present itself as active")
+    require("CUTOVER_BLOCKED" in cutover, "production runbook must preserve the historical blocked state")
+    require("project-status-2026-09-23.md" in cutover, "production runbook must point to current Foundation closure")
+    require(
+        "do not need to be executed in production" in cutover,
+        "production runbook must prohibit treating historical outage evidence as required production work",
+    )
     require("14 days" in cutover, "production runbook must preserve the maximum 14-day rollback window")
     require("immutable" in cutover.lower(), "production runbook must require immutable version pins")
 
