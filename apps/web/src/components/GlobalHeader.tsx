@@ -14,7 +14,7 @@ interface GlobalHeaderProps {
 export function GlobalHeader({ workspace, onLogout, previewMode }: GlobalHeaderProps) {
   return (
     <header className="sticky top-0 z-40 border-b border-border/70 bg-surface/95 backdrop-blur-md">
-      <div className="mx-auto flex min-h-16 max-w-7xl items-center justify-between gap-3 px-3 sm:px-5 lg:px-8">
+      <div className="mx-auto flex min-h-[4.5rem] max-w-7xl items-center justify-between gap-3 px-3 sm:px-5 lg:px-8">
         <a
           href="/"
           aria-label="Beranda SQ Hub"
