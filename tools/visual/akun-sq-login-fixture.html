@@ -109,7 +109,7 @@
 
       document.body.dataset.horizontal = String(root.scrollWidth > root.clientWidth + 1);
       document.body.dataset.logoLoaded = String(logo.complete && logo.naturalWidth > 0 && logo.naturalHeight > 0);
-      const minimumLogoSize = innerWidth < 390 ? 48 : 60;
+      const minimumLogoSize = innerWidth < 390 ? 44 : 60;
       document.body.dataset.logoSize = String(
         logoBox.width >= minimumLogoSize && logoBox.width <= 64 &&
         logoBox.height >= minimumLogoSize && logoBox.height <= 64
