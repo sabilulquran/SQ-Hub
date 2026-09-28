@@ -397,7 +397,7 @@ a { color: var(--sq-primary-dark) !important; }
   .pf-v5-c-login__container { padding-block: 1rem !important; }
 }
 
-@media (max-width: 640px) {
+@media (max-width: 380px) {
   .pf-v5-c-login__container {
     align-items: flex-start !important;
     padding: 1rem !important;
