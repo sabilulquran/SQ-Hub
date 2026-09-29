@@ -1,0 +1,187 @@
+name: Verify SQ Hub Production Backup
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirmation:
+        description: Type CREATE_VERIFIED_BACKUP to continue
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sq-hub-production
+  cancel-in-progress: false
+
+jobs:
+  backup:
+    name: Create and restore-check production database backups
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: production
+    env:
+      CONFIRMATION: ${{ inputs.confirmation }}
+      PROD_HOST: ${{ secrets.SQ_HUB_PROD_HOST }}
+      PROD_USER: ${{ secrets.SQ_HUB_PROD_USER }}
+      SOURCE_SHA: ${{ github.sha }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate request
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$CONFIRMATION" = "CREATE_VERIFIED_BACKUP" || {
+            echo "confirmation must be exactly CREATE_VERIFIED_BACKUP" >&2
+            exit 1
+          }
+          test -n "$PROD_HOST"
+          test -n "$PROD_USER"
+
+      - name: Configure SSH
+        shell: bash
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.SQ_HUB_PROD_SSH_PRIVATE_KEY }}
+          SSH_KNOWN_HOSTS: ${{ secrets.SQ_HUB_PROD_SSH_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          test -n "$SSH_PRIVATE_KEY"
+          test -n "$SSH_KNOWN_HOSTS"
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          printf '%s\n' "$SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+
+      - name: Create backups and prove disposable restores
+        shell: bash
+        run: |
+          set -euo pipefail
+          ssh "$PROD_USER@$PROD_HOST" sudo -n bash -s -- "$SOURCE_SHA" <<'REMOTE'
+          set -euo pipefail
+          umask 077
+
+          source_sha=$1
+          runtime_dir=/var/www/sq-hub-production
+          hub_compose="$runtime_dir/compose.hub.json"
+          identity_compose="$runtime_dir/compose.identity.json"
+          backup_root=/var/backups/sq-hub
+          stamp="$(date -u +%Y%m%dT%H%M%SZ)"
+          backup_id="visual-polish-$stamp"
+          backup_dir="$backup_root/$backup_id"
+          hub_dump="$backup_dir/sq-hub.dump"
+          identity_dump="$backup_dir/keycloak.dump"
+          hub_restore_db="sq_hub_restore_${stamp//[^0-9]/}"
+          identity_restore_db="keycloak_restore_${stamp//[^0-9]/}"
+          backup_created=0
+
+          mkdir -p "$backup_root"
+          chmod 700 "$backup_root"
+          exec 9>"$backup_root/.production-backup.lock"
+          flock -n 9 || {
+            echo "STOP: another SQ Hub production backup/deploy operation is active" >&2
+            exit 1
+          }
+
+          cleanup() {
+            status=$?
+            docker compose -f "$hub_compose" exec -T postgres \
+              sh -ceu 'dropdb --username "$POSTGRES_USER" --if-exists "$1"' sh "$hub_restore_db" \
+              >/dev/null 2>&1 || true
+            docker compose -f "$identity_compose" exec -T keycloak-db \
+              sh -ceu 'dropdb --username "$POSTGRES_USER" --if-exists "$1"' sh "$identity_restore_db" \
+              >/dev/null 2>&1 || true
+            if [ "$status" -ne 0 ] && [ "$backup_created" -eq 1 ]; then
+              rm -rf -- "$backup_dir"
+            fi
+            exit "$status"
+          }
+          trap cleanup EXIT
+
+          test -r "$hub_compose"
+          test -r "$identity_compose"
+          test "$(docker compose -f "$hub_compose" config --services | sort)" = $'api\npostgres\nweb'
+          test "$(docker compose -f "$identity_compose" config --services | sort)" = $'keycloak\nkeycloak-db'
+
+          hub_db_bytes="$(docker compose -f "$hub_compose" exec -T postgres \
+            sh -ceu 'psql --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" --tuples-only --no-align --command "SELECT pg_database_size(current_database());"')"
+          identity_db_bytes="$(docker compose -f "$identity_compose" exec -T keycloak-db \
+            sh -ceu 'psql --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" --tuples-only --no-align --command "SELECT pg_database_size(current_database());"')"
+          case "$hub_db_bytes:$identity_db_bytes" in
+            *[!0-9:]*|:*|*:) echo "STOP: could not determine database sizes" >&2; exit 1 ;;
+          esac
+          available_kb="$(df -Pk "$backup_root" | awk 'NR == 2 {print $4}')"
+          required_kb=$(( (hub_db_bytes + identity_db_bytes) * 3 / 1024 + 262144 ))
+          test "$available_kb" -gt "$required_kb" || {
+            echo "STOP: insufficient space for backup plus disposable restore" >&2
+            exit 1
+          }
+
+          mkdir "$backup_dir"
+          backup_created=1
+          cp -p "$hub_compose" "$backup_dir/compose.hub.json"
+          cp -p "$identity_compose" "$backup_dir/compose.identity.json"
+
+          docker compose -f "$hub_compose" exec -T postgres sh -ceu '
+            pg_dump --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" \
+              --format custom --no-owner --no-privileges
+          ' > "$hub_dump"
+          docker compose -f "$identity_compose" exec -T keycloak-db sh -ceu '
+            pg_dump --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" \
+              --format custom --no-owner --no-privileges
+          ' > "$identity_dump"
+          chmod 600 "$backup_dir"/*
+          test -s "$hub_dump"
+          test -s "$identity_dump"
+
+          docker compose -f "$hub_compose" exec -T postgres \
+            sh -ceu 'createdb --username "$POSTGRES_USER" "$1"' sh "$hub_restore_db"
+          cat "$hub_dump" | docker compose -f "$hub_compose" exec -T postgres \
+            sh -ceu 'pg_restore --username "$POSTGRES_USER" --dbname "$1" --no-owner --no-privileges' \
+            sh "$hub_restore_db"
+          docker compose -f "$hub_compose" exec -T postgres \
+            sh -ceu 'psql --username "$POSTGRES_USER" --dbname "$1" --tuples-only --no-align --command "SELECT 1;" | grep -Fxq 1' \
+            sh "$hub_restore_db"
+
+          docker compose -f "$identity_compose" exec -T keycloak-db \
+            sh -ceu 'createdb --username "$POSTGRES_USER" "$1"' sh "$identity_restore_db"
+          cat "$identity_dump" | docker compose -f "$identity_compose" exec -T keycloak-db \
+            sh -ceu 'pg_restore --username "$POSTGRES_USER" --dbname "$1" --no-owner --no-privileges' \
+            sh "$identity_restore_db"
+          realm_count="$(docker compose -f "$identity_compose" exec -T keycloak-db \
+            sh -ceu 'psql --username "$POSTGRES_USER" --dbname "$1" --tuples-only --no-align \
+              --command "SELECT count(*) FROM realm WHERE name = '\''sq-staff'\'';"' sh "$identity_restore_db")"
+          test "$realm_count" = 1
+
+          docker compose -f "$hub_compose" exec -T postgres \
+            sh -ceu 'dropdb --username "$POSTGRES_USER" --if-exists "$1"' sh "$hub_restore_db"
+          docker compose -f "$identity_compose" exec -T keycloak-db \
+            sh -ceu 'dropdb --username "$POSTGRES_USER" --if-exists "$1"' sh "$identity_restore_db"
+
+          hub_sha="$(sha256sum "$hub_dump" | awk '{print $1}')"
+          identity_sha="$(sha256sum "$identity_dump" | awk '{print $1}')"
+          cat > "$backup_dir/manifest.txt" <<MANIFEST
+          backup_id=$backup_id
+          created_at_utc=$stamp
+          source_sha=$source_sha
+          hub_dump_sha256=$hub_sha
+          keycloak_dump_sha256=$identity_sha
+          restore_check=pass
+          MANIFEST
+          chmod 600 "$backup_dir/manifest.txt"
+
+          echo "PRODUCTION_BACKUP_VERIFIED"
+          echo "backup_id=$backup_id"
+          echo "created_at_utc=$stamp"
+          echo "hub_dump_sha256=$hub_sha"
+          echo "keycloak_dump_sha256=$identity_sha"
+          echo "restore_check=pass"
+          REMOTE
+
+      - name: Remove SSH material
+        if: always()
+        shell: bash
+        run: rm -f ~/.ssh/id_ed25519 ~/.ssh/known_hosts
