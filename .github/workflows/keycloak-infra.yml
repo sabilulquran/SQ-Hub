@@ -1,3 +1,4 @@
+# Disposable localhost CI fixture; no production-VPS staging deployment.
 name: Keycloak Infra
 
 on:
@@ -69,7 +70,7 @@ jobs:
         run: |
           docker compose \
             --env-file "$KEYCLOAK_ENV_FILE" \
-            -f infra/keycloak/docker-compose.staging.yml \
+            -f infra/keycloak/docker-compose.ci.yml \
             -f infra/keycloak/docker-compose.bootstrap.yml \
             config > /tmp/keycloak-compose.yml
 
@@ -82,7 +83,7 @@ jobs:
         run: |
           docker compose \
             --env-file "$KEYCLOAK_ENV_FILE" \
-            -f infra/keycloak/docker-compose.staging.yml \
+            -f infra/keycloak/docker-compose.ci.yml \
             -f infra/keycloak/docker-compose.bootstrap.yml \
             up -d --build
 
@@ -100,7 +101,7 @@ jobs:
           if [[ "$ready" != "1" ]]; then
             docker compose \
               --env-file "$KEYCLOAK_ENV_FILE" \
-              -f infra/keycloak/docker-compose.staging.yml \
+              -f infra/keycloak/docker-compose.ci.yml \
               -f infra/keycloak/docker-compose.bootstrap.yml \
               logs keycloak
             exit 1
@@ -225,7 +226,7 @@ jobs:
 
           docker compose \
             --env-file "$KEYCLOAK_ENV_FILE" \
-            -f infra/keycloak/docker-compose.staging.yml \
+            -f infra/keycloak/docker-compose.ci.yml \
             -f infra/keycloak/docker-compose.bootstrap.yml \
             exec -T keycloak \
             sh -ceu '
@@ -267,7 +268,7 @@ jobs:
           ! grep -Fq "$GOOGLE_CLIENT_SECRET" /tmp/akun-sq-identity-ux.html
 
           first_flow="$({
-            docker compose --env-file "$KEYCLOAK_ENV_FILE" -f infra/keycloak/docker-compose.staging.yml \
+            docker compose --env-file "$KEYCLOAK_ENV_FILE" -f infra/keycloak/docker-compose.ci.yml \
               exec -T keycloak /opt/keycloak/bin/kcadm.sh get \
               'authentication/flows/akun-sq-google-existing-account-link/executions' \
               -r sq-staff-staging --config "$kcadm_config"
@@ -278,7 +279,7 @@ jobs:
           ' >/dev/null <<<"$first_flow"
 
           google_provider="$({
-            docker compose --env-file "$KEYCLOAK_ENV_FILE" -f infra/keycloak/docker-compose.staging.yml \
+            docker compose --env-file "$KEYCLOAK_ENV_FILE" -f infra/keycloak/docker-compose.ci.yml \
               exec -T keycloak /opt/keycloak/bin/kcadm.sh get identity-provider/instances/google \
               -r sq-staff-staging --config "$kcadm_config"
           })"
@@ -289,7 +290,7 @@ jobs:
 
           unset first_flow google_provider output
           rm -f /tmp/akun-sq-identity-ux.html
-          docker compose --env-file "$KEYCLOAK_ENV_FILE" -f infra/keycloak/docker-compose.staging.yml \
+          docker compose --env-file "$KEYCLOAK_ENV_FILE" -f infra/keycloak/docker-compose.ci.yml \
             exec -T keycloak rm -f "$kcadm_config"
 
       - name: Reconcile and verify recovery-code prerequisites
@@ -299,7 +300,7 @@ jobs:
 
           docker compose \
             --env-file "$KEYCLOAK_ENV_FILE" \
-            -f infra/keycloak/docker-compose.staging.yml \
+            -f infra/keycloak/docker-compose.ci.yml \
             -f infra/keycloak/docker-compose.bootstrap.yml \
             exec -T keycloak \
             sh -ceu '
@@ -324,7 +325,7 @@ jobs:
           test "$second_output" = "$expected_second_output"
 
           required_action_json="$(
-            docker compose --env-file "$KEYCLOAK_ENV_FILE" -f infra/keycloak/docker-compose.staging.yml \
+            docker compose --env-file "$KEYCLOAK_ENV_FILE" -f infra/keycloak/docker-compose.ci.yml \
               exec -T keycloak /opt/keycloak/bin/kcadm.sh get \
               authentication/required-actions/CONFIGURE_RECOVERY_AUTHN_CODES \
               -r sq-staff-staging --config "$kcadm_config"
@@ -336,13 +337,13 @@ jobs:
           ' >/dev/null <<<"$required_action_json"
 
           realm_json="$(
-            docker compose --env-file "$KEYCLOAK_ENV_FILE" -f infra/keycloak/docker-compose.staging.yml \
+            docker compose --env-file "$KEYCLOAK_ENV_FILE" -f infra/keycloak/docker-compose.ci.yml \
               exec -T keycloak /opt/keycloak/bin/kcadm.sh get realms/sq-staff-staging \
               --config "$kcadm_config"
           )"
           browser_flow="$(jq -er '.browserFlow | select(type == "string" and length > 0)' <<<"$realm_json")"
           executions_json="$(
-            docker compose --env-file "$KEYCLOAK_ENV_FILE" -f infra/keycloak/docker-compose.staging.yml \
+            docker compose --env-file "$KEYCLOAK_ENV_FILE" -f infra/keycloak/docker-compose.ci.yml \
               exec -T keycloak /opt/keycloak/bin/kcadm.sh get \
               "authentication/flows/$browser_flow/executions" -r sq-staff-staging \
               --config "$kcadm_config"
@@ -352,7 +353,7 @@ jobs:
             ([.[] | select(.providerId == "auth-otp-form" and .requirement == "ALTERNATIVE")] | length) == 1
           ' >/dev/null <<<"$executions_json"
 
-          docker compose --env-file "$KEYCLOAK_ENV_FILE" -f infra/keycloak/docker-compose.staging.yml \
+          docker compose --env-file "$KEYCLOAK_ENV_FILE" -f infra/keycloak/docker-compose.ci.yml \
             exec -T keycloak rm -f "$kcadm_config"
 
       - name: Reconcile and verify native account self-service scope
@@ -362,7 +363,7 @@ jobs:
 
           docker compose \
             --env-file "$KEYCLOAK_ENV_FILE" \
-            -f infra/keycloak/docker-compose.staging.yml \
+            -f infra/keycloak/docker-compose.ci.yml \
             -f infra/keycloak/docker-compose.bootstrap.yml \
             exec -T keycloak \
             sh -ceu '
@@ -389,20 +390,20 @@ jobs:
           done
 
           hub_uuid="$(
-            docker compose --env-file "$KEYCLOAK_ENV_FILE" -f infra/keycloak/docker-compose.staging.yml \
+            docker compose --env-file "$KEYCLOAK_ENV_FILE" -f infra/keycloak/docker-compose.ci.yml \
               exec -T keycloak /opt/keycloak/bin/kcadm.sh get clients \
               -r sq-staff-staging -q clientId=sq-hub-staging --config "$kcadm_config" \
               | jq -er 'if length == 1 then .[0].id else error("Hub client ambiguous") end'
           )"
           account_uuid="$(
-            docker compose --env-file "$KEYCLOAK_ENV_FILE" -f infra/keycloak/docker-compose.staging.yml \
+            docker compose --env-file "$KEYCLOAK_ENV_FILE" -f infra/keycloak/docker-compose.ci.yml \
               exec -T keycloak /opt/keycloak/bin/kcadm.sh get clients \
               -r sq-staff-staging -q clientId=account --config "$kcadm_config" \
               | jq -er 'if length == 1 then .[0].id else error("account client ambiguous") end'
           )"
 
           mapped="$(
-            docker compose --env-file "$KEYCLOAK_ENV_FILE" -f infra/keycloak/docker-compose.staging.yml \
+            docker compose --env-file "$KEYCLOAK_ENV_FILE" -f infra/keycloak/docker-compose.ci.yml \
               exec -T keycloak /opt/keycloak/bin/kcadm.sh get \
               "clients/$hub_uuid/scope-mappings/clients/$account_uuid" \
               -r sq-staff-staging --config "$kcadm_config"
@@ -426,7 +427,7 @@ jobs:
           synthetic_username=ci-native-account
           synthetic_password=ci-native-account-password-only
           synthetic_user_id="$(
-            docker compose --env-file "$KEYCLOAK_ENV_FILE" -f infra/keycloak/docker-compose.staging.yml \
+            docker compose --env-file "$KEYCLOAK_ENV_FILE" -f infra/keycloak/docker-compose.ci.yml \
               exec -T keycloak /opt/keycloak/bin/kcadm.sh create users \
               -r sq-staff-staging \
               -s "username=$synthetic_username" \
@@ -439,7 +440,7 @@ jobs:
           )"
           test -n "$synthetic_user_id"
 
-          docker compose --env-file "$KEYCLOAK_ENV_FILE" -f infra/keycloak/docker-compose.staging.yml \
+          docker compose --env-file "$KEYCLOAK_ENV_FILE" -f infra/keycloak/docker-compose.ci.yml \
             exec -T keycloak /opt/keycloak/bin/kcadm.sh set-password \
             -r sq-staff-staging \
             --userid "$synthetic_user_id" \
@@ -447,13 +448,13 @@ jobs:
             --temporary=false \
             --config "$kcadm_config" >/dev/null
 
-          docker compose --env-file "$KEYCLOAK_ENV_FILE" -f infra/keycloak/docker-compose.staging.yml \
+          docker compose --env-file "$KEYCLOAK_ENV_FILE" -f infra/keycloak/docker-compose.ci.yml \
             exec -T keycloak /opt/keycloak/bin/kcadm.sh update "clients/$hub_uuid" \
             -r sq-staff-staging -s directAccessGrantsEnabled=true \
             --config "$kcadm_config" >/dev/null
 
           hub_secret="$(
-            docker compose --env-file "$KEYCLOAK_ENV_FILE" -f infra/keycloak/docker-compose.staging.yml \
+            docker compose --env-file "$KEYCLOAK_ENV_FILE" -f infra/keycloak/docker-compose.ci.yml \
               exec -T keycloak /opt/keycloak/bin/kcadm.sh get "clients/$hub_uuid/client-secret" \
               -r sq-staff-staging --config "$kcadm_config" \
               | jq -er '.value'
@@ -513,14 +514,14 @@ jobs:
           done
           echo "NATIVE_ACCOUNT_RUNTIME_API_PASS"
 
-          docker compose --env-file "$KEYCLOAK_ENV_FILE" -f infra/keycloak/docker-compose.staging.yml \
+          docker compose --env-file "$KEYCLOAK_ENV_FILE" -f infra/keycloak/docker-compose.ci.yml \
             exec -T keycloak /opt/keycloak/bin/kcadm.sh update "clients/$hub_uuid" \
             -r sq-staff-staging -s directAccessGrantsEnabled=false \
             --config "$kcadm_config" >/dev/null
 
           unset hub_secret account_token token_payload synthetic_password
           rm -f /tmp/native-account-credentials.json
-          docker compose --env-file "$KEYCLOAK_ENV_FILE" -f infra/keycloak/docker-compose.staging.yml \
+          docker compose --env-file "$KEYCLOAK_ENV_FILE" -f infra/keycloak/docker-compose.ci.yml \
             exec -T keycloak rm -f "$kcadm_config"
 
       - name: Reconcile and verify least-privilege directory client
@@ -530,7 +531,7 @@ jobs:
 
           docker compose \
             --env-file "$KEYCLOAK_ENV_FILE" \
-            -f infra/keycloak/docker-compose.staging.yml \
+            -f infra/keycloak/docker-compose.ci.yml \
             -f infra/keycloak/docker-compose.bootstrap.yml \
             exec -T keycloak \
             sh -ceu '
@@ -562,7 +563,7 @@ jobs:
           test "$second_output" = "$expected_output"
 
           synthetic_user_id="$(
-            docker compose --env-file "$KEYCLOAK_ENV_FILE" -f infra/keycloak/docker-compose.staging.yml \
+            docker compose --env-file "$KEYCLOAK_ENV_FILE" -f infra/keycloak/docker-compose.ci.yml \
               exec -T keycloak /opt/keycloak/bin/kcadm.sh create users \
               -r sq-staff-staging \
               -s username=ci-directory-smoke \
@@ -600,7 +601,7 @@ jobs:
 
           unset directory_token synthetic_user_id
           rm -f /tmp/directory-users.json /tmp/directory-user.json
-          docker compose --env-file "$KEYCLOAK_ENV_FILE" -f infra/keycloak/docker-compose.staging.yml \
+          docker compose --env-file "$KEYCLOAK_ENV_FILE" -f infra/keycloak/docker-compose.ci.yml \
             exec -T keycloak rm -f "$kcadm_config"
 
       - name: Reconcile and verify Organization Directory machine clients
@@ -610,7 +611,7 @@ jobs:
 
           docker compose \
             --env-file "$KEYCLOAK_ENV_FILE" \
-            -f infra/keycloak/docker-compose.staging.yml \
+            -f infra/keycloak/docker-compose.ci.yml \
             -f infra/keycloak/docker-compose.bootstrap.yml \
             exec -T keycloak \
             sh -ceu '
@@ -675,7 +676,7 @@ jobs:
             "$ORG_DIRECTORY_READER_CLIENT_SECRET" \
             sq-hub-organization-directory-staging
 
-          docker compose --env-file "$KEYCLOAK_ENV_FILE" -f infra/keycloak/docker-compose.staging.yml \
+          docker compose --env-file "$KEYCLOAK_ENV_FILE" -f infra/keycloak/docker-compose.ci.yml \
             exec -T keycloak rm -f "$kcadm_config"
 
       - name: Verify backup and disposable restore
@@ -691,7 +692,7 @@ jobs:
 
           docker compose \
             --env-file "$KEYCLOAK_ENV_FILE" \
-            -f infra/keycloak/docker-compose.staging.yml \
+            -f infra/keycloak/docker-compose.ci.yml \
             -f infra/keycloak/docker-compose.bootstrap.yml \
             exec -T keycloak \
             sh -ceu '
@@ -704,24 +705,24 @@ jobs:
             ' sh "$kcadm_config"
 
           providers="$({
-            docker compose --env-file "$KEYCLOAK_ENV_FILE" -f infra/keycloak/docker-compose.staging.yml \
+            docker compose --env-file "$KEYCLOAK_ENV_FILE" -f infra/keycloak/docker-compose.ci.yml \
               exec -T keycloak /opt/keycloak/bin/kcadm.sh get authentication/authenticator-providers \
               -r sq-staff-staging --config "$kcadm_config"
           })"
           jq -e '([.[] | select(.id == "sq-trusted-device-otp")] | length) == 1' \
             >/dev/null <<<"$providers"
 
-          docker compose --env-file "$KEYCLOAK_ENV_FILE" -f infra/keycloak/docker-compose.staging.yml \
+          docker compose --env-file "$KEYCLOAK_ENV_FILE" -f infra/keycloak/docker-compose.ci.yml \
             exec -T keycloak /opt/keycloak/bin/kcadm.sh create authentication/flows \
             -r sq-staff-staging -s "alias=$google_post_flow" -s providerId=basic-flow \
             -s topLevel=true -s builtIn=false --config "$kcadm_config" >/dev/null
-          docker compose --env-file "$KEYCLOAK_ENV_FILE" -f infra/keycloak/docker-compose.staging.yml \
+          docker compose --env-file "$KEYCLOAK_ENV_FILE" -f infra/keycloak/docker-compose.ci.yml \
             exec -T keycloak /opt/keycloak/bin/kcadm.sh create \
             "authentication/flows/$google_post_flow/executions/execution" \
             -r sq-staff-staging -s provider=auth-otp-form --config "$kcadm_config" >/dev/null
 
           google_executions="$({
-            docker compose --env-file "$KEYCLOAK_ENV_FILE" -f infra/keycloak/docker-compose.staging.yml \
+            docker compose --env-file "$KEYCLOAK_ENV_FILE" -f infra/keycloak/docker-compose.ci.yml \
               exec -T keycloak /opt/keycloak/bin/kcadm.sh get \
               "authentication/flows/$google_post_flow/executions" \
               -r sq-staff-staging --config "$kcadm_config"
@@ -729,7 +730,7 @@ jobs:
           google_otp="$(jq '.[] | select(.providerId == "auth-otp-form") | .requirement = "REQUIRED"' \
             <<<"$google_executions")"
           printf '%s' "$google_otp" | docker compose --env-file "$KEYCLOAK_ENV_FILE" \
-            -f infra/keycloak/docker-compose.staging.yml exec -T keycloak \
+            -f infra/keycloak/docker-compose.ci.yml exec -T keycloak \
             /opt/keycloak/bin/kcadm.sh update "authentication/flows/$google_post_flow/executions" \
             -r sq-staff-staging -n -f - --config "$kcadm_config" >/dev/null
 
@@ -747,7 +748,7 @@ jobs:
           done
 
           unset providers google_executions google_otp output
-          docker compose --env-file "$KEYCLOAK_ENV_FILE" -f infra/keycloak/docker-compose.staging.yml \
+          docker compose --env-file "$KEYCLOAK_ENV_FILE" -f infra/keycloak/docker-compose.ci.yml \
             exec -T keycloak rm -f "$kcadm_config"
 
       - name: Reject committed Keycloak secrets
@@ -763,12 +764,12 @@ jobs:
         run: |
           docker compose \
             --env-file "$KEYCLOAK_ENV_FILE" \
-            -f infra/keycloak/docker-compose.staging.yml \
+            -f infra/keycloak/docker-compose.ci.yml \
             -f infra/keycloak/docker-compose.bootstrap.yml \
             ps || true
           docker compose \
             --env-file "$KEYCLOAK_ENV_FILE" \
-            -f infra/keycloak/docker-compose.staging.yml \
+            -f infra/keycloak/docker-compose.ci.yml \
             -f infra/keycloak/docker-compose.bootstrap.yml \
             logs --no-color keycloak keycloak-db || true
 
@@ -777,7 +778,7 @@ jobs:
         run: |
           docker compose \
             --env-file "$KEYCLOAK_ENV_FILE" \
-            -f infra/keycloak/docker-compose.staging.yml \
+            -f infra/keycloak/docker-compose.ci.yml \
             -f infra/keycloak/docker-compose.bootstrap.yml \
             down -v || true
           docker network rm "$EDGE_NETWORK" >/dev/null 2>&1 || true

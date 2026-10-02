@@ -1,3 +1,4 @@
+# Disposable localhost CI fixture; no production-VPS staging deployment.
 name: Akun SQ Account Runtime
 
 on:
@@ -5,7 +6,7 @@ on:
     paths:
       - "infra/keycloak/themes/sq-hub/account/**"
       - "infra/keycloak/Containerfile"
-      - "infra/keycloak/docker-compose.staging.yml"
+      - "infra/keycloak/docker-compose.ci.yml"
       - "infra/keycloak/docker-compose.bootstrap.yml"
       - "infra/keycloak/realm/sq-staff-staging-realm.json"
       - "tools/visual/akun-sq-account-runtime-smoke.py"
@@ -15,7 +16,7 @@ on:
     paths:
       - "infra/keycloak/themes/sq-hub/account/**"
       - "infra/keycloak/Containerfile"
-      - "infra/keycloak/docker-compose.staging.yml"
+      - "infra/keycloak/docker-compose.ci.yml"
       - "infra/keycloak/docker-compose.bootstrap.yml"
       - "infra/keycloak/realm/sq-staff-staging-realm.json"
       - "tools/visual/akun-sq-account-runtime-smoke.py"
@@ -77,7 +78,7 @@ jobs:
           docker network inspect "$EDGE_NETWORK" >/dev/null 2>&1 || docker network create "$EDGE_NETWORK"
           docker compose \
             --env-file "$KEYCLOAK_ENV_FILE" \
-            -f infra/keycloak/docker-compose.staging.yml \
+            -f infra/keycloak/docker-compose.ci.yml \
             -f infra/keycloak/docker-compose.bootstrap.yml \
             up -d --build
 
@@ -103,7 +104,7 @@ jobs:
           kcadm_config=/tmp/account-runtime.kcadm
           docker compose \
             --env-file "$KEYCLOAK_ENV_FILE" \
-            -f infra/keycloak/docker-compose.staging.yml \
+            -f infra/keycloak/docker-compose.ci.yml \
             -f infra/keycloak/docker-compose.bootstrap.yml \
             exec -T keycloak \
             sh -ceu '
@@ -118,7 +119,7 @@ jobs:
           synthetic_user_id="$(
             docker compose \
               --env-file "$KEYCLOAK_ENV_FILE" \
-              -f infra/keycloak/docker-compose.staging.yml \
+              -f infra/keycloak/docker-compose.ci.yml \
               exec -T keycloak \
               /opt/keycloak/bin/kcadm.sh create users \
               -r sq-staff-staging \
@@ -134,7 +135,7 @@ jobs:
 
           docker compose \
             --env-file "$KEYCLOAK_ENV_FILE" \
-            -f infra/keycloak/docker-compose.staging.yml \
+            -f infra/keycloak/docker-compose.ci.yml \
             exec -T keycloak \
             /opt/keycloak/bin/kcadm.sh set-password \
             -r sq-staff-staging \
@@ -188,7 +189,7 @@ jobs:
         run: |
           docker compose \
             --env-file "$KEYCLOAK_ENV_FILE" \
-            -f infra/keycloak/docker-compose.staging.yml \
+            -f infra/keycloak/docker-compose.ci.yml \
             -f infra/keycloak/docker-compose.bootstrap.yml \
             down -v || true
           docker network rm "$EDGE_NETWORK" >/dev/null 2>&1 || true
