@@ -27,7 +27,7 @@ Indeks ini membantu maintainer membedakan specification yang sudah berada di `ma
 
 | ID | Proposal | Status saat rekonsiliasi 2026-09-15 |
 | --- | --- | --- |
-| HUB-IMPL-013 | [PR #42 — Go 5C staff provisioning and offboarding](https://github.com/sabilulquran/SQ-Hub/pull/42) | **DRAFT / PROPOSED**. ID menggantikan nomor proposal lama HUB-IMPL-011 yang berbenturan dengan specification accepted. Belum memberi izin merge atau deployment. |
+| HUB-IMPL-013 | [Identity Lifecycle pegawai](HUB-IMPL-013-go5c-staff-provisioning-offboarding.md) | **ACCEPTED** 2026-10-02; controlled production UAT amendment. Repository implementation and production activation evidence are tracked separately. |
 
 ## Proposal yang disupersede
 
