@@ -1,7 +1,7 @@
 # HUB-IMPL-013 — Identity Lifecycle pegawai
 
 **Status:** ACCEPTED — implementation contract, 2026-10-02
-**Environment amendment:** Product Owner directed controlled production UAT instead of staging UAT on 2026-10-02; production safety gates below still apply.
+**Environment amendment:** Product Owner first directed controlled production UAT instead of staging UAT, then made UAT optional on 2026-10-02. UAT is recorded as WAIVED, never PASS, when not executed. Security and deployment verification gates below still apply.
 **Product:** SQ Hub / Administrasi SQ
 **Depends on:** Admin Center Foundation, HUB-IMPL-007/009/018, ADR-0003/0005/0007, Staff Authentication Policy, Security Baseline
 
@@ -39,4 +39,4 @@ An Admin may re-enable the global identity with reason, confirmation and audit. 
 
 The operator runbook describes retry after each possible failure, read-back of every step, stale/incomplete operations, deployment rollback, and escalation of unresolved cases to the Head of HCM. The Head of HCM coordinates closure; an authorized Admin executes and audits retries. Never label a partial operation completed to clear an alert.
 
-Controlled production UAT uses synthetic identities only and proves employee found/absent/ambiguous, duplicate/timeout reconciliation, 12-hour action email and re-send failure, each offboarding partial-failure/retry, self-offboarding denial, re-enable without access restoration, audit and forbidden Keycloak actions. Typecheck, lint, tests, build, migration/recovery and secret/PII review must pass. Production activation requires reviewed deployment, isolated synthetic UAT, verified least-privilege service accounts, backup/recovery evidence, and separately recorded operator results. Unmet gates keep the feature disabled.
+If exercised, controlled production UAT uses synthetic identities only and covers employee found/absent/ambiguous, duplicate/timeout reconciliation, 12-hour action email and re-send failure, each offboarding partial-failure/retry, self-offboarding denial, re-enable without access restoration, and audit. The Product Owner waived this UAT on 2026-10-02; no unexecuted scenario is marked PASS. Repository typecheck, lint, tests, build, migration and secret/PII review remain recorded evidence. Production activation still requires a reviewed deployment, verified least-privilege service accounts including allowed and forbidden Keycloak permission probes, backup/recovery evidence, and deployment health verification. Unmet security or operational gates keep the feature disabled.

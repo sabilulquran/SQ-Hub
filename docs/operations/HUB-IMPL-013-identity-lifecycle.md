@@ -1,6 +1,6 @@
 # HUB-IMPL-013 — production activation and recovery
 
-**Status:** repository implementation; controlled production UAT pending. Product Owner replaced staging UAT on 2026-10-02.
+**Status:** repository implementation; production deployment pending. Product Owner waived UAT on 2026-10-02. UAT status is WAIVED, not PASS.
 
 ## Activation gates
 
@@ -38,8 +38,8 @@ If a deployment fails, remove the management client configuration from Hub and r
 | Backup/restore and rollback rehearsal | NOT RUN |
 | Synthetic HCIS producer contract | Local test passed; production connection pending |
 | Keycloak least-privilege permission probe | NOT RUN |
-| Email 12-hour action and send-failure retry in production | NOT RUN |
-| Per-step offboarding failure/retry and re-enable in production | NOT RUN |
+| Email 12-hour action and send-failure retry in production | WAIVED; not executed |
+| Per-step offboarding failure/retry and re-enable in production | WAIVED; not executed |
 | Migration and recovery rehearsal in production | NOT RUN |
 
-Do not infer production UAT success from local unit tests. Keep the feature gate OFF until every activation gate is evidenced.
+Do not infer production UAT success from local unit tests or this waiver. Keep the feature gate OFF until the remaining least-privilege and operational activation gates are evidenced.
