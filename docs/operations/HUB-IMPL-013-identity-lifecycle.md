@@ -32,8 +32,10 @@ If a deployment fails, remove the management client configuration from Hub and r
 | --- | --- |
 | Repository typecheck/lint/build | PASS locally on 2026-10-02; lint has one pre-existing warning |
 | API tests without PostgreSQL integration | 17 files / 134 tests PASS locally |
-| Web tests | 5 files / 21 tests PASS locally |
-| PostgreSQL integration suite and migration rehearsal | NOT RUN; local PostgreSQL/DATABASE_URL unavailable |
+| Web tests | 6 files / 23 tests PASS locally after current main merge |
+| PostgreSQL integration and migration | CI [foundation run 37022032376](https://github.com/sabilulquran/SQ-Hub/actions/runs/37022032376) PASS: migration from empty database, idempotence, full API/web tests; local PostgreSQL unavailable |
+| Dependency audit | 0 vulnerabilities locally and CI PASS |
+| Backup/restore and rollback rehearsal | NOT RUN |
 | Synthetic HCIS producer contract | Local test passed; production connection pending |
 | Keycloak least-privilege permission probe | NOT RUN |
 | Email 12-hour action and send-failure retry in production | NOT RUN |
