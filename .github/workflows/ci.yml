@@ -62,9 +62,6 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Dependency audit
-        run: npm audit --audit-level=high
-
       - name: Apply migrations from empty database
         run: npm run migrate
 
@@ -185,3 +182,8 @@ jobs:
           path: visual-smoke/*.png
           if-no-files-found: error
           retention-days: 7
+
+      # Keep the audit mandatory while allowing the preceding checks to report
+      # their results when an existing dependency advisory is present.
+      - name: Dependency audit
+        run: npm audit --audit-level=high
