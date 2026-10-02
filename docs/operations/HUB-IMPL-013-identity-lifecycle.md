@@ -1,6 +1,6 @@
 # HUB-IMPL-013 — production activation and recovery
 
-**Status:** repository implementation; production deployment pending. Product Owner waived UAT on 2026-10-02. UAT status is WAIVED, not PASS.
+**Status:** HCIS and SQ Hub code deployed; lifecycle feature activation pending. Product Owner waived UAT on 2026-10-02. UAT status is WAIVED, not PASS. See [production deployment record](HUB-IMPL-013-production-deployment-2026-10-03.md).
 
 ## Activation gates
 
