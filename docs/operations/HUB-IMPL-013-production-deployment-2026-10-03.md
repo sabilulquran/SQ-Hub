@@ -17,6 +17,8 @@
 
 The SQ Hub deployment selected `scope=hub`, so it did not redeploy Keycloak. The deployment helper reported `API_MIGRATION_PASS` and `SQ_HUB_PRODUCTION_DEPLOY_PASS`. The HCIS producer endpoint and Hub lifecycle routes require separate runtime service-identity configuration; image deployment does not activate them.
 
+A read-only unauthenticated route probe after deployment returned HTTP 404 for `/api/admin/staff-lifecycle/synthetic/offboarding-preview`, while the existing `/api/admin/staff?q=synthetic` route returned HTTP 401. This is consistent with lifecycle route registration remaining disabled, rather than a general Admin API outage.
+
 ## Remaining activation state
 
 - **Lifecycle feature activation: PENDING.** Configure and verify the HCIS verifier service identity and Keycloak identity-management fine-grained permissions. The Keycloak service must not receive broad administrator roles. Apply only the approved secrets/configuration through the production operator path.
