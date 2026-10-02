@@ -64,7 +64,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          ssh "$PROD_USER@$PROD_HOST" bash -s <<'REMOTE'
+          backup_log="$(mktemp)"
+          trap 'rm -f "$backup_log"' EXIT
+          ssh "$PROD_USER@$PROD_HOST" bash -s <<'REMOTE' | tee "$backup_log"
           set -Eeuo pipefail
           runtime_dir=/var/www/sq-hub-production
           compose_file="$runtime_dir/compose.hub.json"
@@ -93,3 +95,7 @@ jobs:
           echo "HUB_DB_BACKUP_REF=$(basename "$backup_file")"
           echo "HUB_DB_BACKUP_BYTES=$(sudo -n stat -c %s "$backup_file")"
           REMOTE
+          grep -Fxq HUB_DB_BACKUP_ARCHIVE_PASS "$backup_log"
+          grep -Eq '^HUB_DB_BACKUP_REF=sq-hub-before-identity-lifecycle-[0-9]{8}T[0-9]{6}Z\.dump$' "$backup_log"
+          grep -Eq '^HUB_DB_BACKUP_BYTES=[1-9][0-9]*$' "$backup_log"
+          echo "HUB_PRODUCTION_BACKUP_EVIDENCE_PASS"
