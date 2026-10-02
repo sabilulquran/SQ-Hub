@@ -1,5 +1,11 @@
 # SQ Hub Engineering Rules
 
+## Permanent production-VPS staging retirement
+
+HCIS/SQ Hub staging on the production VPS was permanently retired by owner decision on 2 October 2026. Production-only is the intended topology. Do not recreate, deploy, enable, or infer a requirement for staging from historical files, backups, Docker resources, workflows, or documentation. Reintroduction requires a new explicit owner decision and a new deployment plan.
+
+Operational source of truth: `docs/operations/permanent-staging-retirement-2026-10-02.md`.
+
 Dokumen ini berlaku untuk manusia, ChatGPT, Codex, dan automation lain yang mengubah repository.
 
 ## 1. Source of truth
@@ -108,9 +114,9 @@ Untuk task visual lintas aplikasi, baca `docs/design/hcis-baseline.md` sebelum m
 - Jangan memberi agent AI unrestricted write access ke production database atau Keycloak admin API.
 
 ## 10. Environments and operations
-Development/staging dan production harus terpisah secara logis walaupun dapat berada pada VPS yang sama. Agent tidak boleh menggunakan production sebagai playground development. Operational changes mengikuti `docs/operations/operational-baseline.md`.
+Production VPS hanya menjalankan production. Development/CI harus terisolasi dan tidak mengotorisasi staging pada VPS production. Agent tidak boleh menggunakan production sebagai playground development. Operational changes mengikuti `docs/operations/operational-baseline.md`.
 
-Wave 1 staging hostnames:
+Historical Wave 1 hostnames — RETIRED / ARCHIVED, DO NOT DEPLOY:
 - `login.sabilulquran.or.id` (SQ Identity staging uses the `sq-staff-staging` realm and separate staging data/configuration);
 - `hub-staging.sabilulquran.or.id`;
 - `hcis-staging.sabilulquran.or.id`.

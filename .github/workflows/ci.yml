@@ -62,9 +62,6 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Dependency audit
-        run: npm audit --audit-level=high
-
       - name: Apply migrations from empty database
         run: npm run migrate
 
@@ -86,10 +83,12 @@ jobs:
       - name: Build API and web
         run: npm run build
 
-      - name: Validate staging Compose
-        run: docker compose --env-file infra/staging.env.example -f infra/docker-compose.staging.yml config -q
+      - name: Validate retired staging entry point
+        run: |
+          grep -Fq "services: {}" infra/docker-compose.staging.yml
+          grep -Fq "DO NOT DEPLOY" infra/docker-compose.staging.yml
 
-      - name: Build staging API image
+      - name: Build API CI image
         run: docker build -f apps/api/Dockerfile -t sq-hub-api:ci .
 
       - name: Build SQ Hub web image
@@ -183,3 +182,8 @@ jobs:
           path: visual-smoke/*.png
           if-no-files-found: error
           retention-days: 7
+
+      # Keep the audit mandatory while allowing the preceding checks to report
+      # their results when an existing dependency advisory is present.
+      - name: Dependency audit
+        run: npm audit --audit-level=high

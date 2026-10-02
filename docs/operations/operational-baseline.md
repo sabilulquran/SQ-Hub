@@ -1,3 +1,5 @@
+> **RETIRED / ARCHIVED — DO NOT DEPLOY — DO NOT RECREATE.** Staging references and staging commands in this document are historical evidence. The production VPS is production-only by owner decision of 2 October 2026. See the permanent-retirement runbook; historical staging instructions do not authorize deployment.
+
 # SQ Hub Operational Baseline
 
 **Status:** DRAFT
@@ -7,7 +9,7 @@ Menetapkan minimum operational safety agar sistem yang banyak dikembangkan denga
 
 ## Environment separation
 - Development/staging dan production harus terpisah secara logis.
-- Keduanya boleh berjalan pada VPS fisik yang sama pada fase awal.
+- Production VPS is production-only following the permanent retirement decision of 2 October 2026. Disposable localhost CI is separate.
 - Database, credential, configuration, dan storage production tidak boleh dipakai sebagai playground development.
 - AI agent tidak mendapat unrestricted production write access secara default.
 

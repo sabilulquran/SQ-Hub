@@ -1,10 +1,16 @@
 #!/usr/bin/env bash
+
+# Production-VPS staging is RETIRED. Synthetic staging realm is CI_ONLY.
+if [[ "${KEYCLOAK_REALM:-sq-staff-staging}" == "sq-staff-staging" ]] && [[ "${GITHUB_ACTIONS:-}" != "true" || "${RUNNER_ENVIRONMENT:-}" != "github-hosted" || "${KEYCLOAK_HOSTNAME:-}" != "http://127.0.0.1:8080" ]]; then
+  echo "STOP: staging retired. This fixture operation is allowed only in isolated localhost GitHub CI." >&2
+  exit 78
+fi
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 KEYCLOAK_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 ENV_FILE="${KEYCLOAK_ENV_FILE:-${KEYCLOAK_DIR}/.env.staging}"
-COMPOSE_FILE="${KEYCLOAK_COMPOSE_FILE:-${KEYCLOAK_DIR}/docker-compose.staging.yml}"
+COMPOSE_FILE="${KEYCLOAK_COMPOSE_FILE:-${KEYCLOAK_DIR}/docker-compose.ci.yml}"
 REALM="${KEYCLOAK_REALM:?set KEYCLOAK_REALM to sq-staff or sq-staff-staging}"
 KCADM_CONFIG="${KEYCLOAK_KCADM_CONFIG:-/tmp/sq-hub-trusted-device.kcadm}"
 TRUSTED_PROVIDER="sq-trusted-device-otp"

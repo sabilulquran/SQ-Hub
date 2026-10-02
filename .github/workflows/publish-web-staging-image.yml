@@ -1,10 +1,11 @@
-name: Publish SQ Hub Web Staging Image
+# Legacy filename retained for production immutable-image publishing; no staging deployment.
+name: Publish SQ Hub Web Immutable Image
 
 on:
   workflow_dispatch:
     inputs:
       source_ref:
-        description: Exact commit SHA or ref to build; use a commit SHA for pre-merge staging validation
+        description: Exact commit SHA or ref to build; use a commit SHA for pre-merge reviewed immutable-image validation
         required: true
         default: main
   push:
@@ -66,9 +67,6 @@ jobs:
             if [ "$component_sha" != "$build_sha" ]; then
               echo "$IMAGE_NAME:sha-$component_sha"
             fi
-            if [ "$GITHUB_EVENT_NAME" = "push" ]; then
-              echo "$IMAGE_NAME:staging"
-            fi
             echo "EOF"
           } >> "$GITHUB_OUTPUT"
 
@@ -105,7 +103,7 @@ jobs:
           cache-from: type=gha,scope=web
           cache-to: type=gha,mode=max,scope=web
 
-      - name: Build and publish web staging image
+      - name: Build and publish web immutable image
         if: github.event_name == 'push'
         uses: docker/build-push-action@v6
         with:
