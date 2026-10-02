@@ -11,12 +11,17 @@ import { HubAuthService } from "./modules/hub-auth/service.js";
 import { HubTokenVault } from "./modules/hub-auth/token-vault.js";
 import { PgHubWorkspaceRepository } from "./modules/hub-auth/workspace-repository.js";
 import { KeycloakIdentityDirectory } from "./modules/identity-directory/client.js";
+import { KeycloakIdentityManagement } from "./modules/identity-management/client.js";
 import { PgPlatformAdminRepository } from "./modules/platform-admin/repository.js";
 import { PlatformAdminService } from "./modules/platform-admin/service.js";
 import { loadDirectoryConfig } from "./modules/organization-directory/config.js";
 import { createDirectoryPull } from "./modules/organization-directory/client.js";
 import { PgOrganizationDirectory } from "./modules/organization-directory/repository.js";
 import { startDirectoryScheduler } from "./modules/organization-directory/scheduler.js";
+import { PgLifecycleAuditWriter } from "./modules/staff-lifecycle/audit.js";
+import { StaffLifecycleService } from "./modules/staff-lifecycle/service.js";
+import { createHcisEmployeeVerifier } from "./modules/staff-lifecycle/hcis-client.js";
+import { PgLifecycleOperationStore } from "./modules/staff-lifecycle/operation-store.js";
 
 const config = loadConfig();
 const pool = createPool(config.databaseUrl);
@@ -32,6 +37,27 @@ const identityDirectory = new KeycloakIdentityDirectory({
   clientId: config.keycloakDirectoryClientId,
   clientSecret: config.keycloakDirectoryClientSecret,
 });
+const staffLifecycle = config.keycloakIdentityManagementClientId && config.keycloakIdentityManagementClientSecret
+  ? new StaffLifecycleService(
+      new KeycloakIdentityManagement({
+        baseUrl: config.keycloakDirectoryBaseUrl,
+        realm: config.keycloakDirectoryRealm,
+        issuer: config.keycloakIssuer,
+        clientId: config.keycloakIdentityManagementClientId,
+        clientSecret: config.keycloakIdentityManagementClientSecret,
+      }),
+      accessService,
+      platformAdmin,
+      new PgLifecycleAuditWriter(pool),
+      createHcisEmployeeVerifier({
+        issuer: config.keycloakIssuer,
+        hcisBaseUrl: config.hcisStaffVerifyBaseUrl!,
+        clientId: config.hcisStaffVerifyClientId!,
+        clientSecret: config.hcisStaffVerifyClientSecret!,
+      }),
+      new PgLifecycleOperationStore(pool),
+    )
+  : undefined;
 const verifyMachineToken = createKeycloakMachineTokenVerifier({
   issuer: config.keycloakIssuer,
   audience: config.machineTokenAudience,
@@ -71,6 +97,7 @@ const app = buildApp({
   adminApplicationAccess: accessService,
   identityDirectory,
   accountSelfService,
+  ...(staffLifecycle ? { staffLifecycle } : {}),
   logger: true,
   ...(directoryConfig.read ? { organizationDirectory: {
     read: () => directory.read(),

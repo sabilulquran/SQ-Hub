@@ -318,6 +318,7 @@ export function AdminCenterPage({
                 <SectionButton active={section === "access"} onClick={() => setSection("access")} icon={KeyRound}>Akses Aplikasi</SectionButton>
                 <SectionButton active={section === "audit"} onClick={() => setSection("audit")} icon={ShieldCheck}>Audit Platform</SectionButton>
               </div>
+              {!previewApplications ? <a href="/admin/lifecycle" className="mt-3 inline-flex rounded-xl border border-brand-primary/20 bg-brand-primary-pale px-3 py-2 text-sm font-bold text-brand-primary-deep">Identity Lifecycle pegawai</a> : null}
 
               {section === "applications" ? (
                 <section className="mt-5 grid gap-5 xl:grid-cols-[minmax(0,1.25fr)_minmax(19rem,0.75fr)]">
