@@ -1,8 +1,8 @@
 # HUB-IMPL-013 — Identity Lifecycle pegawai
 
-**Status:** ACCEPTED — implementation contract, 2026-10-02  
+**Status:** ACCEPTED — implementation contract, 2026-10-02
 **Environment amendment:** Product Owner directed controlled production UAT instead of staging UAT on 2026-10-02; production safety gates below still apply.
-**Product:** SQ Hub / Administrasi SQ  
+**Product:** SQ Hub / Administrasi SQ
 **Depends on:** Admin Center Foundation, HUB-IMPL-007/009/018, ADR-0003/0005/0007, Staff Authentication Policy, Security Baseline
 
 ## Outcome and ownership
