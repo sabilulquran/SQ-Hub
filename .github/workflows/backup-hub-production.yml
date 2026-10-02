@@ -72,16 +72,17 @@ jobs:
           compose_file="$runtime_dir/compose.hub.json"
           backup_dir="$runtime_dir/backups"
           backup_file="$backup_dir/sq-hub-before-identity-lifecycle-$(date -u +%Y%m%dT%H%M%SZ).dump"
+          echo "HUB_BACKUP_REMOTE_STARTED"
 
           sudo -n true
           sudo -n test -r "$compose_file"
-          services="$(sudo -n docker compose -f "$compose_file" config --services | sort)"
+          services="$(sudo -n docker compose -f "$compose_file" config --services </dev/null | sort)"
           test "$services" = $'api\npostgres\nweb'
           sudo -n install -d -m 700 "$backup_dir"
           sudo -n test ! -e "$backup_file"
 
           sudo -n docker compose -f "$compose_file" exec -T postgres sh -lc \
-            'pg_dump -Fc -U "$POSTGRES_USER" -d "$POSTGRES_DB"' \
+            'pg_dump -Fc -U "$POSTGRES_USER" -d "$POSTGRES_DB"' </dev/null \
             | sudo -n sh -c 'umask 077; cat > "$1"' sh "$backup_file"
           sudo -n test -s "$backup_file"
           sudo -n cat "$backup_file" \
