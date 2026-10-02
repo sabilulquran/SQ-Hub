@@ -1,0 +1,95 @@
+name: Backup SQ Hub Production Database
+
+on:
+  workflow_dispatch:
+    inputs:
+      target_sha:
+        description: Exact current main SHA before the intended deployment
+        required: true
+        type: string
+      confirmation:
+        description: Type BACKUP_PRODUCTION to continue
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sq-hub-production
+  cancel-in-progress: false
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: production
+    env:
+      TARGET_SHA: ${{ inputs.target_sha }}
+      CONFIRMATION: ${{ inputs.confirmation }}
+      PROD_HOST: ${{ secrets.SQ_HUB_PROD_HOST }}
+      PROD_USER: ${{ secrets.SQ_HUB_PROD_USER }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Validate target and operator intent
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$CONFIRMATION" = BACKUP_PRODUCTION
+          [[ "$TARGET_SHA" =~ ^[0-9a-f]{40}$ ]]
+          git fetch origin main
+          test "$TARGET_SHA" = "$(git rev-parse origin/main)"
+          test -n "$PROD_HOST"
+          test -n "$PROD_USER"
+
+      - name: Configure SSH
+        shell: bash
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.SQ_HUB_PROD_SSH_PRIVATE_KEY }}
+          SSH_KNOWN_HOSTS: ${{ secrets.SQ_HUB_PROD_SSH_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          test -n "$SSH_PRIVATE_KEY"
+          test -n "$SSH_KNOWN_HOSTS"
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          printf '%s\n' "$SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+
+      - name: Create and validate root-owned database archive
+        shell: bash
+        run: |
+          set -euo pipefail
+          ssh "$PROD_USER@$PROD_HOST" bash -s <<'REMOTE'
+          set -Eeuo pipefail
+          runtime_dir=/var/www/sq-hub-production
+          compose_file="$runtime_dir/compose.hub.json"
+          backup_dir="$runtime_dir/backups"
+          backup_file="$backup_dir/sq-hub-before-identity-lifecycle-$(date -u +%Y%m%dT%H%M%SZ).dump"
+
+          sudo -n true
+          sudo -n test -r "$compose_file"
+          services="$(sudo -n docker compose -f "$compose_file" config --services | sort)"
+          test "$services" = $'api\npostgres\nweb'
+          sudo -n install -d -m 700 "$backup_dir"
+          sudo -n test ! -e "$backup_file"
+
+          sudo -n docker compose -f "$compose_file" exec -T postgres sh -lc \
+            'pg_dump -Fc -U "$POSTGRES_USER" -d "$POSTGRES_DB"' \
+            | sudo -n sh -c 'umask 077; cat > "$1"' sh "$backup_file"
+          sudo -n test -s "$backup_file"
+          sudo -n cat "$backup_file" \
+            | sudo -n docker compose -f "$compose_file" exec -T postgres sh -lc \
+              'pg_restore --list >/dev/null'
+          sudo -n sha256sum "$backup_file" \
+            | sudo -n sh -c 'umask 077; cat > "$1"' sh "$backup_file.sha256"
+          sudo -n test -s "$backup_file.sha256"
+
+          echo "HUB_DB_BACKUP_ARCHIVE_PASS"
+          echo "HUB_DB_BACKUP_REF=$(basename "$backup_file")"
+          echo "HUB_DB_BACKUP_BYTES=$(sudo -n stat -c %s "$backup_file")"
+          REMOTE
