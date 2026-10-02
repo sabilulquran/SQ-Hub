@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Akun SQ visual fixture</title>
-  <link rel="stylesheet" href="../../infra/keycloak/themes/sq-hub/login/resources/css/akun-sq-login-845cd4b107a4.css">
+  <link rel="stylesheet" href="../../infra/keycloak/themes/sq-hub/login/resources/css/akun-sq-login-c69c2b68ba6c.css">
 </head>
 <body class="login-pf">
   <div class="pf-v5-c-login">
@@ -102,6 +102,7 @@
       const root = document.documentElement;
       const card = document.querySelector(".pf-v5-c-login__main").getBoundingClientRect();
       const logoBox = logo.getBoundingClientRect();
+      document.body.dataset.logoRect = `${Math.round(logoBox.width)}x${Math.round(logoBox.height)}`;
       const primary = document.querySelector("#kc-login, #registerWebAuthn");
       const formReference = primary.closest("form") || document.querySelector(".pf-v5-c-login__main-body");
       const formBox = formReference.getBoundingClientRect();
@@ -109,8 +110,10 @@
 
       document.body.dataset.horizontal = String(root.scrollWidth > root.clientWidth + 1);
       document.body.dataset.logoLoaded = String(logo.complete && logo.naturalWidth > 0 && logo.naturalHeight > 0);
+      const minimumLogoSize = innerWidth < 390 ? 44 : 60;
       document.body.dataset.logoSize = String(
-        logoBox.width >= 48 && logoBox.width <= 56 && logoBox.height >= 48 && logoBox.height <= 56
+        logoBox.width >= minimumLogoSize && logoBox.width <= 64 &&
+        logoBox.height >= minimumLogoSize && logoBox.height <= 64
       );
       document.body.dataset.primaryFull = String(primaryBox.width / formBox.width >= 0.96);
       document.body.dataset.cardCompact = String(card.width <= 456 && card.height < Math.max(700, innerHeight - 8));
