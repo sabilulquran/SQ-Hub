@@ -20,6 +20,11 @@ const baseEnv: NodeJS.ProcessEnv = {
 };
 
 describe("Go 5C identity-management configuration", () => {
+  it("uses an explicit private bind without changing the existing default", () => {
+    expect(loadConfig(baseEnv).host).toBe("0.0.0.0");
+    expect(loadConfig({ ...baseEnv, HOST: "127.0.0.1" }).host).toBe("127.0.0.1");
+    expect(() => loadConfig({ ...baseEnv, HOST: "invalid-host" })).toThrow();
+  });
   it("keeps Go 5C disabled when dedicated credentials are absent", () => {
     const config = loadConfig(baseEnv);
     expect(config.keycloakIdentityManagementClientId).toBeUndefined();

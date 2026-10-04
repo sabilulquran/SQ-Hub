@@ -120,7 +120,7 @@ process.on("SIGINT", () => void shutdown("SIGINT"));
 process.on("SIGTERM", () => void shutdown("SIGTERM"));
 
 try {
-  await app.listen({ port: config.port, host: "0.0.0.0" });
+  await app.listen({ port: config.port, host: config.host });
   if (pullDirectory) stopDirectory = startDirectoryScheduler({
     reconcile: (asOf) => directory.synchronize(asOf, pullDirectory),
     report: (attempt) => app.log.info(attempt, "organization directory synchronization"),

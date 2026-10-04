@@ -10,6 +10,7 @@ const optionalNonempty = <T extends z.ZodTypeAny>(schema: T) => z.preprocess(
 
 const foundationConfigSchema = z.object({
   PORT: z.coerce.number().int().min(1).max(65535).default(3100),
+  HOST: z.string().ip().default("0.0.0.0"),
   DATABASE_URL: z.string().min(1),
   HCIS_CANONICAL_URL: z.string().url(),
   KEYCLOAK_ISSUER: z.string().url(),
@@ -41,6 +42,7 @@ const serverConfigSchema = foundationConfigSchema.extend({
 
 export interface FoundationConfig {
   port: number;
+  host: string;
   databaseUrl: string;
   hcisCanonicalUrl: string;
   keycloakIssuer: string;
@@ -80,6 +82,7 @@ function foundationConfig(parsed: z.infer<typeof foundationConfigSchema>): Found
 
   return {
     port: parsed.PORT,
+    host: parsed.HOST,
     databaseUrl: parsed.DATABASE_URL,
     hcisCanonicalUrl: parsed.HCIS_CANONICAL_URL,
     keycloakIssuer: parsed.KEYCLOAK_ISSUER.replace(/\/$/, ""),
