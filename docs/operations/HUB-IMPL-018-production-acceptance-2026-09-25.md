@@ -336,3 +336,7 @@ Foundation SQ Hub + Akun SQ remains independently **CLOSED since 23 September
 never a blocker for that Foundation closure.
 
 > **Foundation SQ Hub + Akun SQ = 100% CLOSED**
+
+## Follow-up — Product Owner identity coverage acceptance (2026-10-14)
+
+The 14 October 2026 read-only production verification established a fresh HCIS Directory projection (51 units, 28 positions, 329 people, 97 active), successful dedicated machine-token producer and reader calls, and successful Aset SQ compiled production adapter lookups. The Product Owner explicitly accepted **2 of 97 active people having usable exact OIDC issuer+subject mappings** as the bounded initial operating scope. The remaining 95 are not automatically provisioned or guessed by name, email, or NIP. Missing identity relationships fail closed for self-service; this is a coverage limitation, not a Directory synchronization fault. Status: **`HCIS_DIRECTORY_INTEGRATION_PASS`**, scoped to this accepted initial population. No production change is authorized. HCIS source-of-truth decision: `sabilulquran/hcisysq/docs/product/org006-identity-coverage-acceptance-2026-10-14.md`. Extend coverage only through a separately authorized onboarding workflow.
