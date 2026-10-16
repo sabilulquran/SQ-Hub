@@ -1,12 +1,19 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# KEYCLOAK_EXEC_MODE selects how kcadm runs:
+#   compose (default) - inside the Docker Compose `keycloak` service.
+#   host              - a host-native kcadm.sh (Mi8, no Docker). Set KEYCLOAK_KCADM_BIN
+#                       and run where its JAVA_HOME and the Keycloak loopback are reachable.
+EXEC_MODE="${KEYCLOAK_EXEC_MODE:-compose}"
 ENV_FILE="${KEYCLOAK_ENV_FILE:-}"
 COMPOSE_FILE="${KEYCLOAK_COMPOSE_FILE:-}"
+KCADM_BIN="${KEYCLOAK_KCADM_BIN:-}"
 REALM="${KEYCLOAK_REALM:-}"
 CLIENT_ID="${KEYCLOAK_IDENTITY_MANAGEMENT_CLIENT_ID:-}"
 KCADM_CONFIG="${KEYCLOAK_KCADM_CONFIG:-/tmp/sq-hub-identity-management.kcadm}"
 MANAGEMENT_SECRET="${KEYCLOAK_IDENTITY_MANAGEMENT_CLIENT_SECRET:-}"
+MANAGEMENT_SECRET_FILE="${KEYCLOAK_IDENTITY_MANAGEMENT_CLIENT_SECRET_FILE:-}"
 
 fail() {
   echo "Identity-management-client reconciliation failed: $1" >&2
@@ -15,31 +22,58 @@ fail() {
 
 [[ "${REALM}" == "sq-staff" || "${REALM}" == "sq-staff-staging" ]] || fail "explicit supported realm is required"
 [[ -n "${CLIENT_ID}" ]] || fail "KEYCLOAK_IDENTITY_MANAGEMENT_CLIENT_ID is required"
-[[ -n "${MANAGEMENT_SECRET}" ]] || fail "KEYCLOAK_IDENTITY_MANAGEMENT_CLIENT_SECRET is required"
-[[ -n "${ENV_FILE}" && -n "${COMPOSE_FILE}" ]] || fail "explicit environment and compose files are required"
-[[ -f "${ENV_FILE}" ]] || fail "environment file not found"
-[[ -f "${COMPOSE_FILE}" ]] || fail "compose file not found"
-command -v docker >/dev/null 2>&1 || fail "docker is required"
+
+# A secret file keeps the value out of the environment of every child process.
+if [[ -n "${MANAGEMENT_SECRET_FILE}" ]]; then
+  [[ -z "${MANAGEMENT_SECRET}" ]] || fail "set the client secret or the secret file, not both"
+  [[ -f "${MANAGEMENT_SECRET_FILE}" && -r "${MANAGEMENT_SECRET_FILE}" ]] || fail "client secret file is not readable"
+  [[ "$(stat -c '%a' "${MANAGEMENT_SECRET_FILE}")" =~ ^[0-7]00$ ]] || fail "client secret file must not be group or world accessible"
+  MANAGEMENT_SECRET="$(<"${MANAGEMENT_SECRET_FILE}")"
+fi
+unset KEYCLOAK_IDENTITY_MANAGEMENT_CLIENT_SECRET
+[[ -n "${MANAGEMENT_SECRET}" ]] || fail "KEYCLOAK_IDENTITY_MANAGEMENT_CLIENT_SECRET or _SECRET_FILE is required"
 command -v jq >/dev/null 2>&1 || fail "jq is required"
 
-compose_exec() {
-  docker compose --env-file "${ENV_FILE}" -f "${COMPOSE_FILE}" exec -T keycloak "$@"
-}
+case "${EXEC_MODE}" in
+  compose)
+    [[ -n "${ENV_FILE}" && -n "${COMPOSE_FILE}" ]] || fail "explicit environment and compose files are required"
+    [[ -f "${ENV_FILE}" ]] || fail "environment file not found"
+    [[ -f "${COMPOSE_FILE}" ]] || fail "compose file not found"
+    command -v docker >/dev/null 2>&1 || fail "docker is required"
 
-kcadm() {
-  compose_exec /opt/keycloak/bin/kcadm.sh "$@" --config "${KCADM_CONFIG}"
-}
+    compose_exec() {
+      docker compose --env-file "${ENV_FILE}" -f "${COMPOSE_FILE}" exec -T keycloak "$@"
+    }
 
-compose_exec test -f "${KCADM_CONFIG}" >/dev/null 2>&1 \
-  || fail "pre-authenticated kcadm config is not available inside the Keycloak container"
+    kcadm() {
+      compose_exec /opt/keycloak/bin/kcadm.sh "$@" --config "${KCADM_CONFIG}"
+    }
+
+    compose_exec test -f "${KCADM_CONFIG}" >/dev/null 2>&1 \
+      || fail "pre-authenticated kcadm config is not available inside the Keycloak container"
+    ;;
+  host)
+    [[ -n "${KCADM_BIN}" ]] || fail "KEYCLOAK_KCADM_BIN is required in host mode"
+    [[ -x "${KCADM_BIN}" ]] || fail "kcadm binary is not executable"
+
+    kcadm() {
+      "${KCADM_BIN}" "$@" --config "${KCADM_CONFIG}"
+    }
+
+    [[ -f "${KCADM_CONFIG}" ]] || fail "pre-authenticated kcadm config is not available on this host"
+    ;;
+  *)
+    fail "KEYCLOAK_EXEC_MODE must be compose or host"
+    ;;
+esac
 
 client_json="$(kcadm get clients -r "${REALM}" -q "clientId=${CLIENT_ID}")" \
   || fail "unable to query identity-management client"
 client_count="$(jq 'length' <<<"${client_json}")"
 
-client_payload="$(jq -n \
+# Pass the secret through jq's environment, not argv, so it never appears in a process listing.
+client_payload="$(MANAGEMENT_SECRET="${MANAGEMENT_SECRET}" jq -n \
   --arg clientId "${CLIENT_ID}" \
-  --arg secret "${MANAGEMENT_SECRET}" \
   '{
     clientId: $clientId,
     name: "SQ Hub Identity Management",
@@ -52,7 +86,7 @@ client_payload="$(jq -n \
     directAccessGrantsEnabled: false,
     serviceAccountsEnabled: true,
     fullScopeAllowed: false,
-    secret: $secret
+    secret: env.MANAGEMENT_SECRET
   }')"
 
 if [[ "${client_count}" == "0" ]]; then

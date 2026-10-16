@@ -39,9 +39,9 @@ Each gate needs its own owner approval at execution time. Run them in order and 
 
 ### G1 — Mi8-compatible Keycloak reconciliation
 
-- Add a host-native mode to `reconcile-identity-management-client.sh` (or a Mi8 wrapper) that calls `kcadm.sh` directly instead of `docker compose exec`, with the same convergence checks and the same direct-role ceiling (`query-users` only).
-- Secrets are read from a root-only file or standard input, never from arguments or shell history.
-- Rehearse against a restored copy of `sqcore_keycloak` on a non-public Keycloak before touching production.
+- `reconcile-identity-management-client.sh` has a host-native mode: `KEYCLOAK_EXEC_MODE=host` with `KEYCLOAK_KCADM_BIN` calls `kcadm.sh` directly instead of `docker compose exec`. The convergence checks and the direct-role ceiling (`query-users` only) are unchanged. CI exercises both modes against a synthetic realm.
+- The client secret can come from `KEYCLOAK_IDENTITY_MANAGEMENT_CLIENT_SECRET_FILE`, which must be mode `600` or stricter. The script no longer passes the secret on a process command line.
+- Rehearse against a restored copy of `sqcore_keycloak` before touching production: see the [Keycloak copy rehearsal](HUB-IMPL-013-mi8-keycloak-rehearsal.md).
 
 ### G2 — HCIS verification producer (HCIS-ID-001)
 

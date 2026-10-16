@@ -679,6 +679,101 @@ jobs:
           docker compose --env-file "$KEYCLOAK_ENV_FILE" -f infra/keycloak/docker-compose.ci.yml \
             exec -T keycloak rm -f "$kcadm_config"
 
+      - name: Reconcile identity-management client in compose and host modes
+        shell: bash
+        run: |
+          kcadm_config=/tmp/sq-hub-identity-management-ci.kcadm
+          compose=(docker compose --env-file "$KEYCLOAK_ENV_FILE" -f infra/keycloak/docker-compose.ci.yml)
+          client_id=sq-hub-identity-management-ci
+          expected_output="$(printf '%s\n' \
+            IDENTITY_MANAGEMENT_CLIENT_CONFIGURATION_PASS \
+            IDENTITY_MANAGEMENT_CLIENT_DIRECT_ROLES_PASS \
+            FGAP_PERMISSION_AND_API_PROBE_PENDING)"
+
+          "${compose[@]}" -f infra/keycloak/docker-compose.bootstrap.yml exec -T keycloak \
+            sh -ceu '
+              /opt/keycloak/bin/kcadm.sh config credentials \
+                --config "$1" \
+                --server http://127.0.0.1:8080 \
+                --realm master \
+                --user "$KC_BOOTSTRAP_ADMIN_USERNAME" \
+                --password "$KC_BOOTSTRAP_ADMIN_PASSWORD" >/dev/null
+            ' sh "$kcadm_config"
+
+          compose_output="$(
+            KEYCLOAK_ENV_FILE="$KEYCLOAK_ENV_FILE" \
+            KEYCLOAK_COMPOSE_FILE=infra/keycloak/docker-compose.ci.yml \
+            KEYCLOAK_REALM=sq-staff-staging \
+            KEYCLOAK_IDENTITY_MANAGEMENT_CLIENT_ID="$client_id" \
+            KEYCLOAK_IDENTITY_MANAGEMENT_CLIENT_SECRET=ci-identity-management-compose-secret-only \
+            KEYCLOAK_KCADM_CONFIG="$kcadm_config" \
+              bash infra/keycloak/scripts/reconcile-identity-management-client.sh
+          )"
+          test "$compose_output" = "$expected_output"
+
+          # Host mode runs kcadm.sh directly, as on Mi8. CI stands in a wrapper for the
+          # host binary; the config placeholder satisfies the host-side existence check
+          # while the wrapper uses the authenticated config inside the container.
+          host_dir="$(mktemp -d)"
+          printf '#!/usr/bin/env bash\nexec docker compose --env-file "%s" -f "%s" exec -T keycloak /opt/keycloak/bin/kcadm.sh "$@"\n' \
+            "$KEYCLOAK_ENV_FILE" "$PWD/infra/keycloak/docker-compose.ci.yml" > "$host_dir/kcadm.sh"
+          chmod 700 "$host_dir/kcadm.sh"
+          touch "$kcadm_config"
+          secret_file="$host_dir/client-secret"
+          printf '%s' ci-identity-management-host-secret-only > "$secret_file"
+          chmod 600 "$secret_file"
+
+          run_host() {
+            KEYCLOAK_EXEC_MODE=host \
+            KEYCLOAK_KCADM_BIN="$host_dir/kcadm.sh" \
+            KEYCLOAK_REALM=sq-staff-staging \
+            KEYCLOAK_IDENTITY_MANAGEMENT_CLIENT_ID="$client_id" \
+            KEYCLOAK_KCADM_CONFIG="$kcadm_config" \
+              bash infra/keycloak/scripts/reconcile-identity-management-client.sh "$@"
+          }
+
+          host_output="$(KEYCLOAK_IDENTITY_MANAGEMENT_CLIENT_SECRET_FILE="$secret_file" run_host)"
+          test "$host_output" = "$expected_output"
+          host_repeat_output="$(KEYCLOAK_IDENTITY_MANAGEMENT_CLIENT_SECRET_FILE="$secret_file" run_host)"
+          test "$host_repeat_output" = "$expected_output"
+
+          # Fail closed on unsafe secret input and unknown modes.
+          chmod 640 "$secret_file"
+          ! KEYCLOAK_IDENTITY_MANAGEMENT_CLIENT_SECRET_FILE="$secret_file" run_host 2>/tmp/idm-err
+          grep -Fq 'must not be group or world accessible' /tmp/idm-err
+          chmod 600 "$secret_file"
+          ! KEYCLOAK_IDENTITY_MANAGEMENT_CLIENT_SECRET_FILE="$secret_file" \
+            KEYCLOAK_IDENTITY_MANAGEMENT_CLIENT_SECRET=ci-duplicate-secret-only run_host 2>/tmp/idm-err
+          grep -Fq 'not both' /tmp/idm-err
+          ! KEYCLOAK_EXEC_MODE=other KEYCLOAK_REALM=sq-staff-staging \
+            KEYCLOAK_IDENTITY_MANAGEMENT_CLIENT_ID="$client_id" \
+            KEYCLOAK_IDENTITY_MANAGEMENT_CLIENT_SECRET=ci-identity-management-host-secret-only \
+            bash infra/keycloak/scripts/reconcile-identity-management-client.sh 2>/tmp/idm-err
+          grep -Fq 'must be compose or host' /tmp/idm-err
+
+          # The host run rotated the secret, and the token carries only query-users.
+          token="$(
+            {
+              printf 'client_id=%s&' "$client_id"
+              printf 'client_secret=%s&' ci-identity-management-host-secret-only
+              printf 'grant_type=client_credentials'
+            } | curl --fail --silent \
+              --header 'Content-Type: application/x-www-form-urlencoded' \
+              --data-binary @- \
+              http://127.0.0.1:8080/realms/sq-staff-staging/protocol/openid-connect/token \
+              | jq -er '.access_token'
+          )"
+          jq -R 'split(".")[1] | gsub("-"; "+") | gsub("_"; "/") | . + ("=" * ((4 - length % 4) % 4)) | @base64d | fromjson' <<<"$token" \
+            | jq -e '.resource_access["realm-management"].roles == ["query-users"]'
+          clients_status="$(curl --silent --output /dev/null --write-out '%{http_code}' \
+            -H "Authorization: Bearer $token" \
+            http://127.0.0.1:8080/admin/realms/sq-staff-staging/clients)"
+          test "$clients_status" = "403"
+
+          unset token
+          rm -rf "$host_dir" /tmp/idm-err "$kcadm_config"
+          "${compose[@]}" exec -T keycloak rm -f "$kcadm_config"
+
       - name: Verify backup and disposable restore
         run: |
           bash infra/keycloak/scripts/backup.sh /tmp/keycloak-ci.dump
