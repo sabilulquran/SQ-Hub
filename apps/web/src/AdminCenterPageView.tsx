@@ -1,7 +1,6 @@
 import {
   AppWindow,
   CheckCircle2,
-  KeyRound,
   Plus,
   RefreshCw,
   Save,
@@ -13,8 +12,8 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 
-import { GlobalHeader } from "@/components/GlobalHeader";
-import { MobileNavigation } from "@/components/MobileNavigation";
+import { AppShell } from "@/components/AppShell";
+import type { HubNavKey } from "@/components/shellNavigation";
 import type {
   AdminApplication,
   AdminAuditRecord,
@@ -38,6 +37,21 @@ type AdminState =
   | { status: "error" };
 
 type Section = "applications" | "access" | "audit";
+
+// Each section has its own address so the admin sidebar can link to it.
+const sectionByPath: Record<string, Section> = {
+  "/admin/access": "access",
+  "/admin/audit": "audit",
+};
+const sectionNav: Record<Section, { key: HubNavKey; label: string }> = {
+  applications: { key: "admin-applications", label: "Registry aplikasi" },
+  access: { key: "admin-access", label: "Akses aplikasi" },
+  audit: { key: "admin-audit", label: "Audit platform" },
+};
+
+function sectionFromPath(pathname: string): Section {
+  return sectionByPath[pathname.replace(/\/+$/, "")] ?? "applications";
+}
 
 const emptyApplication: AdminApplication = {
   key: "",
@@ -78,7 +92,7 @@ export function AdminCenterPage({
       ? { status: "ready", applications: previewApplications }
       : { status: "loading" },
   );
-  const [section, setSection] = useState<Section>("applications");
+  const section = sectionFromPath(window.location.pathname);
   const [applicationForm, setApplicationForm] = useState<AdminApplication>(emptyApplication);
   const [applicationSaving, setApplicationSaving] = useState(false);
   const [applicationMessage, setApplicationMessage] = useState<string | null>(null);
@@ -294,16 +308,16 @@ export function AdminCenterPage({
   }, [section]);
 
   return (
-    <div className="min-h-screen bg-background">
-      <GlobalHeader workspace={workspace} onLogout={onLogout} />
-
-      <main className="mx-auto max-w-7xl px-4 pb-32 pt-7 sm:px-6 sm:pt-8 lg:px-8 lg:pb-12">
-          <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-            <div>
-              <p className="text-[10px] font-bold uppercase tracking-[0.17em] text-brand-primary-deep">Administrasi platform</p>
-              <p className="mt-1 max-w-3xl text-sm leading-6 text-muted-foreground">Kelola registry, pintu masuk aplikasi, dan jejak administrasi tanpa mengambil alih kewenangan bisnis aplikasi domain.</p>
-            </div>
-            <span className="inline-flex self-start items-center gap-2 rounded-full bg-brand-primary-pale px-3 py-1.5 text-xs font-bold text-brand-primary-deep"><ShieldEllipsis className="h-4 w-4" /> Platform Administrator</span>
+    <AppShell
+      workspace={workspace}
+      space="admin"
+      active={sectionNav[section].key}
+      breadcrumb={["Administrasi", sectionNav[section].label]}
+      onLogout={onLogout}
+    >
+          <div className="mb-4">
+            <h1 className="font-display text-2xl font-bold tracking-[-0.02em] text-brand-heading sm:text-3xl">Administrasi platform</h1>
+            <p className="mt-1 max-w-3xl text-sm leading-6 text-muted-foreground">Kelola registry, pintu masuk aplikasi, dan jejak administrasi tanpa mengambil alih kewenangan bisnis aplikasi domain.</p>
           </div>
 
           {state.status === "loading" ? <LoadingCard label="Memeriksa kewenangan administrasi..." /> : null}
@@ -313,13 +327,6 @@ export function AdminCenterPage({
 
           {state.status === "ready" ? (
             <>
-              <div className="flex flex-wrap gap-2 border-b border-border/70 pb-3" role="tablist" aria-label="Bagian Administrasi SQ">
-                <SectionButton active={section === "applications"} onClick={() => setSection("applications")} icon={AppWindow}>Aplikasi</SectionButton>
-                <SectionButton active={section === "access"} onClick={() => setSection("access")} icon={KeyRound}>Akses Aplikasi</SectionButton>
-                <SectionButton active={section === "audit"} onClick={() => setSection("audit")} icon={ShieldCheck}>Audit Platform</SectionButton>
-              </div>
-              {!previewApplications ? <a href="/admin/lifecycle" className="mt-3 inline-flex rounded-xl border border-brand-primary/20 bg-brand-primary-pale px-3 py-2 text-sm font-bold text-brand-primary-deep">Identity Lifecycle pegawai</a> : null}
-
               {section === "applications" ? (
                 <section className="mt-5 grid gap-5 xl:grid-cols-[minmax(0,1.25fr)_minmax(19rem,0.75fr)]">
                   <div>
@@ -404,17 +411,8 @@ export function AdminCenterPage({
               ) : null}
             </>
           ) : null}
-      </main>
-      <MobileNavigation
-        active="admin"
-        platformAdministration={workspace.capabilities.platformAdministration}
-      />
-    </div>
+    </AppShell>
   );
-}
-
-function SectionButton({ active, onClick, icon: Icon, children }: { active: boolean; onClick: () => void; icon: typeof AppWindow; children: string }) {
-  return <button type="button" role="tab" aria-selected={active} onClick={onClick} className={active ? "inline-flex items-center gap-2 rounded-xl bg-brand-primary-pale px-3.5 py-2 text-sm font-bold text-brand-primary-deep ring-1 ring-brand-primary/10" : "inline-flex items-center gap-2 rounded-xl border border-border/70 bg-surface-raised px-3.5 py-2 text-sm font-semibold text-muted-foreground"}><Icon className="h-4 w-4" />{children}</button>;
 }
 
 function SectionHeading({ eyebrow, title, description }: { eyebrow: string; title: string; description: string }) {

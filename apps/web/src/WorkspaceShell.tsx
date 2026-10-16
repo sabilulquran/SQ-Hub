@@ -3,8 +3,7 @@ import { useMemo, useState } from "react";
 
 import { filterApplications } from "@/application-filter";
 import { ApplicationCard } from "@/components/ApplicationCard";
-import { GlobalHeader, type HeaderPreviewMode } from "@/components/GlobalHeader";
-import { MobileNavigation } from "@/components/MobileNavigation";
+import { AppShell, type ShellPreviewMode } from "@/components/AppShell";
 import type { WorkspaceApplication, WorkspaceSnapshot } from "@/types";
 
 export type WorkspacePrimaryRoute = "home" | "apps";
@@ -12,7 +11,7 @@ export type WorkspacePrimaryRoute = "home" | "apps";
 interface WorkspaceShellProps {
   workspace: WorkspaceSnapshot;
   route?: WorkspacePrimaryRoute;
-  previewMode?: HeaderPreviewMode;
+  previewMode?: ShellPreviewMode;
   onLogout?: () => void | Promise<void>;
 }
 
@@ -29,27 +28,24 @@ export function WorkspaceShell({
   );
 
   return (
-    <div className="min-h-screen bg-surface text-foreground">
-      <GlobalHeader workspace={workspace} onLogout={onLogout} previewMode={previewMode} />
-
-      <main className="mx-auto max-w-7xl px-4 pb-32 pt-7 sm:px-6 sm:pt-10 lg:px-8 lg:pb-12">
-        {route === "home" ? (
-          <HomePage workspace={workspace} />
-        ) : (
-          <ApplicationsPage
-            applications={workspace.applications}
-            filteredApplications={filteredApplications}
-            query={query}
-            onQueryChange={setQuery}
-          />
-        )}
-      </main>
-
-      <MobileNavigation
-        active={route}
-        platformAdministration={workspace.capabilities.platformAdministration}
-      />
-    </div>
+    <AppShell
+      workspace={workspace}
+      space="workspace"
+      active={route}
+      onLogout={onLogout}
+      previewMode={previewMode}
+    >
+      {route === "home" ? (
+        <HomePage workspace={workspace} />
+      ) : (
+        <ApplicationsPage
+          applications={workspace.applications}
+          filteredApplications={filteredApplications}
+          query={query}
+          onQueryChange={setQuery}
+        />
+      )}
+    </AppShell>
   );
 }
 

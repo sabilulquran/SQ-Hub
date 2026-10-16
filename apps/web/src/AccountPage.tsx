@@ -22,8 +22,7 @@ import {
   useState,
 } from "react";
 
-import { GlobalHeader } from "@/components/GlobalHeader";
-import { MobileNavigation } from "@/components/MobileNavigation";
+import { AppShell } from "@/components/AppShell";
 import type {
   AccountCredentialType,
   AccountDevice,
@@ -245,40 +244,33 @@ export function AccountPage({
   );
 
   return (
-    <div className="min-h-screen bg-surface text-foreground">
-      <GlobalHeader workspace={workspace} onLogout={onLogout} />
-      <main className="mx-auto w-full max-w-7xl px-4 pb-32 pt-8 sm:px-6 sm:pt-10 lg:px-8 lg:pb-14">
-        <header className="mb-6 sm:mb-8">
-          <p className="text-xs font-bold uppercase tracking-[0.16em] text-brand-primary-deep">
-            Akun SQ
-          </p>
-          <h1 className="mt-2 font-display text-3xl font-bold tracking-[-0.035em] text-brand-heading sm:text-4xl">
-            Akun Anda
-          </h1>
-          <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground sm:text-base">
-            Kelola profil, keamanan, sesi, aplikasi, dan akun terhubung dalam satu tempat.
-          </p>
-        </header>
+    <AppShell workspace={workspace} space="workspace" active="account" onLogout={onLogout}>
+      <header className="mb-6 sm:mb-8">
+        <p className="text-xs font-bold uppercase tracking-[0.16em] text-brand-primary-deep">
+          Akun SQ
+        </p>
+        <h1 className="mt-2 font-display text-3xl font-bold tracking-[-0.035em] text-brand-heading sm:text-4xl">
+          Akun Anda
+        </h1>
+        <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground sm:text-base">
+          Kelola profil, keamanan, sesi, aplikasi, dan akun terhubung dalam satu tempat.
+        </p>
+      </header>
 
-        {state.status === "loading" ? <AccountLoading /> : null}
-        {state.status === "error" ? (
-          <AccountError message={state.message} onRetry={() => loadAccount()} />
-        ) : null}
-        {state.status === "ready" ? (
-          <AccountContent
-            account={state.account}
-            section={section}
-            onSectionChange={changeSection}
-            mutation={mutation}
-            onMutate={mutate}
-          />
-        ) : null}
-      </main>
-      <MobileNavigation
-        active="account"
-        platformAdministration={workspace.capabilities.platformAdministration}
-      />
-    </div>
+      {state.status === "loading" ? <AccountLoading /> : null}
+      {state.status === "error" ? (
+        <AccountError message={state.message} onRetry={() => loadAccount()} />
+      ) : null}
+      {state.status === "ready" ? (
+        <AccountContent
+          account={state.account}
+          section={section}
+          onSectionChange={changeSection}
+          mutation={mutation}
+          onMutate={mutate}
+        />
+      ) : null}
+    </AppShell>
   );
 }
 

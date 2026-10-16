@@ -47,66 +47,78 @@ describe("SQ Hub navigation experience", () => {
     expect(filterApplications(workspace.applications, "tidak-ada")).toHaveLength(0);
   });
 
-  it("launcher contains only authorized applications and gates Administration SQ", () => {
-    const ordinary = renderToStaticMarkup(
-      <AppLauncher
-        applications={workspace.applications}
-        platformAdministration={false}
-        previewOpen
-      />,
-    );
-    expect(ordinary).toContain("HCIS");
-    expect(ordinary).toContain("Portal Contoh");
-    expect(ordinary).not.toContain("Finance");
-    expect(ordinary).not.toContain("Administrasi SQ");
-    expect(ordinary).toContain('aria-haspopup="dialog"');
-    expect(ordinary).toContain('aria-expanded="true"');
-
-    const admin = renderToStaticMarkup(
-      <AppLauncher
-        applications={workspace.applications}
-        platformAdministration
-        previewOpen
-      />,
-    );
-    expect(admin).toContain('href="/admin"');
+  it("launcher lists SQ Hub first, then only authorized applications, with no admin entry", () => {
+    const html = renderToStaticMarkup(<AppLauncher applications={workspace.applications} previewOpen />);
+    expect(html).toContain("Beranda semua aplikasi Anda");
+    expect(html.indexOf("SQ Hub")).toBeLessThan(html.indexOf("HCIS"));
+    expect(html).toContain("Portal Contoh");
+    expect(html).not.toContain("Finance");
+    expect(html).not.toContain('href="/admin"');
+    expect(html).toContain('aria-haspopup="dialog"');
+    expect(html).toContain('aria-expanded="true"');
   });
 
-  it("account menu links to Akun SQ, all apps, conditional admin, and official logout action", () => {
+  it("account menu holds identity, Akun SQ, Tampilan and Keluar only", () => {
     const ordinary = renderToStaticMarkup(
       <AccountMenu user={workspace.user} onLogout={() => undefined} previewOpen />,
     );
     expect(ordinary).toContain('href="/account"');
-    expect(ordinary).toContain("Kelola Akun SQ");
-    expect(ordinary).toContain('href="/apps"');
-    expect(ordinary).not.toContain('href="/admin"');
+    expect(ordinary).toContain("Akun SQ");
+    expect(ordinary).toContain("Tampilan");
+    expect(ordinary).toContain("Terang");
+    expect(ordinary).toContain("Gelap");
+    expect(ordinary).toContain("Sistem");
     expect(ordinary).toContain("Keluar");
-    expect(ordinary).not.toContain("Segera");
+    expect(ordinary).not.toContain('href="/apps"');
+    expect(ordinary).not.toContain('href="/admin"');
+    expect(ordinary).not.toContain("SQ Identity");
 
     const admin = renderToStaticMarkup(
-      <AccountMenu
-        user={workspace.user}
-        platformAdministration
-        onLogout={() => undefined}
-        previewOpen
-      />,
+      <AccountMenu user={workspace.user} platformAdministration onLogout={() => undefined} previewOpen />,
     );
-    expect(admin).toContain('href="/admin"');
+    expect(admin).toContain("Platform Administrator");
+    expect(admin).not.toContain('href="/admin"');
   });
 
-  it("mobile navigation marks the active route and conditionally exposes Admin", () => {
+  it("space switcher is the only admin entry and appears only for platform administrators", () => {
+    const ordinary = renderToStaticMarkup(<WorkspaceShell workspace={workspace} route="home" />);
+    expect(ordinary).not.toContain("Pindah ruang");
+    expect(ordinary).not.toContain('href="/admin"');
+
+    const adminWorkspace = { ...workspace, capabilities: { platformAdministration: true } };
+    const admin = renderToStaticMarkup(<WorkspaceShell workspace={adminWorkspace} route="home" />);
+    expect(admin).toContain('role="tablist" aria-label="Pindah ruang"');
+    expect(admin.match(/href="\/admin"/g)).toHaveLength(1);
+    expect(admin).toContain('aria-selected="true"');
+  });
+
+  it("sidebar is navigation only: no account menu, avatar or sign-out inside it", () => {
+    const html = renderToStaticMarkup(<WorkspaceShell workspace={workspace} route="home" />);
+    const sidebar = html.slice(html.indexOf("<aside"), html.indexOf("</aside>"));
+    expect(sidebar).toContain('href="/"');
+    expect(sidebar).toContain('href="/apps"');
+    expect(sidebar).toContain('href="/account"');
+    expect(sidebar).not.toContain("Keluar");
+    expect(sidebar).not.toContain("Menu akun");
+    expect(sidebar).not.toContain(workspace.user.initials);
+  });
+
+  it("phone navigation marks the active route and adds Lainnya only when there is more", () => {
     const ordinary = renderToStaticMarkup(
-      <MobileNavigation active="apps" platformAdministration={false} />,
+      <MobileNavigation space="workspace" active="apps" platformAdministration={false} />,
     );
     expect(ordinary).toContain('href="/"');
     expect(ordinary).toContain('href="/apps"');
     expect(ordinary).toContain('href="/account"');
-    expect(ordinary).not.toContain('href="/admin"');
+    expect(ordinary).not.toContain("Lainnya");
     expect(ordinary).toContain('aria-current="page"');
 
-    const admin = renderToStaticMarkup(
-      <MobileNavigation active="admin" platformAdministration />,
+    const adminSheet = renderToStaticMarkup(
+      <MobileNavigation space="admin" active="admin-access" platformAdministration previewMoreOpen />,
     );
-    expect(admin).toContain('href="/admin"');
+    expect(adminSheet).toContain("Lainnya");
+    expect(adminSheet).toContain('href="/admin/lifecycle"');
+    expect(adminSheet).toContain("Pindah ruang");
+    expect(adminSheet).toContain("Ruang pegawai");
   });
 });
