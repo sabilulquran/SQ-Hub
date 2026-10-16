@@ -1,6 +1,6 @@
 # SQ Core app shell
 
-**Status:** DRAFT for Product Owner review, 2026-10-16. On acceptance it becomes the reference every SQ Core app follows (SQ Hub, HCIS, Aset SQ, and future apps).
+**Status:** ACCEPTED by the Product Owner on 2026-10-16. Every SQ Core app follows it (SQ Hub, HCIS, Aset SQ, and future apps).
 
 **Part of:** [SQ Core design system, direction C](sq-core-design-system-c.md), which covers colour, type, logo and components. This document covers the **shell**: where account, app switching, the way back to SQ Hub, and admin areas live.
 
