@@ -14,6 +14,7 @@
 - **Logo:**
   - The full foundation logo ("Islamic Tahfizh School Sabilul Qur'an") appears on sign-in, landing pages, and print. Use `logo-white.png` on dark backgrounds.
   - Inside apps, use the eight-point star mark with the app name in heavy dark sans and "SABILUL QUR'AN" in condensed gold, echoing the original wordmark.
+  - The app name in the lockup drops "SQ", because the gold wordmark below already says Sabilul Qur'an (Product Owner, 2026-10-16): **Hub**, **Aset**, **Karir**, **HCIS**. The full product name ("SQ Hub", "Aset SQ", "Karir SQ") stays in page titles, the app launcher, documents, and the lockup's accessible label. "Akun SQ" is the account name, not an app lockup, and keeps its wording.
 - **Shape:** 12 px radius for controls, 16 px for cards, 24 px for sign-in panels. Controls are 44 px high, or 48 px on phones.
 - **Wording:** user-facing text says "Akun SQ" (never "SQ Identity") and "kata sandi" (never "password").
 
