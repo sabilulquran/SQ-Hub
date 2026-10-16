@@ -1,6 +1,6 @@
 # ADR-0008: External Keycloak Realm for Recruitment Candidates
 
-**Status:** PROPOSED
+**Status:** ACCEPTED (Product Owner, 2026-10-17, together with Karir SQ REC-IMPL-001)
 **Date:** 2026-10-16
 
 ## Context
@@ -24,13 +24,18 @@ ADR-0002 and ADR-0003 cover staff identity only. Candidates differ from staff: a
 - Tokens from one realm are never accepted by a client of the other realm.
 - A hired candidate does not become a staff identity by moving or linking their external account. HCIS creates the Employee through its own contract, and staff identity provisioning then follows HUB-IMPL-013. The external account may be disabled or retained per the retention policy.
 
-## Open questions (must be resolved before ACCEPTED)
-- Which WhatsApp authenticator to use (maintained extension or in-house) and how it reaches the WhatsApp adapter.
-- How Keycloak keeps NIK out of `preferred_username` and event logs: a generated opaque username plus a custom authenticator that looks the user up by NIK attribute, or a supported event/token mapper configuration.
-- Anti-abuse for self-registration: rate limits, CAPTCHA, email-domain rules.
-- Whether candidate MFA is offered or required.
-- Hostname for the external realm's login pages (the career portal itself is `karir.sabilulquran.or.id`).
-- Mi8VPS capacity: one more realm in the same Keycloak adds little memory, but registration traffic during an open recruitment period must be measured.
+## Resolved by REC-IMPL-001 (2026-10-17)
+Details live in `sabilulquran/karir-sq` `docs/specs/REC-IMPL-001-r0-foundation-candidate-accounts-migration.md` §2 and §4.
+- **Realm and hostname:** realm `sq-karir`; sign-in pages at `login.sabilulquran.or.id/realms/sq-karir` (same Keycloak hostname as staff); career portal at `karir.sabilulquran.or.id`.
+- **NIK out of Keycloak:** the Keycloak username is a random opaque ID. Keycloak stores only `nik_hmac` (HMAC-SHA256 with a pepper), never the NIK. Sign-in, registration and reset look users up by `nik_hmac`. Token mappers for username, email and phone are not issued to the portal client.
+- **Authenticator:** an in-house provider `sq-karir-identity` in `infra/keycloak/providers/karir-identity/`, next to `trusted-device`. It provides the NIK + kata sandi form, the registration form action, WhatsApp verification as a required action, reset by code, and an event listener.
+- **WhatsApp delivery:** the provider calls a loopback, HMAC-signed Karir SQ relay. Karir SQ sends through JalurPesan on the official Rekrutmen number. Email codes use the realm SMTP.
+- **Anti-abuse:** Keycloak brute-force detection per user; per-IP, per-NIK and per-number limits in the provider; Cloudflare Turnstile on registration and reset.
+- **MFA:** candidate MFA is not offered in R0.
+
+## Release gates (not design questions)
+- Mi8VPS memory headroom with the provider and Karir SQ running (at least 700 MiB MemAvailable).
+- Owner approval for each production step: realm, provider, client, migration.
 
 ## Consequences
 - Staff realm security and lifecycle stay as accepted; no candidate can appear in staff Admin Center or Directory views.
