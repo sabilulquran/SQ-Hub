@@ -47,7 +47,6 @@ Agent tidak boleh redesign requirement saat diminta implementasi.
 - Business rule tidak boleh hanya hidup di UI.
 - Authorization harus ditegakkan server-side.
 - Jangan membuat fallback diam-diam yang menyembunyikan data/configuration error.
-- Gunakan synthetic data saja.
 
 ## Verification
 Environment-dependent claim seperti build/test/migration berhasil hanya boleh dibuat setelah benar-benar dijalankan di environment yang sesuai.

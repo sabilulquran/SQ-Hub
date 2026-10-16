@@ -107,7 +107,6 @@ Untuk task visual lintas aplikasi, baca `docs/design/hcis-baseline.md` sebelum m
 - Setelah shared primitives tersedia di SQ Hub, SQ Hub menjadi canonical source untuk design system lintas produk.
 
 ## 9. Security and privacy
-- Gunakan data sintetis untuk development, prompt, test, screenshot, dan demo.
 - Jangan commit secret, credential, token, production dump, atau data pribadi production.
 - Terapkan least privilege.
 - Auth, application access, cryptography, audit, dan migration memerlukan review tambahan.
