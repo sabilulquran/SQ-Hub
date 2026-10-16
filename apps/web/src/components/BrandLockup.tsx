@@ -30,7 +30,7 @@ export function BrandLockup({ compact = false }: BrandLockupProps) {
               : "text-base font-extrabold leading-none tracking-[-0.01em] text-brand-heading"
           }
         >
-          SQ Hub
+          Hub
         </p>
         <img
           src={sqWordmarkGold}
