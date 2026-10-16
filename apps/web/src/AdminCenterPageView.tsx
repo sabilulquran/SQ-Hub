@@ -1,7 +1,6 @@
 import {
   AppWindow,
   CheckCircle2,
-  KeyRound,
   Plus,
   RefreshCw,
   Save,
@@ -13,8 +12,8 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 
-import { GlobalHeader } from "@/components/GlobalHeader";
-import { MobileNavigation } from "@/components/MobileNavigation";
+import { AppShell } from "@/components/AppShell";
+import type { HubNavKey } from "@/components/shellNavigation";
 import type {
   AdminApplication,
   AdminAuditRecord,
@@ -38,6 +37,21 @@ type AdminState =
   | { status: "error" };
 
 type Section = "applications" | "access" | "audit";
+
+// Each section has its own address so the admin sidebar can link to it.
+const sectionByPath: Record<string, Section> = {
+  "/admin/access": "access",
+  "/admin/audit": "audit",
+};
+const sectionNav: Record<Section, { key: HubNavKey; label: string }> = {
+  applications: { key: "admin-applications", label: "Registry aplikasi" },
+  access: { key: "admin-access", label: "Akses aplikasi" },
+  audit: { key: "admin-audit", label: "Audit platform" },
+};
+
+function sectionFromPath(pathname: string): Section {
+  return sectionByPath[pathname.replace(/\/+$/, "")] ?? "applications";
+}
 
 const emptyApplication: AdminApplication = {
   key: "",
@@ -78,7 +92,7 @@ export function AdminCenterPage({
       ? { status: "ready", applications: previewApplications }
       : { status: "loading" },
   );
-  const [section, setSection] = useState<Section>("applications");
+  const section = sectionFromPath(window.location.pathname);
   const [applicationForm, setApplicationForm] = useState<AdminApplication>(emptyApplication);
   const [applicationSaving, setApplicationSaving] = useState(false);
   const [applicationMessage, setApplicationMessage] = useState<string | null>(null);
@@ -294,16 +308,16 @@ export function AdminCenterPage({
   }, [section]);
 
   return (
-    <div className="min-h-screen bg-background">
-      <GlobalHeader workspace={workspace} onLogout={onLogout} />
-
-      <main className="mx-auto max-w-7xl px-4 pb-32 pt-7 sm:px-6 sm:pt-8 lg:px-8 lg:pb-12">
-          <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-            <div>
-              <p className="text-[10px] font-bold uppercase tracking-[0.17em] text-brand-primary-deep">Administrasi platform</p>
-              <p className="mt-1 max-w-3xl text-sm leading-6 text-muted-foreground">Kelola registry, pintu masuk aplikasi, dan jejak administrasi tanpa mengambil alih kewenangan bisnis aplikasi domain.</p>
-            </div>
-            <span className="inline-flex self-start items-center gap-2 rounded-full bg-brand-primary-pale px-3 py-1.5 text-xs font-bold text-brand-primary-deep"><ShieldEllipsis className="h-4 w-4" /> Platform Administrator</span>
+    <AppShell
+      workspace={workspace}
+      space="admin"
+      active={sectionNav[section].key}
+      breadcrumb={["Administrasi", sectionNav[section].label]}
+      onLogout={onLogout}
+    >
+          <div className="mb-4">
+            <h1 className="font-display text-2xl font-bold tracking-[-0.02em] text-brand-heading sm:text-3xl">Administrasi platform</h1>
+            <p className="mt-1 max-w-3xl text-sm leading-6 text-muted-foreground">Kelola registry, pintu masuk aplikasi, dan jejak administrasi tanpa mengambil alih kewenangan bisnis aplikasi domain.</p>
           </div>
 
           {state.status === "loading" ? <LoadingCard label="Memeriksa kewenangan administrasi..." /> : null}
@@ -313,20 +327,13 @@ export function AdminCenterPage({
 
           {state.status === "ready" ? (
             <>
-              <div className="flex flex-wrap gap-2 border-b border-border/70 pb-3" role="tablist" aria-label="Bagian Administrasi SQ">
-                <SectionButton active={section === "applications"} onClick={() => setSection("applications")} icon={AppWindow}>Aplikasi</SectionButton>
-                <SectionButton active={section === "access"} onClick={() => setSection("access")} icon={KeyRound}>Akses Aplikasi</SectionButton>
-                <SectionButton active={section === "audit"} onClick={() => setSection("audit")} icon={ShieldCheck}>Audit Platform</SectionButton>
-              </div>
-              {!previewApplications ? <a href="/admin/lifecycle" className="mt-3 inline-flex rounded-xl border border-brand-primary/20 bg-brand-primary-pale px-3 py-2 text-sm font-bold text-brand-primary-deep">Identity Lifecycle pegawai</a> : null}
-
               {section === "applications" ? (
                 <section className="mt-5 grid gap-5 xl:grid-cols-[minmax(0,1.25fr)_minmax(19rem,0.75fr)]">
                   <div>
                     <SectionHeading eyebrow="Application Registry" title="Aplikasi platform" description="Pilih aplikasi untuk mengubah metadata. Kunci aplikasi tetap stabil setelah dibuat." />
                     <div className="mt-4 grid gap-3 md:grid-cols-2">
                       {applications.map((application) => (
-                        <button key={application.key} type="button" onClick={() => { setApplicationForm({ ...application }); setApplicationMessage(null); }} className="rounded-2xl border border-border/70 bg-white p-4 text-left shadow-[var(--shadow-soft)] transition hover:border-brand-primary/35">
+                        <button key={application.key} type="button" onClick={() => { setApplicationForm({ ...application }); setApplicationMessage(null); }} className="rounded-2xl border border-border/70 bg-surface-raised p-4 text-left shadow-[var(--shadow-soft)] transition hover:border-brand-primary/35">
                           <div className="flex items-start justify-between gap-3">
                             <div className="min-w-0"><h3 className="truncate font-display text-base font-bold text-brand-heading">{application.name}</h3><p className="mt-1 font-mono text-[10px] text-muted-foreground">{application.key}</p></div>
                             <StatusPill active={application.status === "active"} activeLabel="Aktif" inactiveLabel="Nonaktif" />
@@ -337,7 +344,7 @@ export function AdminCenterPage({
                     </div>
                   </div>
 
-                  <div className="rounded-2xl border border-border/70 bg-white p-4 shadow-[var(--shadow-soft)]">
+                  <div className="rounded-2xl border border-border/70 bg-surface-raised p-4 shadow-[var(--shadow-soft)]">
                     <div className="flex items-center justify-between gap-3">
                       <h3 className="font-display text-lg font-bold text-brand-heading">{editingExisting ? "Ubah aplikasi" : "Daftarkan aplikasi"}</h3>
                       <button type="button" onClick={() => { setApplicationForm(emptyApplication); setApplicationMessage(null); }} className="inline-flex items-center gap-1.5 rounded-xl border border-border px-3 py-2 text-xs font-bold text-brand-primary-deep"><Plus className="h-3.5 w-3.5" /> Baru</button>
@@ -351,7 +358,7 @@ export function AdminCenterPage({
                       <Field label="Status"><select value={applicationForm.status} onChange={(event) => setApplicationForm((current) => ({ ...current, status: event.target.value as "active" | "inactive" }))} className="sq-admin-input"><option value="active">Aktif</option><option value="inactive">Nonaktif</option></select></Field>
                     </div>
                     {applicationMessage ? <InlineMessage>{applicationMessage}</InlineMessage> : null}
-                    <button type="button" disabled={applicationSaving || Boolean(previewApplications)} onClick={() => void saveApplication()} className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-brand-primary px-4 py-2.5 text-sm font-bold text-white shadow-[var(--shadow-button)] disabled:cursor-not-allowed disabled:opacity-50"><Save className="h-4 w-4" />{applicationSaving ? "Menyimpan..." : "Simpan registry"}</button>
+                    <button type="button" disabled={applicationSaving || Boolean(previewApplications)} onClick={() => void saveApplication()} className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-brand-primary px-4 py-2.5 text-sm font-bold text-brand-foreground shadow-[var(--shadow-button)] disabled:cursor-not-allowed disabled:opacity-50"><Save className="h-4 w-4" />{applicationSaving ? "Menyimpan..." : "Simpan registry"}</button>
                   </div>
                 </section>
               ) : null}
@@ -361,13 +368,13 @@ export function AdminCenterPage({
                   <SectionHeading eyebrow="Application Access" title="Akses aplikasi Staff" description="Cari identitas di Akun SQ staging, lalu berikan atau cabut pintu masuk aplikasi. Role dan permission domain tidak berubah." />
                   <div className="mt-4 flex flex-col gap-2.5 sm:flex-row">
                     <input value={staffQuery} onChange={(event) => setStaffQuery(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") void searchStaff(); }} placeholder="Cari NIP, email, atau nama Staff" className="sq-admin-input flex-1" />
-                    <button type="button" disabled={staffSearching || Boolean(previewApplications)} onClick={() => void searchStaff()} className="inline-flex items-center justify-center gap-2 rounded-xl bg-brand-primary px-4 py-2.5 text-sm font-bold text-white disabled:opacity-50">{staffSearching ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}Cari Staff</button>
+                    <button type="button" disabled={staffSearching || Boolean(previewApplications)} onClick={() => void searchStaff()} className="inline-flex items-center justify-center gap-2 rounded-xl bg-brand-primary px-4 py-2.5 text-sm font-bold text-brand-foreground disabled:opacity-50">{staffSearching ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}Cari Staff</button>
                   </div>
                   {accessMessage ? <InlineMessage>{accessMessage}</InlineMessage> : null}
 
                   <div className="mt-4 grid gap-4 xl:grid-cols-[minmax(16rem,0.65fr)_minmax(0,1.35fr)]">
                     <div className="space-y-2.5">{staffResults.map((staff) => <StaffResult key={staff.subject} staff={staff} selected={selectedStaff?.subject === staff.subject} onClick={() => void selectStaff(staff)} />)}</div>
-                    <div className="rounded-2xl border border-border/70 bg-white p-4 shadow-[var(--shadow-soft)]">
+                    <div className="rounded-2xl border border-border/70 bg-surface-raised p-4 shadow-[var(--shadow-soft)]">
                       {!selectedStaff ? <EmptyState icon={UserRound} title="Pilih Staff" body="Hasil pencarian menampilkan identitas manusia tanpa menampilkan subject OIDC mentah." /> : (
                         <>
                           <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
@@ -380,7 +387,7 @@ export function AdminCenterPage({
                               {staffAccess.map((item) => (
                                 <div key={item.application.key} className="flex flex-col gap-3 p-3.5 sm:flex-row sm:items-center sm:justify-between">
                                   <div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><p className="font-bold text-brand-heading">{item.application.name}</p><StatusPill active={item.status === "active"} activeLabel="Akses aktif" inactiveLabel={item.status === "revoked" ? "Dicabut" : "Belum diberi"} /></div><p className="mt-1 max-w-2xl text-xs text-muted-foreground">{item.reason ?? "Belum ada alasan perubahan akses."}</p></div>
-                                  <div className="flex shrink-0 gap-2"><button type="button" disabled={item.status === "active" || !accessReason.trim()} onClick={() => void mutateAccess(item.application.key, "grant")} className="rounded-xl bg-brand-primary px-3 py-2 text-xs font-bold text-white disabled:opacity-40">Berikan</button><button type="button" disabled={item.status !== "active" || !accessReason.trim()} onClick={() => void mutateAccess(item.application.key, "revoke")} className="rounded-xl border border-destructive/25 bg-destructive/5 px-3 py-2 text-xs font-bold text-destructive disabled:opacity-40">Cabut</button></div>
+                                  <div className="flex shrink-0 gap-2"><button type="button" disabled={item.status === "active" || !accessReason.trim()} onClick={() => void mutateAccess(item.application.key, "grant")} className="rounded-xl bg-brand-primary px-3 py-2 text-xs font-bold text-brand-foreground disabled:opacity-40">Berikan</button><button type="button" disabled={item.status !== "active" || !accessReason.trim()} onClick={() => void mutateAccess(item.application.key, "revoke")} className="rounded-xl border border-destructive/25 bg-destructive/5 px-3 py-2 text-xs font-bold text-destructive disabled:opacity-40">Cabut</button></div>
                                 </div>
                               ))}
                             </div>
@@ -395,8 +402,8 @@ export function AdminCenterPage({
               {section === "audit" ? (
                 <section className="mt-5">
                   <SectionHeading eyebrow="Platform Audit" title="Jejak administrasi" description="Perubahan registry, Application Access, dan administrasi platform ditampilkan tanpa subject OIDC mentah atau material credential." />
-                  <div className="mt-4 flex flex-col gap-2.5 sm:flex-row"><input value={auditQuery} onChange={(event) => setAuditQuery(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") void loadAudit(); }} placeholder="Cari action, aplikasi, alasan, outcome..." className="sq-admin-input flex-1" /><button type="button" disabled={auditLoading || Boolean(previewApplications)} onClick={() => void loadAudit()} className="inline-flex items-center justify-center gap-2 rounded-xl border border-border bg-white px-4 py-2.5 text-sm font-bold text-brand-primary-deep">{auditLoading ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}Cari audit</button></div>
-                  <div className="mt-4 overflow-hidden rounded-2xl border border-border/70 bg-white shadow-[var(--shadow-soft)]">
+                  <div className="mt-4 flex flex-col gap-2.5 sm:flex-row"><input value={auditQuery} onChange={(event) => setAuditQuery(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") void loadAudit(); }} placeholder="Cari action, aplikasi, alasan, outcome..." className="sq-admin-input flex-1" /><button type="button" disabled={auditLoading || Boolean(previewApplications)} onClick={() => void loadAudit()} className="inline-flex items-center justify-center gap-2 rounded-xl border border-border bg-surface-raised px-4 py-2.5 text-sm font-bold text-brand-primary-deep">{auditLoading ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}Cari audit</button></div>
+                  <div className="mt-4 overflow-hidden rounded-2xl border border-border/70 bg-surface-raised shadow-[var(--shadow-soft)]">
                     <div className="overflow-x-auto"><table className="w-full min-w-[720px] text-left text-sm"><thead className="bg-muted/45 text-[11px] uppercase tracking-wide text-muted-foreground"><tr><th className="px-3.5 py-2.5">Waktu</th><th className="px-3.5 py-2.5">Action</th><th className="px-3.5 py-2.5">Target</th><th className="px-3.5 py-2.5">Outcome</th><th className="px-3.5 py-2.5">Keterangan</th></tr></thead><tbody className="divide-y divide-border/60">{audit.map((record) => <tr key={record.id}><td className="whitespace-nowrap px-3.5 py-2.5 text-xs text-muted-foreground">{formatDate(record.occurredAt)}</td><td className="px-3.5 py-2.5 font-mono text-xs">{record.action}</td><td className="px-3.5 py-2.5 text-xs">{record.targetType}</td><td className="px-3.5 py-2.5"><StatusPill active={record.outcome === "succeeded"} activeLabel="Berhasil" inactiveLabel={record.outcome} /></td><td className="max-w-sm px-3.5 py-2.5 text-xs text-muted-foreground">{auditDescription(record)}</td></tr>)}</tbody></table></div>
                     {audit.length === 0 && !auditLoading ? <div className="p-6"><EmptyState icon={ShieldCheck} title="Belum ada hasil" body="Jejak administrasi terbaru akan muncul di sini." /></div> : null}
                   </div>
@@ -404,17 +411,8 @@ export function AdminCenterPage({
               ) : null}
             </>
           ) : null}
-      </main>
-      <MobileNavigation
-        active="admin"
-        platformAdministration={workspace.capabilities.platformAdministration}
-      />
-    </div>
+    </AppShell>
   );
-}
-
-function SectionButton({ active, onClick, icon: Icon, children }: { active: boolean; onClick: () => void; icon: typeof AppWindow; children: string }) {
-  return <button type="button" role="tab" aria-selected={active} onClick={onClick} className={active ? "inline-flex items-center gap-2 rounded-xl bg-brand-primary-pale px-3.5 py-2 text-sm font-bold text-brand-primary-deep ring-1 ring-brand-primary/10" : "inline-flex items-center gap-2 rounded-xl border border-border/70 bg-white px-3.5 py-2 text-sm font-semibold text-muted-foreground"}><Icon className="h-4 w-4" />{children}</button>;
 }
 
 function SectionHeading({ eyebrow, title, description }: { eyebrow: string; title: string; description: string }) {
@@ -422,11 +420,11 @@ function SectionHeading({ eyebrow, title, description }: { eyebrow: string; titl
 }
 
 function StaffResult({ staff, selected, onClick }: { staff: AdminStaff; selected: boolean; onClick: () => void }) {
-  return <button type="button" onClick={onClick} className={selected ? "w-full rounded-xl border border-brand-primary/40 bg-brand-primary-pale/55 p-3.5 text-left" : "w-full rounded-xl border border-border/70 bg-white p-3.5 text-left shadow-[var(--shadow-soft)]"}><div className="flex items-start gap-3"><div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-brand-primary-pale text-brand-primary-deep"><UserRound className="h-4.5 w-4.5" /></div><div className="min-w-0"><p className="truncate font-bold text-brand-heading">{staff.displayName}</p><p className="mt-0.5 truncate text-xs text-muted-foreground">{staff.username}{staff.email ? ` · ${staff.email}` : ""}</p><div className="mt-2 flex gap-1.5"><SecurityPill ok={staff.security.totpConfigured} label="TOTP" /><SecurityPill ok={staff.security.recoveryCodesConfigured} label="Recovery" /></div></div></div></button>;
+  return <button type="button" onClick={onClick} className={selected ? "w-full rounded-xl border border-brand-primary/40 bg-brand-primary-pale/55 p-3.5 text-left" : "w-full rounded-xl border border-border/70 bg-surface-raised p-3.5 text-left shadow-[var(--shadow-soft)]"}><div className="flex items-start gap-3"><div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-brand-primary-pale text-brand-primary-deep"><UserRound className="h-4.5 w-4.5" /></div><div className="min-w-0"><p className="truncate font-bold text-brand-heading">{staff.displayName}</p><p className="mt-0.5 truncate text-xs text-muted-foreground">{staff.username}{staff.email ? ` · ${staff.email}` : ""}</p><div className="mt-2 flex gap-1.5"><SecurityPill ok={staff.security.totpConfigured} label="TOTP" /><SecurityPill ok={staff.security.recoveryCodesConfigured} label="Recovery" /></div></div></div></button>;
 }
 
 function SecurityPill({ ok, label }: { ok: boolean; label: string }) {
-  return <span className={ok ? "inline-flex items-center gap-1 rounded-full bg-brand-primary-pale px-2 py-1 text-[10px] font-bold text-brand-primary-deep" : "inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-1 text-[10px] font-bold text-amber-700"}>{ok ? <CheckCircle2 className="h-3 w-3" /> : <ShieldAlert className="h-3 w-3" />}{label}</span>;
+  return <span className={ok ? "inline-flex items-center gap-1 rounded-full bg-brand-primary-pale px-2 py-1 text-[10px] font-bold text-brand-primary-deep" : "inline-flex items-center gap-1 rounded-full bg-warning-soft px-2 py-1 text-[10px] font-bold text-warning-ink"}>{ok ? <CheckCircle2 className="h-3 w-3" /> : <ShieldAlert className="h-3 w-3" />}{label}</span>;
 }
 
 function StatusPill({ active, activeLabel, inactiveLabel }: { active: boolean; activeLabel: string; inactiveLabel: string }) {
@@ -442,7 +440,7 @@ function InlineMessage({ children }: { children: ReactNode }) {
 }
 
 function LoadingCard({ label, compact = false }: { label: string; compact?: boolean }) {
-  return <section className={compact ? "rounded-xl border border-border/70 bg-white p-4 text-center" : "mt-5 rounded-2xl border border-border/70 bg-white p-7 text-center shadow-[var(--shadow-soft)]"}><RefreshCw className="mx-auto h-5 w-5 animate-spin text-brand-primary-deep" /><p className="mt-2.5 text-sm font-semibold text-muted-foreground">{label}</p></section>;
+  return <section className={compact ? "rounded-xl border border-border/70 bg-surface-raised p-4 text-center" : "mt-5 rounded-2xl border border-border/70 bg-surface-raised p-7 text-center shadow-[var(--shadow-soft)]"}><RefreshCw className="mx-auto h-5 w-5 animate-spin text-brand-primary-deep" /><p className="mt-2.5 text-sm font-semibold text-muted-foreground">{label}</p></section>;
 }
 
 function EmptyState({ icon: Icon, title, body }: { icon: typeof AppWindow; title: string; body: string }) {
@@ -461,5 +459,5 @@ function formatDate(value: string) {
 }
 
 function AdminMessage({ title, body, action }: { title: string; body: string; action?: { label: string; onClick: () => void | Promise<void> } }) {
-  return <section className="mt-5 rounded-2xl border border-border/70 bg-white p-6 text-center shadow-[var(--shadow-soft)]"><ShieldEllipsis className="mx-auto h-6 w-6 text-brand-primary-deep" /><h2 className="mt-3 font-display text-xl font-bold text-brand-heading">{title}</h2><p className="mx-auto mt-2 max-w-xl text-sm leading-6 text-muted-foreground">{body}</p>{action ? <button type="button" onClick={() => void action.onClick()} className="mt-4 rounded-xl bg-brand-primary px-4 py-2.5 text-sm font-bold text-white shadow-[var(--shadow-button)]">{action.label}</button> : <a href="/" className="mt-4 inline-flex rounded-xl border border-border px-4 py-2.5 text-sm font-bold text-brand-primary-deep">Kembali ke SQ Hub</a>}</section>;
+  return <section className="mt-5 rounded-2xl border border-border/70 bg-surface-raised p-6 text-center shadow-[var(--shadow-soft)]"><ShieldEllipsis className="mx-auto h-6 w-6 text-brand-primary-deep" /><h2 className="mt-3 font-display text-xl font-bold text-brand-heading">{title}</h2><p className="mx-auto mt-2 max-w-xl text-sm leading-6 text-muted-foreground">{body}</p>{action ? <button type="button" onClick={() => void action.onClick()} className="mt-4 rounded-xl bg-brand-primary px-4 py-2.5 text-sm font-bold text-brand-foreground shadow-[var(--shadow-button)]">{action.label}</button> : <a href="/" className="mt-4 inline-flex rounded-xl border border-border px-4 py-2.5 text-sm font-bold text-brand-primary-deep">Kembali ke SQ Hub</a>}</section>;
 }

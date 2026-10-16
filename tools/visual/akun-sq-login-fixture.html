@@ -4,24 +4,25 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Akun SQ visual fixture</title>
-  <link rel="stylesheet" href="../../infra/keycloak/themes/sq-hub/login/resources/css/akun-sq-login-c69c2b68ba6c.css">
+  <link rel="stylesheet" href="../../infra/keycloak/themes/sq-hub/login/resources/css/akun-sq-login-6ebe2fb1c87f.css">
 </head>
 <body class="login-pf">
   <div class="pf-v5-c-login">
     <div class="pf-v5-c-login__container">
       <main class="pf-v5-c-login__main">
         <footer class="pf-v5-c-login__main-footer">
-          <div class="sq-account-brand">
-            <img
-              class="sq-account-brand__logo"
-              src="../../infra/keycloak/themes/sq-hub/login/resources/img/ysq-mark.png"
-              alt=""
-              aria-hidden="true"
-            >
-            <div class="sq-account-brand__copy">
-              <strong>Akun SQ</strong>
-              <span>Yayasan Sabilul Qur'an</span>
-            </div>
+          <div class="sq-account-brand" aria-label="Islamic Tahfizh School Sabilul Qur'an">
+            <picture>
+              <source srcset="../../infra/keycloak/themes/sq-hub/login/resources/img/logo-white.png" media="(prefers-color-scheme: dark)">
+              <img
+                class="sq-account-brand__logo"
+                src="../../infra/keycloak/themes/sq-hub/login/resources/img/logo.png"
+                alt=""
+                aria-hidden="true"
+                width="2240"
+                height="721"
+              >
+            </picture>
           </div>
           <p class="sq-login-footer">Satu akun untuk layanan digital Yayasan Sabilul Qur'an.</p>
         </footer>
@@ -42,6 +43,22 @@
       '<div class="pf-v5-c-form__group"><label' + (id ? ' for="' + id + '"' : '') + '>' + label + '</label>' +
       '<input class="form-control" ' + (id ? 'id="' + id + '" name="' + id + '" ' : '') +
       'type="' + type + '" value="' + value + '"></div>';
+    const passwordField = (label, id) =>
+      '<div class="pf-v5-c-form__group"><div class="pf-v5-c-form__group-label"><label class="pf-v5-c-form__label" for="' + id + '">' +
+      '<span class="pf-v5-c-form__label-text">' + label + '</span></label></div>' +
+      '<div class="pf-v5-c-input-group"><div class="pf-v5-c-input-group__item pf-m-fill"><span class="pf-v5-c-form-control">' +
+      '<input id="' + id + '" name="' + id + '" type="password" value=""></span></div>' +
+      '<div class="pf-v5-c-input-group__item"><button class="pf-v5-c-button pf-m-control" type="button" aria-label="Tampilkan kata sandi">' +
+      '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"></path><circle cx="12" cy="12" r="3"></circle></svg>' +
+      '</button></div></div></div>';
+    const attemptedUsername = (value) =>
+      '<div class="pf-v5-c-form__group"><div class="pf-v5-c-form__group-label"><label class="pf-v5-c-form__label" for="username">' +
+      '<span class="pf-v5-c-form__label-text">NIP atau email</span></label></div>' +
+      '<div class="pf-v5-c-input-group"><div class="pf-v5-c-input-group__item pf-m-fill"><span class="pf-v5-c-form-control pf-m-readonly">' +
+      '<input id="kc-attempted-username" value="' + value + '" readonly></span></div>' +
+      '<div class="pf-v5-c-input-group__item"><button id="reset-login" class="pf-v5-c-button pf-m-control kc-login-tooltip" type="button" aria-label="Ganti akun">' +
+      '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M21 12a9 9 0 1 1-3-6.7L21 8M21 3v5h-5"></path></svg>' +
+      '<span class="kc-tooltip-text">Ganti akun</span></button></div></div></div>';
     const submit = (label) =>
       '<button id="kc-login" class="pf-v5-c-button pf-m-primary" type="button">' + label + '</button>';
     const form = (body, id = "kc-form-login") =>
@@ -51,20 +68,21 @@
       state.innerHTML =
         '<div class="pf-v5-c-alert pf-m-danger">NIP/email atau kata sandi tidak sesuai.</div>' +
         form(field("NIP atau email", "text", "UAT-HCIS-001", "username") +
-          field("Kata sandi", "password", "", "password") +
+          passwordField("Kata sandi", "password") +
           '<div id="kc-form-buttons">' + submit("Masuk") + '</div>');
     } else if (mode === "totp") {
-      title.textContent = "Verifikasi keamanan";
+      title.textContent = "Masukkan kode";
       state.innerHTML = form(
-        field("Kode autentikator", "text", "", "otp") +
+        attemptedUsername("198701012010011001") +
+        field("Kode 6 angka dari aplikasi autentikator", "text", "", "otp") +
         '<div class="pf-v5-c-form__group"><label for="trustDevice">' +
-        '<input id="trustDevice" name="trustDevice" type="checkbox"> Percayai perangkat ini selama 30 hari' +
+        '<input id="trustDevice" name="trustDevice" type="checkbox"> Ingat perangkat ini selama 30 hari' +
         '</label></div>' +
         '<div id="kc-form-buttons">' + submit("Verifikasi") + '</div>',
         "kc-otp-login-form"
       );
     } else if (mode === "forgot") {
-      title.textContent = "Lupa password";
+      title.textContent = "Lupa kata sandi";
       state.innerHTML =
         '<p class="instruction">Masukkan NIP atau email untuk melanjutkan pemulihan.</p>' +
         form(field("NIP atau email", "text", "", "username") +
@@ -93,7 +111,8 @@
         '</div>' +
         '<div id="kc-form">' +
         form(field("NIP atau email", "text", "", "username") +
-          '<div id="kc-form-buttons">' + submit("Berikutnya") + '</div>') +
+          passwordField("Kata sandi", "password") +
+          '<div id="kc-form-buttons">' + submit("Masuk") + '</div>') +
         '</div>';
     }
 
@@ -110,10 +129,11 @@
 
       document.body.dataset.horizontal = String(root.scrollWidth > root.clientWidth + 1);
       document.body.dataset.logoLoaded = String(logo.complete && logo.naturalWidth > 0 && logo.naturalHeight > 0);
-      const minimumLogoSize = innerWidth < 390 ? 44 : 60;
+      // Full foundation logo: wide enough to read the wordmark, never wider than the card.
+      const minimumLogoWidth = innerWidth < 390 ? 200 : 240;
       document.body.dataset.logoSize = String(
-        logoBox.width >= minimumLogoSize && logoBox.width <= 64 &&
-        logoBox.height >= minimumLogoSize && logoBox.height <= 64
+        logoBox.width >= minimumLogoWidth && logoBox.width <= 300 &&
+        Math.abs(logoBox.width / logoBox.height - 2240 / 721) < 0.05
       );
       document.body.dataset.primaryFull = String(primaryBox.width / formBox.width >= 0.96);
       document.body.dataset.cardCompact = String(card.width <= 456 && card.height < Math.max(700, innerHeight - 8));

@@ -133,7 +133,7 @@ jobs:
           test "$status" = "200"
           grep -Fq 'Akun SQ' /tmp/akun-sq-login.html
           grep -Fq 'Masuk ke Akun SQ' /tmp/akun-sq-login.html
-          grep -Fq 'css/akun-sq-login-c69c2b68ba6c.css' /tmp/akun-sq-login.html
+          grep -Fq 'css/akun-sq-login-6ebe2fb1c87f.css' /tmp/akun-sq-login.html
           ! grep -Fq 'css/sq-account-hcis-d8e0fab49a38.css' /tmp/akun-sq-login.html
           ! grep -Fq 'css/sq-identity-066c6982e041.css' /tmp/akun-sq-login.html
           ! grep -Fq 'css/sq-account-41ad9ff20ec3.css' /tmp/akun-sq-login.html
@@ -142,19 +142,25 @@ jobs:
           ! grep -Fq 'css/sq-account-hcis-5ae1544133ef.css' /tmp/akun-sq-login.html
           ! grep -Fq 'css/hcis-logo-assets-294b82789923.css' /tmp/akun-sq-login.html
           grep -Fq 'img/favicon.svg' /tmp/akun-sq-login.html
-          grep -Fq 'img/ysq-mark.png' /tmp/akun-sq-login.html
+          grep -Fq 'img/logo.png' /tmp/akun-sq-login.html
+          grep -Fq 'img/logo-white.png' /tmp/akun-sq-login.html
 
-          mark_src="$(grep -oE 'src="[^"]*img/ysq-mark[.]png"' /tmp/akun-sq-login.html | head -n 1 | cut -d'"' -f2)"
-          test -n "$mark_src"
-          case "$mark_src" in
-            http://127.0.0.1:8080/*) login_mark_url="$mark_src" ;;
-            /*) login_mark_url="http://127.0.0.1:8080$mark_src" ;;
-            *) echo "Unexpected Akun SQ mark resource URL: $mark_src" >&2; exit 1 ;;
+          logo_src="$(grep -oE 'src="[^"]*img/logo[.]png"' /tmp/akun-sq-login.html | head -n 1 | cut -d'"' -f2)"
+          test -n "$logo_src"
+          case "$logo_src" in
+            http://127.0.0.1:8080/*) login_logo_url="$logo_src" ;;
+            /*) login_logo_url="http://127.0.0.1:8080$logo_src" ;;
+            *) echo "Unexpected Akun SQ logo resource URL: $logo_src" >&2; exit 1 ;;
           esac
 
-          curl --fail --silent "$login_mark_url" --output /tmp/keycloak-login-ysq-mark.png
-          cmp -s /tmp/keycloak-login-ysq-mark.png infra/keycloak/themes/sq-hub/login/resources/img/ysq-mark.png
+          curl --fail --silent "$login_logo_url" --output /tmp/keycloak-login-logo.png
+          cmp -s /tmp/keycloak-login-logo.png infra/keycloak/themes/sq-hub/login/resources/img/logo.png
+          curl --fail --silent "${login_logo_url%/img/logo.png}/img/logo-white.png" --output /tmp/keycloak-login-logo-white.png
+          cmp -s /tmp/keycloak-login-logo-white.png infra/keycloak/themes/sq-hub/login/resources/img/logo-white.png
+          curl --fail --silent "${login_logo_url%/img/logo.png}/fonts/inter-latin-wght.woff2" --output /tmp/keycloak-login-inter.woff2
+          cmp -s /tmp/keycloak-login-inter.woff2 infra/keycloak/themes/sq-hub/login/resources/fonts/inter-latin-wght.woff2
 
+          mark_src="${logo_src%/img/logo.png}/img/ysq-mark.png"
           account_mark_src="${mark_src/\/login\//\/account\/}"
           test "$account_mark_src" != "$mark_src"
           case "$account_mark_src" in
@@ -263,7 +269,7 @@ jobs:
             http://127.0.0.1:8080/realms/sq-staff-staging/protocol/openid-connect/auth \
             > /tmp/akun-sq-identity-ux.html
 
-          grep -Fq 'Lupa password?' /tmp/akun-sq-identity-ux.html
+          grep -Fq 'Lupa kata sandi?' /tmp/akun-sq-identity-ux.html
           grep -Fq 'Masuk dengan Google' /tmp/akun-sq-identity-ux.html
           ! grep -Fq "$GOOGLE_CLIENT_SECRET" /tmp/akun-sq-identity-ux.html
 

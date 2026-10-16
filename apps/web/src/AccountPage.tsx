@@ -22,8 +22,7 @@ import {
   useState,
 } from "react";
 
-import { GlobalHeader } from "@/components/GlobalHeader";
-import { MobileNavigation } from "@/components/MobileNavigation";
+import { AppShell } from "@/components/AppShell";
 import type {
   AccountCredentialType,
   AccountDevice,
@@ -245,46 +244,39 @@ export function AccountPage({
   );
 
   return (
-    <div className="min-h-screen bg-surface text-foreground">
-      <GlobalHeader workspace={workspace} onLogout={onLogout} />
-      <main className="mx-auto w-full max-w-7xl px-4 pb-32 pt-8 sm:px-6 sm:pt-10 lg:px-8 lg:pb-14">
-        <header className="mb-6 sm:mb-8">
-          <p className="text-xs font-bold uppercase tracking-[0.16em] text-brand-primary-deep">
-            Akun SQ
-          </p>
-          <h1 className="mt-2 font-display text-3xl font-bold tracking-[-0.035em] text-brand-heading sm:text-4xl">
-            Akun Anda
-          </h1>
-          <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground sm:text-base">
-            Kelola profil, keamanan, sesi, aplikasi, dan akun terhubung dalam satu tempat.
-          </p>
-        </header>
+    <AppShell workspace={workspace} space="workspace" active="account" onLogout={onLogout}>
+      <header className="mb-6 sm:mb-8">
+        <p className="text-xs font-bold uppercase tracking-[0.16em] text-brand-primary-deep">
+          Akun SQ
+        </p>
+        <h1 className="mt-2 font-display text-3xl font-bold tracking-[-0.035em] text-brand-heading sm:text-4xl">
+          Akun Anda
+        </h1>
+        <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground sm:text-base">
+          Kelola profil, keamanan, sesi, aplikasi, dan akun terhubung dalam satu tempat.
+        </p>
+      </header>
 
-        {state.status === "loading" ? <AccountLoading /> : null}
-        {state.status === "error" ? (
-          <AccountError message={state.message} onRetry={() => loadAccount()} />
-        ) : null}
-        {state.status === "ready" ? (
-          <AccountContent
-            account={state.account}
-            section={section}
-            onSectionChange={changeSection}
-            mutation={mutation}
-            onMutate={mutate}
-          />
-        ) : null}
-      </main>
-      <MobileNavigation
-        active="account"
-        platformAdministration={workspace.capabilities.platformAdministration}
-      />
-    </div>
+      {state.status === "loading" ? <AccountLoading /> : null}
+      {state.status === "error" ? (
+        <AccountError message={state.message} onRetry={() => loadAccount()} />
+      ) : null}
+      {state.status === "ready" ? (
+        <AccountContent
+          account={state.account}
+          section={section}
+          onSectionChange={changeSection}
+          mutation={mutation}
+          onMutate={mutate}
+        />
+      ) : null}
+    </AppShell>
   );
 }
 
 function AccountLoading() {
   return (
-    <section className="rounded-2xl border border-border/80 bg-white p-6 shadow-[var(--shadow-soft)] sm:p-8">
+    <section className="rounded-2xl border border-border/80 bg-surface-raised p-6 shadow-[var(--shadow-soft)] sm:p-8">
       <div className="flex items-center gap-3 text-sm font-semibold text-muted-foreground">
         <RefreshCw className="h-5 w-5 animate-spin motion-reduce:animate-none" aria-hidden="true" />
         Memuat informasi Akun SQ...
@@ -301,7 +293,7 @@ function AccountError({
   onRetry: () => void | Promise<void>;
 }) {
   return (
-    <section className="rounded-2xl border border-border/80 bg-white p-6 shadow-[var(--shadow-soft)] sm:p-8">
+    <section className="rounded-2xl border border-border/80 bg-surface-raised p-6 shadow-[var(--shadow-soft)] sm:p-8">
       <h2 className="font-display text-xl font-bold text-brand-heading">Akun belum dapat dimuat</h2>
       <p className="mt-2 text-sm leading-6 text-muted-foreground">{message}</p>
       <button type="button" onClick={() => void onRetry()} className={primaryButtonClass}>
@@ -371,7 +363,7 @@ function AccountContent({
                   "inline-flex min-h-11 shrink-0 items-center gap-2.5 rounded-xl px-3 py-2.5 text-left text-sm font-bold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring lg:flex lg:w-full",
                   active
                     ? "bg-brand-primary-pale text-brand-primary-deep"
-                    : "bg-white text-muted-foreground hover:bg-muted hover:text-foreground",
+                    : "bg-surface-raised text-muted-foreground hover:bg-muted hover:text-foreground",
                 ].join(" ")}
               >
                 <Icon className="h-4 w-4 shrink-0" aria-hidden="true" />
@@ -426,7 +418,7 @@ function SectionCard({
   children: ReactNode;
 }) {
   return (
-    <section className="overflow-hidden rounded-2xl border border-border/80 bg-white shadow-[var(--shadow-soft)]">
+    <section className="overflow-hidden rounded-2xl border border-border/80 bg-surface-raised shadow-[var(--shadow-soft)]">
       <header className="flex items-start gap-3 border-b border-border/70 px-5 py-5 sm:px-6">
         <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-brand-primary-pale text-brand-primary-deep">
           <Icon className="h-5 w-5" aria-hidden="true" />
@@ -557,7 +549,7 @@ function ProfileSection({
                       redirect: true,
                     })
                   }
-                  className="mt-2 inline-flex min-h-9 items-center justify-center rounded-lg border border-border bg-white px-3 py-1.5 text-xs font-bold text-brand-primary-deep transition hover:bg-brand-primary-pale focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  className="mt-2 inline-flex min-h-9 items-center justify-center rounded-lg border border-border bg-surface-raised px-3 py-1.5 text-xs font-bold text-brand-primary-deep transition hover:bg-brand-primary-pale focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 >
                   Ubah email
                 </button>
@@ -570,7 +562,7 @@ function ProfileSection({
           ))}
         </div>
         {editable.length > 0 ? (
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap items-end gap-2">
             <button type="submit" className={primaryButtonClass}>
               <Save className="h-4 w-4" aria-hidden="true" />
               Simpan perubahan
@@ -749,8 +741,8 @@ function SessionsSection({
         </p>
         {devices.some((device) => device.sessions.some((session) => !session.current)) ? (
           confirmAll ? (
-            <div className="flex max-w-full flex-wrap items-center justify-end gap-2 rounded-xl border border-red-200 bg-red-50 px-3 py-2">
-              <span className="text-xs font-semibold text-red-800">
+            <div className="flex max-w-full flex-wrap items-center justify-end gap-2 rounded-xl border border-danger-line bg-danger-soft px-3 py-2">
+              <span className="text-xs font-semibold text-danger-ink">
                 Yakin keluar dari semua sesi lain?
               </span>
               <button
@@ -882,7 +874,7 @@ function DeviceCard({
             {!session.current ? (
               confirmSessionId === session.id ? (
                 <div className="flex flex-wrap items-center gap-2">
-                  <span className="text-[11px] font-semibold text-red-800">
+                  <span className="text-[11px] font-semibold text-danger-ink">
                     Akhiri sesi ini?
                   </span>
                   <button
@@ -1058,8 +1050,8 @@ function IdentityApplicationCard({
         </div>
         {application.consent || application.offlineAccess ? (
           confirmConsent ? (
-            <div className="flex max-w-full flex-wrap items-center gap-2 rounded-xl border border-red-200 bg-red-50 px-3 py-2">
-              <span className="text-[11px] font-semibold text-red-800">
+            <div className="flex max-w-full flex-wrap items-center gap-2 rounded-xl border border-danger-line bg-danger-soft px-3 py-2">
+              <span className="text-[11px] font-semibold text-danger-ink">
                 Cabut persetujuan aplikasi ini?
               </span>
               <button
@@ -1290,15 +1282,15 @@ function inputClass(readOnly: boolean): string {
     "min-h-11 w-full rounded-xl border px-3 py-2 text-sm outline-none transition focus:border-brand-primary focus:ring-2 focus:ring-brand-primary/15",
     readOnly
       ? "border-border/60 bg-muted text-muted-foreground"
-      : "border-border bg-white text-foreground",
+      : "border-border bg-surface-raised text-foreground",
   ].join(" ");
 }
 
 const primaryButtonClass =
-  "mt-4 inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-brand-primary px-4 py-2.5 text-sm font-bold text-white shadow-[var(--shadow-button)] transition hover:brightness-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2";
+  "mt-4 inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-brand-primary px-4 py-2.5 text-sm font-bold text-brand-foreground shadow-[var(--shadow-button)] transition hover:brightness-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2";
 
 const secondaryButtonClass =
-  "inline-flex min-h-10 items-center justify-center gap-2 rounded-xl border border-border bg-white px-3.5 py-2 text-xs font-bold text-brand-primary-deep transition hover:bg-brand-primary-pale focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2";
+  "inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-border bg-surface-raised px-4 py-2 text-sm font-bold text-brand-primary-deep transition hover:bg-brand-primary-pale focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2";
 
 const dangerButtonClass =
-  "inline-flex min-h-10 items-center justify-center gap-2 rounded-xl border border-red-200 bg-white px-3.5 py-2 text-xs font-bold text-red-700 transition hover:bg-red-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-300";
+  "inline-flex min-h-10 items-center justify-center gap-2 rounded-xl border border-danger-line bg-surface-raised px-3.5 py-2 text-xs font-bold text-danger-ink transition hover:bg-danger-soft focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-danger-line";
