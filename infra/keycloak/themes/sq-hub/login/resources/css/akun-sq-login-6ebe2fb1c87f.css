@@ -557,6 +557,12 @@ input[type="submit"].btn-primary:focus-visible {
   width: 100% !important;
 }
 
+/* PatternFly gives every action child a side margin; a full-width button must line up with the fields. */
+.pf-v5-c-form__actions > *,
+#kc-form-buttons > * {
+  margin: 0 !important;
+}
+
 a,
 .pf-v5-c-button.pf-m-link {
   color: var(--sq-link) !important;
