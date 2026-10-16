@@ -5,7 +5,7 @@ import { BrandLockup } from "@/components/BrandLockup";
 export function RuntimePending() {
   return (
     <main className="flex min-h-screen items-center justify-center px-5 py-10">
-      <div className="w-full max-w-xl rounded-[2rem] border border-border/75 bg-white p-6 text-center shadow-[var(--shadow-raised)] sm:p-9">
+      <div className="w-full max-w-xl rounded-[2rem] border border-border/75 bg-surface-raised p-6 text-center shadow-[var(--shadow-raised)] sm:p-9">
         <div className="flex justify-center">
           <BrandLockup />
         </div>

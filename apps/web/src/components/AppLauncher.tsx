@@ -56,7 +56,7 @@ export function AppLauncher({
         <div
           role="dialog"
           aria-label="Peluncur aplikasi SQ"
-          className="fixed inset-x-3 top-[4.5rem] z-50 max-h-[min(70dvh,34rem)] overflow-y-auto rounded-2xl border border-border/80 bg-white p-3 shadow-[var(--shadow-raised)] sm:absolute sm:inset-x-auto sm:right-0 sm:top-[calc(100%+0.5rem)] sm:w-[24rem]"
+          className="fixed inset-x-3 top-[4.5rem] z-50 max-h-[min(70dvh,34rem)] overflow-y-auto rounded-2xl border border-border/80 bg-surface-raised p-3 shadow-[var(--shadow-raised)] sm:absolute sm:inset-x-auto sm:right-0 sm:top-[calc(100%+0.5rem)] sm:w-[24rem]"
         >
           <div className="grid grid-cols-2 gap-2">
             <LauncherLink href="/" icon={Home} label="Beranda" />
