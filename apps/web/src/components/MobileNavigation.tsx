@@ -14,7 +14,7 @@ export function MobileNavigation({
   return (
     <nav
       aria-label="Navigasi mobile SQ Hub"
-      className="fixed inset-x-3 z-40 flex rounded-2xl border border-border/80 bg-white/98 p-1.5 shadow-[var(--shadow-raised)] backdrop-blur lg:hidden"
+      className="fixed inset-x-3 z-40 flex rounded-2xl border border-border/80 bg-surface-raised/98 p-1.5 shadow-[var(--shadow-raised)] backdrop-blur lg:hidden"
       style={{ bottom: "max(0.75rem, env(safe-area-inset-bottom))" }}
     >
       <MobileLink href="/" label="Beranda" icon={Home} active={active === "home"} />

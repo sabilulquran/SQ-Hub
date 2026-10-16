@@ -62,7 +62,7 @@ export function AccountMenu({
         onClick={() => setOpen((value) => !value)}
         className="group flex min-h-11 items-center gap-2 rounded-full p-1 pr-1.5 text-left transition hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 sm:pr-2"
       >
-        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-brand-primary text-xs font-bold text-white shadow-[var(--shadow-button)]">
+        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-brand-primary text-xs font-bold text-brand-foreground shadow-[var(--shadow-button)]">
           {user.initials}
         </span>
         <span className="hidden max-w-40 truncate text-xs font-bold text-foreground md:block">
@@ -78,7 +78,7 @@ export function AccountMenu({
         <div
           role="menu"
           aria-label="Menu akun"
-          className="absolute right-0 top-[calc(100%+0.5rem)] z-50 w-[min(19rem,calc(100vw-1.5rem))] rounded-2xl border border-border/80 bg-white p-2 shadow-[var(--shadow-raised)]"
+          className="absolute right-0 top-[calc(100%+0.5rem)] z-50 w-[min(19rem,calc(100vw-1.5rem))] rounded-2xl border border-border/80 bg-surface-raised p-2 shadow-[var(--shadow-raised)]"
         >
           <div className="px-3 pb-2 pt-2">
             <p className="truncate text-sm font-bold text-foreground">{user.displayName}</p>

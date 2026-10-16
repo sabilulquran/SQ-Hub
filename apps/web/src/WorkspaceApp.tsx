@@ -98,7 +98,7 @@ export function WorkspaceApp() {
 
   return (
     <main className="flex min-h-screen items-center justify-center px-5 py-10">
-      <div className="w-full max-w-lg rounded-2xl border border-border/75 bg-white p-6 text-center shadow-[var(--shadow-raised)] sm:p-8">
+      <div className="w-full max-w-lg rounded-2xl border border-border/75 bg-surface-raised p-6 text-center shadow-[var(--shadow-raised)] sm:p-8">
         <div className="flex justify-center">
           <BrandLockup />
         </div>
@@ -132,7 +132,7 @@ export function WorkspaceApp() {
                 window.history.replaceState({}, "", "/");
                 void loadWorkspace();
               }}
-              className="mt-5 inline-flex items-center gap-2 rounded-xl bg-brand-primary px-4 py-2.5 text-sm font-bold text-white shadow-[var(--shadow-button)] transition hover:brightness-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+              className="mt-5 inline-flex items-center gap-2 rounded-xl bg-brand-primary px-4 py-2.5 text-sm font-bold text-brand-foreground shadow-[var(--shadow-button)] transition hover:brightness-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
             >
               <RefreshCw className="h-4 w-4" aria-hidden="true" />
               Coba lagi
@@ -199,7 +199,7 @@ function AdminRoute({
 function NeutralPage({ children }: { children: ReactNode }) {
   return (
     <main className="flex min-h-screen items-center justify-center px-5 py-10">
-      <div className="w-full max-w-lg rounded-2xl border border-border/75 bg-white p-6 text-center shadow-[var(--shadow-raised)] sm:p-8">
+      <div className="w-full max-w-lg rounded-2xl border border-border/75 bg-surface-raised p-6 text-center shadow-[var(--shadow-raised)] sm:p-8">
         <div className="flex justify-center">
           <BrandLockup />
         </div>
@@ -226,7 +226,7 @@ export function NotFoundPage() {
       <p className="mt-7 text-sm font-bold uppercase tracking-[0.16em] text-muted-foreground">404</p>
       <h1 className="mt-2 font-display text-2xl font-bold tracking-[-0.025em] text-brand-heading">Halaman tidak ditemukan</h1>
       <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-muted-foreground">Halaman yang Anda cari tidak tersedia.</p>
-      <a href="/" className="mt-5 inline-flex rounded-xl bg-brand-primary px-4 py-2.5 text-sm font-bold text-white shadow-[var(--shadow-button)]">Kembali ke SQ Hub</a>
+      <a href="/" className="mt-5 inline-flex rounded-xl bg-brand-primary px-4 py-2.5 text-sm font-bold text-brand-foreground shadow-[var(--shadow-button)]">Kembali ke SQ Hub</a>
     </NeutralPage>
   );
 }
@@ -236,7 +236,7 @@ function ReauthenticationPage({ onLogout }: { onLogout: () => void | Promise<voi
     <NeutralPage>
       <h1 className="mt-7 font-display text-2xl font-bold tracking-[-0.025em] text-brand-heading">Masuk ulang diperlukan</h1>
       <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-muted-foreground">Keluar lalu masuk kembali melalui Akun SQ untuk memperbarui sesi Anda.</p>
-      <button type="button" onClick={() => void onLogout()} className="mt-5 rounded-xl bg-brand-primary px-4 py-2.5 text-sm font-bold text-white shadow-[var(--shadow-button)]">Keluar dan masuk kembali</button>
+      <button type="button" onClick={() => void onLogout()} className="mt-5 rounded-xl bg-brand-primary px-4 py-2.5 text-sm font-bold text-brand-foreground shadow-[var(--shadow-button)]">Keluar dan masuk kembali</button>
     </NeutralPage>
   );
 }
@@ -246,7 +246,7 @@ function UnavailablePage({ onRetry }: { onRetry: () => void | Promise<void> }) {
     <NeutralPage>
       <h1 className="mt-7 font-display text-2xl font-bold tracking-[-0.025em] text-brand-heading">Halaman belum dapat dibuka</h1>
       <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-muted-foreground">Coba lagi beberapa saat.</p>
-      <button type="button" onClick={() => void onRetry()} className="mt-5 rounded-xl bg-brand-primary px-4 py-2.5 text-sm font-bold text-white shadow-[var(--shadow-button)]">Coba lagi</button>
+      <button type="button" onClick={() => void onRetry()} className="mt-5 rounded-xl bg-brand-primary px-4 py-2.5 text-sm font-bold text-brand-foreground shadow-[var(--shadow-button)]">Coba lagi</button>
     </NeutralPage>
   );
 }

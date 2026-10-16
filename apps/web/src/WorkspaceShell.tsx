@@ -138,7 +138,7 @@ function ApplicationsPage({
                 value={query}
                 onChange={(event) => onQueryChange(event.target.value)}
                 placeholder="Cari berdasarkan nama atau deskripsi"
-                className="min-h-11 w-full rounded-xl border border-border bg-white py-2.5 pl-10 pr-3 text-sm outline-none transition placeholder:text-muted-foreground focus:border-brand-primary focus:ring-4 focus:ring-brand-primary/10"
+                className="min-h-11 w-full rounded-xl border border-border bg-surface-raised py-2.5 pl-10 pr-3 text-sm outline-none transition placeholder:text-muted-foreground focus:border-brand-primary focus:ring-4 focus:ring-brand-primary/10"
               />
             </span>
           </label>
@@ -199,7 +199,7 @@ function EmptyState({
 }) {
   const Icon = icon === "search" ? Search : Grid2X2;
   return (
-    <div className="rounded-2xl border border-dashed border-border bg-white px-5 py-9 text-center">
+    <div className="rounded-2xl border border-dashed border-border bg-surface-raised px-5 py-9 text-center">
       <span className="mx-auto flex h-11 w-11 items-center justify-center rounded-xl bg-muted text-muted-foreground">
         <Icon className="h-5 w-5" aria-hidden="true" />
       </span>
