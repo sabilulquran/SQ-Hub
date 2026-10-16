@@ -2,7 +2,7 @@
 
 **Status:** DISCOVERY / DRAFT — not an implementation specification
 
-**Updated:** 2026-10-02
+**Updated:** 2026-10-16
 
 This document reconciles the phase roadmap with accepted repository decisions and
 records the product-owner decisions given for the proposed Staff Lifecycle
@@ -18,7 +18,7 @@ remain authoritative if this register conflicts with them.
 | Identity Lifecycle — staff enter, change, and leave | **Specification ACCEPTED; delivery in progress** | Complete HCIS producer/Hub consumer review, least-privilege Keycloak production proof, and controlled synthetic production UAT before release. |
 | Organization Directory — HCIS organization projection | **CLOSED for v1; production accepted** | Operate the accepted sync/read path. SLA deployment and history retention remain operational TBDs; they do not reopen v1 acceptance. |
 | Application Platform — onboard more SQ applications | **Foundation exists; expansion is demand-led** | Scope one real consumer at a time. Do not build generic integrations without an identified application and owner. |
-| SQ Account / SQ Portal — external identities and journeys | **DISCOVERY / deferred** | Start a product discovery only when an external journey and its domain owner are identified. No external identity implementation is approved by this roadmap. |
+| SQ Account / SQ Portal — external identities and journeys | **DISCOVERY** — first journey named: Recruitment (2026-10-16) | Resolve the remaining discovery questions below and accept ADR-0008 before any external identity implementation. No external identity implementation is approved by this roadmap. |
 
 ## Identity Lifecycle decisions
 
@@ -93,6 +93,27 @@ at minimum:
 
 Until that discovery is accepted, these questions are not implementation
 requirements and must not be answered by code defaults.
+
+### Recruitment decisions (2026-10-16)
+
+These product decisions were supplied by the Product Owner in a project
+conversation. They name the first external journey; they do not approve
+implementation or any production change.
+
+| Topic | Decision |
+| --- | --- |
+| Initial journey | Recruitment: candidates apply and follow their selection process. |
+| Application placement | Recruitment is its own SQ Core application, outside HCIS. HCIS stays the authority for employment; a hired candidate becomes an Employee only through an HCIS-owned contract. This supersedes the HCIS capability-map placement of REC-001 as an HCIS workspace. |
+| Identity boundary | Candidates use Akun SQ in a separate external Keycloak realm, not the staff realm. See ADR-0008 (PROPOSED). |
+| Product name | Karir SQ. The app lockup reads "Karir" above the gold Sabilul Qur'an wordmark. |
+| Staffing requests | A staffing request is approved by the unit head, then by the Yayasan, before a vacancy opens. |
+| SIRE migration | Applicants and their data move from the SIRE spreadsheet. Existing applicants sign in without creating a new account. |
+| Candidate sign-in | Candidates sign in with NIK and kata sandi. A former applicant who tries to register is told the NIK is already registered, signs in, and creates a kata sandi through password reset with a WhatsApp or email code. NIK stays out of tokens, URLs and logs. |
+
+Still open for the Recruitment discovery: domain owner,
+anti-abuse, recovery, MFA for
+candidates, duplicate-person handling, data retention for rejected candidates,
+and who approves the candidate-to-staff transition.
 
 ## Decision sources
 
