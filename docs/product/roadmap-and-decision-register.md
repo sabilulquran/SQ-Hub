@@ -110,10 +110,14 @@ implementation or any production change.
 | SIRE migration | Applicants and their data move from the SIRE spreadsheet. Existing applicants sign in without creating a new account. |
 | Candidate sign-in | Candidates sign in with NIK and kata sandi. A former applicant who tries to register is told the NIK is already registered, signs in, and creates a kata sandi through password reset with a WhatsApp or email code. NIK stays out of tokens, URLs and logs. |
 
-Still open for the Recruitment discovery: domain owner,
-anti-abuse, recovery, MFA for
-candidates, duplicate-person handling, data retention for rejected candidates,
-and who approves the candidate-to-staff transition.
+Decisions of 2026-10-17: the domain owner is the Head of HCM; candidate data is
+retained without automatic deletion; the career portal is
+`karir.sabilulquran.or.id`; candidate sign-in uses the same Akun SQ theme as
+staff. Product details (screening questions, multiple applications, scoring)
+live in the Karir SQ module design (sabilulquran/karir-sq).
+
+Still open for the Recruitment discovery: anti-abuse, recovery, MFA for
+candidates, and who approves the candidate-to-staff transition.
 
 ## Decision sources
 
