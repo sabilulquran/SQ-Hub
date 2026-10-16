@@ -1,7 +1,9 @@
 # MI8_TAILSCALE_MANAGEMENT_PLANE_INCIDENT
 
-**Status:** follow-up required after stable production operation.  
-**Opened:** 6 October 2026 WIB.  
+**Status:** follow-up required after stable production operation.
+
+**Opened:** 6 October 2026 WIB.
+
 **Scope:** Mi8 management-plane availability during SQ Core cutover.
 
 ## Incident evidence

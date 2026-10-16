@@ -1,6 +1,7 @@
 # SQ Hub roadmap and decision register
 
-**Status:** DISCOVERY / DRAFT — not an implementation specification  
+**Status:** DISCOVERY / DRAFT — not an implementation specification
+
 **Updated:** 2026-10-02
 
 This document reconciles the phase roadmap with accepted repository decisions and
