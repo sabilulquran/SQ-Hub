@@ -144,6 +144,10 @@ jobs:
           check_no_overflow 390 844 http://127.0.0.1:4173/apps
           check_no_overflow 390 844 http://127.0.0.1:4173/account
           check_no_overflow 1280 720 http://127.0.0.1:4173/account
+          check_no_overflow 390 844 'http://127.0.0.1:4173/?preview=more'
+          check_no_overflow 390 844 http://127.0.0.1:4173/admin
+          check_no_overflow 768 900 http://127.0.0.1:4173/admin/access
+          check_no_overflow 1280 720 http://127.0.0.1:4173/admin/audit
           for section in security sessions applications linked groups; do
             check_no_overflow 390 844 "http://127.0.0.1:4173/account?section=$section"
             check_no_overflow 1280 720 "http://127.0.0.1:4173/account?section=$section"
@@ -162,6 +166,7 @@ jobs:
           "$CHROME" --headless=new --no-sandbox --disable-gpu --hide-scrollbars --window-size=390,844 --screenshot=visual-smoke/sq-hub-home-mobile-390x844.png http://127.0.0.1:4173/
           "$CHROME" --headless=new --no-sandbox --disable-gpu --hide-scrollbars --window-size=390,844 --screenshot=visual-smoke/sq-hub-launcher-mobile-390x844.png 'http://127.0.0.1:4173/?preview=launcher'
           "$CHROME" --headless=new --no-sandbox --disable-gpu --hide-scrollbars --window-size=390,844 --screenshot=visual-smoke/sq-hub-bottom-nav-mobile.png 'http://127.0.0.1:4173/?state=ordinary'
+          "$CHROME" --headless=new --no-sandbox --disable-gpu --hide-scrollbars --window-size=390,844 --screenshot=visual-smoke/sq-hub-more-sheet-mobile-390x844.png 'http://127.0.0.1:4173/?preview=more'
           "$CHROME" --headless=new --no-sandbox --disable-gpu --hide-scrollbars --window-size=1440,900 --screenshot=visual-smoke/sq-admin-authorized-desktop.png http://127.0.0.1:4173/admin
           "$CHROME" --headless=new --no-sandbox --disable-gpu --hide-scrollbars --window-size=1440,900 --screenshot=visual-smoke/sq-hub-ordinary-no-admin.png 'http://127.0.0.1:4173/?state=ordinary'
           "$CHROME" --headless=new --no-sandbox --disable-gpu --hide-scrollbars --window-size=1440,900 --screenshot=visual-smoke/akun-sq-native-account-desktop.png http://127.0.0.1:4173/account
@@ -172,7 +177,7 @@ jobs:
           "$CHROME" --headless=new --no-sandbox --disable-gpu --hide-scrollbars --window-size=390,844 --screenshot=visual-smoke/akun-sq-linked-mobile-390x844.png 'http://127.0.0.1:4173/account?section=linked'
           "$CHROME" --headless=new --no-sandbox --disable-gpu --hide-scrollbars --window-size=390,844 --screenshot=visual-smoke/akun-sq-groups-mobile-390x844.png 'http://127.0.0.1:4173/account?section=groups'
 
-          test "$(find visual-smoke -name '*.png' | wc -l)" -eq 17
+          test "$(find visual-smoke -name '*.png' | wc -l)" -eq 18
 
       - name: Upload visual smoke screenshots
         if: github.event_name == 'pull_request'

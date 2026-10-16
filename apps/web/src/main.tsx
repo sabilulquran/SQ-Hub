@@ -12,7 +12,10 @@ import {
   workspaceFixture,
 } from "@/dev/workspaceFixture";
 import { resolveHubRoute } from "@/routes";
+import { initThemePreference } from "@/theme";
 import "@/styles.css";
+
+initThemePreference();
 
 const previewEnabled = import.meta.env.DEV || import.meta.env.VITE_SQ_HUB_PREVIEW === "1";
 const route = resolveHubRoute(window.location.pathname);
@@ -22,7 +25,9 @@ const previewMode =
     ? "launcher"
     : params.get("preview") === "account-menu"
       ? "account-menu"
-      : undefined;
+      : params.get("preview") === "more"
+        ? "more"
+        : undefined;
 const fixture =
   params.get("state") === "empty"
     ? emptyWorkspaceFixture
@@ -52,6 +57,7 @@ function renderPreviewApp() {
         workspace={fixture}
         route={route}
         previewMode={previewMode}
+        onLogout={() => undefined}
       />
     );
   }
