@@ -128,7 +128,8 @@ def validate_brand_and_recovery(master: dict, smtp: str, account_theme: str, log
     require("KEYCLOAK_MASTER_SMTP_PASSWORD=" in smtp, "SMTP shape must reserve runtime-only password input")
     require("KEYCLOAK_MASTER_SMTP_PASSWORD=\n" in smtp, "SMTP example must not contain a password")
     require("logo=img/ysq-mark.png" in account_theme, "Account Console must use organization mark")
-    require("img/ysq-mark.png" in login_footer, "login footer must use organization mark")
+    require("img/logo.png" in login_footer, "login footer must use the full foundation logo")
+    require("img/logo-white.png" in login_footer, "login footer must offer the dark-mode foundation logo")
 
 
 def expect_rejected(label: str, operation) -> None:
