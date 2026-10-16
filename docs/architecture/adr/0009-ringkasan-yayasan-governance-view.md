@@ -15,6 +15,7 @@ ADR-0001 keeps business logic and data in each domain application. ADR-0007 keep
 - SQ Hub gets a governance landing page, **Ringkasan Yayasan**, for identities with an active **Organ Yayasan membership**.
 - **Hub shows, domain apps own the numbers.** Each domain app that takes part publishes one read-only **governance summary** endpoint in a shared contract (HUB-IMPL-021). Hub fetches the summaries for the signed-in user at request time and renders one card per app. Hub does not store, combine, or compute domain figures.
 - Each domain app decides on its own whether the caller may see its summary, using its own governance role (for example HCIS `FOUNDATION_BOARD`). A Hub membership never grants a domain permission. If the app refuses, its card is not shown.
+- A summary carries figures, short monthly trends, and chart data in a small fixed set of chart kinds. Hub draws every chart in one visual style; applications send data only, never colours, images, or markup. Trend history is computed by the owning application from its own records; Hub never keeps past summaries.
 - Summaries are aggregate only. They carry no names, identifiers, contact details, documents, or per-person rows. Each app keeps its own privacy rules, as HCIS does for `/board`.
 - Every card links to a detail page in the owning app. Drill-down, reports, and any action (such as Yayasan approval of a staffing request in Karir SQ) happen in that app, never in Hub.
 - Hub calls the domain endpoint **as the user**: it exchanges the user's Hub session token for a short-lived token whose audience is the target app, using Keycloak standard token exchange. The domain app validates that token and maps `issuer + sub` to its local principal as it does at login. Hub does not use its own service identity to vouch for a user.
@@ -38,6 +39,7 @@ ADR-0001 keeps business logic and data in each domain application. ADR-0007 keep
 
 ## Consequences
 - Hub gains one new outbound dependency per participating app. A slow or failing app degrades only its own card.
+- Charts with trends need history in each application. An application that cannot produce history yet publishes figures only, and its section has no chart.
 - Each participating app must add a governance role, the summary endpoint, and bearer-token validation for that endpoint. HCIS can reuse its ORG-003 aggregates. Aset SQ needs a new governance role first.
 - New modules (Keuangan, SPMB) can join by publishing the summary contract, with no Hub release beyond a registry update.
 - Organ membership and domain governance roles are granted in two places. Admin Center should show both so an operator can see a mismatch, but it must not sync them automatically.
