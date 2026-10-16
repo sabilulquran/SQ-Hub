@@ -4,6 +4,8 @@
 
 **Source:** owner-reviewed mockup "SQ Core Design System Mockup" (private design canvas, 2026-10-16). It covers the foundation, components, login, and the desktop and mobile shell, each in light and dark.
 
+**Shell:** header, sidebar, account menu, app launcher and space switcher are specified in [sq-core-app-shell.md](sq-core-app-shell.md).
+
 ## Decisions
 
 - **Direction C, multi-accent.** Teal stays the primary brand and action colour. Each service category has its own accent for icons, labels, and markers only.
