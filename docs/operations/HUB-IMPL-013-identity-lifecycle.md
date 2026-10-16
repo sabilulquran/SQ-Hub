@@ -2,6 +2,8 @@
 
 **Status:** HCIS and SQ Hub code deployed; lifecycle feature activation pending. Product Owner waived UAT on 2026-10-02. UAT status is WAIVED, not PASS. See [production deployment record](HUB-IMPL-013-production-deployment-2026-10-03.md).
 
+**Mi8:** production moved to Mi8 on 2026-10-06. The Docker-based steps below do not run there unchanged; see the [Mi8 activation plan](HUB-IMPL-013-mi8-activation-plan.md).
+
 ## Activation gates
 
 Obtain a reviewed production change, backup/restore evidence, and rollback images/configuration before any mutation. Use isolated synthetic identities only; do not repurpose real employee identities.
