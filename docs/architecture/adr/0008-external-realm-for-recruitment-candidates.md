@@ -19,6 +19,8 @@ ADR-0002 and ADR-0003 cover staff identity only. Candidates differ from staff: a
 - Candidates on the recruitment blacklist are disabled in the external realm and cannot sign in; the sign-in page shows a neutral message only. Karir SQ owns the blacklist and asks Keycloak to disable or re-enable the account.
 - Recruitment owns candidate profiles, applications, and selection data. Keycloak holds only the candidate's credentials and sign-in identity.
 - SQ Hub Application Access, the launcher, Admin Center, and Organization Directory do not apply to external-realm identities.
+- Candidate accounts and their data are retained; there is no automatic deletion. A candidate may request deletion when no application is active (Product Owner, 2026-10-17).
+- The external realm's sign-in pages use the same Akun SQ theme as staff, titled "Karir", without staff-only actions (Product Owner, 2026-10-17).
 - Tokens from one realm are never accepted by a client of the other realm.
 - A hired candidate does not become a staff identity by moving or linking their external account. HCIS creates the Employee through its own contract, and staff identity provisioning then follows HUB-IMPL-013. The external account may be disabled or retained per the retention policy.
 
@@ -27,9 +29,7 @@ ADR-0002 and ADR-0003 cover staff identity only. Candidates differ from staff: a
 - How Keycloak keeps NIK out of `preferred_username` and event logs: a generated opaque username plus a custom authenticator that looks the user up by NIK attribute, or a supported event/token mapper configuration.
 - Anti-abuse for self-registration: rate limits, CAPTCHA, email-domain rules.
 - Whether candidate MFA is offered or required.
-- Retention and deletion of rejected or inactive candidate accounts.
-- Branding: same Akun SQ theme as staff, or a candidate variant.
-- Hostname for the external realm's login pages.
+- Hostname for the external realm's login pages (the career portal itself is `karir.sabilulquran.or.id`).
 - Mi8VPS capacity: one more realm in the same Keycloak adds little memory, but registration traffic during an open recruitment period must be measured.
 
 ## Consequences
