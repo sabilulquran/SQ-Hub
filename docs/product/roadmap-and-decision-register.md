@@ -20,7 +20,7 @@ remain authoritative if this register conflicts with them.
 | Application Platform — onboard more SQ applications | **Foundation exists; expansion is demand-led** | Scope one real consumer at a time. Do not build generic integrations without an identified application and owner. |
 | Governance view — Ringkasan Yayasan | **Specification ACCEPTED** 2026-10-17 | Domain specs first (HCIS board-view role and summary endpoint, Aset SQ governance role), then Hub implementation. Production activation needs owner approval. |
 | SQ Core WhatsApp gateway — official numbers per domain | **DISCOVERY / future** (Product Owner, 2026-10-17) | SQ Core will get its own WhatsApp gateway module (Baileys) instead of relying on third-party gateways. Each domain has its own official number: Rekrutmen, Keuangan, SPMB, Sosial (charity). Until the module exists, apps send through JalurPesan with one device per official number; StarSender is not used. Apps call a `WhatsAppSender` port so the switch needs no domain logic change. |
-| SQ Account / SQ Portal — external identities and journeys | **DISCOVERY** — first journey named: Recruitment (2026-10-16) | Resolve the remaining discovery questions below and accept ADR-0008 before any external identity implementation. No external identity implementation is approved by this roadmap. |
+| SQ Account / SQ Portal — external identities and journeys | **DISCOVERY** — Recruitment (ADR-0008 ACCEPTED); families for SPMB and Keluarga SQ (ADR-0010 ACCEPTED, 2026-10-17) | Implementation specs next (shared external-identity provider with REC-IMPL-001, SPMB-IMPL-001, KEL-IMPL-001); each production step needs owner approval. No external identity implementation is approved by this roadmap. |
 
 ## Identity Lifecycle decisions
 
