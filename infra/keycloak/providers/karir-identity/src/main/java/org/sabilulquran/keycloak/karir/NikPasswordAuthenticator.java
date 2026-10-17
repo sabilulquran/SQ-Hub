@@ -18,7 +18,8 @@ import org.keycloak.models.utils.FormMessage;
 import org.keycloak.services.managers.AuthenticationManager;
 
 /**
- * "NIK + kata sandi" sign-in form (REC-IMPL-001 §4.3). The user is found by {@code nik_hmac}; the NIK is not stored,
+ * "NIK + kata sandi" sign-in form (REC-IMPL-001 §4.3), or "Nomor KK + kata sandi" in {@code sq-keluarga}
+ * (KEL-IMPL-001 §4.3). The user is found by the identifier HMAC; the NIK or KK is not stored,
  * logged, put in an event or sent back to the browser. Failures for wrong NIK or wrong kata sandi look the same.
  */
 final class NikPasswordAuthenticator implements Authenticator {
@@ -32,7 +33,8 @@ final class NikPasswordAuthenticator implements Authenticator {
 
     @Override
     public void action(AuthenticationFlowContext context) {
-        KarirRuntime runtime = KarirRuntime.get();
+        KarirRuntime runtime = KarirRuntime.forRealm(context.getRealm());
+        IdentityProfile profile = runtime.profile();
         MultivaluedMap<String, String> input = context.getHttpRequest().getDecodedFormParameters();
         // A previous attempt in this browser must never be charged to the account of this attempt or vice versa.
         context.getAuthenticationSession().removeAuthNote(AbstractUsernameFormAuthenticator.ATTEMPTED_USERNAME);
@@ -46,16 +48,18 @@ final class NikPasswordAuthenticator implements Authenticator {
             return;
         }
         if (!runtime.config().nikLookupAvailable()) {
-            LOG.warn("SQ_KARIR_NIK_PEPPER is not configured; candidate sign-in is unavailable");
+            LOG.warnf("%s is not configured; sign-in in realm %s is unavailable",
+                    profile.pepperVariable(), context.getRealm().getName());
             context.getEvent().error(Errors.INVALID_CONFIG);
             context.forceChallenge(render(context, KarirForms.SERVICE_UNAVAILABLE));
             return;
         }
 
-        String nik = Nik.normalize(input.getFirst(KarirForms.FIELD_NIK));
+        String identifier = profile.normalize(input.getFirst(profile.formField()));
         String password = input.getFirst(KarirForms.FIELD_PASSWORD);
-        UserModel user = nik == null ? null
-                : Candidates.findByNikHmac(context.getSession(), context.getRealm(), Nik.hmac(runtime.config().nikPepper(), nik));
+        UserModel user = identifier == null ? null
+                : Candidates.findByIdentifierHmac(context.getSession(), context.getRealm(), profile,
+                        profile.hmac(runtime.config().nikPepper(), identifier));
         if (user == null) {
             AuthenticatorUtils.dummyHash(context);
             context.getEvent().error(Errors.USER_NOT_FOUND);
@@ -63,7 +67,7 @@ final class NikPasswordAuthenticator implements Authenticator {
             return;
         }
 
-        // Brute-force bookkeeping works on the opaque k_ username, never on the NIK.
+        // Brute-force bookkeeping works on the opaque k_/f_ username, never on the NIK or KK.
         context.getAuthenticationSession().setAuthNote(AbstractUsernameFormAuthenticator.ATTEMPTED_USERNAME, user.getUsername());
         String bruteForceError = AuthenticatorUtils.getDisabledByBruteForceEventError(context, user);
         if (bruteForceError != null) {
@@ -102,13 +106,13 @@ final class NikPasswordAuthenticator implements Authenticator {
     }
 
     private Response render(AuthenticationFlowContext context, String error) {
-        KarirRuntime runtime = KarirRuntime.get();
+        KarirRuntime runtime = KarirRuntime.forRealm(context.getRealm());
         String ip = KarirForms.clientIp(context.getConnection());
         LoginFormsProvider form = context.form();
         KarirForms.turnstile(form, runtime.config(),
                 runtime.abuseGuard().turnstileRequired(AbuseGuard.NikForm.LOGIN, ip));
         if (error != null) {
-            form.addError(new FormMessage(KarirForms.FIELD_NIK, error));
+            form.addError(new FormMessage(runtime.profile().formField(), error));
         }
         return form.createForm(TEMPLATE);
     }

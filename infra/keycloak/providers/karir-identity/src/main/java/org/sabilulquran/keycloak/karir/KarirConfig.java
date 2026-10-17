@@ -7,7 +7,8 @@ import java.util.Map;
  * Runtime configuration from the Keycloak process environment, like {@code SQ_TRUSTED_DEVICE_SIGNING_KEY}.
  * Missing secrets never fall back to a default: the affected step fails closed.
  *
- * @param nikPepper      {@code SQ_KARIR_NIK_PEPPER}, the same value as Karir SQ {@code NIK_HMAC_PEPPER}
+ * @param nikPepper      identifier pepper: {@code SQ_KARIR_NIK_PEPPER} (same as Karir SQ {@code NIK_HMAC_PEPPER}) or
+ *                       {@code SQ_KELUARGA_KK_PEPPER} (same as Keluarga SQ); see {@link IdentityProfile#pepperVariable()}
  * @param relayUrl       {@code SQ_KARIR_OTP_RELAY_URL}, default loopback Karir SQ API
  * @param relaySecret    {@code SQ_KARIR_OTP_RELAY_SECRET}, the same value as Karir SQ {@code OTP_RELAY_SECRET}
  * @param turnstileSiteKey {@code SQ_KARIR_TURNSTILE_SITE_KEY}
@@ -28,13 +29,27 @@ public record KarirConfig(
     private static final int MIN_SECRET_LENGTH = 32;
 
     public static KarirConfig fromEnvironment(Map<String, String> env) {
+        return fromEnvironment(env, IdentityProfile.KARIR);
+    }
+
+    /**
+     * Reads the variables of one realm profile: {@code SQ_KARIR_*} for {@code sq-karir} and {@code SQ_KELUARGA_*}
+     * for {@code sq-keluarga} (pepper {@code SQ_KELUARGA_KK_PEPPER}, default relay on Keluarga SQ port 3306).
+     */
+    public static KarirConfig fromEnvironment(Map<String, String> env, IdentityProfile profile) {
+        String prefix = profile.envPrefix();
         return new KarirConfig(
-                secret(env.get("SQ_KARIR_NIK_PEPPER")),
-                uri(env.get("SQ_KARIR_OTP_RELAY_URL"), DEFAULT_RELAY_URL),
-                secret(env.get("SQ_KARIR_OTP_RELAY_SECRET")),
-                blankToNull(env.get("SQ_KARIR_TURNSTILE_SITE_KEY")),
-                blankToNull(env.get("SQ_KARIR_TURNSTILE_SECRET")),
-                uri(env.get("SQ_KARIR_TURNSTILE_VERIFY_URL"), DEFAULT_TURNSTILE_VERIFY_URL));
+                secret(env.get(profile.pepperVariable())),
+                uri(env.get(prefix + "OTP_RELAY_URL"), profile.defaultRelayUrl()),
+                secret(env.get(prefix + "OTP_RELAY_SECRET")),
+                blankToNull(env.get(prefix + "TURNSTILE_SITE_KEY")),
+                blankToNull(env.get(prefix + "TURNSTILE_SECRET")),
+                uri(env.get(prefix + "TURNSTILE_VERIFY_URL"), DEFAULT_TURNSTILE_VERIFY_URL));
+    }
+
+    /** A configuration with every secret missing, so each step fails closed. */
+    static KarirConfig unconfigured() {
+        return new KarirConfig(null, null, null, null, null, null);
     }
 
     public boolean nikLookupAvailable() {

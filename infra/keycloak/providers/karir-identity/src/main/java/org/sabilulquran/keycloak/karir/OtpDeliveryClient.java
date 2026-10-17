@@ -38,19 +38,25 @@ public class OtpDeliveryClient {
         }
     }
 
-    static final String EMAIL_SUBJECT = "Kode Akun SQ Karir";
+    static final String EMAIL_SUBJECT = IdentityProfile.KARIR.emailSubject();
     private static final Logger LOG = Logger.getLogger(OtpDeliveryClient.class);
 
     private final HttpClient http;
     private final URI relayUrl;
     private final String relaySecret;
     private final Clock clock;
+    private final IdentityProfile profile;
 
     public OtpDeliveryClient(HttpClient http, URI relayUrl, String relaySecret, Clock clock) {
+        this(http, relayUrl, relaySecret, clock, IdentityProfile.KARIR);
+    }
+
+    public OtpDeliveryClient(HttpClient http, URI relayUrl, String relaySecret, Clock clock, IdentityProfile profile) {
         this.http = http;
         this.relayUrl = relayUrl;
         this.relaySecret = relaySecret;
         this.clock = clock;
+        this.profile = profile;
     }
 
     public Result sendWhatsApp(String to, String code, Purpose purpose) {
@@ -65,8 +71,8 @@ public class OtpDeliveryClient {
                 // JalurPesan itself may take up to 15 s before the relay answers.
                 .timeout(Duration.ofSeconds(20))
                 .header("Content-Type", "application/json")
-                .header("X-Karir-Timestamp", timestamp)
-                .header("X-Karir-Signature", sign(relaySecret, timestamp, body))
+                .header(profile.relayHeaderPrefix() + "-Timestamp", timestamp)
+                .header(profile.relayHeaderPrefix() + "-Signature", sign(relaySecret, timestamp, body))
                 .POST(HttpRequest.BodyPublishers.ofString(body, StandardCharsets.UTF_8))
                 .build();
         try {
@@ -92,10 +98,10 @@ public class OtpDeliveryClient {
             LOG.warn("Email OTP requested but the realm SMTP or the user email is missing");
             return Result.FAILED;
         }
-        String text = emailText(code);
+        String text = profile.emailText(code);
         String html = "<p>" + text + "</p>";
         try {
-            session.getProvider(EmailSenderProvider.class).send(smtp, user, EMAIL_SUBJECT, text, html);
+            session.getProvider(EmailSenderProvider.class).send(smtp, user, profile.emailSubject(), text, html);
             return Result.SENT;
         } catch (EmailException failure) {
             LOG.warn("Email OTP delivery failed: " + failure.getClass().getSimpleName());
@@ -104,7 +110,7 @@ public class OtpDeliveryClient {
     }
 
     static String emailText(String code) {
-        return "Kode Akun SQ Karir Anda: " + code + ". Jangan berikan kode ini kepada siapa pun. Kode berlaku 10 menit.";
+        return IdentityProfile.KARIR.emailText(code);
     }
 
     /** Field order is fixed; every value is digits, a UUID or a fixed word, so no escaping is needed. */

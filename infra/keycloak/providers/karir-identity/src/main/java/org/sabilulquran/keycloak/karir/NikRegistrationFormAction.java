@@ -39,7 +39,7 @@ final class NikRegistrationFormAction implements FormAction {
 
     @Override
     public void buildPage(FormContext context, LoginFormsProvider form) {
-        KarirRuntime runtime = KarirRuntime.get();
+        KarirRuntime runtime = KarirRuntime.forRealm(context.getRealm());
         KarirForms.turnstile(form, runtime.config(), true);
         if ("true".equals(context.getAuthenticationSession().getAuthNote(NOTE_NIK_REGISTERED))) {
             form.setAttribute("karirNikRegistered", true);
@@ -49,9 +49,11 @@ final class NikRegistrationFormAction implements FormAction {
 
     @Override
     public void validate(ValidationContext context) {
-        KarirRuntime runtime = KarirRuntime.get();
+        KarirRuntime runtime = KarirRuntime.forRealm(context.getRealm());
+        IdentityProfile profile = runtime.profile();
+        String field = profile.formField();
         MultivaluedMap<String, String> input = context.getHttpRequest().getDecodedFormParameters();
-        MultivaluedMap<String, String> echo = echo(input);
+        MultivaluedMap<String, String> echo = echo(input, field);
         context.getAuthenticationSession().removeAuthNote(NOTE_NIK_REGISTERED);
 
         String ip = KarirForms.clientIp(context.getConnection());
@@ -62,15 +64,16 @@ final class NikRegistrationFormAction implements FormAction {
             return;
         }
         if (!runtime.config().nikLookupAvailable()) {
-            LOG.warn("SQ_KARIR_NIK_PEPPER is not configured; candidate registration is unavailable");
+            LOG.warnf("%s is not configured; registration in realm %s is unavailable",
+                    profile.pepperVariable(), context.getRealm().getName());
             fail(context, echo, Errors.INVALID_CONFIG, List.of(new FormMessage(null, KarirForms.SERVICE_UNAVAILABLE)));
             return;
         }
 
         List<FormMessage> errors = new ArrayList<>();
-        String nik = Nik.normalize(input.getFirst(KarirForms.FIELD_NIK));
+        String nik = profile.normalize(input.getFirst(field));
         if (nik == null) {
-            errors.add(new FormMessage(KarirForms.FIELD_NIK, KarirForms.INVALID_NIK));
+            errors.add(new FormMessage(field, KarirForms.INVALID_NIK));
         }
         String name = input.getFirst(FIELD_NAME) == null ? "" : input.getFirst(FIELD_NAME).strip();
         if (name.isEmpty() || name.length() > MAX_NAME_LENGTH) {
@@ -81,7 +84,7 @@ final class NikRegistrationFormAction implements FormAction {
             errors.add(new FormMessage(FIELD_WA, KarirForms.INVALID_WA));
         }
         String password = input.getFirst(KarirForms.FIELD_PASSWORD);
-        String username = Candidates.randomUsername();
+        String username = Candidates.randomUsername(profile);
         if (password == null || password.isEmpty()) {
             errors.add(new FormMessage(KarirForms.FIELD_PASSWORD, KarirForms.PASSWORD_REQUIRED));
         } else if (!password.equals(input.getFirst(FIELD_PASSWORD_CONFIRM))) {
@@ -97,13 +100,13 @@ final class NikRegistrationFormAction implements FormAction {
         }
 
         if (nik != null) {
-            String nikHmac = Nik.hmac(runtime.config().nikPepper(), nik);
-            if (Candidates.findByNikHmac(context.getSession(), context.getRealm(), nikHmac) != null) {
+            String nikHmac = profile.hmac(runtime.config().nikPepper(), nik);
+            if (Candidates.findByIdentifierHmac(context.getSession(), context.getRealm(), profile, nikHmac) != null) {
                 // Only this message: nothing else about the existing account is revealed.
                 context.getAuthenticationSession().setAuthNote(NOTE_NIK_REGISTERED, "true");
                 context.excludeOtherErrors();
                 fail(context, echo, KarirEvents.NIK_ALREADY_REGISTERED,
-                        List.of(new FormMessage(KarirForms.FIELD_NIK, KarirForms.NIK_REGISTERED)));
+                        List.of(new FormMessage(field, KarirForms.NIK_REGISTERED)));
                 return;
             }
             context.getAuthenticationSession().setAuthNote(NOTE_NIK_HMAC, nikHmac);
@@ -120,6 +123,7 @@ final class NikRegistrationFormAction implements FormAction {
 
     @Override
     public void success(FormContext context) {
+        IdentityProfile profile = KarirRuntime.forRealm(context.getRealm()).profile();
         MultivaluedMap<String, String> input = context.getHttpRequest().getDecodedFormParameters();
         String username = context.getAuthenticationSession().getAuthNote(NOTE_USERNAME);
         String nikHmac = context.getAuthenticationSession().getAuthNote(NOTE_NIK_HMAC);
@@ -131,10 +135,9 @@ final class NikRegistrationFormAction implements FormAction {
         UserModel user = context.getSession().users().addUser(context.getRealm(), username);
         user.setEnabled(true);
         user.setFirstName(input.getFirst(FIELD_NAME).strip());
-        user.setSingleAttribute(Candidates.NIK_HMAC, nikHmac);
-        user.setSingleAttribute(Candidates.WA_NUMBER, wa);
-        user.setSingleAttribute(Candidates.WA_VERIFIED, "false");
-        user.setSingleAttribute(Candidates.SOURCE, Candidates.SOURCE_SELF);
+        user.setSingleAttribute(profile.identifierAttribute(), nikHmac);
+        profile.setRegisteredContact(user, wa);
+        user.setSingleAttribute(profile.sourceAttribute(), IdentityProfile.SOURCE_SELF);
         user.credentialManager().updateCredential(UserCredentialModel.password(input.getFirst(KarirForms.FIELD_PASSWORD), false));
         user.addRequiredAction(VerifyWhatsAppRequiredActionFactory.PROVIDER_ID);
 
@@ -149,9 +152,9 @@ final class NikRegistrationFormAction implements FormAction {
     }
 
     /** Form values sent back to the page: never the kata sandi or the Turnstile token. */
-    private static MultivaluedMap<String, String> echo(MultivaluedMap<String, String> input) {
+    private static MultivaluedMap<String, String> echo(MultivaluedMap<String, String> input, String identifierField) {
         MultivaluedMap<String, String> echo = new MultivaluedHashMap<>();
-        for (String field : List.of(KarirForms.FIELD_NIK, FIELD_NAME, FIELD_WA, FIELD_CONSENT)) {
+        for (String field : List.of(identifierField, FIELD_NAME, FIELD_WA, FIELD_CONSENT)) {
             if (input.getFirst(field) != null) {
                 echo.putSingle(field, input.getFirst(field));
             }

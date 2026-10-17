@@ -28,12 +28,19 @@ public final class Candidates {
      * anyone sign in to an arbitrary account, so it is treated as "not found" and logged without the hash.
      */
     public static UserModel findByNikHmac(KeycloakSession session, RealmModel realm, String nikHmac) {
+        return findByIdentifierHmac(session, realm, IdentityProfile.KARIR, nikHmac);
+    }
+
+    /** Same rule for any realm profile: {@code nik_hmac} in {@code sq-karir}, {@code kk_hmac} in {@code sq-keluarga}. */
+    public static UserModel findByIdentifierHmac(KeycloakSession session, RealmModel realm, IdentityProfile profile,
+                                                 String identifierHmac) {
         List<UserModel> matches = session.users()
-                .searchForUserByUserAttributeStream(realm, NIK_HMAC, nikHmac)
+                .searchForUserByUserAttributeStream(realm, profile.identifierAttribute(), identifierHmac)
                 .limit(2)
                 .toList();
         if (matches.size() > 1) {
-            LOG.errorf("More than one candidate account shares one nik_hmac in realm %s; refusing to choose", realm.getName());
+            LOG.errorf("More than one account shares one %s in realm %s; refusing to choose",
+                    profile.identifierAttribute(), realm.getName());
             return null;
         }
         return matches.isEmpty() ? null : matches.get(0);
@@ -41,9 +48,14 @@ public final class Candidates {
 
     /** {@code k_} followed by 20 base32 characters, the same shape Karir SQ uses for migrated accounts. */
     public static String randomUsername() {
+        return randomUsername(IdentityProfile.KARIR);
+    }
+
+    /** Profile prefix ({@code k_} or {@code f_}) followed by 20 base32 characters. */
+    public static String randomUsername(IdentityProfile profile) {
         byte[] bytes = new byte[20];
         RANDOM.nextBytes(bytes);
-        StringBuilder username = new StringBuilder("k_");
+        StringBuilder username = new StringBuilder(profile.usernamePrefix());
         for (byte value : bytes) {
             username.append(USERNAME_ALPHABET.charAt((value & 0xff) % 32));
         }
