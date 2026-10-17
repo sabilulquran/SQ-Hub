@@ -1,0 +1,200 @@
+{
+  "_comment": "Non-secret desired state of the candidate realm sq-karir (REC-IMPL-001 §4, ADR-0008). Applied by scripts/reconcile-karir-realm.sh. Client secrets, SMTP credentials and provider secrets are never stored here.",
+  "realm": {
+    "realm": "sq-karir",
+    "displayName": "Karir SQ",
+    "enabled": true,
+    "registrationAllowed": true,
+    "registrationEmailAsUsername": false,
+    "loginWithEmailAllowed": false,
+    "duplicateEmailsAllowed": true,
+    "editUsernameAllowed": false,
+    "resetPasswordAllowed": true,
+    "rememberMe": false,
+    "verifyEmail": false,
+    "loginTheme": "sq-karir",
+    "accountTheme": "sq-hub",
+    "internationalizationEnabled": true,
+    "supportedLocales": ["id"],
+    "defaultLocale": "id",
+    "passwordPolicy": "length(8) and maxLength(128) and notUsername",
+    "bruteForceProtected": true,
+    "bruteForceStrategy": "MULTIPLE",
+    "permanentLockout": false,
+    "failureFactor": 5,
+    "waitIncrementSeconds": 900,
+    "maxFailureWaitSeconds": 3600,
+    "maxDeltaTimeSeconds": 43200,
+    "quickLoginCheckMilliSeconds": 1000,
+    "minimumQuickLoginWaitSeconds": 60,
+    "eventsEnabled": true,
+    "eventsExpiration": 7776000,
+    "eventsListeners": ["karir-event-listener"],
+    "enabledEventTypes": [
+      "LOGIN", "LOGIN_ERROR",
+      "REGISTER", "REGISTER_ERROR",
+      "LOGOUT", "LOGOUT_ERROR",
+      "CODE_TO_TOKEN", "CODE_TO_TOKEN_ERROR",
+      "SEND_RESET_PASSWORD", "SEND_RESET_PASSWORD_ERROR",
+      "RESET_PASSWORD", "RESET_PASSWORD_ERROR",
+      "UPDATE_PASSWORD", "UPDATE_PASSWORD_ERROR",
+      "UPDATE_CREDENTIAL", "UPDATE_CREDENTIAL_ERROR",
+      "UPDATE_EMAIL", "UPDATE_EMAIL_ERROR",
+      "UPDATE_PROFILE", "UPDATE_PROFILE_ERROR",
+      "CUSTOM_REQUIRED_ACTION", "CUSTOM_REQUIRED_ACTION_ERROR",
+      "USER_DISABLED_BY_TEMPORARY_LOCKOUT",
+      "USER_DISABLED_BY_PERMANENT_LOCKOUT"
+    ],
+    "adminEventsEnabled": true,
+    "adminEventsDetailsEnabled": false,
+    "adminPermissionsEnabled": true,
+    "organizationsEnabled": false,
+    "attributes": {
+      "adminEventsExpiration": "7776000"
+    },
+    "browserSecurityHeaders": {
+      "contentSecurityPolicy": "frame-src 'self' https://challenges.cloudflare.com; frame-ancestors 'self'; object-src 'none';"
+    }
+  },
+  "userProfile": {
+    "attributes": [
+      {
+        "name": "username",
+        "displayName": "${username}",
+        "validations": {
+          "length": { "min": 3, "max": 255 },
+          "username-prohibited-characters": {},
+          "up-username-not-idn-homograph": {}
+        },
+        "permissions": { "view": ["admin", "user"], "edit": ["admin"] },
+        "multivalued": false
+      },
+      {
+        "name": "email",
+        "displayName": "${email}",
+        "validations": { "email": {}, "length": { "max": 255 } },
+        "permissions": { "view": ["admin", "user"], "edit": ["admin", "user"] },
+        "multivalued": false
+      },
+      {
+        "name": "firstName",
+        "displayName": "Nama lengkap",
+        "validations": { "length": { "max": 255 }, "person-name-prohibited-characters": {} },
+        "required": { "roles": ["admin", "user"] },
+        "permissions": { "view": ["admin", "user"], "edit": ["admin", "user"] },
+        "multivalued": false
+      },
+      {
+        "name": "nik_hmac",
+        "displayName": "NIK HMAC",
+        "validations": { "pattern": { "pattern": "^[0-9a-f]{64}$", "error-message": "invalid nik_hmac" } },
+        "permissions": { "view": ["admin"], "edit": ["admin"] },
+        "multivalued": false
+      },
+      {
+        "name": "wa_number",
+        "displayName": "Nomor WhatsApp",
+        "validations": { "pattern": { "pattern": "^628[0-9]{7,11}$", "error-message": "invalid wa_number" } },
+        "permissions": { "view": ["admin"], "edit": ["admin"] },
+        "multivalued": false
+      },
+      {
+        "name": "wa_verified",
+        "displayName": "WhatsApp terverifikasi",
+        "validations": { "options": { "options": ["true", "false"] } },
+        "permissions": { "view": ["admin"], "edit": ["admin"] },
+        "multivalued": false
+      },
+      {
+        "name": "karir_source",
+        "displayName": "Sumber akun",
+        "validations": { "options": { "options": ["self", "sire"] } },
+        "permissions": { "view": ["admin"], "edit": ["admin"] },
+        "multivalued": false
+      }
+    ],
+    "groups": []
+  },
+  "requiredActions": {
+    "enabled": ["UPDATE_PASSWORD", "karir-verify-whatsapp"],
+    "disabled": ["CONFIGURE_TOTP", "TERMS_AND_CONDITIONS", "VERIFY_EMAIL", "UPDATE_PROFILE", "VERIFY_PROFILE", "delete_account", "webauthn-register", "webauthn-register-passwordless", "CONFIGURE_RECOVERY_AUTHN_CODES", "UPDATE_EMAIL", "delete_credential", "idp_link"]
+  },
+  "flows": {
+    "browser": {
+      "alias": "karir-browser",
+      "executions": [
+        { "provider": "auth-cookie", "requirement": "ALTERNATIVE" },
+        { "subflow": "karir-browser-forms", "type": "basic-flow", "requirement": "ALTERNATIVE",
+          "executions": [ { "provider": "karir-nik-password-form", "requirement": "REQUIRED" } ] }
+      ]
+    },
+    "registration": {
+      "alias": "karir-registration",
+      "executions": [
+        { "subflow": "karir-registration-form", "type": "form-flow", "formProvider": "registration-page-form", "requirement": "REQUIRED",
+          "executions": [ { "provider": "karir-nik-registration", "requirement": "REQUIRED" } ] }
+      ]
+    },
+    "resetCredentials": {
+      "alias": "karir-reset-credentials",
+      "executions": [
+        { "provider": "karir-reset-by-code", "requirement": "REQUIRED" },
+        { "provider": "reset-password", "requirement": "REQUIRED" }
+      ]
+    }
+  },
+  "clients": {
+    "karir-portal": {
+      "clientId": "karir-portal",
+      "name": "Karir SQ",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "clientAuthenticatorType": "client-secret",
+      "publicClient": false,
+      "bearerOnly": false,
+      "standardFlowEnabled": true,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": false,
+      "frontchannelLogout": true,
+      "fullScopeAllowed": false,
+      "consentRequired": false,
+      "redirectUris": ["https://karir.sabilulquran.or.id/api/auth/callback"],
+      "webOrigins": [],
+      "attributes": {
+        "pkce.code.challenge.method": "S256",
+        "post.logout.redirect.uris": "https://karir.sabilulquran.or.id/"
+      },
+      "defaultClientScopes": ["basic", "acr"],
+      "optionalClientScopes": []
+    },
+    "karir-identity-admin": {
+      "clientId": "karir-identity-admin",
+      "name": "Karir SQ identity admin",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "clientAuthenticatorType": "client-secret",
+      "publicClient": false,
+      "bearerOnly": false,
+      "standardFlowEnabled": false,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": true,
+      "frontchannelLogout": false,
+      "fullScopeAllowed": false,
+      "consentRequired": false,
+      "redirectUris": [],
+      "webOrigins": [],
+      "attributes": {},
+      "defaultClientScopes": ["basic"],
+      "optionalClientScopes": []
+    }
+  },
+  "adminPermissions": {
+    "policy": "karir-identity-admin-service-account",
+    "permission": "karir-identity-admin-users",
+    "resourceType": "Users",
+    "scopes": ["view", "manage"],
+    "_limitation": "Keycloak 26.7.2 FGAP v2 lets manage also reset a password unless a reset-password permission is evaluated, and an evaluated deny on Users blocks the whole Users resource under the fixed UNANIMOUS strategy. So the service account can technically set a kata sandi; admin events (without representations) audit every such call."
+  }
+}
