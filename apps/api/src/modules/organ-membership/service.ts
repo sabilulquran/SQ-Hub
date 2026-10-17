@@ -236,10 +236,9 @@ export class OrganMembershipService {
       const [match] = matches;
       const resumable =
         matches.length === 1 &&
-        match!.organProvisioned === true &&
-        !match!.employeeId &&
         match!.username.toLowerCase() === parsed.email &&
-        match!.email.toLowerCase() === parsed.email;
+        match!.email.toLowerCase() === parsed.email &&
+        (await this.isOrganProvisionedIdentity(match!));
       if (!resumable) throw new OrganMembershipError("EMAIL_IN_USE_USE_EXISTING_STAFF", 409);
       if (!match!.enabled) throw new OrganMembershipError("ORGAN_IDENTITY_DISABLED", 409);
       identity = match!;
@@ -349,6 +348,7 @@ export class OrganMembershipService {
     const management = this.identityManagement;
     if (!management) throw new OrganMembershipError("ORGAN_PROVISIONING_UNAVAILABLE", 503);
     if (membership.provisioningPath !== "organ_identity") throw new OrganMembershipError("ORGAN_PATH_B_ONLY", 409);
+    if (membership.identity.issuer !== management.issuer) throw new OrganMembershipError("ORGAN_PATH_B_ONLY", 409);
     const identity = await management.inspect(membership.identity.subject);
     if (!identity) throw new OrganMembershipError("STAFF_NOT_FOUND", 404);
     return { step: await this.sendActivation(identity, actor, parsed.reason) };
@@ -363,6 +363,16 @@ export class OrganMembershipService {
 
   async hasActiveMembership(identity: IdentityRef): Promise<boolean> {
     return Boolean(await this.store.getActive(identity));
+  }
+
+  /**
+   * Hub created this identity for an Organ Yayasan membership (Path B) and it is not staff. Hub's
+   * own record decides this, never a Keycloak attribute, so a staff identity is never treated as one.
+   */
+  async isOrganProvisionedIdentity(identity: IdentityRef & { employeeId?: string }): Promise<boolean> {
+    if (!this.identityManagement || identity.issuer !== this.identityManagement.issuer) return false;
+    if (identity.employeeId) return false;
+    return this.store.isHubProvisionedOrganIdentity({ issuer: identity.issuer, subject: identity.subject });
   }
 
   /** HUB-IMPL-021 §1: a Path B member who becomes an Employee counts as Path A from then on. */
@@ -430,6 +440,8 @@ export class OrganMembershipService {
   }
 
   private async sendActivation(identity: ManagedStaffIdentity, actor: ActorRef, reason: string): Promise<OrganOperationStep> {
+    // Never send account actions to an identity Hub did not create for Path B (e.g. a staff identity).
+    if (!(await this.isOrganProvisionedIdentity(identity))) throw new OrganMembershipError("ORGAN_PATH_B_ONLY", 409);
     if (!identity.requiredActions?.includes("UPDATE_PASSWORD")) {
       return { step: "activation_email", target: "akun-sq", status: "noop", message: "Akun SQ sudah diaktifkan pemiliknya." };
     }
@@ -452,6 +464,8 @@ export class OrganMembershipService {
   private async isPathB(membership: OrganMembershipRecord): Promise<boolean> {
     if (membership.provisioningPath !== "organ_identity") return false;
     if (!this.identityManagement) throw new OrganMembershipError("ORGAN_PROVISIONING_UNAVAILABLE", 503);
+    // Only an identity of the staff realm Hub manages can be the one Hub created for Path B.
+    if (membership.identity.issuer !== this.identityManagement.issuer) return false;
     const identity = await this.identityManagement.inspect(membership.identity.subject);
     if (!identity) throw new OrganMembershipError("STAFF_NOT_FOUND", 404);
     // A Path B member who later became an Employee is staff now and must not be disabled here.

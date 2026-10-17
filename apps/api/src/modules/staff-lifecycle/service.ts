@@ -79,6 +79,8 @@ export interface OrganMembershipLifecyclePort {
   endForOffboarding(identity: IdentityRef, actor: ActorRef, reason: string): Promise<"succeeded" | "noop">;
   hasActiveMembership(identity: IdentityRef): Promise<boolean>;
   markExistingStaff(identity: IdentityRef, actor: ActorRef, reason: string): Promise<"succeeded" | "noop">;
+  /** Hub's own record says it created this non-staff identity for a Path B organ membership. */
+  isOrganProvisionedIdentity(identity: IdentityRef & { employeeId?: string }): Promise<boolean>;
 }
 
 export class StaffLifecycleService {
@@ -528,7 +530,8 @@ export class StaffLifecycleService {
     const matches = await this.identityManagement.findByUsernameOrEmail(email);
     if (matches.length !== 1) return null;
     const [match] = matches;
-    return match!.organProvisioned && !match!.employeeId && match!.email.toLowerCase() === email ? match! : null;
+    if (match!.employeeId || match!.email.toLowerCase() !== email || !this.organMemberships) return null;
+    return (await this.organMemberships.isOrganProvisionedIdentity(match!)) ? match! : null;
   }
 
   private async requireIdentity(subject: string): Promise<ManagedStaffIdentity> {

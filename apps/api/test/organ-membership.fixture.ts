@@ -72,8 +72,8 @@ export class FakeStaffRealm {
           emailVerified: false,
           firstName: input.firstName,
           lastName: input.lastName,
+          // Like production (Keycloak 26, declarative user profile): no Hub marker attribute survives.
           requiredActions: ["VERIFY_EMAIL", "UPDATE_PASSWORD", "CONFIGURE_TOTP"],
-          organProvisioned: true,
         });
       },
       sendOrganActivation: async (subject) => {
