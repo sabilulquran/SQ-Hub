@@ -61,7 +61,7 @@ Families differ from candidates:
   - Children never get Keycloak identities in this realm.
 - **WhatsApp codes:**
   - The Keycloak provider calls a loopback, HMAC-signed relay owned by Keluarga SQ.
-  - Until Keluarga SQ has its own official number, the relay sends through JalurPesan on the **official SPMB number**. It moves to the SQ Core WhatsApp gateway later without changing the provider.
+  - The relay sends through **Kirim SQ** (`docs/product/kirim-sq-module-design.md`) with `jenis: "kode"`, on the device set in Keluarga SQ configuration (default `resmi`). It never calls JalurPesan directly. *(Amended 2026-10-17, Product Owner: Kirim SQ replaces the earlier plan to send through JalurPesan on the official SPMB number, so account codes keep working if the busy SPMB number is limited by WhatsApp. See KEL-IMPL-001 §16.)*
   - Email codes use the realm SMTP.
 - **Provider:** the in-house provider planned for `sq-karir` in REC-IMPL-001 is built as **one external-identity provider configured per realm**:
   - identifier type (NIK for `sq-karir`, KK for `sq-keluarga`);
@@ -84,7 +84,7 @@ Families differ from candidates:
 
 ## Product Owner decisions (2026-10-17)
 - **Migrated history after a WhatsApp code:** a migrated family sees its historical children and applications right after a successful code sent to the WhatsApp number on record. A family that adds a number not on record sees nothing migrated until staff verify the KK document.
-- **Code channel when JalurPesan is down:** fall back to email when the family has one. Otherwise show "Kode belum bisa dikirim, coba lagi beberapa menit lagi" with the SPMB loket phone number. No third-party SMS fallback without a separate decision.
+- **Code channel when WhatsApp delivery fails** (Kirim SQ unavailable, rejects the code, or the device is disconnected): fall back to email when the family has one. Otherwise show "Kode belum bisa dikirim, coba lagi beberapa menit lagi" with the SPMB loket phone number. No third-party SMS fallback without a separate decision.
 
 No open questions remain.
 
