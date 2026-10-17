@@ -78,7 +78,7 @@ Organ members are added manually (Product Owner decision, 2026-10-17). Some Peng
 
 1. The administrator enters full name, e-mail, organ, position label, term, and reason. There is no NIP and no HCIS check; Hub never invents a staff number.
 2. Hub refuses the e-mail if any staff identity already uses it as username or verified e-mail, and offers Path A instead.
-3. Hub creates the Akun SQ identity in the staff realm with the e-mail as username (ADR-0005), marked as provisioned for an organ membership.
+3. Hub creates the Akun SQ identity in the staff realm with the e-mail as username (ADR-0005). Hub's own record (the `organ_identity.provision` audit event and the membership's `provisioning_path = organ_identity`), not a Keycloak attribute, marks the identity as created for an organ membership. Activation resend, retry reuse, end-of-term disable, and the later Employee link act only on an identity with that Hub record and no `hcisEmployeeId`. (Correction 2026-10-18: the staff realm's declarative user profile drops unmanaged attributes, so the earlier `sqProvisionedFor` attribute never persisted in production.)
 4. Keycloak sends `VERIFY_EMAIL` and `UPDATE_PASSWORD` with a 12-hour link, as in HUB-IMPL-013. Keycloak also requires `CONFIGURE_TOTP`: two-step verification is mandatory for organ members (Product Owner decision, 2026-10-17). Hub never creates or shows a password.
 5. Hub creates the membership.
 6. Steps 3 to 5 are one operation with per-step results, safe retry, and the HUB-IMPL-013 partial-failure rules.

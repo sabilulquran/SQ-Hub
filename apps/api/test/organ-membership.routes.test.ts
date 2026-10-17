@@ -64,6 +64,9 @@ class MemoryStore implements OrganMembershipStore {
     return { outcome: "succeeded" as const, membership: record };
   }
   async markExistingStaff() { return "noop" as const; }
+  async isHubProvisionedOrganIdentity(identity: { subject: string }) {
+    return this.records.some((record) => record.identity.subject === identity.subject && record.provisioningPath === "organ_identity");
+  }
   async audit(input: { action: string }) { this.audits.push(input.action); }
 }
 
