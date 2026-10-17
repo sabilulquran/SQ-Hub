@@ -54,6 +54,11 @@ function fixture(options: { failApplication?: string; failEmail?: boolean; order
       order.push("identity:send-email");
       if (failingEmail) throw new Error("synthetic mail failure");
     },
+    findByUsernameOrEmail: async () => [],
+    createOrganMember: async () => { throw new Error("not used"); },
+    sendOrganActivation: async () => undefined,
+    requireTotpSetup: async () => "already_required" as const,
+    linkEmployee: async () => { throw new Error("not used"); },
   };
   const applicationAccess = {
     listApplications: async () => [

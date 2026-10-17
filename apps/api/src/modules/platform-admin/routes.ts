@@ -29,6 +29,10 @@ const applicationBodySchema = z
     name: z.string().trim().min(1).max(200),
     canonicalUrl: z.string().url().max(2048),
     status: z.enum(["active", "inactive"]),
+    // HUB-IMPL-021 §2. Sent together; omitted fields keep the stored registration.
+    governanceSummaryPath: z.string().trim().max(512).nullable().optional(),
+    governanceAudience: z.string().trim().max(255).nullable().optional(),
+    governanceOrder: z.number().int().optional(),
   })
   .strict();
 
@@ -100,11 +104,24 @@ export function registerPlatformAdminRoutes(
       requireSameOrigin(request.headers.origin, input.allowedOrigin);
       const params = z.object({ applicationKey: applicationKeySchema }).parse(request.params);
       const body = applicationBodySchema.parse(request.body);
+      const governanceProvided =
+        body.governanceSummaryPath !== undefined ||
+        body.governanceAudience !== undefined ||
+        body.governanceOrder !== undefined;
       const application = await input.applicationRegistry.upsertApplication({
         applicationKey: params.applicationKey,
         name: body.name,
         canonicalUrl: body.canonicalUrl,
         status: body.status,
+        ...(governanceProvided
+          ? {
+              governance: {
+                summaryPath: body.governanceSummaryPath || null,
+                audience: body.governanceAudience || null,
+                order: body.governanceOrder ?? 0,
+              },
+            }
+          : {}),
         actor: actorForSession(session),
       });
       return reply.send({ application: toBrowserApplication(application) });
@@ -277,12 +294,18 @@ function toBrowserApplication(application: {
   name: string;
   canonicalUrl: string;
   status: "active" | "inactive";
+  governanceSummaryPath?: string | null;
+  governanceAudience?: string | null;
+  governanceOrder?: number;
 }) {
   return {
     key: application.applicationKey,
     name: application.name,
     canonicalUrl: application.canonicalUrl,
     status: application.status,
+    governanceSummaryPath: application.governanceSummaryPath ?? null,
+    governanceAudience: application.governanceAudience ?? null,
+    governanceOrder: application.governanceOrder ?? 0,
   };
 }
 
@@ -306,7 +329,19 @@ function toBrowserAccess(record: {
 
 function toBrowserAudit(record: AuditRecord) {
   const safePayload: Record<string, unknown> = {};
-  for (const key of ["applicationKey", "reason", "status", "canonicalUrl"]) {
+  for (const key of [
+    "applicationKey",
+    "reason",
+    "status",
+    "canonicalUrl",
+    "governanceSummaryPath",
+    "governanceAudience",
+    "organ",
+    "positionLabel",
+    "termStart",
+    "termEnd",
+    "provisioningPath",
+  ]) {
     const value = record.payload[key];
     if (typeof value === "string" || value === null) safePayload[key] = value;
   }

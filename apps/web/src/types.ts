@@ -132,6 +132,10 @@ export interface AdminApplication {
   name: string;
   canonicalUrl: string;
   status: "active" | "inactive";
+  /** HUB-IMPL-021 §2: path on the canonical origin; null when the app publishes no governance summary. */
+  governanceSummaryPath?: string | null;
+  governanceAudience?: string | null;
+  governanceOrder?: number;
 }
 
 export interface AdminStaff {
@@ -166,4 +170,70 @@ export interface AdminAuditRecord {
   outcome: "succeeded" | "failed" | "noop";
   payload: Record<string, unknown>;
   occurredAt: string;
+}
+
+export type Organ = "pembina" | "pengurus" | "pengawas";
+
+export interface OrganMembershipView {
+  id: string;
+  /** Opaque mutation handle only; never displayed. */
+  subject: string;
+  displayName: string | null;
+  username: string | null;
+  email: string | null;
+  enabled: boolean | null;
+  organ: Organ;
+  positionLabel: string | null;
+  termStart: string;
+  termEnd: string | null;
+  status: "active" | "ended";
+  reason: string;
+  provisioningPath: "existing_staff" | "organ_identity";
+  updatedAt: string;
+  endedAt: string | null;
+}
+
+export interface OrganMembershipOverview {
+  active: OrganMembershipView[];
+  endingSoon: OrganMembershipView[];
+  recentlyEnded: OrganMembershipView[];
+  governanceApplications: Array<{ key: string; name: string }>;
+  capabilities: { addNewIdentity: boolean; endNewIdentity: boolean };
+}
+
+export interface OrganOperationStep {
+  step: string;
+  target: string;
+  status: "succeeded" | "noop" | "failed";
+  message: string;
+}
+
+export interface OrganOperationResult {
+  outcome: "succeeded" | "partial_failure" | "failed";
+  membership: OrganMembershipView | null;
+  steps: OrganOperationStep[];
+  domainRoleReminders: Array<{ key: string; name: string }>;
+}
+
+export interface OrganMembershipDetail {
+  membership: OrganMembershipView;
+  security: { totpConfigured: boolean | null };
+  governanceApplications: Array<{
+    key: string;
+    name: string;
+    access: "active" | "revoked" | "none";
+    /** Last result Hub observed when this member opened Ringkasan Yayasan (status only, never the summary). */
+    summary?: { outcome: "ready" | "hidden" | "failed"; observedAt: string } | null;
+  }>;
+}
+
+export interface OrganMembershipEndPreview {
+  path: "existing_staff" | "organ_identity";
+  membership: OrganMembershipView;
+  domainRoleReminders: Array<{ key: string; name: string }>;
+  offboarding: null | {
+    activeApplications: Array<{ key: string; name: string }>;
+    platformAdministrator: boolean;
+    globalIdentityEnabled: boolean;
+  };
 }

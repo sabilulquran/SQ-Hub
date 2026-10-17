@@ -12,6 +12,8 @@ import { HubTokenVault } from "./modules/hub-auth/token-vault.js";
 import { PgHubWorkspaceRepository } from "./modules/hub-auth/workspace-repository.js";
 import { KeycloakIdentityDirectory } from "./modules/identity-directory/client.js";
 import { KeycloakIdentityManagement } from "./modules/identity-management/client.js";
+import { PgOrganMembershipRepository } from "./modules/organ-membership/repository.js";
+import { OrganMembershipService } from "./modules/organ-membership/service.js";
 import { PgPlatformAdminRepository } from "./modules/platform-admin/repository.js";
 import { PlatformAdminService } from "./modules/platform-admin/service.js";
 import { loadDirectoryConfig } from "./modules/organization-directory/config.js";
@@ -37,15 +39,18 @@ const identityDirectory = new KeycloakIdentityDirectory({
   clientId: config.keycloakDirectoryClientId,
   clientSecret: config.keycloakDirectoryClientSecret,
 });
-const staffLifecycle = config.keycloakIdentityManagementClientId && config.keycloakIdentityManagementClientSecret
+const identityManagement = config.keycloakIdentityManagementClientId && config.keycloakIdentityManagementClientSecret
+  ? new KeycloakIdentityManagement({
+      baseUrl: config.keycloakDirectoryBaseUrl,
+      realm: config.keycloakDirectoryRealm,
+      issuer: config.keycloakIssuer,
+      clientId: config.keycloakIdentityManagementClientId,
+      clientSecret: config.keycloakIdentityManagementClientSecret,
+    })
+  : undefined;
+const staffLifecycle = identityManagement
   ? new StaffLifecycleService(
-      new KeycloakIdentityManagement({
-        baseUrl: config.keycloakDirectoryBaseUrl,
-        realm: config.keycloakDirectoryRealm,
-        issuer: config.keycloakIssuer,
-        clientId: config.keycloakIdentityManagementClientId,
-        clientSecret: config.keycloakIdentityManagementClientSecret,
-      }),
+      identityManagement,
       accessService,
       platformAdmin,
       new PgLifecycleAuditWriter(pool),
@@ -58,6 +63,16 @@ const staffLifecycle = config.keycloakIdentityManagementClientId && config.keycl
       new PgLifecycleOperationStore(pool),
     )
   : undefined;
+// HUB-IMPL-021: Path A works with the read-only directory; Path B and ending a Path B
+// membership need the identity-management principal and stay unavailable without it.
+const organMemberships = new OrganMembershipService(
+  new PgOrganMembershipRepository(pool),
+  accessService,
+  identityDirectory,
+  identityManagement,
+  staffLifecycle,
+);
+staffLifecycle?.attachOrganMemberships(organMemberships);
 const verifyMachineToken = createKeycloakMachineTokenVerifier({
   issuer: config.keycloakIssuer,
   audience: config.machineTokenAudience,
@@ -98,6 +113,7 @@ const app = buildApp({
   identityDirectory,
   accountSelfService,
   ...(staffLifecycle ? { staffLifecycle } : {}),
+  organMemberships,
   logger: true,
   ...(directoryConfig.read ? { organizationDirectory: {
     read: () => directory.read(),

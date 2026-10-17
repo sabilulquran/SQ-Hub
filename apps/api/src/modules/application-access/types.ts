@@ -19,6 +19,11 @@ export interface ApplicationRecord {
   name: string;
   canonicalUrl: string;
   status: ApplicationStatus;
+  /** HUB-IMPL-021: path on the canonical_url origin; null when the app publishes no governance summary. */
+  governanceSummaryPath: string | null;
+  /** Keycloak client ID used as the token-exchange audience; required with the path. */
+  governanceAudience: string | null;
+  governanceOrder: number;
 }
 
 export interface AccessRecord {

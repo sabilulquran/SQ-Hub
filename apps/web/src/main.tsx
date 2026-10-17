@@ -11,6 +11,7 @@ import {
   ordinaryWorkspaceFixture,
   workspaceFixture,
 } from "@/dev/workspaceFixture";
+import { organOverviewFixture } from "@/dev/organFixture";
 import { resolveHubRoute } from "@/routes";
 import { initThemePreference } from "@/theme";
 import "@/styles.css";
@@ -46,7 +47,7 @@ const previewApplications = [
 
 function renderPreviewApp() {
   if (route === "admin") {
-    return <AdminCenterPage workspace={fixture} previewApplications={previewApplications} />;
+    return <AdminCenterPage workspace={fixture} previewApplications={previewApplications} previewOrganOverview={organOverviewFixture} />;
   }
   if (route === "account") {
     return <AccountPage workspace={fixture} previewAccount={accountFixture} />;

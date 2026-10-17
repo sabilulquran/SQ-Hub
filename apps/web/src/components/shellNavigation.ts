@@ -1,4 +1,4 @@
-import { AppWindow, Home, KeyRound, LayoutGrid, ShieldCheck, UserRound, UsersRound, type LucideIcon } from "lucide-react";
+import { AppWindow, Home, KeyRound, Landmark, LayoutGrid, ShieldCheck, UserRound, UsersRound, type LucideIcon } from "lucide-react";
 
 import type { HubSpace } from "@/components/SpaceSwitcher";
 
@@ -9,7 +9,8 @@ export type HubNavKey =
   | "admin-applications"
   | "admin-access"
   | "admin-audit"
-  | "admin-lifecycle";
+  | "admin-lifecycle"
+  | "admin-organ";
 
 export interface HubNavItem {
   key: HubNavKey;
@@ -50,6 +51,12 @@ export const navigationBySpace: Record<HubSpace, HubNavGroup[]> = {
       label: "Pegawai",
       items: [
         { key: "admin-lifecycle", href: "/admin/lifecycle", label: "Pegawai masuk & keluar", shortLabel: "Pegawai", icon: UsersRound },
+      ],
+    },
+    {
+      label: "Yayasan",
+      items: [
+        { key: "admin-organ", href: "/admin/organ", label: "Organ Yayasan", shortLabel: "Organ", icon: Landmark },
       ],
     },
   ],

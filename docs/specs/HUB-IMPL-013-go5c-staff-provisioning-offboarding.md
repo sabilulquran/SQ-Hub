@@ -35,6 +35,12 @@ An Admin may re-enable the global identity with reason, confirmation and audit. 
 
 `/admin/lifecycle` reuses the Administrasi SQ shell and SQ visual baseline. It offers employee verification/provisioning, safe lookup, email re-send, offboarding preview, per-step result/retry, and re-enable. It distinguishes pending email, partial failure and completion. It does not display raw subject, token, secret, password, NIK, or bulk personal data. Platform audit records actor, action, hashed target reference, operation id, reason, timestamp and outcome, without raw personal or credential material. Privileged routes fail closed on authorization, Origin, identity service, HCIS contract or storage errors.
 
+## Amendment — Organ Yayasan (HUB-IMPL-021, accepted 2026-10-17)
+
+- Offboarding ends any active Organ Yayasan membership as an additional ordered step after Platform Administrator revocation and before the global identity is disabled. The step reads back the membership and is part of final verification; a failure leaves the operation `PARTIAL_FAILURE` and is retried like the other steps.
+- Ending a Path B membership (an Akun SQ that Hub created for an organ member who is not staff) runs this same offboarding operation.
+- Provisioning a new employee first looks for an existing identity with the same e-mail that Hub created for an Organ Yayasan membership and has no employee reference. If exactly one exists, Hub records the HCIS employee reference on that identity instead of creating a second Akun SQ, and the membership counts as Path A from then on. Any other e-mail collision is still rejected.
+
 ## Recovery and release gates
 
 The operator runbook describes retry after each possible failure, read-back of every step, stale/incomplete operations, deployment rollback, and escalation of unresolved cases to the Head of HCM. The Head of HCM coordinates closure; an authorized Admin executes and audits retries. Never label a partial operation completed to clear an alert.

@@ -148,6 +148,8 @@ jobs:
           check_no_overflow 390 844 http://127.0.0.1:4173/admin
           check_no_overflow 768 900 http://127.0.0.1:4173/admin/access
           check_no_overflow 1280 720 http://127.0.0.1:4173/admin/audit
+          check_no_overflow 390 844 http://127.0.0.1:4173/admin/organ
+          check_no_overflow 1280 720 http://127.0.0.1:4173/admin/organ
           for section in security sessions applications linked groups; do
             check_no_overflow 390 844 "http://127.0.0.1:4173/account?section=$section"
             check_no_overflow 1280 720 "http://127.0.0.1:4173/account?section=$section"

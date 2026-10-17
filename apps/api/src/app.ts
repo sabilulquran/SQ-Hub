@@ -15,6 +15,8 @@ import {
 import { registerHubAuthRoutes } from "./modules/hub-auth/routes.js";
 import type { HubAuthRuntime } from "./modules/hub-auth/service.js";
 import type { IdentityDirectory } from "./modules/identity-directory/client.js";
+import { registerOrganMembershipRoutes } from "./modules/organ-membership/routes.js";
+import type { OrganMembershipService } from "./modules/organ-membership/service.js";
 import { registerPlatformAdminRoutes } from "./modules/platform-admin/routes.js";
 import type { PlatformAdminService } from "./modules/platform-admin/service.js";
 import { DIRECTORY_PREFIX, registerOrganizationDirectoryRoutes } from "./modules/organization-directory/routes.js";
@@ -43,6 +45,7 @@ export function buildApp(input: {
   identityDirectory?: IdentityDirectory;
   accountSelfService?: KeycloakAccountSelfService;
   staffLifecycle?: StaffLifecycleService;
+  organMemberships?: OrganMembershipService;
   logger?: boolean;
   organizationDirectory?: Parameters<typeof registerOrganizationDirectoryRoutes>[1];
 }) {
@@ -115,6 +118,15 @@ export function buildApp(input: {
       hubAuth: input.hubAuth,
       platformAdmin: input.platformAdmin,
       service: input.staffLifecycle,
+      ...(input.adminAllowedOrigin ? { allowedOrigin: input.adminAllowedOrigin } : {}),
+    });
+  }
+
+  if (input.hubAuth && input.platformAdmin && input.organMemberships) {
+    registerOrganMembershipRoutes(app, {
+      hubAuth: input.hubAuth,
+      platformAdmin: input.platformAdmin,
+      service: input.organMemberships,
       ...(input.adminAllowedOrigin ? { allowedOrigin: input.adminAllowedOrigin } : {}),
     });
   }

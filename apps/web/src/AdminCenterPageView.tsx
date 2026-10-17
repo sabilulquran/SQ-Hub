@@ -58,6 +58,9 @@ const emptyApplication: AdminApplication = {
   name: "",
   canonicalUrl: "",
   status: "active",
+  governanceSummaryPath: null,
+  governanceAudience: null,
+  governanceOrder: 0,
 };
 
 const knownErrors: Record<string, string> = {
@@ -188,6 +191,16 @@ export function AdminCenterPage({
       setApplicationMessage("URL kanonis harus berupa URL lengkap, misalnya https://app.sabilulquran.or.id.");
       return;
     }
+    const governanceSummaryPath = applicationForm.governanceSummaryPath?.trim() || null;
+    const governanceAudience = applicationForm.governanceAudience?.trim() || null;
+    if (governanceSummaryPath && (!governanceSummaryPath.startsWith("/") || governanceSummaryPath.startsWith("//"))) {
+      setApplicationMessage("Path ringkasan tata kelola harus diawali satu garis miring, misalnya /api/governance/summary. URL lengkap tidak diterima.");
+      return;
+    }
+    if (Boolean(governanceSummaryPath) !== Boolean(governanceAudience)) {
+      setApplicationMessage("Path ringkasan dan audiens token harus diisi bersama, atau dikosongkan bersama.");
+      return;
+    }
     setApplicationSaving(true);
     setApplicationMessage(null);
     try {
@@ -195,7 +208,14 @@ export function AdminCenterPage({
         `/api/admin/applications/${encodeURIComponent(key)}`,
         {
           method: "PUT",
-          body: JSON.stringify({ name, canonicalUrl, status: applicationForm.status }),
+          body: JSON.stringify({
+            name,
+            canonicalUrl,
+            status: applicationForm.status,
+            governanceSummaryPath,
+            governanceAudience,
+            governanceOrder: Number.isFinite(applicationForm.governanceOrder) ? Math.trunc(applicationForm.governanceOrder ?? 0) : 0,
+          }),
         },
       );
       setState((current) => {
@@ -339,6 +359,7 @@ export function AdminCenterPage({
                             <StatusPill active={application.status === "active"} activeLabel="Aktif" inactiveLabel="Nonaktif" />
                           </div>
                           <p className="mt-3 truncate text-xs text-muted-foreground">{application.canonicalUrl}</p>
+                          {application.governanceSummaryPath ? <p className="mt-1.5 inline-flex rounded-full bg-info-soft px-2 py-0.5 text-[10px] font-bold text-info-ink">Ringkasan tata kelola</p> : null}
                         </button>
                       ))}
                     </div>
@@ -356,6 +377,9 @@ export function AdminCenterPage({
                       <Field label="Nama"><input value={applicationForm.name} onChange={(event) => setApplicationForm((current) => ({ ...current, name: event.target.value }))} placeholder="Nama aplikasi" className="sq-admin-input" /></Field>
                       <Field label="URL kanonis" helper="Gunakan URL lengkap, termasuk https://"><input value={applicationForm.canonicalUrl} onChange={(event) => setApplicationForm((current) => ({ ...current, canonicalUrl: event.target.value }))} placeholder="https://app.sabilulquran.or.id" className="sq-admin-input" inputMode="url" /></Field>
                       <Field label="Status"><select value={applicationForm.status} onChange={(event) => setApplicationForm((current) => ({ ...current, status: event.target.value as "active" | "inactive" }))} className="sq-admin-input"><option value="active">Aktif</option><option value="inactive">Nonaktif</option></select></Field>
+                      <Field label="Path ringkasan tata kelola (opsional)" helper="Path pada origin URL kanonis, misalnya /api/governance/summary. Kosongkan bila aplikasi tidak menerbitkan ringkasan untuk Ringkasan Yayasan."><input value={applicationForm.governanceSummaryPath ?? ""} onChange={(event) => setApplicationForm((current) => ({ ...current, governanceSummaryPath: event.target.value }))} placeholder="/api/governance/summary" className="sq-admin-input" /></Field>
+                      <Field label="Audiens token" helper="Client ID Keycloak aplikasi tersebut untuk token exchange. Wajib bila path diisi."><input value={applicationForm.governanceAudience ?? ""} onChange={(event) => setApplicationForm((current) => ({ ...current, governanceAudience: event.target.value }))} placeholder="contoh: hcis-governance" className="sq-admin-input" /></Field>
+                      <Field label="Urutan kartu" helper="Angka kecil tampil lebih dulu; urutan sama diurutkan menurut nama."><input type="number" value={applicationForm.governanceOrder ?? 0} onChange={(event) => setApplicationForm((current) => ({ ...current, governanceOrder: Number(event.target.value) }))} className="sq-admin-input" /></Field>
                     </div>
                     {applicationMessage ? <InlineMessage>{applicationMessage}</InlineMessage> : null}
                     <button type="button" disabled={applicationSaving || Boolean(previewApplications)} onClick={() => void saveApplication()} className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-brand-primary px-4 py-2.5 text-sm font-bold text-brand-foreground shadow-[var(--shadow-button)] disabled:cursor-not-allowed disabled:opacity-50"><Save className="h-4 w-4" />{applicationSaving ? "Menyimpan..." : "Simpan registry"}</button>

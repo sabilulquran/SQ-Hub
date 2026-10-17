@@ -65,13 +65,25 @@ export const offboardingSchema = z.object({
 export type OffboardingStepStatus = "succeeded" | "noop" | "failed";
 
 export interface OffboardingStep {
-  step: "application_access" | "platform_administrator" | "global_identity" | "final_verification";
+  step: "application_access" | "platform_administrator" | "organ_membership" | "global_identity" | "final_verification";
   target: string;
   status: OffboardingStepStatus;
   message: string;
 }
 
+/**
+ * HUB-IMPL-021 amendment to HUB-IMPL-013: offboarding ends any Organ Yayasan membership, and
+ * provisioning reuses a Path B organ identity instead of creating a second Akun SQ.
+ */
+export interface OrganMembershipLifecyclePort {
+  endForOffboarding(identity: IdentityRef, actor: ActorRef, reason: string): Promise<"succeeded" | "noop">;
+  hasActiveMembership(identity: IdentityRef): Promise<boolean>;
+  markExistingStaff(identity: IdentityRef, actor: ActorRef, reason: string): Promise<"succeeded" | "noop">;
+}
+
 export class StaffLifecycleService {
+  private organMemberships?: OrganMembershipLifecyclePort;
+
   constructor(
     private readonly identityManagement: IdentityManagement,
     private readonly applicationAccess: Pick<
@@ -83,6 +95,10 @@ export class StaffLifecycleService {
     private readonly verifyEmployee: VerifyEmployee,
     private readonly operations: LifecycleOperationStore,
   ) {}
+
+  attachOrganMemberships(port: OrganMembershipLifecyclePort) {
+    this.organMemberships = port;
+  }
 
   async provision(input: unknown, actor: ActorRef) {
     const parsed = provisionStaffSchema.parse(input);
@@ -110,11 +126,23 @@ export class StaffLifecycleService {
     let identity: ManagedStaffIdentity;
     try {
       const existing = await this.identityManagement.findByUsername(parsed.username);
+      const organIdentity = existing ? null : await this.findOrganIdentity(email);
       if (existing) {
         if (existing.employeeId !== employee.employeeId || existing.email.toLowerCase() !== email) {
           throw new Error("EMPLOYEE_IDENTITY_CONFLICT");
         }
         identity = existing;
+      } else if (organIdentity) {
+        // HUB-IMPL-021 §1: an organ member who becomes an Employee keeps the same Akun SQ.
+        identity = await this.identityManagement.linkEmployee(organIdentity.subject, employee.employeeId);
+        await this.organMemberships?.markExistingStaff(toRef(identity), actor, parsed.reason);
+        await this.audit.write({
+          actor,
+          action: "staff_identity.link_organ_identity",
+          identity: toRef(identity),
+          outcome: "succeeded",
+          payload: { reason: parsed.reason },
+        });
       } else {
         identity = await this.identityManagement.createStaff({
         username: parsed.username,
@@ -261,6 +289,7 @@ export class StaffLifecycleService {
       identity: toSafeIdentity(identity),
       activeApplications,
       platformAdministrator: adminMembership?.status === "active",
+      organMembership: this.organMemberships ? await this.organMemberships.hasActiveMembership(identityRef) : false,
       globalIdentityEnabled: identity.enabled,
       hcisEmployeeStatus: "not_read_or_inferred" as const,
     };
@@ -383,6 +412,33 @@ export class StaffLifecycleService {
       });
     }
 
+    if (this.organMemberships) {
+      try {
+        const result = await this.organMemberships.endForOffboarding(identityRef, actor, parsed.reason);
+        if (await this.organMemberships.hasActiveMembership(identityRef)) throw new Error("ORGAN_MEMBERSHIP_NOT_VERIFIED");
+        await recordStep({
+          step: "organ_membership",
+          target: "organ-membership",
+          status: result,
+          message: result === "succeeded" ? "Keanggotaan Organ Yayasan diakhiri." : "Tidak ada keanggotaan Organ Yayasan aktif.",
+        });
+      } catch {
+        await this.audit.write({
+          actor,
+          action: "staff_identity.offboard.organ_membership",
+          identity: identityRef,
+          outcome: "failed",
+          payload: { reason: parsed.reason, operationId: operation.id },
+        });
+        await recordStep({
+          step: "organ_membership",
+          target: "organ-membership",
+          status: "failed",
+          message: "Keanggotaan Organ Yayasan gagal diakhiri; aman untuk dicoba ulang.",
+        });
+      }
+    }
+
     {
       try {
         await this.audit.write({
@@ -436,6 +492,7 @@ export class StaffLifecycleService {
         }
       }
       if ((await this.platformAdmin.show(identityRef))?.status === "active") throw new Error("ACTIVE_PLATFORM_ADMIN");
+      if (await this.organMemberships?.hasActiveMembership(identityRef)) throw new Error("ACTIVE_ORGAN_MEMBERSHIP");
       if ((await this.requireIdentity(parsed.subject)).enabled) throw new Error("ACTIVE_GLOBAL_IDENTITY");
       await recordStep({ step: "final_verification", target: "all", status: "succeeded", message: "Seluruh status akhir terverifikasi." });
     } catch {
@@ -465,6 +522,13 @@ export class StaffLifecycleService {
     await locked.update(operation);
     return { operationId: operation.id, outcome, steps };
     });
+  }
+
+  private async findOrganIdentity(email: string): Promise<ManagedStaffIdentity | null> {
+    const matches = await this.identityManagement.findByUsernameOrEmail(email);
+    if (matches.length !== 1) return null;
+    const [match] = matches;
+    return match!.organProvisioned && !match!.employeeId && match!.email.toLowerCase() === email ? match! : null;
   }
 
   private async requireIdentity(subject: string): Promise<ManagedStaffIdentity> {
