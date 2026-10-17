@@ -1,6 +1,7 @@
 package org.sabilulquran.keycloak.karir;
 
 import jakarta.ws.rs.core.MultivaluedMap;
+import java.util.List;
 import org.keycloak.authentication.RequiredActionContext;
 import org.keycloak.authentication.RequiredActionProvider;
 import org.keycloak.events.Details;
@@ -20,17 +21,17 @@ final class VerifyWhatsAppRequiredAction implements RequiredActionProvider {
     @Override
     public void evaluateTriggers(RequiredActionContext context) {
         UserModel user = context.getUser();
-        if (Candidates.SOURCE_SELF.equals(user.getFirstAttribute(Candidates.SOURCE))
-                && !"true".equals(user.getFirstAttribute(Candidates.WA_VERIFIED))
-                && Candidates.waNumber(user) != null) {
+        IdentityProfile profile = KarirRuntime.forRealm(context.getRealm()).profile();
+        if (IdentityProfile.SOURCE_SELF.equals(user.getFirstAttribute(profile.sourceAttribute()))
+                && profile.numberToVerify(user) != null) {
             user.addRequiredAction(VerifyWhatsAppRequiredActionFactory.PROVIDER_ID);
         }
     }
 
     @Override
     public void requiredActionChallenge(RequiredActionContext context) {
-        KarirRuntime runtime = KarirRuntime.get();
-        String wa = Candidates.waNumber(context.getUser());
+        KarirRuntime runtime = KarirRuntime.forRealm(context.getRealm());
+        String wa = numberToVerify(runtime.profile(), context.getUser());
         if (wa == null) {
             // Nothing to verify; Karir SQ removed the number during an account recovery.
             context.success();
@@ -43,8 +44,8 @@ final class VerifyWhatsAppRequiredAction implements RequiredActionProvider {
 
     @Override
     public void processAction(RequiredActionContext context) {
-        KarirRuntime runtime = KarirRuntime.get();
-        String wa = Candidates.waNumber(context.getUser());
+        KarirRuntime runtime = KarirRuntime.forRealm(context.getRealm());
+        String wa = numberToVerify(runtime.profile(), context.getUser());
         if (wa == null) {
             context.success();
             return;
@@ -68,12 +69,13 @@ final class VerifyWhatsAppRequiredAction implements RequiredActionProvider {
 
         OtpState.Check check = otp.verify(input.getFirst(CodeForms.FIELD_CODE));
         if (check == OtpState.Check.VALID) {
-            context.getUser().setSingleAttribute(Candidates.WA_VERIFIED, "true");
-            context.getEvent().clone()
+            runtime.profile().markVerified(context.getUser(), wa);
+            org.keycloak.events.EventBuilder verified = context.getEvent().clone()
                     .event(EventType.CUSTOM_REQUIRED_ACTION)
                     .detail(Details.CUSTOM_REQUIRED_ACTION, VerifyWhatsAppRequiredActionFactory.PROVIDER_ID)
-                    .detail(KarirEvents.DETAIL_CHANNEL, "whatsapp")
-                    .success();
+                    .detail(KarirEvents.DETAIL_CHANNEL, "whatsapp");
+            ResetByCodeAuthenticator.addWaHash(verified, runtime, wa);
+            verified.success();
             context.success();
             return;
         }
@@ -89,8 +91,9 @@ final class VerifyWhatsAppRequiredAction implements RequiredActionProvider {
     /** Sends a new code and returns the message key to show. */
     private static String send(RequiredActionContext context, KarirRuntime runtime, OtpState otp, String wa) {
         UserModel user = context.getUser();
-        String accountKey = user.getFirstAttribute(Candidates.NIK_HMAC) != null
-                ? user.getFirstAttribute(Candidates.NIK_HMAC) : user.getId();
+        String identifierAttribute = runtime.profile().identifierAttribute();
+        String accountKey = user.getFirstAttribute(identifierAttribute) != null
+                ? user.getFirstAttribute(identifierAttribute) : user.getId();
         if (!runtime.abuseGuard().tryCodeRequest(accountKey)) {
             sendEvent(context).error(KarirEvents.CODE_LIMIT);
             return KarirForms.CODE_LIMIT;
@@ -104,6 +107,18 @@ final class VerifyWhatsAppRequiredAction implements RequiredActionProvider {
         }
         sendEvent(context).success();
         return KarirForms.CODE_SENT;
+    }
+
+    /**
+     * Karir: its one number, as before. Keluarga: the first number that has not passed a code yet, so a number added
+     * by Keluarga SQ is verified on the next sign-in.
+     */
+    private static String numberToVerify(IdentityProfile profile, UserModel user) {
+        if (profile.multipleNumbers()) {
+            return profile.numberToVerify(user);
+        }
+        List<String> numbers = profile.waNumbers(user);
+        return numbers.isEmpty() ? null : numbers.get(0);
     }
 
     private static org.keycloak.events.EventBuilder sendEvent(RequiredActionContext context) {

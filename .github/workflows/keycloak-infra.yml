@@ -910,6 +910,76 @@ jobs:
           docker compose --env-file "$KEYCLOAK_ENV_FILE" -f infra/keycloak/docker-compose.ci.yml \
             exec -T keycloak rm -f "$kcadm_config"
 
+      - name: Reconcile and verify the family realm (sq-keluarga)
+        shell: bash
+        run: |
+          kcadm_config=/tmp/sq-keluarga-realm-ci.kcadm
+
+          docker compose \
+            --env-file "$KEYCLOAK_ENV_FILE" \
+            -f infra/keycloak/docker-compose.ci.yml \
+            -f infra/keycloak/docker-compose.bootstrap.yml \
+            exec -T keycloak \
+            sh -ceu '
+              /opt/keycloak/bin/kcadm.sh config credentials \
+                --config "$1" \
+                --server http://127.0.0.1:8080 \
+                --realm master \
+                --user "$KC_BOOTSTRAP_ADMIN_USERNAME" \
+                --password "$KC_BOOTSTRAP_ADMIN_PASSWORD" >/dev/null
+            ' sh "$kcadm_config"
+
+          # The script refuses every realm except sq-keluarga, including sq-karir.
+          for other in sq-staff-staging sq-karir; do
+            if KEYCLOAK_REALM="$other" KEYCLOAK_EXEC_MODE=compose KEYCLOAK_KCADM_CONFIG="$kcadm_config" \
+              bash infra/keycloak/scripts/reconcile-keluarga-realm.sh; then
+              echo "reconcile-keluarga-realm.sh accepted realm $other" >&2
+              exit 1
+            fi
+          done
+
+          for pass in first second; do
+            output="$(
+              KEYCLOAK_EXEC_MODE=compose \
+              KEYCLOAK_COMPOSE_FILE=infra/keycloak/docker-compose.ci.yml \
+              KEYCLOAK_KCADM_CONFIG="$kcadm_config" \
+              KELUARGA_SMTP_HOST=smtp.invalid \
+              KELUARGA_SMTP_FROM=keluarga-ci@example.test \
+                bash infra/keycloak/scripts/reconcile-keluarga-realm.sh
+            )"
+            printf '%s\n' "$output"
+            grep -q '^KELUARGA_REALM_RECONCILE_IDEMPOTENT_PASS realm=sq-keluarga$' <<<"$output"
+            if [[ "$pass" == "second" ]] && grep -q 'CREATED' <<<"$output"; then
+              echo "second reconcile run created objects; it is not idempotent" >&2
+              exit 1
+            fi
+          done
+
+          # The image ships the sq-keluarga theme: the sign-in page asks for nomor KK + kata sandi,
+          # titled by client (keluarga-web: Keluarga, spmb-keluarga: SPMB).
+          for client in keluarga-web:keluarga:Keluarga spmb-keluarga:spmb:SPMB; do
+            IFS=: read -r client_id host title <<<"$client"
+            page="$(curl --fail --silent --show-error \
+              "$KEYCLOAK_HOSTNAME/realms/sq-keluarga/protocol/openid-connect/auth?client_id=${client_id}&response_type=code&scope=openid&redirect_uri=https%3A%2F%2F${host}.sabilulquran.or.id%2Fapi%2Fauth%2Fcallback&code_challenge=E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM&code_challenge_method=S256&state=ci")"
+            grep -q 'name="kk"' <<<"$page"
+            grep -q 'sq-keluarga login.ftl' <<<"$page"
+            grep -q "Masuk ke ${title}" <<<"$page"
+            if grep -qi '>password<' <<<"$page"; then
+              echo "The family sign-in page shows the word password" >&2
+              exit 1
+            fi
+          done
+
+          # sq-karir is unchanged by the shared provider.
+          page="$(curl --fail --silent --show-error \
+            "$KEYCLOAK_HOSTNAME/realms/sq-karir/protocol/openid-connect/auth?client_id=karir-portal&response_type=code&scope=openid&redirect_uri=https%3A%2F%2Fkarir.sabilulquran.or.id%2Fapi%2Fauth%2Fcallback&code_challenge=E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM&code_challenge_method=S256&state=ci")"
+          grep -q 'name="nik"' <<<"$page"
+          grep -q 'Masuk ke Karir' <<<"$page"
+
+          unset output page
+          docker compose --env-file "$KEYCLOAK_ENV_FILE" -f infra/keycloak/docker-compose.ci.yml \
+            exec -T keycloak rm -f "$kcadm_config"
+
       - name: Reject committed Keycloak secrets
         shell: bash
         run: |
@@ -943,7 +1013,8 @@ jobs:
           docker network rm "$EDGE_NETWORK" >/dev/null 2>&1 || true
 
   karir-identity-provider:
-    # REC-IMPL-001 §12: provider unit tests plus Testcontainers integration tests on Keycloak 26.7.2.
+    # REC-IMPL-001 §12 and KEL-IMPL-001 §12: provider unit tests plus Testcontainers integration tests on
+    # Keycloak 26.7.2 for both realms (KarirIdentityIT, KeluargaIdentityIT).
     runs-on: ubuntu-latest
     timeout-minutes: 30
 
@@ -956,10 +1027,12 @@ jobs:
           java-version: "21"
           cache: maven
 
-      - name: Shell syntax of the Karir reconcile script
+      - name: Shell syntax of the realm reconcile scripts
         run: |
           bash -n infra/keycloak/scripts/reconcile-karir-realm.sh
           jq empty infra/keycloak/realm/sq-karir-desired-state.json
+          bash -n infra/keycloak/scripts/reconcile-keluarga-realm.sh
+          jq empty infra/keycloak/realm/sq-keluarga-desired-state.json
 
       - name: Unit and integration tests
         working-directory: infra/keycloak/providers/karir-identity

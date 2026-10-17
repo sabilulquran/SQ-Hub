@@ -22,7 +22,9 @@ public final class KarirEventListenerFactory implements EventListenerProviderFac
     @Override
     public void postInit(KeycloakSessionFactory factory) {
         // Read the environment once at start-up so a missing secret shows in the startup log.
-        KarirRuntime.get();
+        for (IdentityProfile profile : IdentityProfile.values()) {
+            KarirRuntime.forProfile(profile);
+        }
     }
 
     @Override

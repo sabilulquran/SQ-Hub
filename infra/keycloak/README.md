@@ -40,12 +40,13 @@ The YSQ VPS topology uses the shared Caddy Docker network. A host-Nginx example 
 - `scripts/restore-check.sh` — restores a backup to a disposable verification database and checks that the staging realm exists.
 - `../../docs/operations/staff-identity-provisioning.md` — minimum profile-complete provisioning contract for manual staging and future automation.
 - `providers/karir-identity/`, `themes/sq-karir/`, `realm/sq-karir-desired-state.json`, `scripts/reconcile-karir-realm.sh` — Karir SQ candidate realm; see below.
+- `themes/sq-keluarga/`, `realm/sq-keluarga-desired-state.json`, `scripts/reconcile-keluarga-realm.sh` — family realm for SPMB SQ and Keluarga SQ (ADR-0010); same provider; see below.
 
 ## Karir SQ candidate realm (`sq-karir`)
 
 Implementation target: `sabilulquran/karir-sq` REC-IMPL-001 §4, SQ Hub ADR-0008. Nothing here is applied to production without explicit owner approval for each step (realm, provider, client, migration).
 
-- **Provider** `providers/karir-identity/` builds `sq-karir-identity-1.0.0.jar` (Keycloak 26.7.2, Java 21): `karir-nik-password-form` (NIK + kata sandi), `karir-nik-registration` (registration form action), `karir-verify-whatsapp` (required action), `karir-reset-by-code` (reset by WhatsApp or email code, followed by the built-in `reset-password`), and `karir-event-listener`. Keycloak stores only `nik_hmac`; the NIK is never stored, logged, put in an event, a token or a URL. The username is a random `k_…` ID.
+- **Provider** `providers/karir-identity/` builds `sq-external-identity-1.0.0.jar` (Keycloak 26.7.2, Java 21), shared with `sq-keluarga` (below): `karir-nik-password-form` (NIK + kata sandi), `karir-nik-registration` (registration form action), `karir-verify-whatsapp` (required action), `karir-reset-by-code` (reset by WhatsApp or email code, followed by the built-in `reset-password`), and `karir-event-listener`. Keycloak stores only `nik_hmac`; the NIK is never stored, logged, put in an event, a token or a URL. The username is a random `k_…` ID.
 - **Theme** `themes/sq-karir/login` (parent `sq-hub`): the Akun SQ look with the app name "Karir", light and dark.
 - **Realm** `scripts/reconcile-karir-realm.sh` converges `realm/sq-karir-desired-state.json` with authenticated `kcadm` (`KEYCLOAK_EXEC_MODE=compose|host|container`) and refuses every realm except `sq-karir`. Run it twice; the second run must create nothing.
 - **Staff clients** (`karir-sq` in `sq-staff`) are created with the Karir SQ Mi8 release, not here.
@@ -63,6 +64,23 @@ Provider environment (Keycloak process; missing values fail closed):
 Rate limits are kept in the Keycloak process memory (one node), so a restart resets them. They rely on Keycloak seeing the real client IP (`KC_PROXY_HEADERS=xforwarded` behind an edge that overwrites `X-Forwarded-For` from `CF-Connecting-IP`).
 
 Known Keycloak 26.7.2 limitation: the fine-grained permission `manage` that `karir-identity-admin` needs also allows `reset-password`, and no deny can be layered on top. Karir SQ never calls it; admin events (without representations) record every such call.
+
+## Family realm (`sq-keluarga`)
+
+Implementation target: `sabilulquran/keluarga-sq` KEL-IMPL-001 §4, `sabilulquran/spmb-sq` SPMB-IMPL-001 §4, SQ Hub ADR-0010. Production steps need explicit owner approval, as for `sq-karir`.
+
+- **Same provider.** It picks an identity profile from the realm name: `sq-karir` keeps NIK and everything above; `sq-keluarga` uses the nomor KK (`kk_hmac` with prefix `kk:v1:`), several WhatsApp numbers (`wa_numbers`; `wa_verified` lists the verified ones), `keluarga_source` (`self`, `ppdb`, `staff_broker`) and `f_…` usernames. Any other realm fails closed. Reset offers one channel per number (`whatsapp`, `whatsapp-2`, …); events in `sq-keluarga` carry `wa_hash` = HMAC(`"wa:v1:+628…"`) so Keluarga SQ can tell which parent's number was used.
+- **Theme** `themes/sq-keluarga/login` (parent `sq-karir`): field `kk`, title "SPMB" for client `spmb-keluarga` and "Keluarga" otherwise, and "Masuk dengan Akun SQ" when the staff identity provider is configured.
+- **Realm** `scripts/reconcile-keluarga-realm.sh` converges `realm/sq-keluarga-desired-state.json`: clients `keluarga-web`, `spmb-keluarga`, `keluarga-identity-admin`, and, when `KELUARGA_STAFF_BROKER_ISSUER` and `KELUARGA_STAFF_BROKER_CLIENT_SECRET` are set, the `sq-staff` identity provider with first-broker flow `keluarga-staff-first-broker` (username `s_<staff sub>`). It refuses every realm except `sq-keluarga`. The broker client `sq-keluarga-broker` in `sq-staff` is created separately.
+
+| Variable | Value |
+| --- | --- |
+| `SQ_KELUARGA_KK_PEPPER` | Same value as Keluarga SQ's KK pepper, at least 32 characters |
+| `SQ_KELUARGA_OTP_RELAY_SECRET` | Same value as Keluarga SQ's relay secret, at least 32 characters |
+| `SQ_KELUARGA_OTP_RELAY_URL` | Default `http://127.0.0.1:3306/internal/otp-deliveries` (Keluarga SQ; it sends through Kirim SQ) |
+| `SQ_KELUARGA_TURNSTILE_SITE_KEY`, `SQ_KELUARGA_TURNSTILE_SECRET`, `SQ_KELUARGA_TURNSTILE_VERIFY_URL` | As for `sq-karir` |
+
+Rate limits are counted separately per realm. The JAR is now named `sq-external-identity.jar`; a Mi8 release must remove the old `sq-karir-identity.jar` from the providers directory so Keycloak does not load two copies.
 
 ## Runtime image and shared-VPS sizing
 

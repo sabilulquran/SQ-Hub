@@ -22,6 +22,7 @@ final class KarirEventListener implements EventListenerProvider {
     static final Set<String> LOGGED_DETAILS = Set.of(
             KarirEvents.DETAIL_CHANNEL,
             KarirEvents.DETAIL_PURPOSE,
+            IdentityProfile.DETAIL_WA_HASH,
             Details.CUSTOM_REQUIRED_ACTION,
             Details.REGISTER_METHOD,
             Details.AUTH_METHOD,

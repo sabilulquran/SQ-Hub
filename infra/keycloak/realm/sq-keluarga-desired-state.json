@@ -1,0 +1,254 @@
+{
+  "_comment": "Non-secret desired state of the family realm sq-keluarga (ADR-0010, KEL-IMPL-001 §4). Applied by scripts/reconcile-keluarga-realm.sh. Client secrets, SMTP credentials, the staff broker secret and provider secrets are never stored here.",
+  "realm": {
+    "realm": "sq-keluarga",
+    "displayName": "Akun SQ Keluarga",
+    "enabled": true,
+    "registrationAllowed": true,
+    "registrationEmailAsUsername": false,
+    "loginWithEmailAllowed": false,
+    "duplicateEmailsAllowed": true,
+    "editUsernameAllowed": false,
+    "resetPasswordAllowed": true,
+    "rememberMe": false,
+    "verifyEmail": false,
+    "loginTheme": "sq-keluarga",
+    "accountTheme": "sq-hub",
+    "internationalizationEnabled": true,
+    "supportedLocales": ["id"],
+    "defaultLocale": "id",
+    "passwordPolicy": "length(8) and maxLength(128) and notUsername",
+    "bruteForceProtected": true,
+    "bruteForceStrategy": "MULTIPLE",
+    "permanentLockout": false,
+    "failureFactor": 5,
+    "waitIncrementSeconds": 900,
+    "maxFailureWaitSeconds": 3600,
+    "maxDeltaTimeSeconds": 43200,
+    "quickLoginCheckMilliSeconds": 1000,
+    "minimumQuickLoginWaitSeconds": 60,
+    "eventsEnabled": true,
+    "eventsExpiration": 7776000,
+    "eventsListeners": ["karir-event-listener"],
+    "enabledEventTypes": [
+      "LOGIN", "LOGIN_ERROR",
+      "REGISTER", "REGISTER_ERROR",
+      "LOGOUT", "LOGOUT_ERROR",
+      "CODE_TO_TOKEN", "CODE_TO_TOKEN_ERROR",
+      "SEND_RESET_PASSWORD", "SEND_RESET_PASSWORD_ERROR",
+      "RESET_PASSWORD", "RESET_PASSWORD_ERROR",
+      "UPDATE_PASSWORD", "UPDATE_PASSWORD_ERROR",
+      "UPDATE_CREDENTIAL", "UPDATE_CREDENTIAL_ERROR",
+      "UPDATE_EMAIL", "UPDATE_EMAIL_ERROR",
+      "UPDATE_PROFILE", "UPDATE_PROFILE_ERROR",
+      "CUSTOM_REQUIRED_ACTION", "CUSTOM_REQUIRED_ACTION_ERROR",
+      "IDENTITY_PROVIDER_LOGIN", "IDENTITY_PROVIDER_LOGIN_ERROR",
+      "IDENTITY_PROVIDER_FIRST_LOGIN", "IDENTITY_PROVIDER_FIRST_LOGIN_ERROR",
+      "USER_DISABLED_BY_TEMPORARY_LOCKOUT",
+      "USER_DISABLED_BY_PERMANENT_LOCKOUT"
+    ],
+    "adminEventsEnabled": true,
+    "adminEventsDetailsEnabled": false,
+    "adminPermissionsEnabled": true,
+    "organizationsEnabled": false,
+    "attributes": {
+      "adminEventsExpiration": "7776000"
+    },
+    "browserSecurityHeaders": {
+      "contentSecurityPolicy": "frame-src 'self' https://challenges.cloudflare.com; frame-ancestors 'self'; object-src 'none';"
+    }
+  },
+  "userProfile": {
+    "attributes": [
+      {
+        "name": "username",
+        "displayName": "${username}",
+        "validations": {
+          "length": { "min": 3, "max": 255 },
+          "username-prohibited-characters": {},
+          "up-username-not-idn-homograph": {}
+        },
+        "permissions": { "view": ["admin", "user"], "edit": ["admin"] },
+        "multivalued": false
+      },
+      {
+        "name": "email",
+        "displayName": "${email}",
+        "validations": { "email": {}, "length": { "max": 255 } },
+        "permissions": { "view": ["admin", "user"], "edit": ["admin", "user"] },
+        "multivalued": false
+      },
+      {
+        "name": "firstName",
+        "displayName": "Nama pemegang akun",
+        "validations": { "length": { "max": 255 }, "person-name-prohibited-characters": {} },
+        "permissions": { "view": ["admin", "user"], "edit": ["admin", "user"] },
+        "multivalued": false
+      },
+      {
+        "name": "kk_hmac",
+        "displayName": "KK HMAC",
+        "validations": { "pattern": { "pattern": "^[0-9a-f]{64}$", "error-message": "invalid kk_hmac" } },
+        "permissions": { "view": ["admin"], "edit": ["admin"] },
+        "multivalued": false
+      },
+      {
+        "name": "wa_numbers",
+        "displayName": "Nomor WhatsApp",
+        "validations": { "pattern": { "pattern": "^628[0-9]{7,11}$", "error-message": "invalid wa_numbers" } },
+        "permissions": { "view": ["admin"], "edit": ["admin"] },
+        "multivalued": true
+      },
+      {
+        "name": "wa_verified",
+        "displayName": "Nomor WhatsApp terverifikasi",
+        "validations": { "pattern": { "pattern": "^628[0-9]{7,11}$", "error-message": "invalid wa_verified" } },
+        "permissions": { "view": ["admin"], "edit": ["admin"] },
+        "multivalued": true
+      },
+      {
+        "name": "keluarga_source",
+        "displayName": "Sumber akun",
+        "validations": { "options": { "options": ["self", "ppdb", "staff_broker"] } },
+        "permissions": { "view": ["admin"], "edit": ["admin"] },
+        "multivalued": false
+      }
+    ],
+    "groups": []
+  },
+  "requiredActions": {
+    "enabled": ["UPDATE_PASSWORD", "karir-verify-whatsapp"],
+    "disabled": ["CONFIGURE_TOTP", "TERMS_AND_CONDITIONS", "VERIFY_EMAIL", "UPDATE_PROFILE", "VERIFY_PROFILE", "delete_account", "webauthn-register", "webauthn-register-passwordless", "CONFIGURE_RECOVERY_AUTHN_CODES", "UPDATE_EMAIL", "delete_credential", "idp_link"]
+  },
+  "flows": {
+    "browser": {
+      "alias": "keluarga-browser",
+      "executions": [
+        { "provider": "auth-cookie", "requirement": "ALTERNATIVE" },
+        { "subflow": "keluarga-browser-forms", "type": "basic-flow", "requirement": "ALTERNATIVE",
+          "executions": [ { "provider": "karir-nik-password-form", "requirement": "REQUIRED" } ] }
+      ]
+    },
+    "registration": {
+      "alias": "keluarga-registration",
+      "executions": [
+        { "subflow": "keluarga-registration-form", "type": "form-flow", "formProvider": "registration-page-form", "requirement": "REQUIRED",
+          "executions": [ { "provider": "karir-nik-registration", "requirement": "REQUIRED" } ] }
+      ]
+    },
+    "resetCredentials": {
+      "alias": "keluarga-reset-credentials",
+      "executions": [
+        { "provider": "karir-reset-by-code", "requirement": "REQUIRED" },
+        { "provider": "reset-password", "requirement": "REQUIRED" }
+      ]
+    },
+    "staffFirstBroker": {
+      "alias": "keluarga-staff-first-broker",
+      "_comment": "First sign-in with a staff Akun SQ: create a family-realm user without KK; Keluarga SQ links it to a family (KEL-IMPL-001 §6.4). No review-profile or account-linking step.",
+      "executions": [
+        { "provider": "idp-create-user-if-unique", "requirement": "REQUIRED" }
+      ]
+    }
+  },
+  "clients": {
+    "keluarga-web": {
+      "clientId": "keluarga-web",
+      "name": "Keluarga SQ",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "clientAuthenticatorType": "client-secret",
+      "publicClient": false,
+      "bearerOnly": false,
+      "standardFlowEnabled": true,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": false,
+      "frontchannelLogout": true,
+      "fullScopeAllowed": false,
+      "consentRequired": false,
+      "redirectUris": ["https://keluarga.sabilulquran.or.id/api/auth/callback"],
+      "webOrigins": [],
+      "attributes": {
+        "pkce.code.challenge.method": "S256",
+        "post.logout.redirect.uris": "https://keluarga.sabilulquran.or.id/"
+      },
+      "defaultClientScopes": ["basic", "acr"],
+      "optionalClientScopes": []
+    },
+    "spmb-keluarga": {
+      "clientId": "spmb-keluarga",
+      "name": "SPMB SQ",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "clientAuthenticatorType": "client-secret",
+      "publicClient": false,
+      "bearerOnly": false,
+      "standardFlowEnabled": true,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": false,
+      "frontchannelLogout": true,
+      "fullScopeAllowed": false,
+      "consentRequired": false,
+      "redirectUris": ["https://spmb.sabilulquran.or.id/api/auth/callback"],
+      "webOrigins": [],
+      "attributes": {
+        "pkce.code.challenge.method": "S256",
+        "post.logout.redirect.uris": "https://spmb.sabilulquran.or.id/"
+      },
+      "defaultClientScopes": ["basic", "acr"],
+      "optionalClientScopes": []
+    },
+    "keluarga-identity-admin": {
+      "clientId": "keluarga-identity-admin",
+      "name": "Keluarga SQ identity admin",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "clientAuthenticatorType": "client-secret",
+      "publicClient": false,
+      "bearerOnly": false,
+      "standardFlowEnabled": false,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": true,
+      "frontchannelLogout": false,
+      "fullScopeAllowed": false,
+      "consentRequired": false,
+      "redirectUris": [],
+      "webOrigins": [],
+      "attributes": {},
+      "defaultClientScopes": ["basic"],
+      "optionalClientScopes": []
+    }
+  },
+  "adminPermissions": {
+    "policy": "keluarga-identity-admin-service-account",
+    "permission": "keluarga-identity-admin-users",
+    "resourceType": "Users",
+    "scopes": ["view", "manage"],
+    "_limitation": "Same Keycloak 26.7.2 FGAP v2 limitation as sq-karir: manage also allows reset-password; admin events (without representations) audit every such call."
+  },
+  "staffIdentityProvider": {
+    "_comment": "Optional: configured only when KELUARGA_STAFF_BROKER_ISSUER and the broker client secret are set. The broker client sq-keluarga-broker in realm sq-staff is created separately with owner approval.",
+    "alias": "sq-staff",
+    "providerId": "oidc",
+    "displayName": "Akun SQ",
+    "enabled": true,
+    "trustEmail": false,
+    "storeToken": false,
+    "addReadTokenRoleOnCreate": false,
+    "linkOnly": false,
+    "hideOnLogin": false,
+    "firstBrokerLoginFlowAlias": "keluarga-staff-first-broker",
+    "clientId": "sq-keluarga-broker",
+    "syncMode": "IMPORT",
+    "defaultScope": "openid",
+    "mappers": [
+      { "name": "keluarga-source-staff-broker", "identityProviderMapper": "hardcoded-attribute-idp-mapper",
+        "config": { "syncMode": "INHERIT", "attribute": "keluarga_source", "attribute.value": "staff_broker" } },
+      { "name": "opaque-username", "identityProviderMapper": "oidc-username-idp-mapper",
+        "config": { "syncMode": "INHERIT", "template": "s_${CLAIM.sub}" } }
+    ]
+  }
+}

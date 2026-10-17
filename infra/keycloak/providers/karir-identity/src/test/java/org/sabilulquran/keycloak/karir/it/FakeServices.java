@@ -30,12 +30,19 @@ final class FakeServices implements AutoCloseable {
 
     private final HttpServer server;
     private final String relaySecret;
+    private final String headerPrefix;
     private final List<Delivery> deliveries = new ArrayList<>();
     private final AtomicInteger relayStatus = new AtomicInteger(202);
     private final AtomicInteger turnstileChecks = new AtomicInteger();
 
     FakeServices(int port, String relaySecret) throws IOException {
+        this(port, relaySecret, "X-Karir");
+    }
+
+    /** {@code headerPrefix} is {@code X-Karir} for the Karir SQ relay and {@code X-Keluarga} for Keluarga SQ. */
+    FakeServices(int port, String relaySecret, String headerPrefix) throws IOException {
         this.relaySecret = relaySecret;
+        this.headerPrefix = headerPrefix;
         server = HttpServer.create(new InetSocketAddress("0.0.0.0", port), 0);
         server.createContext("/relay", this::relay);
         server.createContext("/turnstile", this::turnstile);
@@ -69,8 +76,8 @@ final class FakeServices implements AutoCloseable {
 
     private void relay(HttpExchange exchange) throws IOException {
         String body = new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
-        String timestamp = exchange.getRequestHeaders().getFirst("X-Karir-Timestamp");
-        String signature = exchange.getRequestHeaders().getFirst("X-Karir-Signature");
+        String timestamp = exchange.getRequestHeaders().getFirst(headerPrefix + "-Timestamp");
+        String signature = exchange.getRequestHeaders().getFirst(headerPrefix + "-Signature");
         boolean valid = timestamp != null && signature != null && timestamp.matches("\\d{10}")
                 && Math.abs(System.currentTimeMillis() / 1000 - Long.parseLong(timestamp)) <= 60
                 && MessageDigest.isEqual(sign(timestamp + "." + body).getBytes(StandardCharsets.US_ASCII),

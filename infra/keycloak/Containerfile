@@ -34,8 +34,10 @@ ENV KC_METRICS_ENABLED=true
 WORKDIR /opt/keycloak
 COPY infra/keycloak/themes/sq-hub /opt/keycloak/themes/sq-hub
 COPY infra/keycloak/themes/sq-karir /opt/keycloak/themes/sq-karir
+COPY infra/keycloak/themes/sq-keluarga /opt/keycloak/themes/sq-keluarga
 COPY --from=trusted-device-builder /workspace/target/sq-trusted-device-1.0.0.jar /opt/keycloak/providers/sq-trusted-device.jar
-COPY --from=karir-identity-builder /workspace/target/sq-karir-identity-1.0.0.jar /opt/keycloak/providers/sq-karir-identity.jar
+# One external identity provider for sq-karir (NIK) and sq-keluarga (nomor KK), ADR-0010.
+COPY --from=karir-identity-builder /workspace/target/sq-external-identity-1.0.0.jar /opt/keycloak/providers/sq-external-identity.jar
 RUN /opt/keycloak/bin/kc.sh build
 
 FROM quay.io/keycloak/keycloak:26.7.2
