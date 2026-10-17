@@ -62,6 +62,21 @@ ADMIN_SECRET="$(read_secret KARIR_IDENTITY_ADMIN_CLIENT_SECRET)"
 SMTP_PASSWORD="$(read_secret KARIR_SMTP_PASSWORD)"
 unset KARIR_PORTAL_CLIENT_SECRET KARIR_IDENTITY_ADMIN_CLIENT_SECRET KARIR_SMTP_PASSWORD
 
+# `docker exec -i` and `docker compose exec` read stdin. Only a call that sends a payload (-f -)
+# may read it; every other call reads /dev/null, so it cannot swallow the input of a
+# surrounding `while read` loop.
+exec {DEV_NULL_FD}</dev/null
+stdin_for_kcadm() {
+  KCADM_STDIN="${DEV_NULL_FD}"
+  local previous=""
+  for arg in "$@"; do
+    if [[ "${previous}" == "-f" && "${arg}" == "-" ]]; then
+      KCADM_STDIN=0
+    fi
+    previous="${arg}"
+  done
+}
+
 case "${EXEC_MODE}" in
   compose)
     ENV_FILE="${KEYCLOAK_ENV_FILE:-}"
@@ -70,20 +85,20 @@ case "${EXEC_MODE}" in
     [[ -f "${COMPOSE_FILE}" ]] || fail "compose file not found"
     command -v docker >/dev/null 2>&1 || fail "docker is required"
     kc_exec() { docker compose --env-file "${ENV_FILE}" -f "${COMPOSE_FILE}" exec -T keycloak "$@"; }
-    kcadm() { kc_exec /opt/keycloak/bin/kcadm.sh "$@" --config "${KCADM_CONFIG}"; }
+    kcadm() { stdin_for_kcadm "$@"; kc_exec /opt/keycloak/bin/kcadm.sh "$@" --config "${KCADM_CONFIG}" <&"${KCADM_STDIN}"; }
     kc_exec test -f "${KCADM_CONFIG}" >/dev/null 2>&1 || fail "pre-authenticated kcadm config is missing in the container"
     ;;
   container)
     CONTAINER="${KEYCLOAK_CONTAINER:-}"
     [[ -n "${CONTAINER}" ]] || fail "KEYCLOAK_CONTAINER is required in container mode"
     command -v docker >/dev/null 2>&1 || fail "docker is required"
-    kcadm() { docker exec -i "${CONTAINER}" /opt/keycloak/bin/kcadm.sh "$@" --config "${KCADM_CONFIG}"; }
+    kcadm() { stdin_for_kcadm "$@"; docker exec -i "${CONTAINER}" /opt/keycloak/bin/kcadm.sh "$@" --config "${KCADM_CONFIG}" <&"${KCADM_STDIN}"; }
     docker exec "${CONTAINER}" test -f "${KCADM_CONFIG}" >/dev/null 2>&1 || fail "pre-authenticated kcadm config is missing in the container"
     ;;
   host)
     KCADM_BIN="${KEYCLOAK_KCADM_BIN:-}"
     [[ -n "${KCADM_BIN}" && -x "${KCADM_BIN}" ]] || fail "KEYCLOAK_KCADM_BIN must be an executable kcadm.sh in host mode"
-    kcadm() { "${KCADM_BIN}" "$@" --config "${KCADM_CONFIG}"; }
+    kcadm() { stdin_for_kcadm "$@"; "${KCADM_BIN}" "$@" --config "${KCADM_CONFIG}" <&"${KCADM_STDIN}"; }
     [[ -f "${KCADM_CONFIG}" ]] || fail "pre-authenticated kcadm config is missing on this host"
     ;;
   *)
