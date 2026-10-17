@@ -19,6 +19,7 @@ remain authoritative if this register conflicts with them.
 | Organization Directory — HCIS organization projection | **CLOSED for v1; production accepted** | Operate the accepted sync/read path. SLA deployment and history retention remain operational TBDs; they do not reopen v1 acceptance. |
 | Application Platform — onboard more SQ applications | **Foundation exists; expansion is demand-led** | Scope one real consumer at a time. Do not build generic integrations without an identified application and owner. |
 | Governance view — Ringkasan Yayasan | **Specification ACCEPTED** 2026-10-17 | Domain specs first (HCIS board-view role and summary endpoint, Aset SQ governance role), then Hub implementation. Production activation needs owner approval. |
+| SQ Core WhatsApp gateway — official numbers per domain | **DISCOVERY / future** (Product Owner, 2026-10-17) | SQ Core will get its own WhatsApp gateway module (Baileys) instead of relying on third-party gateways. Each domain has its own official number: Rekrutmen, Keuangan, SPMB, Sosial (charity). Until the module exists, apps send through JalurPesan with one device per official number; StarSender is not used. Apps call a `WhatsAppSender` port so the switch needs no domain logic change. |
 | SQ Account / SQ Portal — external identities and journeys | **DISCOVERY** — first journey named: Recruitment (2026-10-16) | Resolve the remaining discovery questions below and accept ADR-0008 before any external identity implementation. No external identity implementation is approved by this roadmap. |
 
 ## Identity Lifecycle decisions
@@ -141,10 +142,14 @@ implementation or any production change.
 | SIRE migration | Applicants and their data move from the SIRE spreadsheet. Existing applicants sign in without creating a new account. |
 | Candidate sign-in | Candidates sign in with NIK and kata sandi. A former applicant who tries to register is told the NIK is already registered, signs in, and creates a kata sandi through password reset with a WhatsApp or email code. NIK stays out of tokens, URLs and logs. |
 
-Still open for the Recruitment discovery: domain owner,
-anti-abuse, recovery, MFA for
-candidates, duplicate-person handling, data retention for rejected candidates,
-and who approves the candidate-to-staff transition.
+Decisions of 2026-10-17: the domain owner is the Head of HCM; candidate data is
+retained without automatic deletion; the career portal is
+`karir.sabilulquran.or.id`; candidate sign-in uses the same Akun SQ theme as
+staff. Product details (screening questions, multiple applications, scoring)
+live in the Karir SQ module design (sabilulquran/karir-sq).
+
+Still open for the Recruitment discovery: anti-abuse, recovery, MFA for
+candidates, and who approves the candidate-to-staff transition.
 
 ## Decision sources
 
