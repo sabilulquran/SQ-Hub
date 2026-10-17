@@ -279,3 +279,4 @@ Pertanyaan revisi 1 sudah dijawab PO pada 2026-10-17 (§1 butir 8–11). Yang te
 | 2026-10-17 | Alamat `kirim.sabilulquran.or.id`; tampil di Launcher hanya bagi yang punya akses lewat Application Access. |
 | 2026-10-17 (revisi 2) | Fitur dasar (inbox, balas, simpan percakapan) dibangun sekali di Kirim SQ dan dibuka dari menu WhatsApp di tiap modul; fitur khusus tetap di modul. Setiap nomor milik satu modul. |
 | 2026-10-17 (revisi 2) | Percakapan disimpan selamanya; `kirim_admin` = Kepala HCM (boleh didelegasikan ke admin SQ Core); nomor baru khusus per bidang; jam kirim otomatis 06.00–21.00 WIB. Trial: nomor `hcis` dan `spmb`. |
+| 2026-10-17 | ADR-0011 diterima PO. |

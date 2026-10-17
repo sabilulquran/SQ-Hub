@@ -1,6 +1,6 @@
 # ADR-0011: Kirim SQ as an SQ Hub Shared WhatsApp Capability
 
-**Status:** PROPOSED (awaiting Product Owner acceptance)
+**Status:** ACCEPTED (Product Owner, 2026-10-17)
 **Date:** 2026-10-17
 **Related:** ADR-0001, ADR-0006, ADR-0010; `docs/product/kirim-sq-module-design.md` (KIRIM-001, revision 2); SPMB SQ `sq-spmb/docs/product/module-design.md` (SPMB-001 §6.8, §8); JalurPesan `jalurpesan.web.id/README.md`
 
