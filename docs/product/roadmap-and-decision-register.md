@@ -19,7 +19,7 @@ remain authoritative if this register conflicts with them.
 | Organization Directory — HCIS organization projection | **CLOSED for v1; production accepted** | Operate the accepted sync/read path. SLA deployment and history retention remain operational TBDs; they do not reopen v1 acceptance. |
 | Application Platform — onboard more SQ applications | **Foundation exists; expansion is demand-led** | Scope one real consumer at a time. Do not build generic integrations without an identified application and owner. |
 | Governance view — Ringkasan Yayasan | **Specification ACCEPTED** 2026-10-17 | Domain specs first (HCIS board-view role and summary endpoint, Aset SQ governance role), then Hub implementation. Production activation needs owner approval. |
-| SQ Core WhatsApp gateway — official numbers per domain | **DISCOVERY / future** (Product Owner, 2026-10-17) | SQ Core will get its own WhatsApp gateway module (Baileys) instead of relying on third-party gateways. Each domain has its own official number: Rekrutmen, Keuangan, SPMB, Sosial (charity). Until the module exists, apps send through JalurPesan with one device per official number; StarSender is not used. Apps call a `WhatsAppSender` port so the switch needs no domain logic change. |
+| Kirim SQ — shared WhatsApp sending path | **DISCOVERY** — KIRIM-001 design merged; ADR-0011 **PROPOSED** (Product Owner acceptance pending), 2026-10-17 | Kirim SQ is an SQ Hub shared capability: the `kirim` module in `apps/api`, no new process on Mi8, no Baileys in SQ Core. The engine is replaceable per device (`log` default, `jalurpesan` for the trial with 2 numbers `resmi` and `spmb`, later its own JalurPesan instance or Meta Cloud API). Consumer apps never call JalurPesan directly; they use their own `WhatsAppSender` port with `log` + `kirim` adapters. Admin at `kirim.sabilulquran.or.id` through Application Access. Next: PO acceptance of ADR-0011, KIRIM-001 §13 answers, then an implementation spec. This replaces the earlier plan for a Baileys gateway module inside SQ Core. |
 | SQ Account / SQ Portal — external identities and journeys | **DISCOVERY** — Recruitment (ADR-0008 ACCEPTED); families for SPMB and Keluarga SQ (ADR-0010 ACCEPTED, 2026-10-17) | Implementation specs next (shared external-identity provider with REC-IMPL-001, SPMB-IMPL-001, KEL-IMPL-001); each production step needs owner approval. No external identity implementation is approved by this roadmap. |
 
 ## Identity Lifecycle decisions
@@ -162,5 +162,8 @@ candidates, and who approves the candidate-to-staff transition.
   boundary.
 - `docs/architecture/adr/0007-hcis-authored-organization-directory.md` — HCIS
   ownership of workforce organization.
+- `docs/architecture/adr/0011-kirim-sq-shared-whatsapp-capability.md` — Kirim SQ
+  as a shared WhatsApp capability with a replaceable engine (PROPOSED).
+- `docs/product/kirim-sq-module-design.md` — KIRIM-001 module design.
 - `docs/product/foundation-prd.md` — Directory operational TBDs and Foundation
   boundaries.
