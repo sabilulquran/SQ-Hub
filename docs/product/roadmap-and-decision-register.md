@@ -2,7 +2,7 @@
 
 **Status:** DISCOVERY / DRAFT — not an implementation specification
 
-**Updated:** 2026-10-16
+**Updated:** 2026-10-17
 
 This document reconciles the phase roadmap with accepted repository decisions and
 records the product-owner decisions given for the proposed Staff Lifecycle
@@ -18,6 +18,7 @@ remain authoritative if this register conflicts with them.
 | Identity Lifecycle — staff enter, change, and leave | **Specification ACCEPTED; delivery in progress** | Complete HCIS producer/Hub consumer review, least-privilege Keycloak production proof, and controlled synthetic production UAT before release. |
 | Organization Directory — HCIS organization projection | **CLOSED for v1; production accepted** | Operate the accepted sync/read path. SLA deployment and history retention remain operational TBDs; they do not reopen v1 acceptance. |
 | Application Platform — onboard more SQ applications | **Foundation exists; expansion is demand-led** | Scope one real consumer at a time. Do not build generic integrations without an identified application and owner. |
+| Governance view — Ringkasan Yayasan | **Specification ACCEPTED** 2026-10-17 | Domain specs first (HCIS board-view role and summary endpoint, Aset SQ governance role), then Hub implementation. Production activation needs owner approval. |
 | SQ Core WhatsApp gateway — official numbers per domain | **DISCOVERY / future** (Product Owner, 2026-10-17) | SQ Core will get its own WhatsApp gateway module (Baileys) instead of relying on third-party gateways. Each domain has its own official number: Rekrutmen, Keuangan, SPMB, Sosial (charity). Until the module exists, apps send through JalurPesan with one device per official number; StarSender is not used. Apps call a `WhatsAppSender` port so the switch needs no domain logic change. |
 | SQ Account / SQ Portal — external identities and journeys | **DISCOVERY** — first journey named: Recruitment (2026-10-16) | Resolve the remaining discovery questions below and accept ADR-0008 before any external identity implementation. No external identity implementation is approved by this roadmap. |
 
@@ -74,6 +75,36 @@ OIDC/SSO, launcher, Admin Center, and the accepted Organization Directory read
 contract. There is no global implementation task for “all apps.” For each
 future consumer, scope only the named app's owner, identity/access contract,
 logout/session behavior, Directory data needs, and production acceptance.
+
+## Governance view
+
+On 2026-10-17 the Product Owner noted that members of the Yayasan organs
+(Pembina, Pengurus, Pengawas) have no landing page of their own: the only
+governance page is HCIS `/board`, while Aset SQ, Karir SQ, Keuangan, and SPMB
+also need oversight. The Product Owner asked for a design of a Hub landing page
+for them.
+
+The design is ADR-0009 and HUB-IMPL-021, both ACCEPTED on 2026-10-17: Hub shows one
+summary card per application, each application owns its figures, governance
+role, and privacy rules, and Hub fetches summaries as the user through token
+exchange. Hub stores no domain data.
+
+Product Owner decisions of 2026-10-17:
+
+| Topic | Decision |
+| --- | --- |
+| Membership authority | SQ Admin records organ membership and terms in Admin Center. |
+| Accounts | Organ members are added manually. Salaried Pengurus may already be staff; both cases are designed in HUB-IMPL-021. |
+| Landing | Every member lands on Ringkasan Yayasan, including members who are also staff. |
+| Pengawas | Same summaries as Pembina and Pengurus. |
+| Token exchange | Approved in principle; applying it on Mi8VPS needs owner approval at rollout. |
+| Salaried Pengurus | HCIS Employees when paid through HCIS payroll; they keep their staff Akun SQ. |
+| Two-step verification | Required for every organ member. |
+| HCIS board access | HCIS adds a board-view role for `EMPLOYEE` accounts; `FOUNDATION_BOARD` stays for members who are not staff. |
+| End of term | For a member who is not staff, the same action revokes access and disables the Akun SQ. |
+| Later employment | A member who becomes an Employee keeps the same Akun SQ. |
+
+No open questions remain. The Product Owner accepted ADR-0009 and HUB-IMPL-021 on 2026-10-17.
 
 ## SQ Account / SQ Portal
 
