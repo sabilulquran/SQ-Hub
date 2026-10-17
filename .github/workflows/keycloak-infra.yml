@@ -852,6 +852,64 @@ jobs:
           docker compose --env-file "$KEYCLOAK_ENV_FILE" -f infra/keycloak/docker-compose.ci.yml \
             exec -T keycloak rm -f "$kcadm_config"
 
+      - name: Reconcile and verify the Karir candidate realm (sq-karir)
+        shell: bash
+        run: |
+          kcadm_config=/tmp/sq-karir-realm-ci.kcadm
+
+          docker compose \
+            --env-file "$KEYCLOAK_ENV_FILE" \
+            -f infra/keycloak/docker-compose.ci.yml \
+            -f infra/keycloak/docker-compose.bootstrap.yml \
+            exec -T keycloak \
+            sh -ceu '
+              /opt/keycloak/bin/kcadm.sh config credentials \
+                --config "$1" \
+                --server http://127.0.0.1:8080 \
+                --realm master \
+                --user "$KC_BOOTSTRAP_ADMIN_USERNAME" \
+                --password "$KC_BOOTSTRAP_ADMIN_PASSWORD" >/dev/null
+            ' sh "$kcadm_config"
+
+          # The script refuses every realm except sq-karir.
+          if KEYCLOAK_REALM=sq-staff-staging KEYCLOAK_EXEC_MODE=compose KEYCLOAK_KCADM_CONFIG="$kcadm_config" \
+            bash infra/keycloak/scripts/reconcile-karir-realm.sh; then
+            echo "reconcile-karir-realm.sh accepted a staff realm" >&2
+            exit 1
+          fi
+
+          for pass in first second; do
+            output="$(
+              KEYCLOAK_EXEC_MODE=compose \
+              KEYCLOAK_COMPOSE_FILE=infra/keycloak/docker-compose.ci.yml \
+              KEYCLOAK_KCADM_CONFIG="$kcadm_config" \
+              KARIR_SMTP_HOST=smtp.invalid \
+              KARIR_SMTP_FROM=karir-ci@example.test \
+                bash infra/keycloak/scripts/reconcile-karir-realm.sh
+            )"
+            printf '%s\n' "$output"
+            grep -q '^KARIR_REALM_RECONCILE_IDEMPOTENT_PASS realm=sq-karir$' <<<"$output"
+            if [[ "$pass" == "second" ]] && grep -q 'CREATED' <<<"$output"; then
+              echo "second reconcile run created objects; it is not idempotent" >&2
+              exit 1
+            fi
+          done
+
+          # The image ships the provider and the sq-karir theme: the sign-in page asks for NIK + kata sandi.
+          page="$(curl --fail --silent --show-error \
+            "$KEYCLOAK_HOSTNAME/realms/sq-karir/protocol/openid-connect/auth?client_id=karir-portal&response_type=code&scope=openid&redirect_uri=https%3A%2F%2Fkarir.sabilulquran.or.id%2Fapi%2Fauth%2Fcallback&code_challenge=E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM&code_challenge_method=S256&state=ci")"
+          grep -q 'name="nik"' <<<"$page"
+          grep -q 'sq-karir login.ftl' <<<"$page"
+          grep -q 'Masuk ke Karir' <<<"$page"
+          if grep -qi '>password<' <<<"$page"; then
+            echo "The Karir sign-in page shows the word password" >&2
+            exit 1
+          fi
+
+          unset output page
+          docker compose --env-file "$KEYCLOAK_ENV_FILE" -f infra/keycloak/docker-compose.ci.yml \
+            exec -T keycloak rm -f "$kcadm_config"
+
       - name: Reject committed Keycloak secrets
         shell: bash
         run: |
@@ -883,3 +941,26 @@ jobs:
             -f infra/keycloak/docker-compose.bootstrap.yml \
             down -v || true
           docker network rm "$EDGE_NETWORK" >/dev/null 2>&1 || true
+
+  karir-identity-provider:
+    # REC-IMPL-001 §12: provider unit tests plus Testcontainers integration tests on Keycloak 26.7.2.
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+
+      - name: Shell syntax of the Karir reconcile script
+        run: |
+          bash -n infra/keycloak/scripts/reconcile-karir-realm.sh
+          jq empty infra/keycloak/realm/sq-karir-desired-state.json
+
+      - name: Unit and integration tests
+        working-directory: infra/keycloak/providers/karir-identity
+        run: mvn --batch-mode --no-transfer-progress verify -Pintegration

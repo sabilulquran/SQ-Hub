@@ -39,6 +39,30 @@ The YSQ VPS topology uses the shared Caddy Docker network. A host-Nginx example 
 - `scripts/reconcile-identity-recovery-google.sh` — idempotent, secret-injected Forgot Password, email-login, and safe existing-account Google broker convergence for an explicitly selected Staff realm.
 - `scripts/restore-check.sh` — restores a backup to a disposable verification database and checks that the staging realm exists.
 - `../../docs/operations/staff-identity-provisioning.md` — minimum profile-complete provisioning contract for manual staging and future automation.
+- `providers/karir-identity/`, `themes/sq-karir/`, `realm/sq-karir-desired-state.json`, `scripts/reconcile-karir-realm.sh` — Karir SQ candidate realm; see below.
+
+## Karir SQ candidate realm (`sq-karir`)
+
+Implementation target: `sabilulquran/karir-sq` REC-IMPL-001 §4, SQ Hub ADR-0008. Nothing here is applied to production without explicit owner approval for each step (realm, provider, client, migration).
+
+- **Provider** `providers/karir-identity/` builds `sq-karir-identity-1.0.0.jar` (Keycloak 26.7.2, Java 21): `karir-nik-password-form` (NIK + kata sandi), `karir-nik-registration` (registration form action), `karir-verify-whatsapp` (required action), `karir-reset-by-code` (reset by WhatsApp or email code, followed by the built-in `reset-password`), and `karir-event-listener`. Keycloak stores only `nik_hmac`; the NIK is never stored, logged, put in an event, a token or a URL. The username is a random `k_…` ID.
+- **Theme** `themes/sq-karir/login` (parent `sq-hub`): the Akun SQ look with the app name "Karir", light and dark.
+- **Realm** `scripts/reconcile-karir-realm.sh` converges `realm/sq-karir-desired-state.json` with authenticated `kcadm` (`KEYCLOAK_EXEC_MODE=compose|host|container`) and refuses every realm except `sq-karir`. Run it twice; the second run must create nothing.
+- **Staff clients** (`karir-sq` in `sq-staff`) are created with the Karir SQ Mi8 release, not here.
+
+Provider environment (Keycloak process; missing values fail closed):
+
+| Variable | Value |
+| --- | --- |
+| `SQ_KARIR_NIK_PEPPER` | Same value as Karir SQ `NIK_HMAC_PEPPER`, at least 32 characters |
+| `SQ_KARIR_OTP_RELAY_SECRET` | Same value as Karir SQ `OTP_RELAY_SECRET`, at least 32 characters |
+| `SQ_KARIR_OTP_RELAY_URL` | Default `http://127.0.0.1:3304/internal/otp-deliveries` |
+| `SQ_KARIR_TURNSTILE_SITE_KEY`, `SQ_KARIR_TURNSTILE_SECRET` | Cloudflare Turnstile keys of the foundation account |
+| `SQ_KARIR_TURNSTILE_VERIFY_URL` | Default Cloudflare `siteverify`; tests only |
+
+Rate limits are kept in the Keycloak process memory (one node), so a restart resets them. They rely on Keycloak seeing the real client IP (`KC_PROXY_HEADERS=xforwarded` behind an edge that overwrites `X-Forwarded-For` from `CF-Connecting-IP`).
+
+Known Keycloak 26.7.2 limitation: the fine-grained permission `manage` that `karir-identity-admin` needs also allows `reset-password`, and no deny can be layered on top. Karir SQ never calls it; admin events (without representations) record every such call.
 
 ## Runtime image and shared-VPS sizing
 

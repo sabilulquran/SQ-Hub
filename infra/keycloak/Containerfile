@@ -16,6 +16,15 @@ RUN set -eux; \
       sleep "$((attempt * 5))"; \
     done
 
+FROM maven:3.9.11-eclipse-temurin-21-alpine AS karir-identity-builder
+
+WORKDIR /workspace
+COPY infra/keycloak/providers/karir-identity/pom.xml ./pom.xml
+RUN set -eux;     for attempt in 1 2 3; do       mvn --batch-mode --no-transfer-progress dependency:go-offline && exit 0;       if [ "$attempt" -eq 3 ]; then exit 1; fi;       sleep "$((attempt * 5))";     done
+COPY infra/keycloak/providers/karir-identity/src ./src
+# Unit tests only; the Testcontainers integration tests run in CI (keycloak-infra.yml).
+RUN set -eux;     for attempt in 1 2 3; do       mvn --batch-mode --no-transfer-progress verify && exit 0;       if [ "$attempt" -eq 3 ]; then exit 1; fi;       sleep "$((attempt * 5))";     done
+
 FROM quay.io/keycloak/keycloak:26.7.2 AS builder
 
 ENV KC_DB=postgres
@@ -24,7 +33,9 @@ ENV KC_METRICS_ENABLED=true
 
 WORKDIR /opt/keycloak
 COPY infra/keycloak/themes/sq-hub /opt/keycloak/themes/sq-hub
+COPY infra/keycloak/themes/sq-karir /opt/keycloak/themes/sq-karir
 COPY --from=trusted-device-builder /workspace/target/sq-trusted-device-1.0.0.jar /opt/keycloak/providers/sq-trusted-device.jar
+COPY --from=karir-identity-builder /workspace/target/sq-karir-identity-1.0.0.jar /opt/keycloak/providers/sq-karir-identity.jar
 RUN /opt/keycloak/bin/kc.sh build
 
 FROM quay.io/keycloak/keycloak:26.7.2
