@@ -1,6 +1,6 @@
 # KIRIM-IMPL-001 — Kirim SQ R1: nomor dan kirim
 
-**Status:** DRAFT. Spesifikasi ini belum mengizinkan implementasi atau perubahan production. Setelah ACCEPTED oleh Product Owner, spesifikasi ini mengizinkan implementasi di repository; setiap langkah production tetap memerlukan persetujuan owner (§15).
+**Status:** ACCEPTED (Product Owner, 2026-10-17). Spesifikasi ini mengizinkan implementasi di repository; setiap langkah production tetap memerlukan persetujuan owner (§15).
 **Produk:** SQ Hub — modul `kirim` (Kirim SQ)
 **Owner produk:** Kepala HCM (`kirim_admin`, KIRIM-001 §1 butir 9)
 **Tanggal:** 2026-10-17
@@ -525,3 +525,4 @@ Product Owner menyetujui semua saran di bawah pada 2026-10-17. Nomor `D-n` dipak
 | --- | --- |
 | 2026-10-17 | DRAFT pertama untuk R1 dari KIRIM-001 revisi 2 dan ADR-0011 |
 | 2026-10-17 | PO menyetujui semua saran TBD-1…TBD-13; menjadi keputusan D-1…D-13 (§16) |
+| 2026-10-17 | ACCEPTED oleh Product Owner; implementasi R1 di repository diizinkan |
