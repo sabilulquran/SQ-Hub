@@ -263,12 +263,12 @@ Modul pemakai tidak berubah sama sekali.
 
 ## 13. Pertanyaan terbuka
 
-Pertanyaan revisi 1 sudah dijawab PO pada 2026-10-17 (§1 butir 8–11). Yang tersisa:
+Semua pertanyaan sudah dijawab PO pada 2026-10-17:
 
-| # | Pertanyaan | Saran |
-| --- | --- | --- |
-| 1 | Siapa yang membangun lebih dulu: Kirim SQ R1 atau SPMB R0? | Kirim SQ R1 dulu, karena kecil; SPMB R0 jalan dengan adapter `log` sambil menunggu |
-| 2 | Siapa petugas inbox awal untuk nomor `hcis` dan `spmb`? | Ditetapkan Kepala HCM saat R2, atas usulan kepala bidang masing-masing |
+- Revisi 1: lama simpan, pengelola, nomor, jam kirim (§1 butir 8–11).
+- Urutan bangun: **Kirim SQ R1 dulu**; SPMB R0 jalan dengan adapter `log` sambil menunggu (KIRIM-IMPL-001 D-13).
+- Petugas inbox awal untuk `hcis` dan `spmb`: **ditetapkan Kepala HCM saat R2**, atas usulan kepala bidang masing-masing; tidak memblokir R1 (KIRIM-IMPL-001 D-13).
+- Keputusan teknis R1 lainnya ada di KIRIM-IMPL-001 §16.
 
 ## Riwayat keputusan
 
@@ -280,3 +280,4 @@ Pertanyaan revisi 1 sudah dijawab PO pada 2026-10-17 (§1 butir 8–11). Yang te
 | 2026-10-17 (revisi 2) | Fitur dasar (inbox, balas, simpan percakapan) dibangun sekali di Kirim SQ dan dibuka dari menu WhatsApp di tiap modul; fitur khusus tetap di modul. Setiap nomor milik satu modul. |
 | 2026-10-17 (revisi 2) | Percakapan disimpan selamanya; `kirim_admin` = Kepala HCM (boleh didelegasikan ke admin SQ Core); nomor baru khusus per bidang; jam kirim otomatis 06.00–21.00 WIB. Trial: nomor `hcis` dan `spmb`. |
 | 2026-10-17 | ADR-0011 diterima PO. |
+| 2026-10-17 | Urutan bangun dan petugas inbox awal diputuskan (§13); keputusan teknis R1 di KIRIM-IMPL-001 §16. |

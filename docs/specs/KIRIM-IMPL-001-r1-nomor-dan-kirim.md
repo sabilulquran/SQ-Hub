@@ -22,7 +22,7 @@ R1 berisi:
 1. **Nomor:** mendaftarkan nomor (`kirim_devices`), memasang lewat QR atau kode pairing, melihat status tersambung, memutus, menonaktifkan, dan memilih provider per nomor.
 2. **Provider:** antarmuka provider internal dengan adapter `log` (bawaan) dan `jalurpesan`.
 3. **Worker kirim** di dalam proses SQ Hub API: antrean, batas laju per nomor, jam kirim, retry, kedaluwarsa, dan idempotensi.
-4. **API pemakai:** `POST /internal/kirim/messages`, `POST /internal/kirim/media`, `GET /internal/kirim/messages/:id`, dan `POST /internal/kirim/optouts` (lihat TBD-5).
+4. **API pemakai:** `POST /internal/kirim/messages`, `POST /internal/kirim/media`, `GET /internal/kirim/messages/:id`, dan `POST /internal/kirim/optouts` (lihat D-5).
 5. **Penyimpanan:** semua pesan keluar dan masuk di `kirim_conversations` dan `kirim_messages`, isi dan nomor utuh **terenkripsi di kolom**, dicari lewat HMAC.
 6. **Event ke modul:** webhook bertanda tangan HMAC `message.status`, `message.received`, dan `device.status`.
 7. **Akses:** token client credentials realm `sq-staff` dengan audience `sq-hub-kirim` untuk API pemakai; aplikasi "Kirim SQ" di Application Access untuk layar admin.
@@ -42,7 +42,7 @@ Di luar R1 (KIRIM-001 §9):
 | --- | --- | --- |
 | Letak kode | `apps/api/src/modules/kirim/` dan layar di `apps/web`. Modul hanya mengimpor auth (hub-auth, machine-auth) dan Application Access | ADR-0011: bisa diekstrak kelak |
 | Proses | **Tidak ada proses baru.** Worker kirim dan penarik event berjalan sebagai timer di proses SQ Hub API (port 3302 Mi8) | ADR-0011; memori Mi8 |
-| Stack | ADR-0006: Fastify 5, `pg`, Zod, Vitest, SQL migration polos. Dependensi baru: hanya `@fastify/multipart` untuk unggah media (TBD-9). Tanpa Baileys, tanpa queue eksternal | ADR-0006, ADR-0011 |
+| Stack | ADR-0006: Fastify 5, `pg`, Zod, Vitest, SQL migration polos. Dependensi baru: hanya `@fastify/multipart` untuk unggah media (D-9). Tanpa Baileys, tanpa queue eksternal | ADR-0006, ADR-0011 |
 | Database | Tabel berawalan `kirim_` di database SQ Hub yang sama (`sq_hub_production`) | ADR-0011 |
 | Rute | `/internal/kirim/*` untuk modul pemakai (loopback saja, diblokir di edge). `/api/admin/kirim/*` untuk layar admin. `/api/kirim/*` disimpan untuk inbox R2 | ADR-0011 dan KIRIM-001 §3.1 |
 | Provider | Dipilih **per nomor** di kolom `kirim_devices.provider` (`log` atau `jalurpesan`); URL dan kunci mesin dari env. Bawaan nomor baru: `log` | KIRIM-001 §3.4 |
@@ -53,7 +53,7 @@ Di luar R1 (KIRIM-001 §9):
 | Zona waktu jam kirim | `Asia/Jakarta` (WIB, UTC+7 tetap) | KIRIM-001 §1 butir 11 |
 | Web | Bundle `apps/web` yang sama dengan Hub; bila `location.host` adalah `kirim.`, router memuat shell Kirim SQ (Nomor, Antrean) dan tidak menampilkan halaman Hub | Tanpa proses web baru |
 | Hostname admin | `kirim.sabilulquran.or.id` → edge 3180 → web 3202 / API 3302 Mi8 | KIRIM-001 §8 |
-| Login layar admin | Client OIDC sendiri `kirim-sq` (realm `sq-staff`, confidential, PKCE S256) dengan cookie sesi host-only `sq_kirim_session` di host `kirim.`; memakai ulang kode hub-auth dengan konfigurasi kedua (TBD-1) | AGENTS.md §5: tidak ada cookie wildcard lintas subdomain |
+| Login layar admin | Client OIDC sendiri `kirim-sq` (realm `sq-staff`, confidential, PKCE S256) dengan cookie sesi host-only `sq_kirim_session` di host `kirim.`; memakai ulang kode hub-auth dengan konfigurasi kedua (D-1) | AGENTS.md §5: tidak ada cookie wildcard lintas subdomain |
 
 ## 3. Arsitektur
 
@@ -150,7 +150,7 @@ Tabel R1 (mengikuti KIRIM-001 §4; perbedaan ditandai **+**):
 | Tabel | Kolom utama | Catatan |
 | --- | --- | --- |
 | `kirim_devices` | `id` uuid, `kode` unik (`^[a-z][a-z0-9-]{1,30}$`), `label`, `pemilik_consumer_id`, `provider` (`log`, `jalurpesan`), `provider_ref` (tenant JalurPesan), `nomor_tersamar`, `nomor_enc`, `status` (`belum_dipasang`, `menunggu_pairing`, `tersambung`, `terputus`, `nonaktif`), `antrean_dijeda` bool, `rate_per_menit` (bawaan 10), `jam_kirim_mulai` (06:00), `jam_kirim_selesai` (21:00), `status_berubah_at`, `updated_at` | Satu nomor, satu modul pemilik |
-| `kirim_consumers` | `id`, `client_id` unik (Keycloak), `nama` unik, `webhook_url`, `webhook_secret_ref`, `kuota_harian`, `aktif` | `webhook_secret_ref` adalah nama variabel env yang menyimpan rahasia, bukan rahasianya (TBD-4) |
+| `kirim_consumers` | `id`, `client_id` unik (Keycloak), `nama` unik, `webhook_url`, `webhook_secret_ref`, `kuota_harian`, `aktif` | `webhook_secret_ref` adalah nama variabel env yang menyimpan rahasia, bukan rahasianya (D-4) |
 | `kirim_routes` | `consumer_id`, `device_id`, `jenis` (`notifikasi`, `kode`), PK gabungan | Pemilik nomor otomatis boleh mengirim `notifikasi` lewat nomornya sendiri; baris rute untuk modul lain dan untuk `kode` |
 | `kirim_conversations` | `id`, `device_id`, `kontak_hmac`, `kontak_enc`, `kontak_jenis` (`pn`, `lid`) **+**, `nama_profil_enc` **+**, `pesan_terakhir_at`, `belum_dibaca`, `ditangani_oleh` (null di R1) | Unik (`device_id`, `kontak_hmac`). `nama_profil` ikut dienkripsi karena data pribadi |
 | `kirim_messages` | `id`, `conversation_id`, `arah` (`masuk`, `keluar`), `asal` (`otomatis`, `petugas`), `petugas` null, `jenis` (`notifikasi`, `kode`, null untuk masuk) **+**, `tipe` (`teks`, `dokumen`, `gambar`, `audio`, `video`, `stiker`, `lainnya`) **+**, `body_enc`, `body_disamarkan` bool **+**, `media_id`, `provider`, `provider_message_id`, `dry_run` **+**, `status` (`antre`, `diserahkan`, `terkirim`, `dibaca`, `gagal`, `dibatalkan`, `diterima`), `created_at`, `provider_at` | Disimpan selamanya. Unik (`provider`, `device_id`, `provider_message_id`) bila tidak null, sehingga event ganda tidak membuat pesan ganda |
@@ -160,7 +160,7 @@ Tabel R1 (mengikuti KIRIM-001 §4; perbedaan ditandai **+**):
 | `kirim_optouts` | `nomor_hmac`, `cakupan` (`semua` atau `consumer_id`), `alasan`, `sumber` (`admin`, `consumer`) **+**, `created_at` | Diperiksa sebelum kirim, kecuali `jenis = kode` |
 | `kirim_events` | `id`, `device_id`, `provider`, `provider_event_id` unik per provider, `provider_cursor`, `jenis`, `payload_ringkas` (tanpa isi pesan), `received_at` | Mencegah event ganda; cursor terakhir per nomor = `max(provider_cursor)` |
 | `kirim_webhook_deliveries` **+** | `id` (= `event_id` ke pemakai), `consumer_id`, `event_type`, `payload_enc`, `status` (`pending`, `retry`, `berhasil`, `habis`), `attempts`, `next_attempt_at`, `last_status_code`, `created_at`, `delivered_at` | Antrean webhook keluar; tidak ada di KIRIM-001 §4 tetapi diperlukan agar event tidak hilang saat pemakai mati |
-| `kirim_admins` **+** | `identity_issuer`, `identity_subject`, `granted_by`, `granted_at`, `revoked_at`, `alasan` | Siapa `kirim_admin` (TBD-2) |
+| `kirim_admins` **+** | `identity_issuer`, `identity_subject`, `granted_by`, `granted_at`, `revoked_at`, `alasan` | Siapa `kirim_admin` (D-2) |
 | `kirim_audit` | `id`, `actor_kind` (`human`, `service`, `system`), `actor_ref`, `aksi`, `objek_jenis`, `objek_ref`, `hasil`, `metadata` jsonb (tanpa isi pesan dan nomor utuh), `occurred_at` | Pairing, ganti provider, putus, nonaktif, jeda/lanjut antrean, coba ulang, batalkan, opt-out, tambah/cabut admin, pendaftaran pemakai dan rute |
 
 Tidak dibuat di R1 (menyusul migration R2): `kirim_device_members`, `kirim_actions`.
@@ -169,11 +169,11 @@ Tidak dibuat di R1 (menyusul migration R2): `kirim_device_members`, `kirim_actio
 
 - Kolom `*_enc` berisi amplop `v1.<kid>.<iv b64url>.<ciphertext b64url>.<tag b64url>`, AES-256-GCM, IV 12 byte acak, AAD `kirim:<tabel>:<kolom>:<id baris>` sehingga nilai tidak bisa dipindah ke baris lain.
 - `KIRIM_DATA_KEYS` = daftar `kid:base64(32 byte)`; kunci pertama dipakai untuk menulis, semua kunci dipakai untuk membaca. Rotasi = tambah kunci baru di depan; pesan lama tetap terbaca. Re-enkripsi massal di luar R1.
-- `*_hmac` = hex HMAC-SHA256(`KIRIM_LOOKUP_KEY`, nilai kanonik). Nilai kanonik nomor: `pn:+<E.164>`; untuk alamat LID dari WhatsApp: `lid:<jid>` (TBD-6).
+- `*_hmac` = hex HMAC-SHA256(`KIRIM_LOOKUP_KEY`, nilai kanonik). Nilai kanonik nomor: `pn:+<E.164>`; untuk alamat LID dari WhatsApp: `lid:<jid>` (D-6).
 - Normalisasi nomor masukan: hapus spasi, tanda hubung, dan kurung; `08…` → `+628…`; `628…` → `+628…`; hasil harus `+` lalu 8–15 digit. Selain itu `422 invalid_number`.
 - `nomor_tersamar` = `+62 812-••••-7890` (4 digit terakhir). Hanya bentuk ini yang muncul di log, layar Antrean, dan audit.
 - Isi `jenis: kode` disimpan terenkripsi seperti pesan lain, dengan `body_disamarkan = true` supaya inbox R2 menampilkannya sebagai "Kode verifikasi (disamarkan)".
-- **Kunci hilang = riwayat hilang.** Kunci disimpan di env produksi SQ Hub dan dicadangkan off-host **terpisah** dari dump database, dengan pemegang yang ditetapkan owner (TBD-3). Dump database saja tidak membuka isi pesan.
+- **Kunci hilang = riwayat hilang.** Kunci disimpan di env produksi SQ Hub dan dicadangkan off-host **terpisah** dari dump database, dengan pemegang yang ditetapkan owner (D-3). Dump database saja tidak membuka isi pesan.
 
 ### 4.2 Recovery plan migration
 
@@ -237,8 +237,8 @@ Kode galat stabil (`error_code` dan badan `422`): `optout`, `route_denied`, `quo
 ### 5.4 Media
 
 - `POST /internal/kirim/media` (multipart, satu berkas, field `device`): hanya `application/pdf` di R1, maks. 5 MiB, dicek dari magic bytes `%PDF-`, bukan hanya header. Jawaban `201 { "media_id", "sha256", "ukuran" }`. Kirim SQ tidak pernah mengambil URL luar.
-- Berkas disimpan di `KIRIM_MEDIA_ROOT` (usulan `/srv/sq-hub/kirim-media/<yyyy>/<mm>/<uuid>`), mode `0600`, milik user layanan SQ Hub, **dienkripsi** dengan kunci data yang sama (TBD-8).
-- Media masuk dari JalurPesan diunduh ke tempat yang sama sampai `KIRIM_INBOUND_MEDIA_MAX_BYTES` (usulan 16 MiB). Lebih besar dari itu: hanya metadata disimpan, pesan diberi tanda "media terlalu besar" (TBD-7).
+- Berkas disimpan di `KIRIM_MEDIA_ROOT` (usulan `/srv/sq-hub/kirim-media/<yyyy>/<mm>/<uuid>`), mode `0600`, milik user layanan SQ Hub, **dienkripsi** dengan kunci data yang sama (D-8).
+- Media masuk dari JalurPesan diunduh ke tempat yang sama sampai `KIRIM_INBOUND_MEDIA_MAX_BYTES` (usulan 16 MiB). Lebih besar dari itu: hanya metadata disimpan, pesan diberi tanda "media terlalu besar" (D-7).
 - Media yang diunggah tetapi tidak dipakai dalam 24 jam boleh dibersihkan (bukan percakapan). Media yang terhubung ke pesan disimpan selamanya.
 
 ## 6. API
@@ -252,7 +252,7 @@ Galat memakai bentuk `{ "error": { "code", "message" } }`.
 | `POST /messages` | Kirim pesan otomatis (§5.1). Body: `device`, `jenis` (`notifikasi`, `kode`), `to`, `text` (1–4096 karakter) **atau** `media_id` dengan `caption` opsional, `prioritas` (`normal`, `tinggi`), `kedaluwarsa` (ISO 8601 opsional), `ref` (≤ 200 karakter, tanpa data pribadi). Jawaban `202 { id, status }` |
 | `GET /messages/:id` | Status pesan milik pemakai ini: `id`, `ref`, `status`, `error_code`, `dry_run`, `updated_at`. Pesan pemakai lain → `404` |
 | `POST /media` | Unggah PDF (§5.4) |
-| `POST /optouts` | `{ "nomor", "cakupan": "consumer", "alasan" }` → opt-out berlaku untuk pemakai ini. Idempoten. Hanya admin yang bisa membuat cakupan `semua` (TBD-5) |
+| `POST /optouts` | `{ "nomor", "cakupan": "consumer", "alasan" }` → opt-out berlaku untuk pemakai ini. Idempoten. Hanya admin yang bisa membuat cakupan `semua` (D-5) |
 
 `GET /internal/kirim/messages/:id` dan semua jawaban **tidak** memuat isi pesan atau nomor utuh.
 
@@ -273,10 +273,10 @@ Galat memakai bentuk `{ "error": { "code", "message" } }`.
 ```
 
 - `message.status` ke pemakai pengirim; `message.received` ke pemilik nomor; `device.status` ke pemilik dan setiap pemakai yang punya rute di nomor itu.
-- `from` bernilai `null` bila WhatsApp hanya memberi alamat LID tanpa nomor telepon; `conversation_id` tetap stabil (TBD-6).
+- `from` bernilai `null` bila WhatsApp hanya memberi alamat LID tanpa nomor telepon; `conversation_id` tetap stabil (D-6).
 - `message_id` dan `event_id` memenuhi usulan SPMB-IMPL-001 §17 butir 2–3.
 - Pengiriman: timeout 10 detik; `2xx` = berhasil; selain itu retry dengan backoff 30 dtk, 1, 2, 4 … menit sampai maks. 1 jam, paling banyak 8 percobaan, lalu `habis` dan tampil sebagai peringatan admin. Body yang sama dan `event_id` yang sama di setiap percobaan; pemakai wajib menolak `event_id` ganda.
-- `webhook_url` R1 hanya boleh `http://127.0.0.1:<port>/…` (pemakai di Mi8) atau `https://<host>.sabilulquran.or.id/…` (TBD-4).
+- `webhook_url` R1 hanya boleh `http://127.0.0.1:<port>/…` (pemakai di Mi8) atau `https://<host>.sabilulquran.or.id/…` (D-4).
 - **Aturan retry pemakai** (usulan SPMB §17 butir 6): pemakai hanya mengulang `POST /messages` bila tidak mendapat `202` (5xx, timeout, jaringan), dengan kunci yang **sama**. Setelah `202`, kegagalan dilaporkan lewat `message.status`; pemakai tidak mengirim ulang otomatis.
 
 ### 6.3 Masukan dari mesin
@@ -308,7 +308,7 @@ Semua perubahan wajib: sesi valid, Application Access aktif untuk `kirim-sq`, te
 | `POST /devices/:kode/disconnect` | Logout sesi WhatsApp |
 | `POST /devices/:kode/pause`, `/resume` | Jeda/lanjutkan antrean nomor |
 | `POST /devices/:kode/deactivate` | Nonaktifkan nomor; permintaan baru ditolak `device_inactive`; antrean tidak dihapus |
-| `GET /consumers`, `GET /routes` | Baca pemakai dan rute (pengubahan lewat CLI di R1, TBD-4) |
+| `GET /consumers`, `GET /routes` | Baca pemakai dan rute (pengubahan lewat CLI di R1, D-4) |
 | `GET /queue?device=&status=&page=` | Antrean: `id`, pemakai, `ref`, jenis, tujuan tersamar, status, percobaan, `error_code`, waktu. **Tanpa isi pesan** |
 | `POST /queue/:id/retry` | Pesan `gagal` (bukan `optout`/`route_denied`/`expired`) diantrekan ulang dengan percobaan baru |
 | `POST /queue/:id/cancel` | Pesan `antre` → `dibatalkan` |
@@ -323,7 +323,7 @@ Layar admin **tidak pernah** menampilkan isi pesan atau nomor utuh di R1. Membac
 | Client | Jenis | Untuk |
 | --- | --- | --- |
 | `sq-hub-kirim` | Bearer-only / tanpa flow | Hanya nama audience; tidak bisa meminta token |
-| `kirim-sq` | Confidential, standard flow, PKCE S256 | Login admin di `https://kirim.sabilulquran.or.id/api/auth/callback` (TBD-1) |
+| `kirim-sq` | Confidential, standard flow, PKCE S256 | Login admin di `https://kirim.sabilulquran.or.id/api/auth/callback` (D-1) |
 | `spmb-api`, client HCIS, client Keluarga SQ, client Karir | Client credentials (milik masing-masing aplikasi) | Mendapat **audience mapper** `sq-hub-kirim` hanya bila didaftarkan sebagai pemakai |
 
 Skrip `infra/keycloak/scripts/reconcile-kirim-clients.sh` idempoten, mengikuti pola `reconcile-organization-directory-clients.sh`, dan diuji dengan menjalankannya dua kali. Token client yang tidak punya audience `sq-hub-kirim` ditolak `401`; token yang punya audience tetapi `client_id` tidak terdaftar ditolak `403`.
@@ -333,7 +333,7 @@ Skrip `infra/keycloak/scripts/reconcile-kirim-clients.sh` idempoten, mengikuti p
 - Registry: `application_key = kirim-sq`, nama "Kirim SQ", `canonical_url = https://kirim.sabilulquran.or.id`, status `active` setelah layar siap di production.
 - Tile Launcher tampil hanya bagi yang punya Application Access aktif (perilaku HUB-IMPL-016 yang sudah ada).
 - Masuk ke layar admin butuh **dua** syarat: Application Access `kirim-sq` aktif **dan** baris `kirim_admins` aktif. Punya akses tanpa peran → layar "Anda belum ditetapkan sebagai pengelola Kirim SQ" (403).
-- `kirim_admin` pertama (Kepala HCM) dibuat lewat CLI `npm run kirim:admin -- grant --issuer … --sub … --reason …` dan tercatat di `kirim_audit`. Delegasi ke admin SQ Core di R1 juga lewat CLI oleh operator atas permintaan Kepala HCM (TBD-2).
+- `kirim_admin` pertama (Kepala HCM) dibuat lewat CLI `npm run kirim:admin -- grant --issuer … --sub … --reason …` dan tercatat di `kirim_audit`. Delegasi ke admin SQ Core di R1 juga lewat CLI oleh operator atas permintaan Kepala HCM (D-2).
 
 ## 8. Layar
 
@@ -368,7 +368,7 @@ Setiap layar memeriksa state loading, kosong, galat, dan terlarang (403).
 | Webhook JalurPesan palsu atau diubah | `401`, tidak diproses, dicatat (tanpa body) |
 | Pemakai webhook mati | Retry sampai 8 kali dalam beberapa jam; status `habis` tampil sebagai peringatan; pemakai juga bisa menarik `GET /internal/kirim/messages/:id` |
 | Kunci `KIRIM_DATA_KEYS` hilang atau salah | Saat start pertama dengan `KIRIM_ENABLED=true`, modul menyimpan satu nilai uji terenkripsi (canary) per `kid`. Start berikutnya ditolak bila kunci tidak bisa membukanya. Tidak ada fallback ke teks polos |
-| Disk Mi8 < 10 GiB bebas | Peringatan di layar dan laporan harian; media masuk tetap disimpan sampai < 5 GiB, lalu hanya metadata (TBD-7). Tidak ada penghapusan otomatis |
+| Disk Mi8 < 10 GiB bebas | Peringatan di layar dan laporan harian; media masuk tetap disimpan sampai < 5 GiB, lalu hanya metadata (D-7). Tidak ada penghapusan otomatis |
 | Waktu sistem bergeser | Jam kirim dihitung dari waktu database (`now()`), bukan jam proses Node |
 | Proses restart di tengah kiriman | Lease 60 detik habis, baris diambil lagi; kunci idempotensi `kirim:<outbox_id>` ke JalurPesan mencegah kiriman ganda |
 
@@ -474,7 +474,7 @@ Urutan; setiap langkah dicatat di ledger operasi dengan bukti dan rollback-nya.
 
 | # | Langkah | Siapa | Rollback |
 | --- | --- | --- | --- |
-| 1 | **JalurPesan: platform `sq-core`.** JalurPesan saat ini hanya membuat platform `sipaya` (`PlatformRepository.ensureSipaya`); belum ada rute untuk membuat platform. Perlu perubahan kecil di repo JalurPesan dengan spesifikasinya sendiri (TBD-10) | Pemilik JalurPesan | Platform dinonaktifkan; tidak memengaruhi SIPAYA |
+| 1 | **JalurPesan: platform `sq-core`.** JalurPesan saat ini hanya membuat platform `sipaya` (`PlatformRepository.ensureSipaya`); belum ada rute untuk membuat platform. Perlu perubahan kecil di repo JalurPesan dengan spesifikasinya sendiri (D-10) | Pemilik JalurPesan | Platform dinonaktifkan; tidak memengaruhi SIPAYA |
 | 2 | Kunci platform `sq-core` (`POST /api/v1/platforms/sq-core/api-keys`) disimpan di env SQ Hub | Admin JalurPesan | Hapus/rotasi kunci |
 | 3 | Periksa `MAX_ACTIVE_DEVICES` JalurPesan dan jumlah perangkat SIPAYA aktif; naikkan batas hanya bila gate memori memungkinkan | Pemilik JalurPesan + owner | Kembalikan nilai |
 | 4 | Keycloak: `reconcile-kirim-clients.sh` (client `sq-hub-kirim`, `kirim-sq`, audience mapper untuk pemakai pertama), dijalankan dua kali | Operator SQ Core | Nonaktifkan client/mapper |
@@ -490,33 +490,38 @@ Urutan; setiap langkah dicatat di ledger operasi dengan bukti dan rollback-nya.
 | 14 | **Tenant `spmb`**: sama, untuk nomor resmi SPMB. Nomor ditautkan sebagai perangkat tertaut, jadi HP panitia tetap bisa membalas seperti biasa | Kepala HCM + Ketua Panitia SPMB | Putuskan, provider `log` |
 | 15 | SPMB mengganti `WHATSAPP_ADAPTER=kirim`; pantau 7 hari gate §13 | Admin SPMB | `WHATSAPP_ADAPTER=log` |
 
-## 16. Hal yang belum diputuskan (TBD)
+## 16. Keputusan atas hal yang sebelumnya TBD
 
-| # | Topik | Status | Saran |
+Product Owner menyetujui semua saran di bawah pada 2026-10-17. Nomor `D-n` dipakai sebagai rujukan di seluruh dokumen ini.
+
+| # | Topik | Status | Keputusan |
 | --- | --- | --- | --- |
-| TBD-1 | Login layar admin di host `kirim.` | TBD | Client `kirim-sq` sendiri dan cookie host-only `sq_kirim_session`, memakai ulang kode hub-auth. Alternatif tanpa client baru (`hub.sabilulquran.or.id/kirim`) menyimpang dari keputusan alamat `kirim.` |
-| TBD-2 | Tempat menyimpan peran `kirim_admin` dan cara delegasi | TBD | Tabel `kirim_admins` milik modul; R1 lewat CLI. Layar delegasi oleh Kepala HCM menyusul di R2 bersama petugas per nomor |
-| TBD-3 | Pemegang cadangan kunci enkripsi Kirim SQ | TBD | Kepala HCM dan pemilik Mi8, disimpan off-host di tempat yang sama dengan cadangan secret Keycloak, terpisah dari dump database |
-| TBD-4 | Pendaftaran pemakai, rute, dan rahasia webhook di R1 | TBD | CLI `kirim:admin` oleh operator atas persetujuan Kepala HCM; layar menyusul. `webhook_url` hanya loopback `http://127.0.0.1:<port>` atau `https://*.sabilulquran.or.id`. Kuota awal 500 pesan/hari per pemakai |
-| TBD-5 | `POST /internal/kirim/optouts` (usulan SPMB §17 butir 5) masuk R1? | TBD | Ya, karena kecil dan pemeriksaan opt-out sudah ada di R1. Cakupan dari pemakai hanya `consumer`; `semua` hanya oleh admin |
-| TBD-6 | Lawan bicara yang hanya punya alamat LID (tanpa nomor telepon) | TBD | Simpan sebagai `lid:<jid>`, `from = null` di event, percakapan tetap stabil. Pemetaan LID → nomor lewat `GET .../contacts` JalurPesan menyusul di R2 |
-| TBD-7 | Batas media masuk yang disalin ke Kirim SQ, dan perilaku saat disk rendah | TBD | Salin sampai 16 MiB; di bawah 5 GiB bebas hanya metadata. Media tetap ada di JalurPesan sesuai retensinya |
-| TBD-8 | Berkas media dienkripsi di disk? | TBD | Ya, AES-256-GCM dengan kunci data yang sama, karena berkas bisa berisi slip, tagihan, atau dokumen anak |
-| TBD-9 | Dependensi unggah multipart | TBD | `@fastify/multipart` dengan batas ukuran ketat; alternatifnya body `application/pdf` mentah tanpa dependensi baru |
-| TBD-10 | Cara membuat platform `sq-core` di JalurPesan | TBD | Perubahan kecil di JalurPesan: CLI `platform:create` (bukan rute HTTP publik), dengan spesifikasi di repo JalurPesan dan persetujuan owner |
-| TBD-11 | Nomor untuk kode Keluarga SQ: SPMB-IMPL-001 §17 butir 7 menyebut device `resmi`, KIRIM-001 revisi 2 §7 menyebut `spmb` | TBD | Ikut KIRIM-001 revisi 2 (`spmb` dengan rute `kode`); nama device tetap dibaca dari konfigurasi Keluarga SQ, dan ADR-0010/KEL-IMPL-001 disesuaikan lewat PR kecil |
-| TBD-12 | SPMB-IMPL-001 §13 menyebut rute SPMB `percakapan`; KIRIM-001 hanya punya `notifikasi` dan `kode` | TBD | Tidak perlu jenis rute baru: pemilik nomor otomatis menerima `message.received`; balasan dari inbox adalah R2. SPMB-IMPL-001 disesuaikan |
-| TBD-13 | KIRIM-001 §13 no. 1 (urutan bangun Kirim SQ R1 vs SPMB R0) dan no. 2 (petugas inbox awal) | Terbuka di KIRIM-001; gate ADR-0011 sebelum spesifikasi ACCEPTED | No. 1: Kirim SQ R1 dulu, SPMB R0 jalan dengan `log`. No. 2: ditetapkan Kepala HCM saat R2 atas usulan kepala bidang; tidak memblokir R1 |
+| D-1 | Login layar admin di host `kirim.` | DIPUTUSKAN (PO, 2026-10-17) | Client `kirim-sq` sendiri dan cookie host-only `sq_kirim_session`, memakai ulang kode hub-auth. Alternatif `hub.sabilulquran.or.id/kirim` ditolak karena menyimpang dari keputusan alamat `kirim.` |
+| D-2 | Tempat menyimpan peran `kirim_admin` dan cara delegasi | DIPUTUSKAN (PO, 2026-10-17) | Tabel `kirim_admins` milik modul; R1 lewat CLI. Layar delegasi oleh Kepala HCM menyusul di R2 bersama petugas per nomor |
+| D-3 | Pemegang cadangan kunci enkripsi Kirim SQ | DIPUTUSKAN (PO, 2026-10-17) | Kepala HCM dan pemilik Mi8, disimpan off-host di tempat yang sama dengan cadangan secret Keycloak, terpisah dari dump database |
+| D-4 | Pendaftaran pemakai, rute, dan rahasia webhook di R1 | DIPUTUSKAN (PO, 2026-10-17) | CLI `kirim:admin` oleh operator atas persetujuan Kepala HCM; layar menyusul. `webhook_url` hanya loopback `http://127.0.0.1:<port>` atau `https://*.sabilulquran.or.id`. Kuota awal 500 pesan/hari per pemakai |
+| D-5 | `POST /internal/kirim/optouts` (usulan SPMB §17 butir 5) masuk R1? | DIPUTUSKAN (PO, 2026-10-17) | Ya, karena kecil dan pemeriksaan opt-out sudah ada di R1. Cakupan dari pemakai hanya `consumer`; `semua` hanya oleh admin |
+| D-6 | Lawan bicara yang hanya punya alamat LID (tanpa nomor telepon) | DIPUTUSKAN (PO, 2026-10-17) | Simpan sebagai `lid:<jid>`, `from = null` di event, percakapan tetap stabil. Pemetaan LID → nomor lewat `GET .../contacts` JalurPesan menyusul di R2 |
+| D-7 | Batas media masuk yang disalin ke Kirim SQ, dan perilaku saat disk rendah | DIPUTUSKAN (PO, 2026-10-17) | Salin sampai 16 MiB; di bawah 5 GiB bebas hanya metadata. Media tetap ada di JalurPesan sesuai retensinya |
+| D-8 | Berkas media dienkripsi di disk? | DIPUTUSKAN (PO, 2026-10-17) | Ya, AES-256-GCM dengan kunci data yang sama, karena berkas bisa berisi slip, tagihan, atau dokumen anak |
+| D-9 | Dependensi unggah multipart | DIPUTUSKAN (PO, 2026-10-17) | `@fastify/multipart` dengan batas ukuran ketat (alternatif body `application/pdf` mentah ditolak) |
+| D-10 | Cara membuat platform `sq-core` di JalurPesan | DIPUTUSKAN (PO, 2026-10-17) | Perubahan kecil di JalurPesan: CLI `platform:create` (bukan rute HTTP publik), dengan spesifikasi di repo JalurPesan dan persetujuan owner |
+| D-11 | Nomor untuk kode Keluarga SQ: SPMB-IMPL-001 §17 butir 7 menyebut device `resmi`, KIRIM-001 revisi 2 §7 menyebut `spmb` | DIPUTUSKAN (PO, 2026-10-17) | Ikut KIRIM-001 revisi 2 (`spmb` dengan rute `kode`); nama device tetap dibaca dari konfigurasi Keluarga SQ, dan ADR-0010/KEL-IMPL-001 disesuaikan lewat PR kecil |
+| D-12 | SPMB-IMPL-001 §13 menyebut rute SPMB `percakapan`; KIRIM-001 hanya punya `notifikasi` dan `kode` | DIPUTUSKAN (PO, 2026-10-17) | Tidak perlu jenis rute baru: pemilik nomor otomatis menerima `message.received`; balasan dari inbox adalah R2. SPMB-IMPL-001 disesuaikan |
+| D-13 | KIRIM-001 §13 no. 1 (urutan bangun Kirim SQ R1 vs SPMB R0) dan no. 2 (petugas inbox awal) | DIPUTUSKAN (PO, 2026-10-17) | No. 1: Kirim SQ R1 dulu, SPMB R0 jalan dengan `log`. No. 2: ditetapkan Kepala HCM saat R2 atas usulan kepala bidang; tidak memblokir R1 |
 
 ## 17. Dampak pada dokumen lain
 
 - **KIRIM-001:** setelah spesifikasi ini ACCEPTED, catat tabel tambahan (`kirim_webhook_deliveries`, `kirim_admins`, `kirim_media_engine_refs`), format tanda tangan webhook, kode galat, dan `event_id`/`message_id` di §4–§5.
-- **SPMB-IMPL-001 §17:** butir 1–4 dan 6 dipenuhi di sini; butir 5 menunggu TBD-5; butir 7 menunggu TBD-11.
-- **Roadmap and decision register:** baris Kirim SQ diperbarui menjadi "KIRIM-IMPL-001 DRAFT".
-- **`docs/specs/README.md`:** tambahkan KIRIM-IMPL-001 di daftar proposal aktif.
+- **SPMB-IMPL-001 §17:** butir 1–4 dan 6 dipenuhi di sini; butir 5 dipenuhi oleh D-5; butir 7 diputuskan D-11 (nomor `spmb`), dan SPMB-IMPL-001 §13 disesuaikan menurut D-12.
+- **ADR-0010 / KEL-IMPL-001:** kode Keluarga SQ dikirim lewat nomor `spmb` (D-11); disesuaikan lewat PR kecil di repo masing-masing.
+- **JalurPesan:** butuh spesifikasi kecil untuk CLI `platform:create` (D-10) sebelum langkah production §15 no. 1.
+- **Roadmap and decision register:** baris Kirim SQ diperbarui (selesai di PR ini).
+- **`docs/specs/README.md`:** KIRIM-IMPL-001 ditambahkan (selesai di PR ini).
 
 ## Riwayat
 
 | Tanggal | Perubahan |
 | --- | --- |
 | 2026-10-17 | DRAFT pertama untuk R1 dari KIRIM-001 revisi 2 dan ADR-0011 |
+| 2026-10-17 | PO menyetujui semua saran TBD-1…TBD-13; menjadi keputusan D-1…D-13 (§16) |
