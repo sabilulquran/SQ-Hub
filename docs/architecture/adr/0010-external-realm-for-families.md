@@ -61,7 +61,7 @@ Families differ from candidates:
   - Children never get Keycloak identities in this realm.
 - **WhatsApp codes:**
   - The Keycloak provider calls a loopback, HMAC-signed relay owned by Keluarga SQ.
-  - The relay sends through **Kirim SQ** (`docs/product/kirim-sq-module-design.md`) with `jenis: "kode"`, on the device set in Keluarga SQ configuration (default `resmi`). It never calls JalurPesan directly. *(Amended 2026-10-17, Product Owner: Kirim SQ replaces the earlier plan to send through JalurPesan on the official SPMB number, so account codes keep working if the busy SPMB number is limited by WhatsApp. See KEL-IMPL-001 §16.)*
+  - The relay sends through **Kirim SQ** (`docs/product/kirim-sq-module-design.md`) with `jenis: "kode"`, on the device set in Keluarga SQ configuration. The default is `spmb`, the official SPMB number, until Keluarga SQ has a number of its own, as allowed by the Kirim SQ number table (revision 2 §7). It never calls JalurPesan directly. *(Amended 2026-10-17, Product Owner: Kirim SQ replaces direct JalurPesan sending; the default device follows Kirim SQ revision 2. See KEL-IMPL-001 §16.)*
   - Email codes use the realm SMTP.
 - **Provider:** the in-house provider planned for `sq-karir` in REC-IMPL-001 is built as **one external-identity provider configured per realm**:
   - identifier type (NIK for `sq-karir`, KK for `sq-keluarga`);
