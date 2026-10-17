@@ -39,7 +39,7 @@ The YSQ VPS topology uses the shared Caddy Docker network. A host-Nginx example 
 - `scripts/reconcile-identity-recovery-google.sh` — idempotent, secret-injected Forgot Password, email-login, and safe existing-account Google broker convergence for an explicitly selected Staff realm.
 - `scripts/restore-check.sh` — restores a backup to a disposable verification database and checks that the staging realm exists.
 - `../../docs/operations/staff-identity-provisioning.md` — minimum profile-complete provisioning contract for manual staging and future automation.
-- `providers/karir-identity/`, `themes/sq-karir/`, `realm/sq-karir-desired-state.json`, `clients/karir-sq.json`, `scripts/reconcile-karir-realm.sh`, `scripts/reconcile-karir-staff-client.sh` — Karir SQ candidate realm; see below.
+- `providers/karir-identity/`, `themes/sq-karir/`, `realm/sq-karir-desired-state.json`, `scripts/reconcile-karir-realm.sh` — Karir SQ candidate realm; see below.
 
 ## Karir SQ candidate realm (`sq-karir`)
 
@@ -48,7 +48,7 @@ Implementation target: `sabilulquran/karir-sq` REC-IMPL-001 §4, SQ Hub ADR-0008
 - **Provider** `providers/karir-identity/` builds `sq-karir-identity-1.0.0.jar` (Keycloak 26.7.2, Java 21): `karir-nik-password-form` (NIK + kata sandi), `karir-nik-registration` (registration form action), `karir-verify-whatsapp` (required action), `karir-reset-by-code` (reset by WhatsApp or email code, followed by the built-in `reset-password`), and `karir-event-listener`. Keycloak stores only `nik_hmac`; the NIK is never stored, logged, put in an event, a token or a URL. The username is a random `k_…` ID.
 - **Theme** `themes/sq-karir/login` (parent `sq-hub`): the Akun SQ look with the app name "Karir", light and dark.
 - **Realm** `scripts/reconcile-karir-realm.sh` converges `realm/sq-karir-desired-state.json` with authenticated `kcadm` (`KEYCLOAK_EXEC_MODE=compose|host|container`) and refuses every realm except `sq-karir`. Run it twice; the second run must create nothing.
-- **Staff client** `scripts/reconcile-karir-staff-client.sh` converges `clients/karir-sq.json` in `sq-staff` (host `kcadm`, like `reconcile-hub-production-client.sh`). Which staff may open Karir SQ is decided by SQ Hub Application Access.
+- **Staff clients** (`karir-sq` in `sq-staff`) are created with the Karir SQ Mi8 release, not here.
 
 Provider environment (Keycloak process; missing values fail closed):
 

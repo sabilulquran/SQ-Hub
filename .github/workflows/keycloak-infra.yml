@@ -956,11 +956,10 @@ jobs:
           java-version: "21"
           cache: maven
 
-      - name: Shell syntax of the Karir reconcile scripts
+      - name: Shell syntax of the Karir reconcile script
         run: |
           bash -n infra/keycloak/scripts/reconcile-karir-realm.sh
-          bash -n infra/keycloak/scripts/reconcile-karir-staff-client.sh
-          jq empty infra/keycloak/realm/sq-karir-desired-state.json infra/keycloak/clients/karir-sq.json
+          jq empty infra/keycloak/realm/sq-karir-desired-state.json
 
       - name: Unit and integration tests
         working-directory: infra/keycloak/providers/karir-identity
