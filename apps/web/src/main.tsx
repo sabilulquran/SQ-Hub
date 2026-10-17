@@ -14,6 +14,9 @@ import {
 import { emptyGovernanceFixture, governanceFixture, governanceWorkspaceFixture } from "@/dev/governanceFixture";
 import { organOverviewFixture } from "@/dev/organFixture";
 import { GovernancePageView } from "@/governance/GovernancePage";
+import { kirimAntreanFixture, kirimNomorFixture } from "@/dev/kirimFixture";
+import { KirimApp, KirimAppView } from "@/kirim/KirimApp";
+import { isKirimHost, resolveKirimRoute } from "@/kirim/routes";
 import { resolveHubRoute } from "@/routes";
 import { initThemePreference } from "@/theme";
 import "@/styles.css";
@@ -47,7 +50,25 @@ const previewApplications = [
   },
 ];
 
+function renderKirimPreview() {
+  const state = params.get("state");
+  const route = resolveKirimRoute(window.location.pathname.replace(/^\/kirim/, "") || "/");
+  if (state === "forbidden") return <KirimAppView state={{ status: "forbidden", code: "kirim_admin_required" }} route={route} />;
+  const pageState = state === "loading" ? { status: "loading" as const } : state === "error" ? { status: "error" as const } : null;
+  const nomor = pageState ?? (state === "empty" ? { ...kirimNomorFixture, list: { devices: [], peringatan: { terputus: [], webhook_habis: 0 } } } as typeof kirimNomorFixture : kirimNomorFixture);
+  const antrean = pageState ?? (state === "empty" && kirimAntreanFixture.status === "ready" ? { ...kirimAntreanFixture, queue: { ...kirimAntreanFixture.queue, items: [] } } : kirimAntreanFixture);
+  return (
+    <KirimAppView
+      state={{ status: "ready", context: { displayName: "Kepala HCM (pratinjau)" } }}
+      route={route}
+      onLogout={() => undefined}
+      preview={{ nomor, antrean }}
+    />
+  );
+}
+
 function renderPreviewApp() {
+  if (window.location.pathname === "/kirim" || window.location.pathname.startsWith("/kirim/")) return renderKirimPreview();
   if (route === "admin") {
     return <AdminCenterPage workspace={fixture} previewApplications={previewApplications} previewOrganOverview={organOverviewFixture} />;
   }
@@ -84,7 +105,7 @@ function renderPreviewApp() {
 }
 
 createRoot(document.getElementById("root")!).render(
-  <StrictMode>{previewEnabled ? renderPreviewApp() : <WorkspaceApp />}</StrictMode>,
+  <StrictMode>{isKirimHost(window.location.hostname) ? <KirimApp /> : previewEnabled ? renderPreviewApp() : <WorkspaceApp />}</StrictMode>,
 );
 
 if (previewEnabled) {

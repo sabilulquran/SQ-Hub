@@ -98,6 +98,29 @@ npm run access:admin -- access revoke \
 
 Use synthetic identities only in Wave 1 development/staging.
 
+## Kirim SQ (KIRIM-IMPL-001 R1)
+
+The `kirim` module (`src/modules/kirim/`) is off unless `KIRIM_ENABLED=true`; then the API refuses to start when a key in `KIRIM_DATA_KEYS` cannot open its canary or `KIRIM_LOOKUP_KEY` does not match (§9). The send worker, webhook sender and JalurPesan event puller run as timers in this process.
+
+```text
+POST /internal/kirim/messages        # consumer, Bearer token with aud sq-hub-kirim, Idempotency-Key
+GET  /internal/kirim/messages/:id
+POST /internal/kirim/media           # multipart: device + one PDF (≤ 5 MiB)
+POST /internal/kirim/optouts         # cakupan "consumer" only (D-5)
+POST /internal/kirim/engine/jalurpesan/webhook   # signed by JalurPesan; only speeds up the event pull
+/admin/kirim/*                       # browser /api/admin/kirim/* on kirim.sabilulquran.or.id (sq_kirim_session)
+```
+
+`/internal/*` is loopback only and must answer 404 at the edge for `kirim.` and `hub.` (§10). Consumers, routes and `kirim_admin` are managed with the CLI (D-2, D-4); each change writes `kirim_audit`:
+
+```bash
+npm run kirim:admin -- grant --issuer <issuer> --sub <sub> --reason "Kepala HCM" --actor operator:<name>
+npm run kirim:admin -- consumer add --nama spmb --client-id spmb-api   --webhook-url http://127.0.0.1:<port>/… --secret-ref KIRIM_CONSUMER_SECRET_SPMB --reason "<approval ref>"
+npm run kirim:admin -- route add --consumer keluarga --device spmb --jenis kode --reason "<approval ref>"
+```
+
+`--secret-ref` names the env variable holding the webhook secret; the secret itself never goes into the CLI, the repository or the database.
+
 ## Migration recovery
 
 SQL migrations are forward-only and recorded in `schema_migrations`.

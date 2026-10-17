@@ -3,6 +3,8 @@ import ysqMark from "@/assets/brand/ysq-mark.png";
 
 interface BrandLockupProps {
   compact?: boolean;
+  /** App name in the lockup; Kirim SQ uses "Kirim SQ" (KIRIM-IMPL-001 §8). */
+  appName?: string;
 }
 
 /**
@@ -10,11 +12,11 @@ interface BrandLockupProps {
  * name in heavy sans, and the gold "SABILUL QUR'AN" wordmark cut from the
  * official foundation logo (docs/design/sq-core-design-system-c.md).
  */
-export function BrandLockup({ compact = false }: BrandLockupProps) {
+export function BrandLockup({ compact = false, appName = "Hub" }: BrandLockupProps) {
   return (
     <div
       className={compact ? "flex min-w-0 items-center gap-2" : "flex min-w-0 items-center gap-2.5 px-2"}
-      aria-label="SQ Hub · Yayasan Sabilul Qur'an"
+      aria-label={`${appName === "Hub" ? "SQ Hub" : appName} · Yayasan Sabilul Qur'an`}
     >
       <img
         src={ysqMark}
@@ -30,7 +32,7 @@ export function BrandLockup({ compact = false }: BrandLockupProps) {
               : "text-base font-extrabold leading-none tracking-[-0.01em] text-brand-heading"
           }
         >
-          Hub
+          {appName}
         </p>
         <img
           src={sqWordmarkGold}

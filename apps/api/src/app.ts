@@ -13,6 +13,9 @@ import {
   type ApplicationAccessService,
 } from "./modules/application-access/service.js";
 import { registerHubAuthRoutes } from "./modules/hub-auth/routes.js";
+import type { KirimModule } from "./modules/kirim/module.js";
+import { KIRIM_ADMIN_PREFIX } from "./modules/kirim/routes-admin.js";
+import { KIRIM_INTERNAL_PREFIX } from "./modules/kirim/routes-internal.js";
 import type { HubAuthRuntime } from "./modules/hub-auth/service.js";
 import type { IdentityDirectory } from "./modules/identity-directory/client.js";
 import { registerGovernanceRoutes } from "./modules/governance/routes.js";
@@ -50,17 +53,23 @@ export function buildApp(input: {
   organMemberships?: OrganMembershipService;
   governance?: GovernanceService;
   logger?: boolean;
+  /** Test seam: write request logs to this stream instead of stdout. */
+  logStream?: NodeJS.WritableStream;
   organizationDirectory?: Parameters<typeof registerOrganizationDirectoryRoutes>[1];
+  kirim?: Pick<KirimModule, "register">;
 }) {
-  const app = Fastify({ logger: input.logger ? {
+  const app = Fastify({ logger: input.logger || input.logStream ? {
+    ...(input.logStream ? { stream: input.logStream } : {}),
     serializers: {
       req(request) {
-        return { method: request.method, url: request.url?.startsWith(DIRECTORY_PREFIX) ? DIRECTORY_PREFIX : request.url };
+        return { method: request.method, url: safeLogUrl(request.url) };
       },
     },
   } : false });
 
   if (input.organizationDirectory) registerOrganizationDirectoryRoutes(app, input.organizationDirectory);
+  // KIRIM-IMPL-001 §11: KIRIM_ENABLED=false means the module is not passed and no route exists.
+  if (input.kirim) input.kirim.register(app);
 
   app.get("/health", async () => ({ status: "ok" }));
 
@@ -139,4 +148,14 @@ export function buildApp(input: {
   }
 
   return app;
+}
+
+/**
+ * Request logs never carry a query string for Kirim SQ routes (KIRIM-IMPL-001 §10); bodies and
+ * headers are not logged by the serializer at all.
+ */
+export function safeLogUrl(url: string): string {
+  if (url.startsWith(DIRECTORY_PREFIX)) return DIRECTORY_PREFIX;
+  if (url.startsWith(KIRIM_INTERNAL_PREFIX) || url.startsWith(KIRIM_ADMIN_PREFIX)) return url.split("?", 1)[0] ?? url;
+  return url;
 }

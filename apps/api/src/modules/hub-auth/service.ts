@@ -80,6 +80,8 @@ export class HubAuthService implements HubAuthRuntime {
   private readonly maxSeconds: number;
   private readonly transactionTtlMs: number;
   private readonly secureCookies: boolean;
+  private readonly sessionCookieName: string;
+  private readonly transactionCookieName: string;
 
   constructor(
     private readonly repository: HubAuthStore,
@@ -90,6 +92,8 @@ export class HubAuthService implements HubAuthRuntime {
       sessionMaxHours: number;
       transactionTtlMinutes: number;
       secureCookies: boolean;
+      /** KIRIM-IMPL-001 D-1: a second configuration uses its own host-only cookies. */
+      cookieNames?: { session: string; transaction: string };
     },
     private readonly tokenVault: HubTokenVault,
     private readonly platformAdmin?: HubPlatformAdminCapabilitySource,
@@ -99,6 +103,8 @@ export class HubAuthService implements HubAuthRuntime {
     this.maxSeconds = options.sessionMaxHours * 60 * 60;
     this.transactionTtlMs = options.transactionTtlMinutes * 60 * 1000;
     this.secureCookies = options.secureCookies;
+    this.sessionCookieName = options.cookieNames?.session ?? HUB_SESSION_COOKIE_NAME;
+    this.transactionCookieName = options.cookieNames?.transaction ?? HUB_OIDC_TRANSACTION_COOKIE_NAME;
   }
 
   async beginLogin(
@@ -130,7 +136,7 @@ export class HubAuthService implements HubAuthRuntime {
     return {
       authorizationUrl: request.url,
       setCookie: buildCookie(
-        HUB_OIDC_TRANSACTION_COOKIE_NAME,
+        this.transactionCookieName,
         transactionToken,
         Math.floor(this.transactionTtlMs / 1000),
         this.secureCookies,
@@ -211,12 +217,12 @@ export class HubAuthService implements HubAuthRuntime {
       returnPath: await this.landingPath(stored.transaction.returnPath ?? "/", completed.identity),
       setCookies: [
         buildCookie(
-          HUB_SESSION_COOKIE_NAME,
+          this.sessionCookieName,
           sessionToken,
           sessionCookieMaxAge,
           this.secureCookies,
         ),
-        clearCookie(HUB_OIDC_TRANSACTION_COOKIE_NAME, this.secureCookies),
+        clearCookie(this.transactionCookieName, this.secureCookies),
       ],
     };
   }
@@ -324,13 +330,13 @@ export class HubAuthService implements HubAuthRuntime {
     const logoutUrl = await this.oidcProvider.buildLogoutUrl().catch(() => null);
 
     return {
-      clearCookie: clearCookie(HUB_SESSION_COOKIE_NAME, this.secureCookies),
+      clearCookie: clearCookie(this.sessionCookieName, this.secureCookies),
       logoutUrl,
     };
   }
 
   clearTransactionCookie(): string {
-    return clearCookie(HUB_OIDC_TRANSACTION_COOKIE_NAME, this.secureCookies);
+    return clearCookie(this.transactionCookieName, this.secureCookies);
   }
 
   private async getRequiredSession(sessionToken: string | null): Promise<HubSessionRecord> {

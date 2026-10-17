@@ -60,6 +60,13 @@ describe("Keycloak machine token verifier", () => {
     await expect(verify(await token())).resolves.toEqual({ clientId: "hcis-api-staging" });
   });
 
+  it("leaves the client check to the caller when allowedClients is \"any\" (Kirim SQ)", async () => {
+    const verify = createKeycloakMachineTokenVerifier({ issuer, audience, allowedClients: "any" });
+
+    await expect(verify(await token({ azp: "spmb-api" }))).resolves.toEqual({ clientId: "spmb-api" });
+    await expect(verify(await token({ azp: "spmb-api", aud: "other-api" }))).rejects.toMatchObject({ code: "INVALID_TOKEN" });
+  });
+
   it("rejects the wrong audience as an invalid token", async () => {
     const verify = createKeycloakMachineTokenVerifier({
       issuer,
