@@ -2,6 +2,8 @@ export interface WorkspaceUser {
   displayName: string;
   initials: string;
   contextLabel?: string;
+  /** HUB-IMPL-021: organ of an effective Organ Yayasan membership. */
+  organ?: Organ;
 }
 
 export interface WorkspaceApplication {
@@ -13,6 +15,8 @@ export interface WorkspaceApplication {
 
 export interface WorkspaceCapabilities {
   platformAdministration: boolean;
+  /** HUB-IMPL-021: show Ringkasan Yayasan (effective Organ Yayasan membership). */
+  governanceView?: boolean;
 }
 
 export interface WorkspaceSnapshot {
@@ -236,4 +240,58 @@ export interface OrganMembershipEndPreview {
     platformAdministrator: boolean;
     globalIdentityEnabled: boolean;
   };
+}
+
+// HUB-IMPL-021 §3 governance summary contract v1, as validated and forwarded by the Hub API.
+export type GovernanceUnit = "orang" | "unit" | "item" | "persen" | "rupiah" | "hari";
+
+export interface GovernanceTrend {
+  points: Array<{ period: string; value: number | null }>;
+  change?: { value: number; unit: GovernanceUnit | "poin"; direction: "up" | "down" | "flat"; good?: "up" | "down" };
+}
+
+export interface GovernanceMetric {
+  key: string;
+  label: string;
+  value: number | null;
+  unit?: GovernanceUnit;
+  tone?: "normal" | "attention";
+  headline?: boolean;
+  trend?: GovernanceTrend;
+}
+
+interface GovernanceChartBase {
+  key: string;
+  title: string;
+  unit: GovernanceUnit;
+  dataAsOf: string;
+}
+
+export type GovernanceChart = GovernanceChartBase & (
+  | { kind: "trend"; periods: string[]; series: Array<{ key: string; label: string; mark: "line" | "bar"; values: Array<number | null> }> }
+  | { kind: "ranking"; items: Array<{ label: string; value: number }> }
+  | { kind: "composition"; parts: Array<{ key: string; label: string }>; items: Array<{ label: string; values: number[] }> }
+  | { kind: "stages"; items: Array<{ label: string; value: number }> }
+  | { kind: "target"; items: Array<{ label: string; target: number; actual: number }> }
+);
+
+export interface GovernanceSummary {
+  contractVersion: 1;
+  applicationKey: string;
+  title: string;
+  dataAsOf: string;
+  metrics: GovernanceMetric[];
+  charts?: GovernanceChart[];
+  attention?: Array<{ label: string; count: number; href: string }>;
+  detailUrl: string;
+}
+
+export type GovernanceCard =
+  | { applicationKey: string; state: "ready"; summary: GovernanceSummary }
+  | { applicationKey: string; state: "failed"; name: string };
+
+export interface GovernanceSnapshot {
+  membership: { organ: Organ; positionLabel?: string };
+  cards: GovernanceCard[];
+  generatedAt: string;
 }

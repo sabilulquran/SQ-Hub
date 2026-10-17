@@ -3,6 +3,7 @@ import { AppWindow, Home, KeyRound, Landmark, LayoutGrid, ShieldCheck, UserRound
 import type { HubSpace } from "@/components/SpaceSwitcher";
 
 export type HubNavKey =
+  | "yayasan"
   | "home"
   | "apps"
   | "account"
@@ -62,6 +63,21 @@ export const navigationBySpace: Record<HubSpace, HubNavGroup[]> = {
   ],
 };
 
-export function navigationItems(space: HubSpace): HubNavItem[] {
-  return navigationBySpace[space].flatMap((group) => group.items);
+// HUB-IMPL-021 §5: members of an Organ Yayasan see Ringkasan Yayasan first.
+const governanceItem: HubNavItem = {
+  key: "yayasan",
+  href: "/yayasan",
+  label: "Ringkasan Yayasan",
+  shortLabel: "Ringkasan",
+  icon: Landmark,
+};
+
+export function navigationGroups(space: HubSpace, options: { governanceView?: boolean } = {}): HubNavGroup[] {
+  const groups = navigationBySpace[space];
+  if (space !== "workspace" || !options.governanceView) return groups;
+  return groups.map((group, index) => (index === 0 ? { ...group, items: [governanceItem, ...group.items] } : group));
+}
+
+export function navigationItems(space: HubSpace, options: { governanceView?: boolean } = {}): HubNavItem[] {
+  return navigationGroups(space, options).flatMap((group) => group.items);
 }

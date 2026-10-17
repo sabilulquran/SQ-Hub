@@ -9,6 +9,7 @@ interface MobileNavigationProps {
   space: HubSpace;
   active: HubNavKey;
   platformAdministration: boolean;
+  governanceView?: boolean;
   previewMoreOpen?: boolean;
 }
 
@@ -22,6 +23,7 @@ export function MobileNavigation({
   space,
   active,
   platformAdministration,
+  governanceView = false,
   previewMoreOpen = false,
 }: MobileNavigationProps) {
   const [moreOpen, setMoreOpen] = useState(previewMoreOpen);
@@ -30,7 +32,7 @@ export function MobileNavigation({
   const close = useCallback(() => setMoreOpen(false), []);
   useDismiss(moreOpen, close, rootRef, triggerRef);
 
-  const items = navigationItems(space);
+  const items = navigationItems(space, { governanceView });
   const needsMore = platformAdministration || items.length > MAX_DESTINATIONS;
   const direct = needsMore ? items.slice(0, MAX_DESTINATIONS - 1) : items;
   const overflow = needsMore ? items.slice(MAX_DESTINATIONS - 1) : [];

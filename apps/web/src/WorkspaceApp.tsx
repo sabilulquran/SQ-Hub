@@ -5,6 +5,7 @@ import { AccountPage } from "@/AccountPage";
 import { AdminCenterPage } from "@/AdminCenterPage";
 import { WorkspaceShell } from "@/WorkspaceShell";
 import { BrandLockup } from "@/components/BrandLockup";
+import { GovernanceRoute } from "@/governance/GovernancePage";
 import { adminRouteStateFromResponse, type AdminRouteState } from "@/admin-route-state";
 import { resolveHubRoute } from "@/routes";
 import type { WorkspaceSnapshot } from "@/types";
@@ -89,6 +90,13 @@ export function WorkspaceApp() {
     }
     if (route === "account") {
       return <AccountPage workspace={state.workspace} onLogout={logout} />;
+    }
+    if (route === "yayasan") {
+      if (!state.workspace.capabilities.governanceView) {
+        window.location.replace("/");
+        return null;
+      }
+      return <GovernanceRoute workspace={state.workspace} onLogout={logout} />;
     }
     if (route === "home" || route === "apps") {
       return <WorkspaceShell workspace={state.workspace} route={route} onLogout={logout} />;

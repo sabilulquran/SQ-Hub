@@ -487,9 +487,22 @@ describe("HubAuthService", () => {
         context,
       );
       const workspace = await auth.getWorkspace(cookieValue(completed.setCookies[0]!, HUB_SESSION_COOKIE_NAME));
+      // AC 1 / §5: members land on Ringkasan Yayasan; everyone else on Beranda.
+      expect(completed.returnPath).toBe(organ ? "/yayasan" : "/");
       expect(workspace.capabilities.governanceView).toBe(organ !== null);
       expect(workspace.user.organ).toBe(organ ?? undefined);
     }
+  });
+
+  it("keeps the Akun SQ return path for members who start an account action", async () => {
+    const { auth } = service(false, "pembina");
+    const begin = await auth.beginLogin(undefined, "/account");
+    const completed = await auth.completeLogin(
+      new URL("https://hub-staging.sabilulquran.or.id/auth/callback"),
+      cookieValue(begin.setCookie, HUB_OIDC_TRANSACTION_COOKIE_NAME),
+      context,
+    );
+    expect(completed.returnPath).toBe("/account");
   });
 
   it("returns a browser workspace without exposing delegated identity material", async () => {

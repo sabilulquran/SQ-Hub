@@ -1,3 +1,4 @@
+import { Landmark } from "lucide-react";
 import { useCallback, useRef, useState } from "react";
 
 import ysqMark from "@/assets/brand/ysq-mark.png";
@@ -17,6 +18,8 @@ function AppsDotsIcon({ className }: { className?: string }) {
 
 interface AppLauncherProps {
   applications: WorkspaceApplication[];
+  /** HUB-IMPL-021 §5: members see Ringkasan Yayasan first, then Beranda and apps. */
+  governanceView?: boolean;
   previewOpen?: boolean;
 }
 
@@ -24,7 +27,7 @@ interface AppLauncherProps {
  * Same launcher in every SQ Core app: SQ Hub first, then the user's apps
  * (docs/design/sq-core-app-shell.md, item 4). In SQ Hub, SQ Hub is the current app.
  */
-export function AppLauncher({ applications, previewOpen = false }: AppLauncherProps) {
+export function AppLauncher({ applications, governanceView = false, previewOpen = false }: AppLauncherProps) {
   const [open, setOpen] = useState(previewOpen);
   const rootRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
@@ -51,6 +54,20 @@ export function AppLauncher({ applications, previewOpen = false }: AppLauncherPr
           aria-label="Peluncur aplikasi SQ"
           className="fixed inset-x-3 top-16 z-50 max-h-[min(70dvh,34rem)] overflow-y-auto rounded-2xl border border-border/80 bg-surface-raised p-3 shadow-[var(--shadow-raised)] sm:absolute sm:inset-x-auto sm:right-0 sm:top-[calc(100%+0.5rem)] sm:w-[22rem]"
         >
+          {governanceView ? (
+            <a
+              href="/yayasan"
+              className="mb-1.5 flex min-h-14 items-center gap-3 rounded-xl p-2.5 transition hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-brand-primary-pale text-brand-primary-deep">
+                <Landmark className="h-5 w-5" aria-hidden="true" />
+              </span>
+              <span className="flex min-w-0 flex-1 flex-col">
+                <span className="text-sm font-bold text-foreground">Ringkasan Yayasan</span>
+                <span className="truncate text-xs text-muted-foreground">Ringkasan semua aplikasi untuk Organ Yayasan</span>
+              </span>
+            </a>
+          ) : null}
           <a
             href="/"
             aria-current="page"
