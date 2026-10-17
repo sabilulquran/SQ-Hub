@@ -68,7 +68,7 @@ Families differ from candidates:
   - pepper;
   - relay URL;
   - texts.
-  
+
   It is not written as two copies.
 - **SQ Hub surfaces do not apply** to family-realm identities: Application Access, launcher, Admin Center, Directory, and Ringkasan Yayasan. The single exception is a launcher entry, **Keluarga · Daftarkan anak**, shown to active staff. It opens the brokered sign-in and grants nothing by itself.
 - **Theme:** the same Akun SQ theme as staff, without staff-only actions. The title follows the client: **"SPMB"** when the sign-in starts from `spmb-keluarga`, **"Keluarga"** from `keluarga-web`.
