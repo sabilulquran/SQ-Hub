@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import type { ApplicationAccessRepository } from "./repository.js";
+import type { ApplicationAccessRepository, ApplicationUpsertInput } from "./repository.js";
 import type { AccessDecision, AccessRecord, ActorRef, ApplicationRecord, AuditRecord } from "./types.js";
 
 export const identityRefSchema = z
@@ -24,6 +24,35 @@ export const actorSchema = z
 
 const reasonSchema = z.string().trim().max(1000).nullable().default(null);
 
+// HUB-IMPL-021 §2: a path on the canonical_url origin. Absolute and protocol-relative
+// URLs are rejected so the summary request can never leave the application's origin.
+export const governanceSummaryPathSchema = z
+  .string()
+  .trim()
+  .max(512)
+  .regex(/^\/(?!\/)[A-Za-z0-9._~!$&'()*+,;=:@%/-]*$/);
+export const governanceAudienceSchema = z.string().trim().regex(/^[A-Za-z0-9._:-]{1,255}$/);
+export const governanceOrderSchema = z.number().int().min(-10000).max(10000);
+
+export const governanceRegistrationSchema = z
+  .object({
+    summaryPath: governanceSummaryPathSchema.nullable(),
+    audience: governanceAudienceSchema.nullable(),
+    order: governanceOrderSchema,
+  })
+  .strict()
+  .refine((value) => (value.summaryPath === null) === (value.audience === null), {
+    message: "governance audience is required exactly when a summary path is set",
+    path: ["audience"],
+  });
+
+export function governanceSummaryUrl(canonicalUrl: string, summaryPath: string): URL {
+  const base = new URL(canonicalUrl);
+  const target = new URL(summaryPath, base.origin);
+  if (target.origin !== base.origin) throw new Error("governance summary path leaves the application origin");
+  return target;
+}
+
 export class ApplicationAccessService {
   constructor(private readonly repository: ApplicationAccessRepository) {}
 
@@ -36,6 +65,7 @@ export class ApplicationAccessService {
     name: string;
     canonicalUrl: string;
     status: "active" | "inactive";
+    governance?: { summaryPath: string | null; audience: string | null; order: number };
     actor: ActorRef;
   }): Promise<ApplicationRecord> {
     const parsed = z
@@ -44,11 +74,34 @@ export class ApplicationAccessService {
         name: z.string().trim().min(1).max(200),
         canonicalUrl: z.string().url().max(2048),
         status: z.enum(["active", "inactive"]),
+        governance: governanceRegistrationSchema.optional(),
         actor: actorSchema,
       })
       .strict()
+      .superRefine((value, ctx) => {
+        if (!value.governance?.summaryPath) return;
+        try {
+          const canonical = new URL(value.canonicalUrl);
+          if (canonical.protocol !== "https:" && canonical.protocol !== "http:") throw new Error("scheme");
+          governanceSummaryUrl(value.canonicalUrl, value.governance.summaryPath);
+        } catch {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ["governance", "summaryPath"],
+            message: "governance summary path must stay on the canonical_url origin",
+          });
+        }
+      })
       .parse(input);
-    return this.repository.upsertApplication(parsed);
+    const upsert: ApplicationUpsertInput = {
+      applicationKey: parsed.applicationKey,
+      name: parsed.name,
+      canonicalUrl: parsed.canonicalUrl,
+      status: parsed.status,
+      actor: parsed.actor,
+      ...(parsed.governance ? { governance: parsed.governance } : {}),
+    };
+    return this.repository.upsertApplication(upsert);
   }
 
   async grant(input: {

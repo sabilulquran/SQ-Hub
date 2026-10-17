@@ -215,6 +215,9 @@ describe("SQ Admin Center routes", () => {
           name: "HCIS",
           canonicalUrl: "https://hcis-staging.example.test",
           status: "active",
+          governanceSummaryPath: null,
+          governanceAudience: null,
+          governanceOrder: 0,
         },
       ],
     });

@@ -19,7 +19,35 @@ interface ApplicationRow {
   name: string;
   canonicalUrl: string;
   status: ApplicationStatus;
+  governanceSummaryPath: string | null;
+  governanceAudience: string | null;
+  governanceOrder: number;
 }
+
+export interface ApplicationUpsertInput {
+  applicationKey: string;
+  name: string;
+  canonicalUrl: string;
+  status: ApplicationStatus;
+  /** Omitted governance fields keep their stored values. */
+  governance?: {
+    summaryPath: string | null;
+    audience: string | null;
+    order: number;
+  };
+  actor: ActorRef;
+}
+
+const APPLICATION_COLUMNS = `
+  id,
+  application_key AS "applicationKey",
+  name,
+  canonical_url AS "canonicalUrl",
+  status,
+  governance_summary_path AS "governanceSummaryPath",
+  governance_audience AS "governanceAudience",
+  governance_order AS "governanceOrder"
+`;
 
 interface AccessRow {
   id: string;
@@ -49,13 +77,7 @@ interface AuditRow {
 
 export interface ApplicationAccessRepository {
   listApplications(): Promise<ApplicationRecord[]>;
-  upsertApplication(input: {
-    applicationKey: string;
-    name: string;
-    canonicalUrl: string;
-    status: ApplicationStatus;
-    actor: ActorRef;
-  }): Promise<ApplicationRecord>;
+  upsertApplication(input: ApplicationUpsertInput): Promise<ApplicationRecord>;
   setAccess(input: {
     identity: IdentityRef;
     applicationKey: string;
@@ -73,46 +95,44 @@ export class PgApplicationAccessRepository implements ApplicationAccessRepositor
 
   async listApplications(): Promise<ApplicationRecord[]> {
     const result = await this.pool.query<ApplicationRow>(`
-      SELECT
-        id,
-        application_key AS "applicationKey",
-        name,
-        canonical_url AS "canonicalUrl",
-        status
+      SELECT ${APPLICATION_COLUMNS}
       FROM applications
       ORDER BY application_key
     `);
     return result.rows;
   }
 
-  async upsertApplication(input: {
-    applicationKey: string;
-    name: string;
-    canonicalUrl: string;
-    status: ApplicationStatus;
-    actor: ActorRef;
-  }): Promise<ApplicationRecord> {
+  async upsertApplication(input: ApplicationUpsertInput): Promise<ApplicationRecord> {
     const client = await this.pool.connect();
     try {
       await client.query("BEGIN");
       const result = await client.query<ApplicationRow>(
         `
           INSERT INTO applications (
-            id, application_key, name, canonical_url, status
-          ) VALUES ($1, $2, $3, $4, $5)
+            id, application_key, name, canonical_url, status,
+            governance_summary_path, governance_audience, governance_order
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, COALESCE($8, 0))
           ON CONFLICT (application_key) DO UPDATE SET
             name = EXCLUDED.name,
             canonical_url = EXCLUDED.canonical_url,
             status = EXCLUDED.status,
+            governance_summary_path = CASE WHEN $9 THEN EXCLUDED.governance_summary_path ELSE applications.governance_summary_path END,
+            governance_audience = CASE WHEN $9 THEN EXCLUDED.governance_audience ELSE applications.governance_audience END,
+            governance_order = CASE WHEN $9 THEN EXCLUDED.governance_order ELSE applications.governance_order END,
             updated_at = now()
-          RETURNING
-            id,
-            application_key AS "applicationKey",
-            name,
-            canonical_url AS "canonicalUrl",
-            status
+          RETURNING ${APPLICATION_COLUMNS}
         `,
-        [randomUUID(), input.applicationKey, input.name, input.canonicalUrl, input.status],
+        [
+          randomUUID(),
+          input.applicationKey,
+          input.name,
+          input.canonicalUrl,
+          input.status,
+          input.governance?.summaryPath ?? null,
+          input.governance?.audience ?? null,
+          input.governance?.order ?? null,
+          Boolean(input.governance),
+        ],
       );
       const row = result.rows[0];
       if (!row) throw new Error("application upsert returned no row");
@@ -123,7 +143,17 @@ export class PgApplicationAccessRepository implements ApplicationAccessRepositor
         targetType: "application",
         targetRef: input.applicationKey,
         outcome: "succeeded",
-        payload: { status: input.status, canonicalUrl: input.canonicalUrl },
+        payload: {
+          status: input.status,
+          canonicalUrl: input.canonicalUrl,
+          ...(input.governance
+            ? {
+                governanceSummaryPath: input.governance.summaryPath,
+                governanceAudience: input.governance.audience,
+                governanceOrder: input.governance.order,
+              }
+            : {}),
+        },
       });
       await client.query("COMMIT");
       return row;

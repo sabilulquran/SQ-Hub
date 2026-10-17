@@ -46,6 +46,20 @@ The machine token must:
 
 The endpoint decides only whether the identity may enter an application. It does not contain HCIS/SPMB business permissions.
 
+Organ Yayasan administration (HUB-IMPL-021 §1, Platform Administrator, fresh session; mutations need the exact Hub `Origin` and a reason):
+```text
+GET  /admin/organ-memberships
+GET  /admin/organ-memberships/:id
+POST /admin/organ-memberships/existing-staff      # Path A
+POST /admin/organ-memberships/new-identity        # Path B, needs the identity-management client
+POST /admin/organ-memberships/:id/change
+GET  /admin/organ-memberships/:id/end-preview
+POST /admin/organ-memberships/:id/end
+POST /admin/organ-memberships/:id/resend-activation
+```
+
+`PUT /admin/applications/:applicationKey` also accepts `governanceSummaryPath`, `governanceAudience` and `governanceOrder` (HUB-IMPL-021 §2). The path must be a path on the `canonicalUrl` origin.
+
 ## Operator CLI
 
 Examples from repository root:

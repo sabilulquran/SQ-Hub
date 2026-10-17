@@ -9,6 +9,20 @@ export interface ManagedStaffIdentity {
   enabled: boolean;
   requiredActions?: string[];
   employeeId?: string;
+  /** Keycloak `totp` flag: an OTP credential is configured. */
+  totp?: boolean;
+  /** HUB-IMPL-021 Path B: identity created by Hub for an Organ Yayasan membership. */
+  organProvisioned?: boolean;
+}
+
+/** Attribute that marks an identity Hub created for an Organ Yayasan membership (HUB-IMPL-021 Path B). */
+export const ORGAN_PROVISIONED_ATTRIBUTE = "sqProvisionedFor";
+export const ORGAN_PROVISIONED_VALUE = "organ-membership";
+
+export interface CreateOrganMemberInput {
+  email: string;
+  firstName: string;
+  lastName: string;
 }
 
 export interface CreateManagedStaffInput {
@@ -27,6 +41,12 @@ export interface IdentityManagement {
   inspect(subject: string): Promise<ManagedStaffIdentity | null>;
   setEnabled(subject: string, enabled: boolean): Promise<{ changed: boolean; identity: ManagedStaffIdentity }>;
   sendPasswordInitialization(subject: string): Promise<void>;
+  /** Every identity whose username or e-mail equals the given e-mail (exact, case-insensitive). */
+  findByUsernameOrEmail(email: string): Promise<ManagedStaffIdentity[]>;
+  createOrganMember(input: CreateOrganMemberInput): Promise<ManagedStaffIdentity>;
+  sendOrganActivation(subject: string): Promise<void>;
+  requireTotpSetup(subject: string): Promise<"set" | "already_required">;
+  linkEmployee(subject: string, employeeId: string): Promise<ManagedStaffIdentity>;
 }
 
 interface KeycloakUserRepresentation {
@@ -39,6 +59,7 @@ interface KeycloakUserRepresentation {
   enabled?: boolean;
   requiredActions?: string[];
   attributes?: Record<string, string[]>;
+  totp?: boolean;
 }
 
 interface TokenResponse {
@@ -162,6 +183,111 @@ export class KeycloakIdentityManagement implements IdentityManagement {
     if (!response.ok) this.unavailable("required-action", response.status);
   }
 
+  async findByUsernameOrEmail(email: string): Promise<ManagedStaffIdentity[]> {
+    const needle = email.trim().toLowerCase();
+    const [byUsername, byEmail] = await Promise.all([
+      this.queryUsers({ username: needle, exact: "true", max: "2" }),
+      this.queryUsers({ email: needle, exact: "true", max: "2" }),
+    ]);
+    const ids = new Set<string>();
+    for (const user of [...byUsername, ...byEmail]) {
+      if (!user.id) continue;
+      if (user.username?.toLowerCase() === needle || user.email?.toLowerCase() === needle) ids.add(user.id);
+    }
+    const identities: ManagedStaffIdentity[] = [];
+    for (const id of ids) {
+      const identity = await this.inspect(id);
+      if (identity) identities.push(identity);
+    }
+    return identities;
+  }
+
+  async createOrganMember(input: CreateOrganMemberInput): Promise<ManagedStaffIdentity> {
+    const email = input.email.trim().toLowerCase();
+    await this.assertUnique(email, email);
+    const response = await this.adminFetch("users", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        // ADR-0005: staff without NIP use their e-mail as username. Hub never invents a staff number.
+        username: email,
+        email,
+        emailVerified: false,
+        firstName: input.firstName,
+        lastName: input.lastName,
+        enabled: true,
+        // No credential value is ever sent. Two-step verification is mandatory for organ members.
+        requiredActions: ["VERIFY_EMAIL", "UPDATE_PASSWORD", "CONFIGURE_TOTP"],
+        attributes: { [ORGAN_PROVISIONED_ATTRIBUTE]: [ORGAN_PROVISIONED_VALUE] },
+      }),
+    });
+    if (response.status === 409) {
+      throw new IdentityManagementError("DUPLICATE_USERNAME", "Username or email already exists");
+    }
+    if (!response.ok) this.unavailable("create-organ-member", response.status);
+    const location = response.headers.get("location");
+    const subject = location?.split("/").filter(Boolean).at(-1);
+    if (!subject) this.unavailable("create-organ-member-location", response.status);
+    const identity = await this.inspect(subject);
+    if (!identity) this.unavailable("create-organ-member-inspect", 502);
+    return identity;
+  }
+
+  async sendOrganActivation(subject: string): Promise<void> {
+    const current = await this.inspect(subject);
+    if (!current) throw new IdentityManagementError("STAFF_NOT_FOUND", "Staff identity was not found");
+    if (!current.organProvisioned || !current.requiredActions?.includes("UPDATE_PASSWORD")) {
+      throw new IdentityManagementError("IDENTITY_ACTION_NOT_PENDING", "Organ activation is not pending");
+    }
+    const response = await this.adminFetch(
+      `users/${encodeURIComponent(subject)}/execute-actions-email?lifespan=43200`,
+      {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(["VERIFY_EMAIL", "UPDATE_PASSWORD"]),
+      },
+    );
+    if (!response.ok) this.unavailable("organ-activation", response.status);
+  }
+
+  async requireTotpSetup(subject: string): Promise<"set" | "already_required"> {
+    const user = await this.rawUser(subject);
+    const actions = user.requiredActions ?? [];
+    if (actions.includes("CONFIGURE_TOTP")) return "already_required";
+    const response = await this.adminFetch(`users/${encodeURIComponent(subject)}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ requiredActions: [...actions, "CONFIGURE_TOTP"] }),
+    });
+    if (response.status === 404) throw new IdentityManagementError("STAFF_NOT_FOUND", "Staff identity was not found");
+    if (!response.ok) this.unavailable("require-totp", response.status);
+    const verified = await this.rawUser(subject);
+    if (!verified.requiredActions?.includes("CONFIGURE_TOTP")) this.unavailable("require-totp-verify", 502);
+    return "set";
+  }
+
+  async linkEmployee(subject: string, employeeId: string): Promise<ManagedStaffIdentity> {
+    const user = await this.rawUser(subject);
+    const response = await this.adminFetch(`users/${encodeURIComponent(subject)}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      // Keycloak replaces the whole attribute map, so keep every existing attribute.
+      body: JSON.stringify({ attributes: { ...(user.attributes ?? {}), hcisEmployeeId: [employeeId] } }),
+    });
+    if (response.status === 404) throw new IdentityManagementError("STAFF_NOT_FOUND", "Staff identity was not found");
+    if (!response.ok) this.unavailable("link-employee", response.status);
+    const verified = await this.inspect(subject);
+    if (!verified || verified.employeeId !== employeeId) this.unavailable("link-employee-verify", 502);
+    return verified;
+  }
+
+  private async rawUser(subject: string): Promise<KeycloakUserRepresentation> {
+    const response = await this.adminFetch(`users/${encodeURIComponent(subject.trim())}`);
+    if (response.status === 404) throw new IdentityManagementError("STAFF_NOT_FOUND", "Staff identity was not found");
+    if (!response.ok) this.unavailable("inspect", response.status);
+    return (await response.json()) as KeycloakUserRepresentation;
+  }
+
   private async assertUnique(username: string, email: string): Promise<void> {
     const usernameMatches = await this.queryUsers({ username, exact: "true", max: "2" });
     if (usernameMatches.some((user) => user.username?.toLowerCase() === username.toLowerCase())) {
@@ -194,6 +320,10 @@ export class KeycloakIdentityManagement implements IdentityManagement {
       enabled: user.enabled,
       requiredActions: user.requiredActions ?? [],
       ...(user.attributes?.hcisEmployeeId?.[0] ? { employeeId: user.attributes.hcisEmployeeId[0] } : {}),
+      ...(typeof user.totp === "boolean" ? { totp: user.totp } : {}),
+      ...(user.attributes?.[ORGAN_PROVISIONED_ATTRIBUTE]?.includes(ORGAN_PROVISIONED_VALUE)
+        ? { organProvisioned: true }
+        : {}),
     };
   }
 
