@@ -67,11 +67,11 @@ A membership is **effective** when `status = "active"`, `termStart <= today`, an
 ### Adding a member: two paths
 Organ members are added manually (Product Owner decision, 2026-10-17). Some Pengurus are salaried, so the form first asks whether the person already has an Akun SQ.
 
-**Path A — the person is already staff.** For example a salaried Pengurus who is an HCIS Employee.
+**Path A — the person is already staff.** For example a salaried Pengurus, who is an HCIS Employee when paid through HCIS payroll (Product Owner decision, 2026-10-17).
 
 1. The administrator searches the existing staff identities (same search as Application Access) and picks the person.
 2. The administrator enters organ, position label, term, and reason.
-3. Hub creates the membership only. The identity, its password, and its lifecycle stay under HUB-IMPL-013.
+3. Hub creates the membership. The identity and its lifecycle stay under HUB-IMPL-013. If the identity has no TOTP credential yet, Hub sets `CONFIGURE_TOTP` as a required action for its next sign-in.
 4. Ending the membership later does not disable the identity.
 
 **Path B — the person is not staff.** For example a Pembina or an unsalaried Pengurus.
@@ -79,17 +79,18 @@ Organ members are added manually (Product Owner decision, 2026-10-17). Some Peng
 1. The administrator enters full name, e-mail, organ, position label, term, and reason. There is no NIP and no HCIS check; Hub never invents a staff number.
 2. Hub refuses the e-mail if any staff identity already uses it as username or verified e-mail, and offers Path A instead.
 3. Hub creates the Akun SQ identity in the staff realm with the e-mail as username (ADR-0005), marked as provisioned for an organ membership.
-4. Keycloak sends `VERIFY_EMAIL` and `UPDATE_PASSWORD` with a 12-hour link, as in HUB-IMPL-013. Hub never creates or shows a password. TBD (ADR-0009): whether `CONFIGURE_TOTP` is also required.
+4. Keycloak sends `VERIFY_EMAIL` and `UPDATE_PASSWORD` with a 12-hour link, as in HUB-IMPL-013. Keycloak also requires `CONFIGURE_TOTP`: two-step verification is mandatory for organ members (Product Owner decision, 2026-10-17). Hub never creates or shows a password.
 5. Hub creates the membership.
 6. Steps 3 to 5 are one operation with per-step results, safe retry, and the HUB-IMPL-013 partial-failure rules.
 
 **Both paths, Application Access.** The same form lists the applications that publish a governance summary, all pre-selected. On save, Hub grants Application Access to each selected one, with one audit event per grant. The administrator may clear any of them.
 
-**Domain role.** Hub then lists, for each selected application, that the person still needs the application's governance role. Hub does not create it. For HCIS this means a `FOUNDATION_BOARD` account (Path B) or, if HCIS accepts the change proposed in ADR-0009, a board-view role on the existing `EMPLOYEE` account (Path A). Until the domain role exists, that application's card is not shown, and the membership page says so.
+**Domain role.** Hub then lists, for each selected application, that the person still needs the application's governance role. Hub does not create it. For HCIS this means a `FOUNDATION_BOARD` account (Path B) or a board-view role on the existing `EMPLOYEE` account (Path A). Until the domain role exists, that application's card is not shown, and the membership page says so.
 
 ### Ending a membership
 - **Path A:** the membership ends. The identity and its Application Access stay, because the person is still staff. The administrator is reminded to ask each domain to remove the governance role.
-- **Path B:** TBD (ADR-0009), suggested: the same action also revokes all Application Access and disables the identity, with a preview listing each step, like HUB-IMPL-013 offboarding.
+- **Path B:** the same action also revokes all Application Access and disables the identity, with a preview listing each step and the HUB-IMPL-013 partial-failure rules (Product Owner decision, 2026-10-17).
+- **A Path B member who later becomes an Employee** keeps the same identity. HCIS maps it to the new Employee account; HUB-IMPL-013 provisioning must find the existing identity by e-mail and not create a second one. The membership then counts as Path A, so ending it no longer disables the identity.
 - A membership whose `termEnd` has passed stops being effective at once. Hub lists memberships ending in the next 30 days on the Organ Yayasan page so the administrator can renew or end them on time.
 
 ## 2. Registry fields
@@ -245,7 +246,7 @@ Each item needs its own spec ID in its own repository. They are listed here only
 
 | Application | Work |
 | --- | --- |
-| HCIS | Decide how an `EMPLOYEE` account gets board access (ADR-0009 open question; suggested: a board-view role). Publish ORG-003 aggregates through contract v1 for `FOUNDATION_BOARD`, with a monthly active-headcount trend and a headcount-by-unit ranking if effective-dated history supports them (to be confirmed). Add bearer validation on that endpoint only. Allow a `FOUNDATION_BOARD` account to be mapped through the existing OIDC identity mapping. |
+| HCIS | Add a board-view permission assignable to an `EMPLOYEE` account as a role (Product Owner decision, 2026-10-17). Publish ORG-003 aggregates through contract v1 for `FOUNDATION_BOARD`, with a monthly active-headcount trend and a headcount-by-unit ranking if effective-dated history supports them (to be confirmed). Add bearer validation on that endpoint only. Allow a `FOUNDATION_BOARD` account to be mapped through the existing OIDC identity mapping. |
 | Aset SQ | Specify a governance role (read-only, organization scope, no mutation) and what to publish, for example asset condition by category (`composition`). |
 | Karir SQ | Publish open vacancies, candidates per selection stage (`stages`), and staffing requests awaiting Yayasan approval as an attention item. The approval itself stays in Karir SQ. |
 | Keuangan, SPMB | Implement contract v1 when they are built. Keuangan first specifies which financial figures the organs may see (for example budget against realisation per unit as `target`). |
@@ -268,7 +269,8 @@ Every production change on Mi8VPS needs explicit owner approval.
 2. A membership outside its term is not effective.
 3. Membership grant, change, and end require a Platform Administrator, fresh session, and reason; each writes one audit event. Self-grant is refused.
 3a. Path B creates the identity, sends the verification and password e-mail, and creates the membership as one operation with per-step results and safe retry. An e-mail already used by a staff identity is refused with a pointer to Path A.
-3b. Ending a Path A membership never disables the identity.
+3b. Ending a Path A membership never disables the identity. Ending a Path B membership revokes its Application Access and disables the identity.
+3c. A member cannot complete sign-in without a TOTP credential.
 4. Hub requests only active applications with a summary path and active Application Access.
 5. A domain `403` or `404` hides the card. A timeout or invalid body shows "Tidak dapat dimuat" without delaying other cards beyond 3 seconds.
 6. A response with a mismatched `applicationKey`, or a link to another origin, is dropped.

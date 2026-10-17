@@ -18,7 +18,7 @@ remain authoritative if this register conflicts with them.
 | Identity Lifecycle — staff enter, change, and leave | **Specification ACCEPTED; delivery in progress** | Complete HCIS producer/Hub consumer review, least-privilege Keycloak production proof, and controlled synthetic production UAT before release. |
 | Organization Directory — HCIS organization projection | **CLOSED for v1; production accepted** | Operate the accepted sync/read path. SLA deployment and history retention remain operational TBDs; they do not reopen v1 acceptance. |
 | Application Platform — onboard more SQ applications | **Foundation exists; expansion is demand-led** | Scope one real consumer at a time. Do not build generic integrations without an identified application and owner. |
-| Governance view — Ringkasan Yayasan | **DISCOVERY** — requested 2026-10-17 | Resolve ADR-0009 open questions, then review HUB-IMPL-021 (DRAFT). No implementation is approved. |
+| Governance view — Ringkasan Yayasan | **DISCOVERY** — requested 2026-10-17; all design questions answered | Product Owner review of ADR-0009 (PROPOSED) and HUB-IMPL-021 (DRAFT). No implementation is approved. |
 | SQ Account / SQ Portal — external identities and journeys | **DISCOVERY** — first journey named: Recruitment (2026-10-16) | Resolve the remaining discovery questions below and accept ADR-0008 before any external identity implementation. No external identity implementation is approved by this roadmap. |
 
 ## Identity Lifecycle decisions
@@ -97,11 +97,13 @@ Product Owner decisions of 2026-10-17:
 | Landing | Every member lands on Ringkasan Yayasan, including members who are also staff. |
 | Pengawas | Same summaries as Pembina and Pengurus. |
 | Token exchange | Approved in principle; applying it on Mi8VPS needs owner approval at rollout. |
+| Salaried Pengurus | HCIS Employees when paid through HCIS payroll; they keep their staff Akun SQ. |
+| Two-step verification | Required for every organ member. |
+| HCIS board access | HCIS adds a board-view role for `EMPLOYEE` accounts; `FOUNDATION_BOARD` stays for members who are not staff. |
+| End of term | For a member who is not staff, the same action revokes access and disables the Akun SQ. |
+| Later employment | A member who becomes an Employee keeps the same Akun SQ. |
 
-Still open, with suggested answers in ADR-0009: whether salaried Pengurus are
-HCIS Employees, required TOTP, HCIS board access for an Employee account,
-disabling a non-staff member's account at end of term, and keeping one identity
-if a member later becomes an Employee.
+No open questions remain for ADR-0009. Its acceptance is the Product Owner's decision.
 
 ## SQ Account / SQ Portal
 

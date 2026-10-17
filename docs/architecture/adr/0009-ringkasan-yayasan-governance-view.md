@@ -31,20 +31,20 @@ ADR-0001 keeps business logic and data in each domain application. ADR-0007 keep
 - **A separate governance application.** This may be right later if the organs need their own workflows, such as resolutions or decrees. For read-only oversight, the Hub landing page is enough. Deferred.
 
 ## Product Owner decisions (2026-10-17)
+All given in a project conversation on 2026-10-17.
+
 - **Authority:** SQ Admin (Platform Administrator) records organ membership and terms in Admin Center. No separate governance administrator group.
 - **Accounts:** organ members are added manually by SQ Admin. Some Pengurus are salaried, so a member may or may not already be staff. Both cases are designed in HUB-IMPL-021 section 1.
 - **Landing:** every member with an effective membership lands on Ringkasan Yayasan, including members who are also staff. Beranda stays one click away.
 - **Pengawas:** sees the same summaries as Pembina and Pengurus. Hub does not vary summaries by organ.
 - **Token exchange:** approved in principle. Engineering prepares the Keycloak configuration; applying it on Mi8VPS still needs the owner's approval at rollout.
+- **Salaried Pengurus:** recorded as Employees in HCIS when their pay goes through HCIS payroll. They keep their staff Akun SQ and follow HUB-IMPL-013.
+- **Two-step verification:** required for every organ member, as for privileged staff, because they see organization-wide figures.
+- **HCIS board access for an Employee:** HCIS adds a board-view permission that can be given to an `EMPLOYEE` account as a role. `FOUNDATION_BOARD` stays for members who are not staff. This needs an HCIS spec change.
+- **End of term, member who is not staff:** the same Admin Center action revokes their Application Access and disables their Akun SQ, with a preview and reason.
+- **Member who later becomes an Employee:** keeps the same Akun SQ. HCIS maps that identity to the new Employee account; HUB-IMPL-013 does not create a second one.
 
-## Open questions (must be resolved before ACCEPTED)
-Each has a suggested answer for the Product Owner to confirm or change.
-
-- **Are salaried Pengurus recorded as Employees in HCIS (NIP, payslip in HCIS)?** Suggested: yes, if their pay goes through HCIS payroll. They then keep their staff Akun SQ and follow HUB-IMPL-013.
-- **Must organ members use two-step verification (TOTP)?** Suggested: yes, required, as for privileged staff, because they see organization-wide figures.
-- **How does a salaried Pengurus (an HCIS `EMPLOYEE` account) reach HCIS `/board`?** Today `/board` accepts only the `FOUNDATION_BOARD` account type, and one Akun SQ identity maps to one HCIS account. Suggested: HCIS adds a board-view permission that can be given to an `EMPLOYEE` account as a role; `FOUNDATION_BOARD` stays for members who are not staff. This is an HCIS spec change.
-- **When a member who is not staff ends their term, is their Akun SQ disabled?** Suggested: yes, in the same Admin Center action, with a preview and reason, because the account exists only for that membership.
-- **If a member who is not staff later becomes an Employee, do they keep the same Akun SQ?** Suggested: yes, one person keeps one identity; HCIS maps it to the new Employee account instead of HUB-IMPL-013 creating a second one.
+No open questions remain. Acceptance of this ADR is the Product Owner's decision.
 
 ## Consequences
 - Hub gains one new outbound dependency per participating app. A slow or failing app degrades only its own card.
