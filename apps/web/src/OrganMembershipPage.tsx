@@ -372,7 +372,7 @@ function MembershipDetail({
             <span className="font-semibold">{app.name}</span>
             <span className="text-xs text-muted-foreground">
               Akses aplikasi: {app.access === "active" ? "aktif" : app.access === "revoked" ? "dicabut" : "belum diberi"}
-              {app.summary ? ` · Ringkasan: ${summaryLabel(app.summary.outcome)}` : ""}
+              {app.summary ? ` · Ringkasan terakhir: ${summaryLabel(app.summary.outcome)}` : " · Ringkasan: belum pernah dibuka"}
             </span>
           </li>
         ))}
@@ -510,8 +510,16 @@ function Field({ label, helper, children }: { label: string; helper?: string; ch
   return <label className="block"><span className="mb-1.5 block text-xs font-bold text-brand-heading">{label}</span>{children}{helper ? <span className="sq-admin-helper block">{helper}</span> : null}</label>;
 }
 
-function summaryLabel(outcome: "ready" | "hidden" | "failed") {
-  return outcome === "ready" ? "tampil" : outcome === "hidden" ? "ditolak aplikasi (peran belum ada)" : "gagal dimuat";
+const SUMMARY_LABELS = {
+  ready: "tampil",
+  forbidden: "ditolak aplikasi (peran tata kelola belum ada)",
+  not_found: "endpoint belum dipasang",
+  dropped: "ditolak SQ Hub (tidak sesuai kontrak)",
+  failed: "gagal dimuat",
+} as const;
+
+function summaryLabel(outcome: keyof typeof SUMMARY_LABELS) {
+  return SUMMARY_LABELS[outcome];
 }
 
 function formatTerm(membership: Pick<OrganMembershipView, "termStart" | "termEnd">) {

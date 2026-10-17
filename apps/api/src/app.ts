@@ -15,6 +15,8 @@ import {
 import { registerHubAuthRoutes } from "./modules/hub-auth/routes.js";
 import type { HubAuthRuntime } from "./modules/hub-auth/service.js";
 import type { IdentityDirectory } from "./modules/identity-directory/client.js";
+import { registerGovernanceRoutes } from "./modules/governance/routes.js";
+import type { GovernanceService } from "./modules/governance/service.js";
 import { registerOrganMembershipRoutes } from "./modules/organ-membership/routes.js";
 import type { OrganMembershipService } from "./modules/organ-membership/service.js";
 import { registerPlatformAdminRoutes } from "./modules/platform-admin/routes.js";
@@ -46,6 +48,7 @@ export function buildApp(input: {
   accountSelfService?: KeycloakAccountSelfService;
   staffLifecycle?: StaffLifecycleService;
   organMemberships?: OrganMembershipService;
+  governance?: GovernanceService;
   logger?: boolean;
   organizationDirectory?: Parameters<typeof registerOrganizationDirectoryRoutes>[1];
 }) {
@@ -120,6 +123,10 @@ export function buildApp(input: {
       service: input.staffLifecycle,
       ...(input.adminAllowedOrigin ? { allowedOrigin: input.adminAllowedOrigin } : {}),
     });
+  }
+
+  if (input.hubAuth && input.governance) {
+    registerGovernanceRoutes(app, { hubAuth: input.hubAuth, service: input.governance });
   }
 
   if (input.hubAuth && input.platformAdmin && input.organMemberships) {
