@@ -53,7 +53,7 @@ export interface HubAuthRuntime {
     callbackUrl: URL,
     transactionToken: string | null,
     context: HubRequestContext,
-  ): Promise<{ setCookies: string[]; returnPath: "/" | "/account" }>;
+  ): Promise<{ setCookies: string[]; returnPath: "/" | "/account" | "/yayasan" }>;
   getWorkspace(sessionToken: string | null): Promise<HubWorkspaceSnapshot>;
   getSession(sessionToken: string | null): Promise<HubSessionRecord>;
   getAccountAccess(sessionToken: string | null): Promise<{
@@ -142,7 +142,7 @@ export class HubAuthService implements HubAuthRuntime {
     callbackUrl: URL,
     transactionToken: string | null,
     context: HubRequestContext,
-  ): Promise<{ setCookies: string[]; returnPath: "/" | "/account" }> {
+  ): Promise<{ setCookies: string[]; returnPath: "/" | "/account" | "/yayasan" }> {
     if (!transactionToken) {
       throw new HubAuthError(400, "OIDC_TRANSACTION_MISSING", "Transaksi masuk tidak ditemukan.");
     }
@@ -208,7 +208,7 @@ export class HubAuthService implements HubAuthRuntime {
     );
 
     return {
-      returnPath: stored.transaction.returnPath ?? "/",
+      returnPath: await this.landingPath(stored.transaction.returnPath ?? "/", completed.identity),
       setCookies: [
         buildCookie(
           HUB_SESSION_COOKIE_NAME,
@@ -250,6 +250,23 @@ export class HubAuthService implements HubAuthRuntime {
         governanceView: Boolean(membership),
       },
     };
+  }
+
+  /**
+   * HUB-IMPL-021 §5: after login every identity with an effective Organ Yayasan membership
+   * lands on Ringkasan Yayasan; everyone else lands on Beranda as before.
+   */
+  private async landingPath(
+    returnPath: "/" | "/account",
+    identity: { issuer: string; subject: string },
+  ): Promise<"/" | "/account" | "/yayasan"> {
+    if (returnPath !== "/" || !this.governanceMembership) return returnPath;
+    try {
+      const membership = await this.governanceMembership.getEffective({ issuer: identity.issuer, subject: identity.subject });
+      return membership ? "/yayasan" : "/";
+    } catch {
+      return "/";
+    }
   }
 
   getSession(sessionToken: string | null): Promise<HubSessionRecord> {

@@ -11,7 +11,9 @@ import {
   ordinaryWorkspaceFixture,
   workspaceFixture,
 } from "@/dev/workspaceFixture";
+import { emptyGovernanceFixture, governanceFixture, governanceWorkspaceFixture } from "@/dev/governanceFixture";
 import { organOverviewFixture } from "@/dev/organFixture";
+import { GovernancePageView } from "@/governance/GovernancePage";
 import { resolveHubRoute } from "@/routes";
 import { initThemePreference } from "@/theme";
 import "@/styles.css";
@@ -51,6 +53,22 @@ function renderPreviewApp() {
   }
   if (route === "account") {
     return <AccountPage workspace={fixture} previewAccount={accountFixture} />;
+  }
+  if (route === "yayasan") {
+    const state = params.get("state");
+    return (
+      <GovernancePageView
+        workspace={governanceWorkspaceFixture}
+        previewMode={previewMode}
+        state={
+          state === "loading"
+            ? { status: "loading" }
+            : state === "error"
+              ? { status: "error" }
+              : { status: "ready", snapshot: state === "empty" ? emptyGovernanceFixture : governanceFixture }
+        }
+      />
+    );
   }
   if (route === "home" || route === "apps") {
     return (

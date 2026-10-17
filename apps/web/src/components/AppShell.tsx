@@ -4,7 +4,7 @@ import { AccountMenu } from "@/components/AccountMenu";
 import { AppLauncher } from "@/components/AppLauncher";
 import { BrandLockup } from "@/components/BrandLockup";
 import { MobileNavigation } from "@/components/MobileNavigation";
-import { navigationBySpace, type HubNavKey } from "@/components/shellNavigation";
+import { navigationGroups, type HubNavKey } from "@/components/shellNavigation";
 import { SpaceSwitcher, type HubSpace } from "@/components/SpaceSwitcher";
 import type { WorkspaceSnapshot } from "@/types";
 
@@ -36,6 +36,7 @@ export function AppShell({
   children,
 }: AppShellProps) {
   const platformAdministration = workspace.capabilities.platformAdministration;
+  const governanceView = Boolean(workspace.capabilities.governanceView);
 
   return (
     <div className="min-h-screen bg-background text-foreground">
@@ -51,7 +52,11 @@ export function AppShell({
           {platformAdministration ? <SpaceSwitcher space={space} className="hidden md:flex" /> : null}
 
           <div className="ml-auto flex items-center gap-1">
-            <AppLauncher applications={workspace.applications} previewOpen={previewMode === "launcher"} />
+            <AppLauncher
+              applications={workspace.applications}
+              governanceView={governanceView}
+              previewOpen={previewMode === "launcher"}
+            />
             <AccountMenu
               user={workspace.user}
               platformAdministration={platformAdministration}
@@ -62,7 +67,7 @@ export function AppShell({
         </div>
       </header>
 
-      <Sidebar space={space} active={active} />
+      <Sidebar space={space} active={active} governanceView={governanceView} />
 
       <div className="md:pl-14 lg:pl-[248px]">
         <main className="mx-auto w-full max-w-6xl px-4 pb-32 pt-6 sm:px-6 sm:pt-8 md:pb-12 lg:px-8">
@@ -86,17 +91,18 @@ export function AppShell({
         space={space}
         active={active}
         platformAdministration={platformAdministration}
+        governanceView={governanceView}
         previewMoreOpen={previewMode === "more"}
       />
     </div>
   );
 }
 
-function Sidebar({ space, active }: { space: HubSpace; active: HubNavKey }) {
+function Sidebar({ space, active, governanceView }: { space: HubSpace; active: HubNavKey; governanceView: boolean }) {
   return (
     <aside className="fixed bottom-0 left-0 top-16 z-30 hidden w-14 overflow-y-auto border-r border-border bg-sidebar px-2 py-4 md:block lg:w-[248px] lg:px-3">
       <nav aria-label={space === "admin" ? "Navigasi Administrasi" : "Navigasi SQ Hub"}>
-        {navigationBySpace[space].map((group) => (
+        {navigationGroups(space, { governanceView }).map((group) => (
           <div key={group.label} className="mb-5">
             <p className="mb-1.5 hidden px-3 text-[11px] font-bold uppercase tracking-[0.12em] text-muted-foreground lg:block">
               {group.label}

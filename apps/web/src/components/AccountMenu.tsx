@@ -3,6 +3,7 @@ import { useCallback, useRef, useState } from "react";
 
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { useDismiss } from "@/components/useDismiss";
+import { organBadge } from "@/organ";
 import type { WorkspaceUser } from "@/types";
 
 interface AccountMenuProps {
@@ -29,7 +30,12 @@ export function AccountMenu({
   const close = useCallback(() => setOpen(false), []);
   useDismiss(open, close, rootRef, triggerRef);
 
-  const roleLabel = platformAdministration ? "Platform Administrator" : "Pegawai";
+  // A member of an Organ Yayasan may not be staff, so the organ replaces the default role label.
+  const roleLabel = platformAdministration
+    ? "Platform Administrator"
+    : user.organ
+      ? organBadge(user.organ)
+      : "Pegawai";
 
   const handleLogout = async () => {
     if (!onLogout) return;
@@ -85,8 +91,15 @@ export function AccountMenu({
                 <p className="mt-0.5 truncate text-xs text-muted-foreground">
                   {user.contextLabel ?? "Akun internal SQ"}
                 </p>
-                <span className="mt-1.5 inline-flex rounded-full bg-brand-primary-pale px-2 py-0.5 text-[10px] font-bold text-brand-primary-deep">
-                  {roleLabel}
+                <span className="mt-1.5 flex flex-wrap gap-1">
+                  <span className="inline-flex rounded-full bg-brand-primary-pale px-2 py-0.5 text-[10px] font-bold text-brand-primary-deep">
+                    {roleLabel}
+                  </span>
+                  {user.organ && platformAdministration ? (
+                    <span className="inline-flex rounded-full bg-cat-pay-soft px-2 py-0.5 text-[10px] font-bold text-cat-pay">
+                      {organBadge(user.organ)}
+                    </span>
+                  ) : null}
                 </span>
               </div>
             </div>
