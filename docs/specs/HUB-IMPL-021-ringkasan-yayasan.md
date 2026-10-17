@@ -1,10 +1,10 @@
 # HUB-IMPL-021 — Ringkasan Yayasan
 
-**Status:** DRAFT — not approved for implementation
+**Status:** ACCEPTED by the Product Owner on 2026-10-17. Acceptance authorizes implementation under this contract. Production activation on Mi8VPS, including the Keycloak token-exchange setup, still needs review, CI, and explicit owner approval.
 **Product:** SQ Hub
 **Area:** Governance view / cross-application summaries
 **Date:** 2026-10-17
-**Depends on:** ADR-0001, ADR-0003, ADR-0007, ADR-0009 (PROPOSED), HUB-IMPL-002, HUB-IMPL-005, HUB-IMPL-017, SQ Core app shell
+**Depends on:** ADR-0001, ADR-0003, ADR-0007, ADR-0009 (ACCEPTED), HUB-IMPL-002, HUB-IMPL-005, HUB-IMPL-017, SQ Core app shell
 **First named sources:** HCIS (ORG-003 `/board`), Aset SQ (governance role not yet specified), Karir SQ (staffing requests awaiting Yayasan approval)
 
 ## Outcome
@@ -60,7 +60,7 @@ A membership is **effective** when `status = "active"`, `termStart <= today`, an
 - Managed in SQ Admin Center under a new section "Organ Yayasan" by a Platform Administrator (Product Owner decision, 2026-10-17). No separate administrator group.
 - Every change requires a fresh session, a reason, and a same-origin request, and writes a platform audit event (actor, target identity, organ, term, reason, outcome), like Application Access changes in HUB-IMPL-009.
 - An administrator cannot grant or end their own membership.
-- Offboarding under HUB-IMPL-013 ends any effective membership as an additional step. (Amendment to HUB-IMPL-013, to be accepted with this spec.)
+- Offboarding under HUB-IMPL-013 ends any effective membership as an additional step. (Amendment to HUB-IMPL-013, accepted with this spec on 2026-10-17.)
 - The membership detail page shows, read-only, which participating applications currently return a summary for that identity. This lets an operator see a missing domain role. It never changes domain roles.
 - Organ does not change what Hub shows: Pembina, Pengurus, and Pengawas see the same page (Product Owner decision, 2026-10-17).
 

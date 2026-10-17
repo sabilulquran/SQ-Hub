@@ -1,8 +1,8 @@
 # ADR-0009: Ringkasan Yayasan — Governance View in SQ Hub
 
-**Status:** PROPOSED
+**Status:** ACCEPTED by the Product Owner on 2026-10-17
 **Date:** 2026-10-17
-**Specification:** HUB-IMPL-021 (DRAFT)
+**Specification:** HUB-IMPL-021 (ACCEPTED)
 
 ## Context
 The Yayasan organs (Pembina, Pengurus, Pengawas) need read-only oversight across SQ Core. Today only HCIS has it: the `FOUNDATION_BOARD` principal and the `/board` aggregate dashboard (HCIS ORG-003). Aset SQ has no governance role, and Karir SQ, Keuangan, and SPMB are coming.
@@ -44,7 +44,7 @@ All given in a project conversation on 2026-10-17.
 - **End of term, member who is not staff:** the same Admin Center action revokes their Application Access and disables their Akun SQ, with a preview and reason.
 - **Member who later becomes an Employee:** keeps the same Akun SQ. HCIS maps that identity to the new Employee account; HUB-IMPL-013 does not create a second one.
 
-No open questions remain. Acceptance of this ADR is the Product Owner's decision.
+No open questions remain.
 
 ## Consequences
 - Hub gains one new outbound dependency per participating app. A slow or failing app degrades only its own card.
