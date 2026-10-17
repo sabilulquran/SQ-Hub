@@ -27,7 +27,8 @@ export class MachineAuthError extends Error {
 export function createKeycloakMachineTokenVerifier(input: {
   issuer: string;
   audience: string;
-  allowedClients: ReadonlySet<string>;
+  /** "any" leaves the client check to the caller (Kirim SQ maps clients to kirim_consumers). */
+  allowedClients: ReadonlySet<string> | "any";
   requiredScope?: string;
 }): VerifyMachineToken {
   const issuer = input.issuer.replace(/\/$/, "");
@@ -90,7 +91,7 @@ export function createKeycloakMachineTokenVerifier(input: {
             ? payload.client_id
             : null;
 
-      if (!clientId || !input.allowedClients.has(clientId)) {
+      if (!clientId || (input.allowedClients !== "any" && !input.allowedClients.has(clientId))) {
         throw new MachineAuthError("FORBIDDEN_CLIENT", "machine client is not allowed");
       }
 

@@ -1,7 +1,7 @@
 # Kirim SQ — Desain modul
 
 **Status:** DRAFT / DISCOVERY. Dokumen ini tidak mengizinkan implementasi atau perubahan production.
-**Spesifikasi:** KIRIM-001 (belum ada spesifikasi implementasi)
+**Spesifikasi:** KIRIM-001; spesifikasi implementasi R1: KIRIM-IMPL-001 (ACCEPTED 2026-10-17)
 **Tanggal:** 2026-10-17 (revisi 2)
 **Terkait:** ADR-0001, ADR-0006, ADR-0010, ADR-0011; SPMB SQ `sq-spmb/docs/product/module-design.md` (§6.8, §8), `sq-spmb/docs/specs/SPMB-IMPL-001-r0-fondasi-pengaturan-publik.md`; JalurPesan `jalurpesan.web.id/README.md`
 
@@ -142,6 +142,8 @@ Provider dipilih **per nomor** di konfigurasi, bukan di kode, sehingga bisa dipi
 
 Isi pesan dan nomor utuh disimpan terenkripsi di kolom (`*_enc`), dan dicari lewat HMAC (`*_hmac`).
 
+Tambahan dari KIRIM-IMPL-001 (ACCEPTED 2026-10-17, §4): `kirim_webhook_deliveries` (antrean webhook keluar), `kirim_admins` (siapa `kirim_admin`, D-2), dan `kirim_media_engine_refs` (cache `mediaId` mesin per nomor). Implementasi R1 juga menyimpan satu nilai uji terenkripsi per kunci di `kirim_key_canaries` supaya proses menolak start bila kunci hilang atau salah (KIRIM-IMPL-001 §9).
+
 ## 5. Kontrak untuk aplikasi pemakai
 
 Autentikasi backend: token **client credentials** realm `sq-staff` (pola `spmb-api`), dengan audience `sq-hub-kirim`. Kirim SQ memetakan `client_id` ke `kirim_consumers`.
@@ -180,6 +182,8 @@ Kirim SQ memanggil `webhook_url` pemakai dengan tanda tangan HMAC:
 | `device.status` | `device`, `status` | Modul pemilik dan modul yang punya rute |
 
 Pemakai juga bisa menarik status lewat `GET /internal/kirim/messages/:id`.
+
+Rincian kontrak di KIRIM-IMPL-001 §2 dan §6.2: header `X-Kirim-Event-Id`, `X-Kirim-Timestamp`, `X-Kirim-Signature` = hex HMAC-SHA256(rahasia pemakai, `timestamp.body`), toleransi 5 menit; setiap event membawa `event_id` (sama di setiap percobaan ulang) dan `message.received` membawa `message_id`. Kode galat stabil ada di KIRIM-IMPL-001 §5.3.
 
 ### 5.3 Pendaftaran tombol aksi
 

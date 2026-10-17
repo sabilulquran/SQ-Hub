@@ -13,6 +13,8 @@ import { PgHubWorkspaceRepository } from "./modules/hub-auth/workspace-repositor
 import { KeycloakIdentityDirectory } from "./modules/identity-directory/client.js";
 import { KeycloakIdentityManagement } from "./modules/identity-management/client.js";
 import { KeycloakTokenExchanger } from "./modules/governance/token-exchange.js";
+import { loadKirimConfig } from "./modules/kirim/config.js";
+import { createKirimModule } from "./modules/kirim/module.js";
 import {
   GovernanceService,
   PgGovernanceApplicationSource,
@@ -34,6 +36,7 @@ import { PgLifecycleOperationStore } from "./modules/staff-lifecycle/operation-s
 const config = loadConfig();
 const pool = createPool(config.databaseUrl);
 const directoryConfig = loadDirectoryConfig();
+const kirimConfig = loadKirimConfig();
 const directory = new PgOrganizationDirectory(pool);
 const repository = new PgApplicationAccessRepository(pool);
 const accessService = new ApplicationAccessService(repository);
@@ -127,6 +130,18 @@ const governance = new GovernanceService({
   log: (entry) => governanceLog(entry),
 });
 
+let kirimLog: (entry: Record<string, unknown>, message: string) => void = () => undefined;
+const kirim = kirimConfig
+  ? createKirimModule({
+      pool,
+      config: kirimConfig,
+      keycloakIssuer: config.keycloakIssuer,
+      access: accessService,
+      secureCookies: config.hubCookieSecure,
+      log: (entry, message) => kirimLog(entry, message),
+    })
+  : undefined;
+
 const app = buildApp({
   accessService,
   verifyMachineToken,
@@ -146,16 +161,20 @@ const app = buildApp({
     read: () => directory.read(),
     verifyMachineToken: createKeycloakMachineTokenVerifier(directoryConfig.read),
   } } : {}),
+  ...(kirim ? { kirim } : {}),
 });
+kirimLog = (entry, message) => app.log.info(entry, message);
 
 governanceLog = (entry) => app.log.info({ event: "governance.summary", ...entry }, "governance summary request");
 
 const pullDirectory = directoryConfig.sync ? createDirectoryPull(directoryConfig.sync) : null;
 let stopDirectory: (() => Promise<void>) | undefined;
+let stopKirim: (() => Promise<void>) | undefined;
 
 const shutdown = async (signal: string) => {
   app.log.info({ signal }, "shutting down");
   await stopDirectory?.();
+  await stopKirim?.();
   await app.close();
   await pool.end();
   process.exit(0);
@@ -165,6 +184,8 @@ process.on("SIGINT", () => void shutdown("SIGINT"));
 process.on("SIGTERM", () => void shutdown("SIGTERM"));
 
 try {
+  // §9: refuse to start when a Kirim SQ key cannot open its canary; no plaintext fallback.
+  if (kirim) stopKirim = await kirim.start((entry, message) => app.log.warn(entry, message));
   await app.listen({ port: config.port, host: config.host });
   if (pullDirectory) stopDirectory = startDirectoryScheduler({
     reconcile: (asOf) => directory.synchronize(asOf, pullDirectory),

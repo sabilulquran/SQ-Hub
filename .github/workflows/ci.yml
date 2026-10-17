@@ -155,6 +155,9 @@ jobs:
           check_no_overflow 768 900 http://127.0.0.1:4173/yayasan
           check_no_overflow 1280 720 http://127.0.0.1:4173/yayasan
           check_no_overflow 390 844 'http://127.0.0.1:4173/yayasan?state=empty'
+          check_no_overflow 390 844 http://127.0.0.1:4173/kirim/nomor
+          check_no_overflow 390 844 http://127.0.0.1:4173/kirim/antrean
+          check_no_overflow 1280 720 http://127.0.0.1:4173/kirim/antrean
           for section in security sessions applications linked groups; do
             check_no_overflow 390 844 "http://127.0.0.1:4173/account?section=$section"
             check_no_overflow 1280 720 "http://127.0.0.1:4173/account?section=$section"
