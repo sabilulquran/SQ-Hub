@@ -16,6 +16,8 @@ export interface HubWorkspaceSnapshot {
   user: {
     displayName: string;
     initials: string;
+    /** HUB-IMPL-021: organ of an effective Organ Yayasan membership, for the account-menu badge. */
+    organ?: "pembina" | "pengurus" | "pengawas";
   };
   applications: Array<{
     key: string;
@@ -24,6 +26,8 @@ export interface HubWorkspaceSnapshot {
   }>;
   capabilities: {
     platformAdministration: boolean;
+    /** HUB-IMPL-021: the user has an effective Organ Yayasan membership. */
+    governanceView: boolean;
   };
 }
 
@@ -67,6 +71,10 @@ export interface HubPlatformAdminCapabilitySource {
   canUseAdmin(session: HubSessionRecord): Promise<boolean>;
 }
 
+export interface HubGovernanceMembershipSource {
+  getEffective(identity: { issuer: string; subject: string }): Promise<{ organ: "pembina" | "pengurus" | "pengawas" } | null>;
+}
+
 export class HubAuthService implements HubAuthRuntime {
   private readonly idleSeconds: number;
   private readonly maxSeconds: number;
@@ -85,6 +93,7 @@ export class HubAuthService implements HubAuthRuntime {
     },
     private readonly tokenVault: HubTokenVault,
     private readonly platformAdmin?: HubPlatformAdminCapabilitySource,
+    private readonly governanceMembership?: HubGovernanceMembershipSource,
   ) {
     this.idleSeconds = options.sessionIdleHours * 60 * 60;
     this.maxSeconds = options.sessionMaxHours * 60 * 60;
@@ -221,11 +230,15 @@ export class HubAuthService implements HubAuthRuntime {
     const platformAdministration = this.platformAdmin
       ? await this.platformAdmin.canUseAdmin(session)
       : false;
+    const membership = this.governanceMembership
+      ? await this.governanceMembership.getEffective({ issuer: session.issuer, subject: session.subject })
+      : null;
 
     return {
       user: {
         displayName: session.displayName,
         initials: initialsFromDisplayName(session.displayName),
+        ...(membership ? { organ: membership.organ } : {}),
       },
       applications: applications.map((application) => ({
         key: application.applicationKey,
@@ -234,6 +247,7 @@ export class HubAuthService implements HubAuthRuntime {
       })),
       capabilities: {
         platformAdministration,
+        governanceView: Boolean(membership),
       },
     };
   }

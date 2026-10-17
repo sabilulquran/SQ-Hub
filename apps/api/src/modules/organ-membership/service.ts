@@ -101,6 +101,9 @@ export class OrganMembershipService {
     private readonly directory: Pick<IdentityDirectory, "inspect" | "issuer">,
     private readonly identityManagement?: IdentityManagement,
     private readonly staffLifecycle?: Pick<StaffLifecycleService, "previewOffboarding" | "offboard">,
+    private readonly observations?: {
+      list(identity: IdentityRef): Promise<Array<{ applicationKey: string; outcome: string; observedAt: string }>>;
+    },
   ) {}
 
   get provisioningAvailable(): boolean {
@@ -144,12 +147,18 @@ export class OrganMembershipService {
     const membership = await this.requireMembership(id);
     const person = await this.safeInspect(membership.identity);
     const governance = await this.governanceApplicationRecords();
+    // Read-only: the last outcome Hub saw when this member opened Ringkasan Yayasan (never the summary).
+    const observed = this.observations ? await this.observations.list(membership.identity).catch(() => []) : [];
     const access = await Promise.all(
-      governance.map(async (application) => ({
-        key: application.applicationKey,
-        name: application.name,
-        access: (await this.applicationAccess.getAccess(membership.identity, application.applicationKey))?.status ?? "none",
-      })),
+      governance.map(async (application) => {
+        const observation = observed.find((item) => item.applicationKey === application.applicationKey);
+        return {
+          key: application.applicationKey,
+          name: application.name,
+          access: (await this.applicationAccess.getAccess(membership.identity, application.applicationKey))?.status ?? "none",
+          summary: observation ? { outcome: observation.outcome, observedAt: observation.observedAt } : null,
+        };
+      }),
     );
     return {
       membership: toMembershipView(membership, person),

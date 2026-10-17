@@ -170,7 +170,7 @@ class FakeWorkspaceSource implements HubWorkspaceApplicationSource {
   }
 }
 
-function service(platformAdministration = false) {
+function service(platformAdministration = false, organ: "pembina" | "pengurus" | "pengawas" | null = null) {
   const store = new MemoryStore();
   const provider = new FakeOidcProvider();
   const workspace = new FakeWorkspaceSource();
@@ -189,6 +189,7 @@ function service(platformAdministration = false) {
     {
       canUseAdmin: async () => platformAdministration,
     },
+    { getEffective: async () => (organ ? { organ } : null) },
   );
   return { auth, store, provider, vault };
 }
@@ -476,6 +477,21 @@ describe("HubAuthService", () => {
     });
   });
 
+  it("offers the governance view and organ badge only with an effective organ membership (HUB-IMPL-021)", async () => {
+    for (const organ of [null, "pengurus"] as const) {
+      const { auth } = service(false, organ);
+      const begin = await auth.beginLogin();
+      const completed = await auth.completeLogin(
+        new URL("https://hub-staging.sabilulquran.or.id/auth/callback"),
+        cookieValue(begin.setCookie, HUB_OIDC_TRANSACTION_COOKIE_NAME),
+        context,
+      );
+      const workspace = await auth.getWorkspace(cookieValue(completed.setCookies[0]!, HUB_SESSION_COOKIE_NAME));
+      expect(workspace.capabilities.governanceView).toBe(organ !== null);
+      expect(workspace.user.organ).toBe(organ ?? undefined);
+    }
+  });
+
   it("returns a browser workspace without exposing delegated identity material", async () => {
     const { auth } = service(true);
     const begin = await auth.beginLogin();
@@ -497,7 +513,7 @@ describe("HubAuthService", () => {
           canonicalUrl: "https://hcis-staging.sabilulquran.or.id",
         },
       ],
-      capabilities: { platformAdministration: true },
+      capabilities: { platformAdministration: true, governanceView: false },
     });
     expect(JSON.stringify(workspace)).not.toContain("opaque-subject");
     expect(JSON.stringify(workspace)).not.toContain("refresh-token");

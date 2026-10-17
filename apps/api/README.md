@@ -58,6 +58,13 @@ POST /admin/organ-memberships/:id/end
 POST /admin/organ-memberships/:id/resend-activation
 ```
 
+Ringkasan Yayasan browser contract (HUB-IMPL-021 §4, Hub session + effective organ membership, `403 GOVERNANCE_FORBIDDEN` otherwise):
+```text
+GET /governance/summaries
+GET /governance/summaries/:applicationKey   # retry one failed card
+```
+Summaries are fetched as the user through Keycloak token exchange (see `docs/operations/HUB-IMPL-021-token-exchange.md`), kept in memory for at most 60 seconds per session, and never stored or logged.
+
 `PUT /admin/applications/:applicationKey` also accepts `governanceSummaryPath`, `governanceAudience` and `governanceOrder` (HUB-IMPL-021 §2). The path must be a path on the `canonicalUrl` origin.
 
 ## Operator CLI

@@ -12,6 +12,12 @@ import { HubTokenVault } from "./modules/hub-auth/token-vault.js";
 import { PgHubWorkspaceRepository } from "./modules/hub-auth/workspace-repository.js";
 import { KeycloakIdentityDirectory } from "./modules/identity-directory/client.js";
 import { KeycloakIdentityManagement } from "./modules/identity-management/client.js";
+import { KeycloakTokenExchanger } from "./modules/governance/token-exchange.js";
+import {
+  GovernanceService,
+  PgGovernanceApplicationSource,
+  PgGovernanceObservationStore,
+} from "./modules/governance/service.js";
 import { PgOrganMembershipRepository } from "./modules/organ-membership/repository.js";
 import { OrganMembershipService } from "./modules/organ-membership/service.js";
 import { PgPlatformAdminRepository } from "./modules/platform-admin/repository.js";
@@ -31,6 +37,8 @@ const directoryConfig = loadDirectoryConfig();
 const directory = new PgOrganizationDirectory(pool);
 const repository = new PgApplicationAccessRepository(pool);
 const accessService = new ApplicationAccessService(repository);
+const organMembershipStore = new PgOrganMembershipRepository(pool);
+const governanceObservations = new PgGovernanceObservationStore(pool);
 const platformAdmin = new PlatformAdminService(new PgPlatformAdminRepository(pool));
 const identityDirectory = new KeycloakIdentityDirectory({
   baseUrl: config.keycloakDirectoryBaseUrl,
@@ -66,11 +74,12 @@ const staffLifecycle = identityManagement
 // HUB-IMPL-021: Path A works with the read-only directory; Path B and ending a Path B
 // membership need the identity-management principal and stay unavailable without it.
 const organMemberships = new OrganMembershipService(
-  new PgOrganMembershipRepository(pool),
+  organMembershipStore,
   accessService,
   identityDirectory,
   identityManagement,
   staffLifecycle,
+  governanceObservations,
 );
 staffLifecycle?.attachOrganMemberships(organMemberships);
 const verifyMachineToken = createKeycloakMachineTokenVerifier({
@@ -99,7 +108,24 @@ const hubAuth = new HubAuthService(
   },
   new HubTokenVault(config.hubOidcClientSecret),
   platformAdmin,
+  organMembershipStore,
 );
+
+// HUB-IMPL-021 §4: summaries are fetched as the user. Exchanged tokens and summary bodies stay
+// in this process; logs carry only application key, status and latency.
+let governanceLog: (entry: { applicationKey: string; status: unknown; latencyMs: number }) => void = () => undefined;
+const governance = new GovernanceService({
+  memberships: organMembershipStore,
+  applications: new PgGovernanceApplicationSource(pool),
+  userAccessToken: async (sessionToken) => (await hubAuth.getAccountAccess(sessionToken)).accessToken,
+  exchanger: new KeycloakTokenExchanger({
+    issuer: config.keycloakIssuer,
+    clientId: config.hubOidcClientId,
+    clientSecret: config.hubOidcClientSecret,
+  }),
+  observations: governanceObservations,
+  log: (entry) => governanceLog(entry),
+});
 
 const app = buildApp({
   accessService,
@@ -114,12 +140,15 @@ const app = buildApp({
   accountSelfService,
   ...(staffLifecycle ? { staffLifecycle } : {}),
   organMemberships,
+  governance,
   logger: true,
   ...(directoryConfig.read ? { organizationDirectory: {
     read: () => directory.read(),
     verifyMachineToken: createKeycloakMachineTokenVerifier(directoryConfig.read),
   } } : {}),
 });
+
+governanceLog = (entry) => app.log.info({ event: "governance.summary", ...entry }, "governance summary request");
 
 const pullDirectory = directoryConfig.sync ? createDirectoryPull(directoryConfig.sync) : null;
 let stopDirectory: (() => Promise<void>) | undefined;

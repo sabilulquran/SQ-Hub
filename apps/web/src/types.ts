@@ -223,7 +223,7 @@ export interface OrganMembershipDetail {
     name: string;
     access: "active" | "revoked" | "none";
     /** Last result Hub observed when this member opened Ringkasan Yayasan (status only, never the summary). */
-    summary?: { outcome: "ready" | "hidden" | "failed"; observedAt: string } | null;
+    summary?: { outcome: "ready" | "forbidden" | "not_found" | "dropped" | "failed"; observedAt: string } | null;
   }>;
 }
 
