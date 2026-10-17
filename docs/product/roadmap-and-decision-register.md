@@ -88,10 +88,20 @@ summary card per application, each application owns its figures, governance
 role, and privacy rules, and Hub fetches summaries as the user through token
 exchange. Hub stores no domain data.
 
-Open before acceptance: who is the authority for organ membership and terms;
-how members who are not Employees get an Akun SQ identity; where a member who
-is also staff lands; what Pengawas may see; and the token-exchange setup on
-Mi8VPS.
+Product Owner decisions of 2026-10-17:
+
+| Topic | Decision |
+| --- | --- |
+| Membership authority | SQ Admin records organ membership and terms in Admin Center. |
+| Accounts | Organ members are added manually. Salaried Pengurus may already be staff; both cases are designed in HUB-IMPL-021. |
+| Landing | Every member lands on Ringkasan Yayasan, including members who are also staff. |
+| Pengawas | Same summaries as Pembina and Pengurus. |
+| Token exchange | Approved in principle; applying it on Mi8VPS needs owner approval at rollout. |
+
+Still open, with suggested answers in ADR-0009: whether salaried Pengurus are
+HCIS Employees, required TOTP, HCIS board access for an Employee account,
+disabling a non-staff member's account at end of term, and keeping one identity
+if a member later becomes an Employee.
 
 ## SQ Account / SQ Portal
 
