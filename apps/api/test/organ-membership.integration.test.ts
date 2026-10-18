@@ -248,6 +248,80 @@ describe("Path B — new organ identity", () => {
   });
 });
 
+describe("Path B without a Keycloak marker attribute (production 2026-10-18)", () => {
+  const resend = { reason: "Kirim ulang aktivasi", confirm: true as const };
+  const pending = ["VERIFY_EMAIL", "UPDATE_PASSWORD", "CONFIGURE_TOTP"];
+
+  it("resends activation after a failed first e-mail, from Hub's own record", async () => {
+    realm.failActivationEmail = true;
+    const added = await service.addNewIdentity({
+      firstName: "Pembina", lastName: "Sintetis", email: "pembina.sintetis@example.test",
+      ...terms, organ: "pembina", reason: "SK Pembina 2026", applicationKeys: ["hcis"],
+    }, actor);
+    expect(added.steps.find((step) => step.step === "activation_email")?.status).toBe("failed");
+    realm.failActivationEmail = false;
+    const result = await service.resendActivation(added.membership!.id, resend, actor, admin);
+    expect(result.step.status).toBe("succeeded");
+    expect(realm.calls.filter((call) => call.startsWith("activation:"))).toHaveLength(2);
+  });
+
+  it("resends activation for a Path B membership whose identity carries no attribute and no provision audit", async () => {
+    realm.add({ subject: "organ-legacy", username: "pengawas.lama@example.test", email: "pengawas.lama@example.test", emailVerified: false, requiredActions: pending });
+    const membership = await store.create({
+      identity: { issuer, subject: "organ-legacy" }, terms: { organ: "pengawas", positionLabel: null, termStart: "2026-01-01", termEnd: null },
+      reason: "SK", provisioningPath: "organ_identity", actor,
+    });
+    const result = await service.resendActivation(membership.id, resend, actor, admin);
+    expect(result.step.status).toBe("succeeded");
+    expect(realm.calls).toContain("activation:organ-legacy");
+  });
+
+  it("never sends account actions to a staff identity or a Path A membership", async () => {
+    realm.add({ subject: "staff-7", username: "19870027", employeeId: "hcis:employee:7", requiredActions: pending });
+    const staffRecord = await store.create({
+      identity: { issuer, subject: "staff-7" }, terms: { organ: "pengawas", positionLabel: null, termStart: "2026-01-01", termEnd: null },
+      reason: "SK", provisioningPath: "organ_identity", actor,
+    });
+    await expect(service.resendActivation(staffRecord.id, resend, actor, admin)).rejects.toMatchObject({ code: "ORGAN_PATH_B_ONLY" });
+    realm.add({ subject: "staff-8", username: "19870028", requiredActions: pending });
+    const pathA = await store.create({
+      identity: { issuer, subject: "staff-8" }, terms: { organ: "pembina", positionLabel: null, termStart: "2026-01-01", termEnd: null },
+      reason: "SK", provisioningPath: "existing_staff", actor,
+    });
+    await expect(service.resendActivation(pathA.id, resend, actor, admin)).rejects.toMatchObject({ code: "ORGAN_PATH_B_ONLY" });
+    expect(realm.calls.filter((call) => call.startsWith("activation:"))).toEqual([]);
+  });
+
+  it("does not reuse an unmarked identity Hub never created, even without a NIP", async () => {
+    realm.add({ subject: "staff-9", username: "staf.tanpa.nip@example.test", email: "staf.tanpa.nip@example.test" });
+    await expect(service.addNewIdentity({
+      firstName: "Staf", lastName: "Sintetis", email: "staf.tanpa.nip@example.test",
+      ...terms, organ: "pembina", reason: "SK", applicationKeys: [],
+    }, actor)).rejects.toMatchObject({ code: "EMAIL_IN_USE_USE_EXISTING_STAFF" });
+    expect(realm.calls).toEqual([]);
+  });
+
+  it("ending the term disables only the identity Hub created for Path B", async () => {
+    realm.add({ subject: "organ-legacy", username: "pengawas.lama@example.test", email: "pengawas.lama@example.test" });
+    const membership = await store.create({
+      identity: { issuer, subject: "organ-legacy" }, terms: { organ: "pengawas", positionLabel: null, termStart: "2026-01-01", termEnd: null },
+      reason: "SK", provisioningPath: "organ_identity", actor,
+    });
+    expect((await service.endPreview(membership.id)).path).toBe("organ_identity");
+    const ended = await service.end(membership.id, { reason: "Masa jabatan selesai", confirm: true }, actor, admin);
+    expect(ended.path).toBe("organ_identity");
+    expect(realm.users.get("organ-legacy")?.enabled).toBe(false);
+
+    realm.add({ subject: "staff-10", username: "19870030", employeeId: "hcis:employee:10" });
+    const staff = await store.create({
+      identity: { issuer, subject: "staff-10" }, terms: { organ: "pengawas", positionLabel: null, termStart: "2026-01-01", termEnd: null },
+      reason: "SK", provisioningPath: "organ_identity", actor,
+    });
+    expect((await service.end(staff.id, { reason: "Masa jabatan selesai", confirm: true }, actor, admin)).path).toBe("existing_staff");
+    expect(realm.users.get("staff-10")?.enabled).toBe(true);
+  });
+});
+
 describe("HUB-IMPL-013 offboarding amendment", () => {
   it("offboarding ends any active organ membership as an additional verified step", async () => {
     realm.add({ subject: "staff-6", username: "19870026", totp: true, firstName: "Staf", lastName: "Sintetis" });

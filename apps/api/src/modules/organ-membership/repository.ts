@@ -67,6 +67,12 @@ export interface OrganMembershipStore {
   }>;
   /** A Path B identity that later became an Employee counts as Path A from then on. */
   markExistingStaff(input: { identity: IdentityRef; reason: string; actor: ActorRef }): Promise<"succeeded" | "noop">;
+  /**
+   * Hub's own record that it created this identity for an Organ Yayasan membership (Path B): a
+   * succeeded `organ_identity.provision` audit event or a membership provisioned as `organ_identity`.
+   * Keycloak attributes are not trusted for this, because the staff realm may drop them.
+   */
+  isHubProvisionedOrganIdentity(identity: IdentityRef): Promise<boolean>;
   audit(input: {
     actor: ActorRef;
     action: string;
@@ -298,6 +304,24 @@ export class PgOrganMembershipRepository implements OrganMembershipStore {
       });
       return "succeeded";
     });
+  }
+
+  async isHubProvisionedOrganIdentity(identity: IdentityRef): Promise<boolean> {
+    const result = await this.pool.query<{ provisioned: boolean }>(
+      `SELECT (
+         EXISTS (
+           SELECT 1 FROM platform_audit_events
+           WHERE target_type = 'organ_membership' AND target_ref = $3
+             AND action = 'organ_identity.provision' AND outcome = 'succeeded'
+         )
+         OR EXISTS (
+           SELECT 1 FROM organ_memberships
+           WHERE identity_issuer = $1 AND identity_subject = $2 AND provisioning_path = 'organ_identity'
+         )
+       ) AS provisioned`,
+      [identity.issuer, identity.subject, organMembershipTargetRef(identity)],
+    );
+    return result.rows[0]?.provisioned === true;
   }
 
   async audit(input: {

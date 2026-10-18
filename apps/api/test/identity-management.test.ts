@@ -53,6 +53,46 @@ describe("KeycloakIdentityManagement", () => {
     expect(created).toBe(false);
   });
 
+  it("sends organ activation to a pending identity without any marker attribute, never to a staff identity", async () => {
+    const sent: string[] = [];
+    const users: Record<string, Record<string, unknown>> = {
+      "organ-1": { id: "organ-1", username: "pembina@example.test", email: "pembina@example.test", firstName: "P", lastName: "S", enabled: true, requiredActions: ["CONFIGURE_TOTP", "UPDATE_PASSWORD", "VERIFY_EMAIL"] },
+      "staff-1": { id: "staff-1", username: "19870001", email: "staff@example.test", firstName: "S", lastName: "S", enabled: true, requiredActions: ["UPDATE_PASSWORD"], attributes: { hcisEmployeeId: ["hcis:employee:1"] } },
+    };
+    vi.stubGlobal("fetch", vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
+      const target = String(url);
+      if (target.endsWith("/protocol/openid-connect/token")) return new Response(JSON.stringify({ access_token: "opaque", expires_in: 60 }), { status: 200 });
+      const execute = target.match(/\/users\/([^/]+)\/execute-actions-email/);
+      if (execute && init?.method === "PUT") { sent.push(execute[1]!); return new Response(null, { status: 204 }); }
+      const user = target.match(/\/users\/([^/?]+)$/);
+      if (user && !init?.method) return new Response(JSON.stringify(users[user[1]!]), { status: 200 });
+      throw new Error(`unexpected request ${target}`);
+    }));
+    const client = new KeycloakIdentityManagement(config);
+    await client.sendOrganActivation("organ-1");
+    await expect(client.sendOrganActivation("staff-1")).rejects.toMatchObject({ code: "IDENTITY_ACTION_NOT_PENDING" });
+    expect(sent).toEqual(["organ-1"]);
+  });
+
+  it("does not ask Keycloak to store an unmanaged marker attribute when creating an organ member", async () => {
+    let payload: Record<string, unknown> = {};
+    vi.stubGlobal("fetch", vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
+      const target = String(url);
+      if (target.endsWith("/protocol/openid-connect/token")) return new Response(JSON.stringify({ access_token: "opaque", expires_in: 60 }), { status: 200 });
+      if (target.includes("/users?username=") || target.includes("/users?email=")) return new Response("[]", { status: 200 });
+      if (target.endsWith("/admin/realms/staff/users") && init?.method === "POST") {
+        payload = JSON.parse(String(init.body)) as Record<string, unknown>;
+        return new Response(null, { status: 201, headers: { location: `${target}/organ-2` } });
+      }
+      if (target.endsWith("/users/organ-2")) return new Response(JSON.stringify({ id: "organ-2", username: "pembina@example.test", email: "pembina@example.test", firstName: "P", lastName: "S", enabled: true, requiredActions: ["VERIFY_EMAIL", "UPDATE_PASSWORD", "CONFIGURE_TOTP"] }), { status: 200 });
+      throw new Error(`unexpected request ${target}`);
+    }));
+    const client = new KeycloakIdentityManagement(config);
+    await client.createOrganMember({ email: "Pembina@example.test", firstName: "P", lastName: "S" });
+    expect(payload).not.toHaveProperty("attributes");
+    expect(payload.requiredActions).toEqual(["VERIFY_EMAIL", "UPDATE_PASSWORD", "CONFIGURE_TOTP"]);
+  });
+
   it("sends verification and password actions with an explicit 12-hour lifetime", async () => {
     let body = "";
     vi.stubGlobal("fetch", vi.fn(async (url: string | URL | Request, init?: RequestInit) => {

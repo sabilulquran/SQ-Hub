@@ -11,13 +11,7 @@ export interface ManagedStaffIdentity {
   employeeId?: string;
   /** Keycloak `totp` flag: an OTP credential is configured. */
   totp?: boolean;
-  /** HUB-IMPL-021 Path B: identity created by Hub for an Organ Yayasan membership. */
-  organProvisioned?: boolean;
 }
-
-/** Attribute that marks an identity Hub created for an Organ Yayasan membership (HUB-IMPL-021 Path B). */
-export const ORGAN_PROVISIONED_ATTRIBUTE = "sqProvisionedFor";
-export const ORGAN_PROVISIONED_VALUE = "organ-membership";
 
 export interface CreateOrganMemberInput {
   email: string;
@@ -217,8 +211,9 @@ export class KeycloakIdentityManagement implements IdentityManagement {
         lastName: input.lastName,
         enabled: true,
         // No credential value is ever sent. Two-step verification is mandatory for organ members.
+        // Hub's own provisioning record, not a Keycloak attribute, marks the identity as Path B:
+        // the staff realm's declarative user profile drops unmanaged attributes.
         requiredActions: ["VERIFY_EMAIL", "UPDATE_PASSWORD", "CONFIGURE_TOTP"],
-        attributes: { [ORGAN_PROVISIONED_ATTRIBUTE]: [ORGAN_PROVISIONED_VALUE] },
       }),
     });
     if (response.status === 409) {
@@ -233,10 +228,11 @@ export class KeycloakIdentityManagement implements IdentityManagement {
     return identity;
   }
 
+  /** The caller must first confirm from Hub's own record that Hub created this identity for Path B. */
   async sendOrganActivation(subject: string): Promise<void> {
     const current = await this.inspect(subject);
     if (!current) throw new IdentityManagementError("STAFF_NOT_FOUND", "Staff identity was not found");
-    if (!current.organProvisioned || !current.requiredActions?.includes("UPDATE_PASSWORD")) {
+    if (current.employeeId || !current.requiredActions?.includes("UPDATE_PASSWORD")) {
       throw new IdentityManagementError("IDENTITY_ACTION_NOT_PENDING", "Organ activation is not pending");
     }
     const response = await this.adminFetch(
@@ -321,9 +317,6 @@ export class KeycloakIdentityManagement implements IdentityManagement {
       requiredActions: user.requiredActions ?? [],
       ...(user.attributes?.hcisEmployeeId?.[0] ? { employeeId: user.attributes.hcisEmployeeId[0] } : {}),
       ...(typeof user.totp === "boolean" ? { totp: user.totp } : {}),
-      ...(user.attributes?.[ORGAN_PROVISIONED_ATTRIBUTE]?.includes(ORGAN_PROVISIONED_VALUE)
-        ? { organProvisioned: true }
-        : {}),
     };
   }
 
