@@ -243,8 +243,8 @@ while read -r wanted; do
     0) printf '%s' "${wanted}" | kcadm create "clients/${api_uuid}/protocol-mappers/models" -r "${REALM}" -f - >/dev/null \
          || fail "unable to create mapper ${name}"
        echo "SPMB_MAPPER_CREATED mapper=${name}" ;;
-    1) if ! jq -e --argjson wanted "${wanted}" '.[0] | .protocolMapper == $wanted.protocolMapper
-           and (.config | to_entries | sort) == ($wanted.config | to_entries | sort)' >/dev/null <<<"${matches}"; then
+    1) if ! jq -e --argjson wanted "${wanted}" '.[0] | . as $live | .protocolMapper == $wanted.protocolMapper
+           and ($wanted.config | to_entries | all(.value == $live.config[.key]))' >/dev/null <<<"${matches}"; then
          mapper_id="$(jq -er '.[0].id' <<<"${matches}")"
          jq -c --arg id "${mapper_id}" '. + {id: $id}' <<<"${wanted}" \
            | kcadm update "clients/${api_uuid}/protocol-mappers/models/${mapper_id}" -r "${REALM}" -f - >/dev/null \
@@ -255,9 +255,12 @@ while read -r wanted; do
 done < <(jq -c '.[]' <<<"${wanted_mappers}")
 
 verify_client spmb-api "${api_spec}" "${api_uuid}"
+# Keycloak adds its own config keys (e.g. lightweight.claim); only the keys set here must match.
 kcadm get "clients/${api_uuid}/protocol-mappers/models" -r "${REALM}" | jq -e --arg prefix "${MAPPER_PREFIX}" --argjson wanted "${wanted_mappers}" '
-  [.[] | select(.name | startswith($prefix)) | {name, protocolMapper, config: (.config | to_entries | sort)}] | sort_by(.name)
-  == ($wanted | map({name, protocolMapper, config: (.config | to_entries | sort)}) | sort_by(.name))
+  [.[] | select(.name | startswith($prefix))] as $live
+  | ($live | map(.name) | sort) == ($wanted | map(.name) | sort)
+  and ($wanted | all(. as $w | $live | any(.name == $w.name and .protocolMapper == $w.protocolMapper
+      and ($w.config | to_entries | all(. as $e | $e.value == ([$live[] | select(.name == $w.name)][0].config[$e.key]))))))
 ' >/dev/null || fail "spmb-api audience mappers did not converge"
 echo "SPMB_CLIENT_PASS client=spmb-api"
 
