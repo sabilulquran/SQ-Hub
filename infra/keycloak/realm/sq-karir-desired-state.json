@@ -165,7 +165,7 @@
         "pkce.code.challenge.method": "S256",
         "post.logout.redirect.uris": "https://karir.sabilulquran.or.id/"
       },
-      "defaultClientScopes": ["basic", "acr"],
+      "defaultClientScopes": ["basic", "acr", "profile"],
       "optionalClientScopes": []
     },
     "karir-identity-admin": {
