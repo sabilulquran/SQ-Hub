@@ -82,6 +82,34 @@ Implementation target: `sabilulquran/keluarga-sq` KEL-IMPL-001 §4, `sabilulqura
 
 Rate limits are counted separately per realm. The JAR is now named `sq-external-identity.jar`; a Mi8 release must remove the old `sq-karir-identity.jar` from the providers directory so Keycloak does not load two copies.
 
+## SPMB SQ staff clients (`sq-staff`)
+
+Implementation target: `sabilulquran/spmb-sq` SPMB-IMPL-001 §4 and §14 no. 1. The family client `spmb-keluarga` lives in `sq-keluarga` and is converged by `reconcile-keluarga-realm.sh` above; this section covers the two clients in the staff realm. Production runs need explicit owner approval.
+
+`scripts/reconcile-spmb-staff-clients.sh` converges `clients/spmb-sq-staff.json` (no secrets):
+
+| Client | Kind | Shape |
+| --- | --- | --- |
+| `spmb-sq` | Staff sign-in to `https://spmb.sabilulquran.or.id/staf` | Confidential, code flow + PKCE S256, redirect exactly `/api/staf/auth/callback`, post-logout `/staf`, `fullScopeAllowed=false`, default scopes `basic`, `acr`, `profile`, no client-level mappers |
+| `spmb-api` | Client credentials for SQ Hub and Keluarga SQ | Service account only, no default scopes, optional scope `organization-directory.read`, audience mappers `spmb-api-audience-sq-hub`, `-organization-directory`, `-keluarga-api` |
+
+- It refuses every realm except `sq-staff` and never creates the realm or the `organization-directory.read` scope; both must already exist.
+- On `spmb-api` it manages only mappers named `spmb-api-audience-*`. The `sq-hub-kirim` audience comes from Kirim SQ's own runbook (KIRIM-IMPL-001 §7) and is left alone.
+- CI runs it twice against a disposable `sq-staff` realm, checks that the second run creates nothing, that a foreign mapper survives, the audiences and scope of a real `spmb-api` token, and that `spmb-sq` accepts only its own callback.
+
+| Variable | Value |
+| --- | --- |
+| `SPMB_HUB_MACHINE_AUDIENCE` | Required: SQ Hub `MACHINE_TOKEN_AUDIENCE` (Application Access) |
+| `SPMB_DIRECTORY_AUDIENCE` | SQ Hub `ORG_DIRECTORY_READ_AUDIENCE`, default `sq-hub-organization-directory` |
+| `KELUARGA_API_AUDIENCE` | Keluarga SQ `INTERNAL_AUDIENCE`, default `keluarga-api` |
+| `SPMB_STAFF_CLIENT_SECRET[_FILE]`, `SPMB_API_CLIENT_SECRET[_FILE]` | Optional; Keycloak keeps its own secret when unset. Files must be mode 600/400 |
+
+Owner steps outside this script, each with approval:
+
+1. SQ Hub: add `spmb-api` to `ALLOWED_MACHINE_CLIENTS` and to `ORG_DIRECTORY_READ_CLIENTS`, and register application `spmb-sq` in the Application Registry.
+2. Keluarga SQ: `INTERNAL_ALLOWED_CLIENTS=spmb-api` (its default).
+3. Hand both client secrets to the SPMB SQ `final.env` through the approved secret path; the script never prints them.
+
 ## Runtime image and shared-VPS sizing
 
 GitHub-hosted CI builds and publishes the optimized staging image to GHCR. The shared YSQ staging VPS should **pull** that image and start it with `--no-build`; do not compile the Keycloak image on the memory-constrained shared host.

@@ -980,10 +980,109 @@ jobs:
           docker compose --env-file "$KEYCLOAK_ENV_FILE" -f infra/keycloak/docker-compose.ci.yml \
             exec -T keycloak rm -f "$kcadm_config"
 
+      - name: Reconcile and verify the SPMB staff clients (sq-staff)
+        shell: bash
+        run: |
+          kcadm_config=/tmp/spmb-staff-clients-ci.kcadm
+          kc() {
+            docker compose --env-file "$KEYCLOAK_ENV_FILE" -f infra/keycloak/docker-compose.ci.yml \
+              exec -T keycloak /opt/keycloak/bin/kcadm.sh "$@" --config "$kcadm_config"
+          }
+
+          docker compose \
+            --env-file "$KEYCLOAK_ENV_FILE" \
+            -f infra/keycloak/docker-compose.ci.yml \
+            -f infra/keycloak/docker-compose.bootstrap.yml \
+            exec -T keycloak \
+            sh -ceu '
+              /opt/keycloak/bin/kcadm.sh config credentials \
+                --config "$1" \
+                --server http://127.0.0.1:8080 \
+                --realm master \
+                --user "$KC_BOOTSTRAP_ADMIN_USERNAME" \
+                --password "$KC_BOOTSTRAP_ADMIN_PASSWORD" >/dev/null
+            ' sh "$kcadm_config"
+
+          run_reconcile() {
+            KEYCLOAK_EXEC_MODE=compose \
+            KEYCLOAK_COMPOSE_FILE=infra/keycloak/docker-compose.ci.yml \
+            KEYCLOAK_KCADM_CONFIG="$kcadm_config" \
+            SPMB_HUB_MACHINE_AUDIENCE=sq-hub-api-ci \
+            SPMB_API_CLIENT_SECRET=spmb-api-ci-only-secret \
+              bash infra/keycloak/scripts/reconcile-spmb-staff-clients.sh
+          }
+
+          # The script never creates sq-staff: without the realm it stops.
+          if run_reconcile; then
+            echo "reconcile-spmb-staff-clients.sh ran without the realm sq-staff" >&2
+            exit 1
+          fi
+
+          # Disposable stand-in for the production staff realm, with the Directory scope its runbook creates.
+          printf '{"realm":"sq-staff","enabled":true}' | kc create realms -f - >/dev/null
+          printf '%s' '{"name":"organization-directory.read","protocol":"openid-connect","attributes":{"include.in.token.scope":"true","display.on.consent.screen":"false"}}' \
+            | kc create client-scopes -r sq-staff -f - >/dev/null
+
+          # Refuses every other realm, and a run without the SQ Hub machine audience.
+          for other in sq-staff-staging sq-keluarga sq-karir; do
+            if KEYCLOAK_REALM="$other" run_reconcile; then
+              echo "reconcile-spmb-staff-clients.sh accepted realm $other" >&2
+              exit 1
+            fi
+          done
+          if KEYCLOAK_EXEC_MODE=compose KEYCLOAK_KCADM_CONFIG="$kcadm_config" \
+            bash infra/keycloak/scripts/reconcile-spmb-staff-clients.sh; then
+            echo "reconcile-spmb-staff-clients.sh ran without SPMB_HUB_MACHINE_AUDIENCE" >&2
+            exit 1
+          fi
+
+          for pass in first second; do
+            output="$(run_reconcile)"
+            printf '%s\n' "$output"
+            grep -q '^SPMB_STAFF_CLIENTS_RECONCILE_IDEMPOTENT_PASS realm=sq-staff$' <<<"$output"
+            if [[ "$pass" == "second" ]] && grep -q 'CREATED' <<<"$output"; then
+              echo "second reconcile run created objects; it is not idempotent" >&2
+              exit 1
+            fi
+            if [[ "$pass" == "first" ]]; then
+              # Another runbook (Kirim SQ) adds its own audience mapper; the second pass must keep it.
+              api_uuid="$(kc get clients -r sq-staff -q clientId=spmb-api | jq -er '.[0].id')"
+              printf '%s' '{"name":"kirim-consumer-audience","protocol":"openid-connect","protocolMapper":"oidc-audience-mapper","config":{"included.custom.audience":"sq-hub-kirim","access.token.claim":"true","id.token.claim":"false"}}' \
+                | kc create "clients/${api_uuid}/protocol-mappers/models" -r sq-staff -f - >/dev/null
+            fi
+          done
+          kc get "clients/${api_uuid}/protocol-mappers/models" -r sq-staff | jq -e 'any(.[]; .name == "kirim-consumer-audience")' >/dev/null
+
+          claims() { jq -R 'split(".")[1] | gsub("-"; "+") | gsub("_"; "/") | . + ("=" * ((4 - length % 4) % 4)) | @base64d | fromjson'; }
+          token_url="$KEYCLOAK_HOSTNAME/realms/sq-staff/protocol/openid-connect/token"
+
+          # spmb-api tokens carry every SPMB target audience; the Directory scope only when requested.
+          with_scope="$(curl --fail --silent --show-error -d grant_type=client_credentials -d client_id=spmb-api \
+            -d client_secret=spmb-api-ci-only-secret -d scope=organization-directory.read "$token_url" | jq -er '.access_token' | claims)"
+          jq -e '(.aud | if type == "array" then . else [.] end) as $aud
+            | (["sq-hub-api-ci", "sq-hub-organization-directory", "keluarga-api", "sq-hub-kirim"] | all(. as $a | $aud | index($a)))
+            and .azp == "spmb-api" and (.scope | split(" ") | index("organization-directory.read"))' <<<"$with_scope" >/dev/null
+          without_scope="$(curl --fail --silent --show-error -d grant_type=client_credentials -d client_id=spmb-api \
+            -d client_secret=spmb-api-ci-only-secret "$token_url" | jq -er '.access_token' | claims)"
+          jq -e '(.scope // "") | split(" ") | index("organization-directory.read") | not' <<<"$without_scope" >/dev/null
+
+          # spmb-sq: sign-in page for its exact callback; any other redirect is refused.
+          auth="$KEYCLOAK_HOSTNAME/realms/sq-staff/protocol/openid-connect/auth?client_id=spmb-sq&response_type=code&scope=openid%20profile&code_challenge=E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM&code_challenge_method=S256&state=ci"
+          curl --fail --silent --show-error -o /dev/null "${auth}&redirect_uri=https%3A%2F%2Fspmb.sabilulquran.or.id%2Fapi%2Fstaf%2Fauth%2Fcallback"
+          status="$(curl --silent -o /dev/null -w '%{http_code}' "${auth}&redirect_uri=https%3A%2F%2Fspmb.sabilulquran.or.id%2Fapi%2Fauth%2Fcallback")"
+          [[ "$status" == "400" ]] || { echo "spmb-sq accepted a redirect outside /api/staf/auth/callback ($status)" >&2; exit 1; }
+          # The staff client cannot use client credentials.
+          status="$(curl --silent -o /dev/null -w '%{http_code}' -d grant_type=client_credentials -d client_id=spmb-sq "$token_url")"
+          [[ "$status" == "401" || "$status" == "400" ]] || { echo "spmb-sq issued a client-credentials token ($status)" >&2; exit 1; }
+
+          unset output with_scope without_scope
+          docker compose --env-file "$KEYCLOAK_ENV_FILE" -f infra/keycloak/docker-compose.ci.yml \
+            exec -T keycloak rm -f "$kcadm_config"
+
       - name: Reject committed Keycloak secrets
         shell: bash
         run: |
-          if grep -R -n -E '"secret"[[:space:]]*:[[:space:]]*"[^$][^"]+"' infra/keycloak/realm; then
+          if grep -R -n -E '"secret"[[:space:]]*:[[:space:]]*"[^$][^"]+"' infra/keycloak/realm infra/keycloak/clients; then
             echo "A client secret appears to be committed in realm configuration." >&2
             exit 1
           fi
@@ -1033,6 +1132,8 @@ jobs:
           jq empty infra/keycloak/realm/sq-karir-desired-state.json
           bash -n infra/keycloak/scripts/reconcile-keluarga-realm.sh
           jq empty infra/keycloak/realm/sq-keluarga-desired-state.json
+          bash -n infra/keycloak/scripts/reconcile-spmb-staff-clients.sh
+          jq empty infra/keycloak/clients/spmb-sq-staff.json
 
       - name: Unit and integration tests
         working-directory: infra/keycloak/providers/karir-identity
