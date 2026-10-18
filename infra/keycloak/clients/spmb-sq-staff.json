@@ -1,0 +1,50 @@
+{
+  "realm": "sq-staff",
+  "clients": {
+    "spmb-sq": {
+      "clientId": "spmb-sq",
+      "name": "SPMB SQ",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "clientAuthenticatorType": "client-secret",
+      "publicClient": false,
+      "bearerOnly": false,
+      "standardFlowEnabled": true,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": false,
+      "frontchannelLogout": true,
+      "fullScopeAllowed": false,
+      "consentRequired": false,
+      "redirectUris": ["https://spmb.sabilulquran.or.id/api/staf/auth/callback"],
+      "webOrigins": [],
+      "attributes": {
+        "pkce.code.challenge.method": "S256",
+        "post.logout.redirect.uris": "https://spmb.sabilulquran.or.id/staf"
+      },
+      "defaultClientScopes": ["basic", "acr", "profile"],
+      "optionalClientScopes": []
+    },
+    "spmb-api": {
+      "clientId": "spmb-api",
+      "name": "SPMB SQ service",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "clientAuthenticatorType": "client-secret",
+      "publicClient": false,
+      "bearerOnly": false,
+      "standardFlowEnabled": false,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": true,
+      "frontchannelLogout": false,
+      "fullScopeAllowed": false,
+      "consentRequired": false,
+      "redirectUris": [],
+      "webOrigins": [],
+      "attributes": {},
+      "defaultClientScopes": [],
+      "optionalClientScopes": ["organization-directory.read"]
+    }
+  }
+}
