@@ -30,6 +30,13 @@ The accepted composition is:
 
 Only `footer.ftl` and the existing trusted-device `login-otp.ftl` are overridden. Shared `template.ftl`, login form, recovery form, and protocol behavior remain owned by the pinned Keycloak release.
 
+Required-action and status pages (authenticator setup, new password, profile, email verification, forgotten password, error, info, sign-out confirmation, expired page) keep their native templates and are styled by the same stylesheet: numbered setup steps on one indent, inline callouts in the design-system status colours (info, warning, success, danger), stacked primary and secondary actions, and a centred status layout with a status glyph for error, info and sign-out pages. Light and dark follow the device setting.
+
+`footer.ftl` also carries two small page-scoped scripts:
+
+- **Sign-out confirmation** (`logout-confirm`): the confirmation code lives only a few minutes. Keycloak 26.7.2 answers a stale code with "failedLogout" and, if the same form is sent again (for example after Back), with an internal server error (NPE in `LogoutEndpoint.logoutConfirmAction`). The page reloads itself when it is reached through Back/Forward or has been open for more than four minutes, so the user always submits a fresh code. Applications should still send `id_token_hint` on RP-initiated logout so this page is not needed at all.
+- **Info** (`info`): hides the body sentence when it only repeats the title.
+
 ## Native Akun SQ account
 
 HUB-IMPL-019 supersedes the Keycloak Account Console as the normal user-facing account destination. `hub.sabilulquran.or.id/account` is a native SQ Hub surface with Profil Saya, Keamanan, Login & perangkat, and Aplikasi Saya.

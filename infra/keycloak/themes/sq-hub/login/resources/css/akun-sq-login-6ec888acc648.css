@@ -28,9 +28,20 @@
   --sq-danger-bg: #fcebea;
   --sq-danger-ink: #7f1d17;
   --sq-danger-line: #f3c7c3;
+  --sq-info: #1f5f99;
   --sq-info-bg: #e8f1fa;
   --sq-info-ink: #143f66;
   --sq-info-line: #c6dcf1;
+  --sq-warning: #b26a00;
+  --sq-warning-bg: #fff3d6;
+  --sq-warning-ink: #5e3b00;
+  --sq-warning-line: #f0d690;
+  --sq-success: #1e7a4c;
+  --sq-success-bg: #e6f4ec;
+  --sq-success-ink: #14532f;
+  --sq-success-line: #bfe3cd;
+  --sq-primary-soft: #ddf3f2;
+  --sq-primary-soft-ink: #0b7a79;
   --sq-shadow: 0 1px 2px rgba(22, 30, 37, .04), 0 12px 32px rgba(22, 30, 37, .06);
   color-scheme: light;
 
@@ -59,9 +70,20 @@
     --sq-danger-bg: #3d1716;
     --sq-danger-ink: #f2958d;
     --sq-danger-line: #5c2522;
+    --sq-info: #8db8ee;
     --sq-info-bg: #142a40;
-    --sq-info-ink: #8db8ee;
+    --sq-info-ink: #c4dbf6;
     --sq-info-line: #24425f;
+    --sq-warning: #f2c766;
+    --sq-warning-bg: #3a2c0b;
+    --sq-warning-ink: #f7dd9c;
+    --sq-warning-line: #5a4614;
+    --sq-success: #7fd3a3;
+    --sq-success-bg: #12301f;
+    --sq-success-ink: #b5e6c9;
+    --sq-success-line: #1f4a31;
+    --sq-primary-soft: #12393a;
+    --sq-primary-soft-ink: #6fd3cf;
     --sq-shadow: 0 1px 2px rgba(0, 0, 0, .3), 0 12px 32px rgba(0, 0, 0, .35);
     color-scheme: dark;
   }
@@ -486,6 +508,9 @@ textarea:focus {
 
 #reset-login .kc-tooltip-text { display: none !important; }
 
+/* The remembered account block keeps the same rhythm as the form groups below it. */
+.pf-v5-c-login__main-body > .pf-v5-c-form:has(#kc-attempted-username) { margin-bottom: 1rem !important; }
+
 /* Buttons. */
 .pf-v5-c-button.pf-m-primary,
 #kc-login,
@@ -545,11 +570,37 @@ input[type="submit"].btn-primary:focus-visible {
 }
 
 #kc-form-buttons,
-.pf-v5-c-action-list,
-.pf-v5-c-form__actions {
+.pf-v5-c-action-list {
   display: block !important;
   width: 100% !important;
   margin: .25rem 0 0 !important;
+}
+
+/* Primary action first, secondary actions (Batal, Kembali ke halaman masuk) stacked under it. */
+.pf-v5-c-form__actions {
+  display: flex !important;
+  width: 100% !important;
+  flex-direction: column !important;
+  gap: .625rem;
+  margin: .25rem 0 0 !important;
+  padding: 0 !important;
+}
+
+.pf-v5-c-form__actions > .pf-v5-c-button,
+.pf-v5-c-form__actions > input,
+.pf-v5-c-form__actions > a { width: 100% !important; }
+
+a.pf-v5-c-button.pf-m-secondary {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  text-decoration: none !important;
+}
+
+.pf-v5-c-button.pf-m-secondary::after,
+.pf-v5-c-button.pf-m-primary::after {
+  display: none !important;
+  content: none !important;
 }
 
 #kc-form-buttons .pf-v5-c-button,
@@ -588,13 +639,33 @@ a:hover { text-decoration: underline; }
 .pf-v5-c-form__label-required,
 .pf-v5-c-form__label .pf-v5-c-form__label-required { color: var(--sq-danger) !important; }
 
-/* Checkbox rows (remember device). */
+/* Checkbox rows (remember device, sign out other devices). PatternFly paints the label
+   text near-black, which disappears on the dark surface; the label always uses SQ ink. */
 .pf-v5-c-check {
-  display: flex;
+  display: flex !important;
   min-height: 2.75rem;
   align-items: center;
   gap: .625rem;
+  margin: 0 !important;
 }
+
+.pf-v5-c-check > label.pf-v5-c-check {
+  width: 100%;
+  min-height: 0;
+  cursor: pointer;
+}
+
+.pf-v5-c-check__label,
+.pf-v5-c-check label {
+  margin: 0 !important;
+  color: var(--sq-ink) !important;
+  font-size: .875rem !important;
+  font-weight: 500 !important;
+  line-height: 1.45 !important;
+}
+
+#kc-form-options .pf-v5-c-check,
+#kc-form-options .pf-v5-c-check__label { color: var(--sq-ink) !important; }
 
 .pf-v5-c-check__input,
 input[type="checkbox"] {
@@ -604,6 +675,13 @@ input[type="checkbox"] {
   margin: 0 !important;
   flex: 0 0 auto;
   accent-color: var(--sq-primary);
+  cursor: pointer;
+}
+
+input[type="checkbox"]:focus-visible {
+  outline: 2px solid var(--sq-primary) !important;
+  outline-offset: 2px;
+  box-shadow: none !important;
 }
 
 /* OTP step: centred heading, large tabular code entry, vertical flow. */
@@ -635,11 +713,17 @@ input[type="checkbox"] {
   line-height: 1.45 !important;
 }
 
-/* Messages. */
+/* Messages: one inline callout per status (design system C status colours),
+   icon in the status colour, text in a readable ink on the tinted surface. */
 .pf-v5-c-alert,
 .alert {
+  --sq-alert-icon: var(--sq-info);
+  display: grid !important;
   width: 100% !important;
-  margin: 0 0 1rem !important;
+  grid-template-columns: 1.25rem minmax(0, 1fr);
+  align-items: start;
+  column-gap: .625rem;
+  margin: 0 0 1.25rem !important;
   padding: .75rem .875rem !important;
   border: 1px solid var(--sq-info-line) !important;
   border-radius: .75rem !important;
@@ -650,15 +734,360 @@ input[type="checkbox"] {
   box-shadow: none !important;
 }
 
+.pf-v5-c-alert::before,
+.pf-v5-c-alert::after {
+  display: none !important;
+  content: none !important;
+}
+
+.pf-v5-c-alert.pf-m-warning {
+  --sq-alert-icon: var(--sq-warning);
+  border-color: var(--sq-warning-line) !important;
+  background: var(--sq-warning-bg) !important;
+  color: var(--sq-warning-ink) !important;
+}
+
+.pf-v5-c-alert.pf-m-success {
+  --sq-alert-icon: var(--sq-success);
+  border-color: var(--sq-success-line) !important;
+  background: var(--sq-success-bg) !important;
+  color: var(--sq-success-ink) !important;
+}
+
 .pf-v5-c-alert.pf-m-danger,
+.pf-v5-c-alert.pf-m-error,
 .alert-error {
+  --sq-alert-icon: var(--sq-danger);
   border-color: var(--sq-danger-line) !important;
   background: var(--sq-danger-bg) !important;
   color: var(--sq-danger-ink) !important;
 }
 
+.pf-v5-c-alert__icon {
+  display: flex !important;
+  height: 1.3125rem;
+  align-items: center;
+  justify-content: center;
+  margin: 0 !important;
+  padding: 0 !important;
+  color: var(--sq-alert-icon) !important;
+  font-size: 1rem !important;
+}
+
+.pf-v5-c-alert__icon:empty { visibility: hidden; }
+
 .pf-v5-c-alert__title,
-.pf-v5-c-alert__description { color: inherit !important; }
+.pf-v5-c-alert__description {
+  grid-column: 2;
+  margin: 0 !important;
+  color: inherit !important;
+  font-size: .875rem !important;
+  font-weight: 500 !important;
+  line-height: 1.5 !important;
+  overflow-wrap: anywhere;
+}
+
+/* Authenticator setup (CONFIGURE_TOTP): numbered steps share one indent, so the
+   app list, QR code, secret key and fields line up on the same left edge. */
+#kc-totp-settings {
+  display: flex !important;
+  flex-direction: column;
+  gap: 1.125rem;
+  margin: 0 0 1.5rem !important;
+  padding: 0 !important;
+  counter-reset: sq-step;
+  list-style: none !important;
+}
+
+#kc-totp-settings > li {
+  position: relative;
+  min-height: 1.75rem;
+  margin: 0 !important;
+  padding: 0 0 0 2.5rem !important;
+  color: var(--sq-ink);
+  font-size: .9375rem;
+  line-height: 1.55;
+  counter-increment: sq-step;
+}
+
+#kc-totp-settings > li::marker { content: none; }
+
+#kc-totp-settings > li::before {
+  display: flex;
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 1.75rem;
+  height: 1.75rem;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: var(--sq-primary-soft);
+  color: var(--sq-primary-soft-ink);
+  content: counter(sq-step);
+  font-size: .8125rem;
+  font-weight: 700;
+  line-height: 1;
+}
+
+#kc-totp-settings p { margin: 0 !important; }
+#kc-totp-settings p + p { margin-top: .375rem !important; }
+#kc-totp-settings br { display: none; }
+
+#kc-totp-supported-apps {
+  display: flex !important;
+  flex-wrap: wrap;
+  gap: .375rem;
+  margin: .625rem 0 0 !important;
+  padding: 0 !important;
+  list-style: none !important;
+}
+
+#kc-totp-supported-apps > li {
+  margin: 0 !important;
+  padding: .25rem .625rem;
+  border: 1px solid var(--sq-line);
+  border-radius: 999px;
+  background: var(--sq-subtle);
+  color: var(--sq-ink);
+  font-size: .8125rem;
+  font-weight: 500;
+  line-height: 1.4;
+}
+
+#kc-totp-supported-apps > li::marker { content: none; }
+
+#kc-totp-secret-qr-code {
+  display: block;
+  width: 11.5rem;
+  max-width: 100%;
+  height: auto;
+  margin: .75rem 0 .625rem;
+  padding: .5rem;
+  border: 1px solid var(--sq-line);
+  border-radius: .75rem;
+  background: #ffffff;
+  image-rendering: pixelated;
+}
+
+#mode-manual,
+#mode-barcode {
+  display: inline-block;
+  font-size: .875rem;
+}
+
+#kc-totp-secret-key {
+  display: block;
+  margin-top: .5rem;
+  padding: .625rem .75rem;
+  border: 1px solid var(--sq-line);
+  border-radius: .75rem;
+  background: var(--sq-subtle);
+  color: var(--sq-ink);
+  font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+  font-size: .9375rem;
+  font-weight: 600;
+  letter-spacing: .04em;
+  overflow-wrap: anywhere;
+  user-select: all;
+}
+
+#kc-totp-settings ul:not(#kc-totp-supported-apps) {
+  margin: .5rem 0 0 !important;
+  padding: 0 !important;
+  list-style: none !important;
+  color: var(--sq-muted);
+  font-size: .875rem;
+}
+
+#kc-totp-settings ul:not(#kc-totp-supported-apps) > li {
+  margin: 0 !important;
+  line-height: 1.6;
+}
+
+#kc-totp-settings p:empty { display: none; }
+
+#kc-totp-settings-form {
+  padding-top: 1.25rem;
+  border-top: 1px solid var(--sq-line);
+}
+
+#kc-totp-settings-form #totp {
+  font-variant-numeric: tabular-nums;
+  letter-spacing: .2em;
+}
+
+/* Cancel next to submit (application-initiated setup) stacks under the primary action. */
+#kc-totp-settings-form .pf-v5-c-form__actions,
+#kc-update-password .pf-v5-c-form__actions,
+#kc-passwd-update-form .pf-v5-c-form__actions {
+  display: flex !important;
+  flex-direction: column;
+  gap: .625rem;
+}
+
+#kc-totp-settings-form .pf-v5-c-form__actions > *,
+#kc-passwd-update-form .pf-v5-c-form__actions > * { width: 100% !important; }
+
+/* Status pages (error, info, sign-out confirmation, expired page): one centred
+   column with a status glyph, title, explanation and a single clear action. */
+body[data-page-id="login-error"] .pf-v5-c-login__main-header,
+body[data-page-id="login-info"] .pf-v5-c-login__main-header,
+body[data-page-id="login-logout-confirm"] .pf-v5-c-login__main-header,
+body[data-page-id="login-login-page-expired"] .pf-v5-c-login__main-header,
+body[data-page-id="login-frontchannel-logout"] .pf-v5-c-login__main-header {
+  display: flex !important;
+  flex-direction: column;
+  align-items: center;
+  gap: 1rem;
+  padding-bottom: 1rem !important;
+}
+
+body[data-page-id="login-error"] .pf-v5-c-login__main-header::before,
+body[data-page-id="login-info"] .pf-v5-c-login__main-header::before,
+body[data-page-id="login-logout-confirm"] .pf-v5-c-login__main-header::before,
+body[data-page-id="login-login-page-expired"] .pf-v5-c-login__main-header::before,
+body[data-page-id="login-frontchannel-logout"] .pf-v5-c-login__main-header::before {
+  display: block !important;
+  width: 3rem;
+  height: 3rem;
+  border-radius: 999px;
+  background-color: var(--sq-status-bg, var(--sq-info-bg));
+  background-image: var(--sq-status-glyph);
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: 1.5rem;
+  content: "" !important;
+}
+
+body[data-page-id="login-error"] {
+  --sq-status-bg: var(--sq-danger-bg);
+  --sq-status-glyph: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23c0362c' stroke-width='2.25' stroke-linecap='round'%3E%3Ccircle cx='12' cy='12' r='9'/%3E%3Cpath d='M12 7.5v5.25M12 16.5h.01'/%3E%3C/svg%3E");
+}
+
+body[data-page-id="login-info"],
+body[data-page-id="login-login-page-expired"] {
+  --sq-status-bg: var(--sq-info-bg);
+  --sq-status-glyph: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%231f5f99' stroke-width='2.25' stroke-linecap='round'%3E%3Ccircle cx='12' cy='12' r='9'/%3E%3Cpath d='M12 11v5.5M12 7.5h.01'/%3E%3C/svg%3E");
+}
+
+body[data-page-id="login-logout-confirm"],
+body[data-page-id="login-frontchannel-logout"] {
+  --sq-status-bg: var(--sq-primary-soft);
+  --sq-status-glyph: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%230b7a79' stroke-width='2.25' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M14 4h4a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-4M9 16l-4-4 4-4M5 12h10'/%3E%3C/svg%3E");
+}
+
+@media (prefers-color-scheme: dark) {
+  body[data-page-id="login-error"] {
+    --sq-status-glyph: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23f2958d' stroke-width='2.25' stroke-linecap='round'%3E%3Ccircle cx='12' cy='12' r='9'/%3E%3Cpath d='M12 7.5v5.25M12 16.5h.01'/%3E%3C/svg%3E");
+  }
+
+  body[data-page-id="login-info"],
+  body[data-page-id="login-login-page-expired"] {
+    --sq-status-glyph: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%238db8ee' stroke-width='2.25' stroke-linecap='round'%3E%3Ccircle cx='12' cy='12' r='9'/%3E%3Cpath d='M12 11v5.5M12 7.5h.01'/%3E%3C/svg%3E");
+  }
+
+  body[data-page-id="login-logout-confirm"],
+  body[data-page-id="login-frontchannel-logout"] {
+    --sq-status-glyph: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%236fd3cf' stroke-width='2.25' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M14 4h4a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-4M9 16l-4-4 4-4M5 12h10'/%3E%3C/svg%3E");
+  }
+}
+
+body[data-page-id="login-error"] #kc-page-title,
+body[data-page-id="login-info"] #kc-page-title,
+body[data-page-id="login-logout-confirm"] #kc-page-title,
+body[data-page-id="login-login-page-expired"] #kc-page-title,
+body[data-page-id="login-frontchannel-logout"] #kc-page-title {
+  max-width: 22rem;
+  font-size: 1.375rem !important;
+  text-wrap: balance;
+}
+
+#kc-error-message,
+#kc-info-message,
+#kc-logout-confirm,
+body[data-page-id="login-login-page-expired"] #instruction1 {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 1rem;
+  text-align: center;
+}
+
+#kc-error-message p,
+#kc-info-message p,
+#kc-logout-confirm p,
+#instruction1 {
+  margin: 0 !important;
+}
+
+#kc-error-message .instruction,
+#kc-info-message .instruction,
+#kc-logout-confirm .instruction,
+#instruction1 {
+  color: var(--sq-muted) !important;
+  font-size: .9375rem !important;
+  line-height: 1.55 !important;
+  text-wrap: pretty;
+}
+
+#kc-error-message .instruction:first-child {
+  color: var(--sq-ink) !important;
+}
+
+#kc-error-message #traceId {
+  font-size: .75rem !important;
+  overflow-wrap: anywhere;
+}
+
+#kc-logout-confirm form,
+#kc-logout-confirm .pf-v5-c-form__group { margin: 0 !important; }
+
+#kc-logout-confirm #kc-form-options:empty,
+#kc-logout-confirm #kc-form-options:has(> div:empty),
+#kc-logout-confirm .clearfix { display: none !important; }
+
+#kc-logout-confirm #kc-form-buttons { margin: 0 !important; }
+
+/* "Kembali ke aplikasi" / "Lanjutkan" read as a quiet secondary action. */
+#kc-error-message a,
+#kc-info-message a,
+#kc-logout-confirm #kc-info-message a {
+  display: inline-flex;
+  width: 100%;
+  min-height: 3rem;
+  align-items: center;
+  justify-content: center;
+  padding: .625rem 1rem;
+  border: 1px solid var(--sq-line-strong);
+  border-radius: .75rem;
+  background: var(--sq-field);
+  color: var(--sq-ink) !important;
+  font-size: .9375rem;
+  font-weight: 600;
+  text-decoration: none !important;
+}
+
+#kc-error-message a:hover,
+#kc-info-message a:hover { background: var(--sq-subtle); }
+
+#kc-error-message a:focus-visible,
+#kc-info-message a:focus-visible {
+  border-color: var(--sq-primary);
+  outline: 0;
+  box-shadow: 0 0 0 3px var(--sq-ring);
+}
+
+#kc-logout-confirm #kc-info-message:not(:has(a)) { display: none; }
+
+body[data-page-id="login-login-page-expired"] #instruction1 { display: block; }
+
+/* Required-field legend sits quietly above the form. */
+.pf-v5-c-login__main-body > .pf-v5-c-form__group .subtitle,
+.pf-v5-c-login__main-body .subtitle {
+  margin: 0 0 .75rem !important;
+  font-size: .8125rem !important;
+}
 
 [aria-invalid="true"],
 .pf-v5-c-form-control.pf-m-error {
@@ -668,8 +1097,45 @@ input[type="checkbox"] {
 .pf-v5-c-form__helper-text.pf-m-error,
 .pf-v5-c-helper-text__item.pf-m-error,
 #input-error,
-[id$="-error"] {
+[id$="-error"],
+[id^="input-error"],
+.pf-v5-c-helper-text__item-text.pf-m-error,
+.pf-v5-c-helper-text__item.pf-m-error .pf-v5-c-helper-text__item-text {
   color: var(--sq-danger) !important;
+}
+
+/* Field-level messages, including the ones required-action templates print without a helper wrapper. */
+[id^="input-error"],
+.pf-v5-c-helper-text__item-text {
+  display: block;
+  margin-top: .375rem !important;
+  font-size: .8125rem !important;
+  font-weight: 500;
+  line-height: 1.45 !important;
+}
+
+/* Status icon inside a field: keep it clear of the text, and drop it where the
+   show-password button already occupies the right edge (red border + message remain). */
+.pf-v5-c-form-control__utilities {
+  display: flex;
+  padding-right: .75rem;
+  color: var(--sq-danger);
+  pointer-events: none;
+}
+
+.pf-v5-c-input-group .pf-v5-c-form-control__utilities { display: none !important; }
+
+/* Empty helper wrappers (password fields) must not add a gap below the input. */
+.pf-v5-c-form__helper-text { margin-top: 0 !important; }
+.pf-v5-c-form__helper-text .pf-v5-c-helper-text > div:empty,
+.pf-v5-c-form__helper-text:not(:has(*:not(:empty))) { display: none !important; }
+
+@media (prefers-color-scheme: dark) {
+  #input-error,
+  [id$="-error"],
+  [id^="input-error"],
+  .pf-v5-c-helper-text__item-text.pf-m-error,
+  .pf-v5-c-helper-text__item.pf-m-error .pf-v5-c-helper-text__item-text { color: var(--sq-danger-ink) !important; }
 }
 
 .sq-login-footer {
@@ -687,6 +1153,54 @@ input[type="checkbox"] {
   color: var(--sq-muted);
   line-height: 1.5;
 }
+
+/* Footer info band (reset-password instructions, verify-email resend hint). Karir and Keluarga
+   (which inherit this stylesheet) keep their own bordered info row. */
+body:not(:has(.sq-karir-brand)) #kc-info.pf-v5-c-login__main-footer-band {
+  display: block !important;
+  margin: 1.25rem 0 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+  background: transparent !important;
+  color: var(--sq-muted);
+  font-size: .875rem;
+  line-height: 1.55;
+  text-align: center;
+}
+
+body:not(:has(.sq-karir-brand)) #kc-info #kc-info-wrapper { padding: 0 !important; }
+
+#kc-info #kc-info-wrapper > span,
+#kc-info .instruction {
+  color: var(--sq-muted) !important;
+  font-size: .875rem !important;
+}
+
+/* On "Lupa kata sandi?" the instruction explains the form, so it sits above it. */
+body[data-page-id="login-login-reset-password"]:not(:has(.sq-karir-brand)) .pf-v5-c-login__main-body > .pf-v5-c-login__main-footer {
+  order: -1;
+  padding: 0 !important;
+}
+
+body[data-page-id="login-login-reset-password"]:not(:has(.sq-karir-brand)) #kc-info.pf-v5-c-login__main-footer-band {
+  margin: 0 0 1.25rem !important;
+  font-size: .9375rem;
+  text-align: center;
+}
+
+body[data-page-id="login-login-reset-password"]:not(:has(.sq-karir-brand)) .pf-v5-c-login__main-header { padding-bottom: .75rem !important; }
+
+/* "Verifikasi email": instruction and resend hint read as one centred block. */
+body[data-page-id="login-login-verify-email"] .pf-v5-c-login__main-body .instruction {
+  margin: 0 !important;
+  color: var(--sq-ink) !important;
+  font-size: .9375rem !important;
+  text-align: center;
+  overflow-wrap: anywhere;
+  text-wrap: pretty;
+}
+
+body[data-page-id="login-login-verify-email"] #kc-info .instruction { color: var(--sq-muted) !important; }
 
 #kc-recovery-codes-list,
 .kc-recovery-codes-list {

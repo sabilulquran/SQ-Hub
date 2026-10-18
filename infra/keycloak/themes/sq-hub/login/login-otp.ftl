@@ -3,7 +3,7 @@
 <#import "buttons.ftl" as buttons>
 <@layout.registrationLayout displayMessage=!messagesPerField.existsError('totp'); section>
     <#if section="header">
-        ${msg("loginTotpTitle")}
+        ${msg("akunSqOtpTitle")}
     <#elseif section="form">
         <form id="kc-otp-login-form" class="${properties.kcFormClass!}" onsubmit="login.disabled = true; return true;" action="${url.loginAction}" method="post">
             <input id="selectedCredentialId" type="hidden" name="selectedCredentialId" value="${otpLogin.selectedCredentialId!''}">
