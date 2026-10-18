@@ -33,7 +33,9 @@ Keycloak's `audience` parameter **filters** audiences and never adds them. An au
    - Create client scope `sq-governance-hcis` (type None, protocol openid-connect, "Include in token scope" On).
    - Add an Audience mapper: included client audience `hcis`, add to access token = On, add to ID token = Off.
    - Assign `sq-governance-hcis` to `sq-hub` as an **Optional** client scope. Never Default: a default scope would put `hcis` in every Hub token, so an ordinary Hub token would already be valid at the governance endpoint.
-4. **Registry.** In Admin Center › Registry aplikasi set, for HCIS: path `/api/governance/summary` (or the path HCIS ORG-010 finally publishes), audience `hcis`, order `1`.
+4. **Registry.** In Admin Center › Registry aplikasi set, for HCIS: path `/governance/summary`, audience `hcis`, order `1`. For Aset SQ: path `/api/v1/governance/summary`, audience `aset-sq`.
+   - Use the path the Hub API actually reaches, not the browser URL. The browser reaches HCIS at `https://<hcis-host>/api/governance/summary`, because the HCIS web proxy strips `/api` before the request reaches the HCIS API. On Mi8, Hub's server-side fetch goes through the internal proxy, which forwards the path unchanged, and HCIS mounts the route at `/governance/summary`. With `/api/governance/summary` in the registry, HCIS returned 404, so Hub hid the card. Production was corrected on 2026-10-18 (platform audit actor `ops:ringkasan-yayasan-20261018`; see sq-core-ops `runbooks/release-2026-10-18-ringkasan-yayasan-activation.md`).
+   - Aset SQ serves `/api/v1/...` from its API itself, so its path is the same on both routes.
 5. **Do not** grant `sq-hub` any other optional scope with audience mappers for applications outside the registry. The registry plus the optional scopes are the allowlist on both sides.
 
 The target application validates (HUB-IMPL-021 §3): signature, issuer `…/realms/sq-staff`, expiry, `aud` contains its own client ID, maps `iss + sub` like its login, checks its own governance role, accepts the bearer token only on the governance summary endpoint. HCIS ORG-010 also checks `azp = sq-hub`; an exchanged token keeps `azp = sq-hub`.
