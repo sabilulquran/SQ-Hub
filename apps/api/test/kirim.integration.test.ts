@@ -562,9 +562,9 @@ describe("Ingest (§6.3)", () => {
     await allDay();
     const created = await send("spmb-api", { device: "spmb", jenis: "notifikasi", to: PHONE, text: "x", ref: "spmb:lead-9" });
     await worker().runOnce();
-    const engineId = [...stub.messageIdByKey.values()][0]!;
-    stub.addEvent("spmb", "message.read", receiptPayload(engineId, "read"));
-    stub.addEvent("spmb", "message.delivered", receiptPayload(engineId, "delivered"));
+    const whatsappId = [...stub.messageIdByKey.values()][0]!;
+    stub.addEvent("spmb", "message.read", receiptPayload(whatsappId, "read"));
+    stub.addEvent("spmb", "message.delivered", receiptPayload(whatsappId, "delivered"));
     await pull();
     expect((await outboxFor(created.json().id)).status).toBe("dibaca");
     const statuses = (await webhookPayloads("message.status")).map((event) => event.data.status);

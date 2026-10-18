@@ -198,6 +198,7 @@ export function receivedPayload(input: { id?: string; from?: string; body?: stri
   };
 }
 
-export function receiptPayload(messageId: string, status: "delivered" | "read") {
-  return { version: 1, message: { id: messageId, deviceId: "engine", direction: "outbound", whatsappMessageId: randomUUID(), status } };
+/** Like JalurPesan: the send answer's messageId is the WhatsApp id; receipts carry the engine's own id plus that WhatsApp id. */
+export function receiptPayload(whatsappMessageId: string, status: "delivered" | "read") {
+  return { version: 1, message: { id: randomUUID(), deviceId: "engine", direction: "outbound", whatsappMessageId, status } };
 }

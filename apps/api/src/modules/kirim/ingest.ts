@@ -210,11 +210,14 @@ export class KirimIngest {
       }
 
       if (event.type === "message.delivered" || event.type === "message.read") {
+        // A JalurPesan send answers with the WhatsApp message id, which Kirim stores as provider_message_id;
+        // receipts carry JalurPesan's own id plus that WhatsApp id, so match on both.
+        const ids = [message.whatsappMessageId, message.id].filter((id): id is string => Boolean(id));
         const outbox = await client.query<{ id: string; status: OutboundStatus }>(
           `SELECT o.id, o.status FROM kirim_messages m JOIN kirim_outbox o ON o.message_id = m.id
-           WHERE m.provider = 'jalurpesan' AND m.device_id = $1 AND m.provider_message_id = $2 AND m.arah = 'keluar'
+           WHERE m.provider = 'jalurpesan' AND m.device_id = $1 AND m.provider_message_id = ANY($2::text[]) AND m.arah = 'keluar'
            FOR UPDATE OF o`,
-          [device.id, message.id],
+          [device.id, ids],
         );
         const row = outbox.rows[0];
         if (!row) return;
@@ -265,6 +268,7 @@ interface MediaCopy {
 
 interface EngineMessage {
   id: string;
+  whatsappMessageId: string | null;
   direction: string;
   chatJid: string;
   senderJid: string | null;
@@ -286,6 +290,7 @@ function readMessage(payload: unknown): EngineMessage | null {
   const media = value.media && typeof value.media === "object" ? (value.media as Record<string, unknown>) : null;
   return {
     id: value.id,
+    whatsappMessageId: typeof value.whatsappMessageId === "string" && value.whatsappMessageId ? value.whatsappMessageId : null,
     direction: typeof value.direction === "string" ? value.direction : "",
     chatJid,
     senderJid: typeof value.senderJid === "string" ? value.senderJid : null,
