@@ -98,7 +98,7 @@ The `applications` registry gains:
 
 | Field | Rule |
 | --- | --- |
-| `governance_summary_path` | Nullable. A path on the application's `canonical_url` origin, for example `/api/governance/summary`. Absolute URLs and other origins are rejected. |
+| `governance_summary_path` | Nullable. A path on the application's `canonical_url` origin, as the Hub API reaches it (for example HCIS `/governance/summary`, Aset SQ `/api/v1/governance/summary`). This can differ from the browser URL when a web proxy strips a prefix: HCIS is `/api/governance/summary` in the browser but `/governance/summary` for Hub (corrected 2026-10-18; see `docs/operations/HUB-IMPL-021-token-exchange.md`). Absolute URLs and other origins are rejected. |
 | `governance_audience` | Nullable. The Keycloak client ID used as the token-exchange audience. Required when the path is set. |
 | `governance_order` | Integer for card order. Ties are sorted by name. |
 
