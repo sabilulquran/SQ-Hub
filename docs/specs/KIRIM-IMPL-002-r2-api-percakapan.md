@@ -389,7 +389,7 @@ Product Owner menyetujui semua saran di bawah pada 2026-10-19. Nomor `T-n` dipak
 
 ## 18. Dampak pada dokumen lain
 
-- **KIRIM-001:** §5.2 ditambah event `message.sent` dan `group.message.received`; §5.5 dicatat batas jalur perangkat tertaut (§10.1) dan bahwa sinkron awal tidak memuat isi pesan; §9 R2 merujuk dokumen ini. Dilakukan setelah spesifikasi ini ACCEPTED.
+- **KIRIM-001:** §5.2 ditambah event `message.sent` dan `group.message.received`; §5.5 dicatat batas jalur perangkat tertaut (§10.1) dan bahwa sinkron awal tidak memuat isi pesan; §9 R2 merujuk dokumen ini. Selesai di PR ini.
 - **KIRIM-IMPL-001:** tidak diubah. D-2 (layar delegasi) dan D-6 (pemetaan LID) dilanjutkan di sini (T-3, §9).
 - **SPMB-002 / spesifikasi SPMB K2:** memakai §6–§8 sebagai kontrak; penangan webhook SPMB menerima `message.sent` dan `group.message.received`; status "menunggu nomor tersambung" dibaca dari `message.status` `antre` + `device.status`.
 - **JalurPesan:** spesifikasi kecil untuk J-1…J-3 (T-1).
