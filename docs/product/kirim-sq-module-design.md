@@ -335,9 +335,10 @@ Pertanyaan revisi 1 dan 2 sudah dijawab PO pada 2026-10-17:
 - Petugas inbox awal untuk `hcis` dan `spmb` (KIRIM-IMPL-001 D-13): **tidak berlaku lagi** sejak revisi 3, karena staf diatur modul pemilik nomor.
 - Keputusan teknis R1 lainnya ada di KIRIM-IMPL-001 §16.
 
-Pertanyaan baru dari revisi 3 (dijawab sebelum KIRIM-IMPL-002 diterima):
+Pertanyaan baru dari revisi 3 **sudah dijawab Product Owner pada 2026-10-19**: seluruh saran disetujui apa
+adanya. Tidak ada pertanyaan terbuka yang tersisa, jadi KIRIM-IMPL-002 boleh ditulis.
 
-| # | Pertanyaan | Saran |
+| # | Pertanyaan | Keputusan (PO, 2026-10-19) |
 | --- | --- | --- |
 | 1 | Kolom `kirim_conversations.ditangani_oleh` yang sudah ada di database (selalu kosong) dihapus atau dibiarkan? | **Dihapus di migration R2.** Kolom itu tidak pernah diisi, jadi aman; sampai migration R2 jalan, biarkan kosong dan jangan dipakai |
 | 2 | SPMB-002 §10 ingin "jangan hubungi" dari SPMB menghentikan pesan otomatis dari modul mana pun, tetapi KIRIM-IMPL-001 D-5 hanya mengizinkan pemakai membuat opt-out cakupan `consumer`. Bagaimana? | **Tambah cakupan per nomor (`device`) yang hanya boleh dibuat pemilik nomor.** Jadi "jangan hubungi" dari SPMB menghentikan semua pesan otomatis lewat nomor `spmb` (termasuk notifikasi modul lain di nomor itu), kecuali `kode`. Cakupan `semua` tetap hanya oleh `kirim_admin` |
@@ -360,3 +361,4 @@ Pertanyaan baru dari revisi 3 (dijawab sebelum KIRIM-IMPL-002 diterima):
 | 2026-10-17 | Urutan bangun dan petugas inbox awal diputuskan (§13); keputusan teknis R1 di KIRIM-IMPL-001 §16. |
 | 2026-10-19 (revisi 3) | **Kirim SQ hanya mesin di balik layar** (API WhatsApp: nomor, kirim, terima, simpan chat dan media, status, jangan-hubungi, batas laju). Kotak masuk staf dan pengelolaan peminat dibangun di modul pemilik nomor, SPMB lebih dulu (SPMB-002). Kirim SQ R2 menjadi API percakapan. |
 | 2026-10-19 | Isi chat tetap di Kirim SQ (dikonfirmasi PO). Tambahan: API grup — baca dan balas di R2, buat grup dan tambah anggota di R3 — dan impor riwayat chat lama (SPMB-002 §7.6, §7.8). |
+| 2026-10-19 | **Enam pertanyaan teknis §13 no. 1–6 dijawab PO, seluruh saran disetujui:** kolom `ditangani_oleh` dihapus di migration R2; opt-out bertambah cakupan `device` yang hanya boleh dibuat pemilik nomor, sehingga "jangan hubungi" dari SPMB menghentikan semua pesan otomatis lewat nomor itu kecuali `kode`; petugas boleh membalas nomor ber-opt-out hanya bila orang itu menyapa dalam 24 jam terakhir; syarat sebelum memulai chat diperiksa modul pemilik nomor; pembacaan isi percakapan diaudit di Kirim SQ dan di modul; media petugas di R2 adalah PDF, JPEG dan PNG maksimal 5 MiB, voice note menyusul. KIRIM-IMPL-002 boleh ditulis. |
