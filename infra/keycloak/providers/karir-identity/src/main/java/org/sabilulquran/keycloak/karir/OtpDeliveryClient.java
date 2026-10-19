@@ -12,6 +12,7 @@ import java.time.Duration;
 import java.util.HexFormat;
 import java.util.Map;
 import java.util.UUID;
+import java.util.regex.Pattern;
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
 import org.jboss.logging.Logger;
@@ -26,7 +27,14 @@ import org.keycloak.models.UserModel;
  * {@code POST /internal/otp-deliveries}; email goes through the realm SMTP. The code is never logged.
  */
 public class OtpDeliveryClient {
-    public enum Result { SENT, RATE_LIMITED, FAILED }
+    public enum Result {
+        SENT, SENT_DRY_RUN, RATE_LIMITED, FAILED;
+
+        /** True when the relay accepted the code, whether or not an engine actually sent it. */
+        public boolean accepted() {
+            return this == SENT || this == SENT_DRY_RUN;
+        }
+    }
 
     public enum Purpose {
         VERIFY("verify"), RESET("reset");
@@ -40,6 +48,8 @@ public class OtpDeliveryClient {
 
     static final String EMAIL_SUBJECT = IdentityProfile.KARIR.emailSubject();
     private static final Logger LOG = Logger.getLogger(OtpDeliveryClient.class);
+    /** The relay answers {@code {"dryRun":true}} when the app runs with the {@code log} WhatsApp adapter. */
+    private static final Pattern DRY_RUN = Pattern.compile("\"dryRun\"\\s*:\\s*true");
 
     private final HttpClient http;
     private final URI relayUrl;
@@ -76,10 +86,11 @@ public class OtpDeliveryClient {
                 .POST(HttpRequest.BodyPublishers.ofString(body, StandardCharsets.UTF_8))
                 .build();
         try {
-            HttpResponse<Void> response = http.send(request, HttpResponse.BodyHandlers.discarding());
+            // The body is read, not discarded, only to learn whether the relay was in dry run; it carries no code.
+            HttpResponse<String> response = http.send(request, HttpResponse.BodyHandlers.ofString());
             int status = response.statusCode();
             if (status == 202) {
-                return Result.SENT;
+                return isDryRun(response.body()) ? Result.SENT_DRY_RUN : Result.SENT;
             }
             LOG.warnf("WhatsApp OTP relay answered HTTP %d for request %s", status, requestId);
             return status == 429 ? Result.RATE_LIMITED : Result.FAILED;
@@ -90,6 +101,11 @@ public class OtpDeliveryClient {
             Thread.currentThread().interrupt();
             return Result.FAILED;
         }
+    }
+
+    /** True when the relay said it did not really send the message. An answer without the flag counts as sent. */
+    static boolean isDryRun(String body) {
+        return body != null && DRY_RUN.matcher(body).find();
     }
 
     public Result sendEmail(KeycloakSession session, RealmModel realm, UserModel user, String code) {

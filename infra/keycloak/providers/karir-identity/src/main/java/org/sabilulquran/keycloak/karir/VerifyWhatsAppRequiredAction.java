@@ -1,10 +1,12 @@
 package org.sabilulquran.keycloak.karir;
 
 import jakarta.ws.rs.core.MultivaluedMap;
+import jakarta.ws.rs.core.Response;
 import java.util.List;
 import org.keycloak.authentication.RequiredActionContext;
 import org.keycloak.authentication.RequiredActionProvider;
 import org.keycloak.events.Details;
+import org.keycloak.events.EventBuilder;
 import org.keycloak.events.EventType;
 import org.keycloak.forms.login.LoginFormsProvider;
 import org.keycloak.models.UserModel;
@@ -14,6 +16,10 @@ import org.keycloak.models.utils.FormMessage;
  * After registration the candidate proves the WhatsApp number with a 6-digit code (REC-IMPL-001 §4.3). Until then
  * the sign-in to Karir SQ does not complete. A Karir SQ contact change resets {@code wa_verified}, so a self-registered
  * candidate verifies the new number on the next sign-in.
+ *
+ * <p>Keluarga SQ adds two things the family needs to get unstuck on their own (KEL-IMPL-001 §4.5): "Ganti nomor",
+ * which corrects a number typed wrongly at sign-up, and an honest notice when the relay ran in dry run, so the page
+ * never claims a code was sent while the app runs with the {@code log} WhatsApp adapter.
  */
 final class VerifyWhatsAppRequiredAction implements RequiredActionProvider {
     static final String PURPOSE = "verify";
@@ -39,7 +45,7 @@ final class VerifyWhatsAppRequiredAction implements RequiredActionProvider {
         }
         OtpState otp = CodeForms.state(context.getAuthenticationSession(), runtime);
         String message = otp.hasCode() ? null : send(context, runtime, otp, wa);
-        context.challenge(render(context, otp, wa, message, message == null || KarirForms.CODE_SENT.equals(message)));
+        context.challenge(render(context, runtime, otp, wa, message));
     }
 
     @Override
@@ -53,29 +59,32 @@ final class VerifyWhatsAppRequiredAction implements RequiredActionProvider {
         OtpState otp = CodeForms.state(context.getAuthenticationSession(), runtime);
         MultivaluedMap<String, String> input = context.getHttpRequest().getDecodedFormParameters();
 
+        if (input.containsKey(CodeForms.ACTION_CHANGE_NUMBER) && runtime.profile().allowsNumberChangeAtVerify()) {
+            changeNumber(context, runtime, otp, wa, input.getFirst(CodeForms.FIELD_WA));
+            return;
+        }
+
         if (input.containsKey(CodeForms.ACTION_RESEND)) {
             long wait = otp.secondsUntilResend();
             if (wait > 0) {
-                LoginFormsProvider form = context.form();
-                form.addError(new FormMessage(CodeForms.FIELD_CODE, KarirForms.CODE_RESEND_WAIT, wait));
-                context.challenge(CodeForms.codePage(form, PURPOSE, Contact.maskWaNumber(wa), otp, false)
-                        .createForm(CodeForms.TEMPLATE));
+                context.challenge(render(context, runtime, otp, wa, null,
+                        new FormMessage(CodeForms.FIELD_CODE, KarirForms.CODE_RESEND_WAIT, wait)));
                 return;
             }
-            String message = send(context, runtime, otp, wa);
-            context.challenge(render(context, otp, wa, message, KarirForms.CODE_SENT.equals(message)));
+            context.challenge(render(context, runtime, otp, wa, send(context, runtime, otp, wa)));
             return;
         }
 
         OtpState.Check check = otp.verify(input.getFirst(CodeForms.FIELD_CODE));
         if (check == OtpState.Check.VALID) {
             runtime.profile().markVerified(context.getUser(), wa);
-            org.keycloak.events.EventBuilder verified = context.getEvent().clone()
+            EventBuilder verified = context.getEvent().clone()
                     .event(EventType.CUSTOM_REQUIRED_ACTION)
                     .detail(Details.CUSTOM_REQUIRED_ACTION, VerifyWhatsAppRequiredActionFactory.PROVIDER_ID)
                     .detail(KarirEvents.DETAIL_CHANNEL, "whatsapp");
             ResetByCodeAuthenticator.addWaHash(verified, runtime, wa);
             verified.success();
+            CodeForms.setDryRun(context.getAuthenticationSession(), false);
             context.success();
             return;
         }
@@ -85,28 +94,68 @@ final class VerifyWhatsAppRequiredAction implements RequiredActionProvider {
                 .detail(KarirEvents.DETAIL_CHANNEL, "whatsapp")
                 .error(check == OtpState.Check.WRONG || check == OtpState.Check.TOO_MANY_ATTEMPTS
                         ? KarirEvents.CODE_INVALID : KarirEvents.CODE_EXPIRED);
-        context.challenge(render(context, otp, wa, CodeForms.messageFor(check), false));
+        context.challenge(render(context, runtime, otp, wa, null,
+                new FormMessage(CodeForms.FIELD_CODE, CodeForms.messageFor(check))));
     }
 
-    /** Sends a new code and returns the message key to show. */
+    /**
+     * Replaces the number being verified with the one the family typed, then sends a code there. The resend wait is
+     * not applied, because this is a correction rather than a repeat; {@link AbuseGuard} still caps codes per account.
+     */
+    private static void changeNumber(RequiredActionContext context, KarirRuntime runtime, OtpState otp, String wa,
+                                     String typed) {
+        String normalized = Contact.normalizeWaNumber(typed);
+        if (normalized == null) {
+            numberEvent(context, runtime, null).error(KarirEvents.WA_INVALID);
+            context.challenge(render(context, runtime, otp, wa, null,
+                    new FormMessage(CodeForms.FIELD_WA, KarirForms.INVALID_WA)));
+            return;
+        }
+        if (normalized.equals(wa)) {
+            context.challenge(render(context, runtime, otp, wa, null,
+                    new FormMessage(CodeForms.FIELD_WA, KarirForms.WA_SAME)));
+            return;
+        }
+        runtime.profile().replaceNumber(context.getUser(), wa, normalized);
+        otp.clear();
+        numberEvent(context, runtime, normalized).success();
+        String next = numberToVerify(runtime.profile(), context.getUser());
+        if (next == null) {
+            // The family moved to a number they had already verified; there is nothing left to prove.
+            CodeForms.setDryRun(context.getAuthenticationSession(), false);
+            context.success();
+            return;
+        }
+        context.challenge(render(context, runtime, otp, next, send(context, runtime, otp, next)));
+    }
+
+    /** Sends a new code and returns the message key to show, or {@code null} when the dry-run notice says it all. */
     private static String send(RequiredActionContext context, KarirRuntime runtime, OtpState otp, String wa) {
         UserModel user = context.getUser();
         String identifierAttribute = runtime.profile().identifierAttribute();
         String accountKey = user.getFirstAttribute(identifierAttribute) != null
                 ? user.getFirstAttribute(identifierAttribute) : user.getId();
         if (!runtime.abuseGuard().tryCodeRequest(accountKey)) {
+            CodeForms.setDryRun(context.getAuthenticationSession(), false);
             sendEvent(context).error(KarirEvents.CODE_LIMIT);
             return KarirForms.CODE_LIMIT;
         }
         String code = otp.issue("whatsapp");
         OtpDeliveryClient.Result result = runtime.delivery().sendWhatsApp(wa, code, OtpDeliveryClient.Purpose.VERIFY);
-        if (result != OtpDeliveryClient.Result.SENT) {
+        if (!result.accepted()) {
             otp.clear();
+            CodeForms.setDryRun(context.getAuthenticationSession(), false);
             sendEvent(context).error(KarirEvents.CODE_NOT_SENT);
             return KarirForms.CODE_NOT_SENT_TRY_LATER;
         }
-        sendEvent(context).success();
-        return KarirForms.CODE_SENT;
+        boolean dryRun = result == OtpDeliveryClient.Result.SENT_DRY_RUN;
+        CodeForms.setDryRun(context.getAuthenticationSession(), dryRun);
+        EventBuilder sent = sendEvent(context);
+        if (dryRun) {
+            sent.detail(KarirEvents.DETAIL_DRY_RUN, "true");
+        }
+        sent.success();
+        return dryRun ? null : KarirForms.CODE_SENT;
     }
 
     /**
@@ -121,7 +170,7 @@ final class VerifyWhatsAppRequiredAction implements RequiredActionProvider {
         return numbers.isEmpty() ? null : numbers.get(0);
     }
 
-    private static org.keycloak.events.EventBuilder sendEvent(RequiredActionContext context) {
+    private static EventBuilder sendEvent(RequiredActionContext context) {
         return context.getEvent().clone()
                 .event(EventType.CUSTOM_REQUIRED_ACTION)
                 .user(context.getUser())
@@ -130,16 +179,32 @@ final class VerifyWhatsAppRequiredAction implements RequiredActionProvider {
                 .detail(KarirEvents.DETAIL_CHANNEL, "whatsapp");
     }
 
-    private static jakarta.ws.rs.core.Response render(RequiredActionContext context, OtpState otp, String wa,
-                                                      String message, boolean success) {
+    /** Audit of "Ganti nomor": the acting account, and the HMAC of the new number, never the number itself. */
+    private static EventBuilder numberEvent(RequiredActionContext context, KarirRuntime runtime, String waDigits) {
+        EventBuilder event = context.getEvent().clone()
+                .event(EventType.CUSTOM_REQUIRED_ACTION)
+                .user(context.getUser())
+                .detail(Details.CUSTOM_REQUIRED_ACTION, VerifyWhatsAppRequiredActionFactory.PROVIDER_ID)
+                .detail(KarirEvents.DETAIL_PURPOSE, "change_number")
+                .detail(KarirEvents.DETAIL_CHANNEL, "whatsapp");
+        ResetByCodeAuthenticator.addWaHash(event, runtime, waDigits);
+        return event;
+    }
+
+    private static Response render(RequiredActionContext context, KarirRuntime runtime, OtpState otp, String wa,
+                                   String sentMessage, FormMessage... extraErrors) {
         LoginFormsProvider form = context.form();
-        if (message != null) {
-            if (success) {
-                form.setSuccess(message, Contact.maskWaNumber(wa));
-            } else {
-                form.addError(new FormMessage(CodeForms.FIELD_CODE, message));
-            }
+        boolean dryRun = CodeForms.dryRun(context.getAuthenticationSession());
+        if (KarirForms.CODE_SENT.equals(sentMessage)) {
+            form.setSuccess(sentMessage, Contact.maskWaNumber(wa));
+        } else if (sentMessage != null) {
+            form.addError(new FormMessage(CodeForms.FIELD_CODE, sentMessage));
         }
+        for (FormMessage extra : extraErrors) {
+            form.addError(extra);
+        }
+        CodeForms.dryRunNotice(form, dryRun);
+        form.setAttribute("karirOtpCanChangeNumber", runtime.profile().allowsNumberChangeAtVerify());
         return CodeForms.codePage(form, PURPOSE, Contact.maskWaNumber(wa), otp, false).createForm(CodeForms.TEMPLATE);
     }
 

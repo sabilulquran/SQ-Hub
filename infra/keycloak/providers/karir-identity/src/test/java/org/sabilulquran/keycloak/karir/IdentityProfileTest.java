@@ -116,6 +116,41 @@ class IdentityProfileTest {
     }
 
     @Test
+    void onlyKeluargaLetsTheFamilyChangeTheNumberAtVerify() {
+        assertTrue(IdentityProfile.KELUARGA.allowsNumberChangeAtVerify());
+        assertFalse(IdentityProfile.KARIR.allowsNumberChangeAtVerify());
+    }
+
+    @Test
+    void replaceNumberSwapsOneNumberAndKeepsTheRest() {
+        FakeUser keluarga = new FakeUser();
+        keluarga.attributes.put("wa_numbers", List.of("6281234567890", "6285711112222"));
+        keluarga.attributes.put("wa_verified", List.of("6281234567890"));
+        UserModel user = keluarga.model();
+
+        IdentityProfile.KELUARGA.replaceNumber(user, "6285711112222", "6285733334444");
+
+        assertEquals(List.of("6281234567890", "6285733334444"), IdentityProfile.KELUARGA.waNumbers(user));
+        // The verified number is untouched, and the new one still has to pass a code.
+        assertTrue(IdentityProfile.KELUARGA.isVerified(user, "6281234567890"));
+        assertEquals("6285733334444", IdentityProfile.KELUARGA.numberToVerify(user));
+    }
+
+    @Test
+    void replaceNumberNeverStoresTheSameNumberTwice() {
+        FakeUser keluarga = new FakeUser();
+        keluarga.attributes.put("wa_numbers", List.of("6281234567890", "6285711112222"));
+        keluarga.attributes.put("wa_verified", List.of("6281234567890"));
+        UserModel user = keluarga.model();
+
+        // The family corrects the second number into the one they already verified.
+        IdentityProfile.KELUARGA.replaceNumber(user, "6285711112222", "6281234567890");
+
+        assertEquals(List.of("6281234567890"), IdentityProfile.KELUARGA.waNumbers(user));
+        assertNull(IdentityProfile.KELUARGA.numberToVerify(user));
+    }
+
+    @Test
     void usernamePrefixFollowsProfile() {
         assertTrue(Candidates.randomUsername(IdentityProfile.KARIR).matches("k_[a-z2-7]{20}"));
         assertTrue(Candidates.randomUsername(IdentityProfile.KELUARGA).matches("f_[a-z2-7]{20}"));
