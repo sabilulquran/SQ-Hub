@@ -17,6 +17,7 @@ import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -26,6 +27,7 @@ class OtpDeliveryClientTest {
     private HttpServer server;
     private final List<String[]> received = new ArrayList<>();
     private final AtomicInteger status = new AtomicInteger(202);
+    private final AtomicReference<String> responseBody = new AtomicReference<>();
 
     @BeforeEach
     void start() throws IOException {
@@ -37,7 +39,15 @@ class OtpDeliveryClientTest {
                     exchange.getRequestHeaders().getFirst("X-Karir-Signature"),
                     exchange.getRequestHeaders().getFirst("Content-Type"),
                     body});
-            exchange.sendResponseHeaders(status.get(), -1);
+            String payload = responseBody.get();
+            if (payload == null) {
+                exchange.sendResponseHeaders(status.get(), -1);
+            } else {
+                byte[] bytes = payload.getBytes(StandardCharsets.UTF_8);
+                exchange.getResponseHeaders().add("Content-Type", "application/json");
+                exchange.sendResponseHeaders(status.get(), bytes.length);
+                exchange.getResponseBody().write(bytes);
+            }
             exchange.close();
         });
         server.start();
@@ -82,6 +92,36 @@ class OtpDeliveryClientTest {
         assertEquals("application/json", request[2]);
         assertTrue(request[3].contains("\"purpose\":\"verify\""));
         assertTrue(request[3].matches(".*\"requestId\":\"[0-9a-f-]{36}\".*"));
+    }
+
+    @Test
+    void dryRunAnswerIsAcceptedButMarkedAsNotReallySent() {
+        OtpDeliveryClient client = new OtpDeliveryClient(HttpClient.newHttpClient(), relayUri(), SECRET, Clock.systemUTC());
+
+        responseBody.set("{\"dryRun\":true}");
+        OtpDeliveryClient.Result dry = client.sendWhatsApp("6281234567890", "123456", OtpDeliveryClient.Purpose.VERIFY);
+        assertEquals(OtpDeliveryClient.Result.SENT_DRY_RUN, dry);
+        assertTrue(dry.accepted());
+
+        responseBody.set("{\"dryRun\":false}");
+        assertEquals(OtpDeliveryClient.Result.SENT,
+                client.sendWhatsApp("6281234567890", "123456", OtpDeliveryClient.Purpose.VERIFY));
+
+        // Karir SQ answers 202 with no body at all; that stays a real send.
+        responseBody.set(null);
+        assertEquals(OtpDeliveryClient.Result.SENT,
+                client.sendWhatsApp("6281234567890", "123456", OtpDeliveryClient.Purpose.VERIFY));
+    }
+
+    @Test
+    void onlyTheDryRunFlagCounts() {
+        assertTrue(OtpDeliveryClient.isDryRun("{\"dryRun\": true}"));
+        assertFalse(OtpDeliveryClient.isDryRun("{\"dryRun\":false}"));
+        assertFalse(OtpDeliveryClient.isDryRun("{\"status\":\"antre\"}"));
+        assertFalse(OtpDeliveryClient.isDryRun(""));
+        assertFalse(OtpDeliveryClient.isDryRun(null));
+        assertFalse(OtpDeliveryClient.Result.FAILED.accepted());
+        assertFalse(OtpDeliveryClient.Result.RATE_LIMITED.accepted());
     }
 
     @Test

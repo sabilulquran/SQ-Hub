@@ -205,6 +205,37 @@ public enum IdentityProfile {
     }
 
     /**
+     * Whether the sign-in verify screen may offer "Ganti nomor". Keluarga SQ keeps several numbers, so a family that
+     * typed the wrong one corrects it themselves (KEL-IMPL-001 §4.5). Karir SQ keeps the one contact of the account
+     * and changes it in Karir SQ, not here.
+     */
+    public boolean allowsNumberChangeAtVerify() {
+        return multipleNumbers;
+    }
+
+    /**
+     * Replaces one not-yet-verified number with another, keeping the other numbers and their order, and without
+     * adding a duplicate. Verified numbers are never touched, because only an unverified number is offered here.
+     */
+    public void replaceNumber(UserModel user, String oldDigits, String newDigits) {
+        List<String> numbers = new ArrayList<>();
+        for (String number : waNumbers(user)) {
+            String kept = number.equals(oldDigits) ? newDigits : number;
+            if (!numbers.contains(kept)) {
+                numbers.add(kept);
+            }
+        }
+        if (!numbers.contains(newDigits)) {
+            numbers.add(newDigits);
+        }
+        if (multipleNumbers) {
+            user.setAttribute(waAttribute, numbers);
+        } else {
+            user.setSingleAttribute(waAttribute, numbers.get(0));
+        }
+    }
+
+    /**
      * Numbers offered on the "Lupa kata sandi" channel page. Karir: its one number. Keluarga: the verified numbers;
      * when none is verified yet (migrated family), the numbers on record (ADR-0010 decision).
      */

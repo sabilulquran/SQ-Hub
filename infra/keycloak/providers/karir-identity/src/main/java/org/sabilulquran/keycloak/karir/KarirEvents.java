@@ -4,6 +4,7 @@ package org.sabilulquran.keycloak.karir;
 final class KarirEvents {
     static final String DETAIL_CHANNEL = "channel";
     static final String DETAIL_PURPOSE = "purpose";
+    static final String DETAIL_DRY_RUN = "dry_run";
 
     static final String IP_BLOCKED = "karir_ip_blocked";
     static final String TURNSTILE_FAILED = "karir_turnstile_failed";
@@ -13,6 +14,7 @@ final class KarirEvents {
     static final String CODE_NOT_SENT = "karir_code_not_sent";
     static final String CODE_INVALID = "karir_code_invalid";
     static final String CODE_EXPIRED = "karir_code_expired";
+    static final String WA_INVALID = "karir_wa_invalid";
 
     private KarirEvents() {
     }

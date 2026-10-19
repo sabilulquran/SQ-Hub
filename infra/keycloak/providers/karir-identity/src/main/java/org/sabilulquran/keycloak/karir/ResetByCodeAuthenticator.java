@@ -252,11 +252,17 @@ final class ResetByCodeAuthenticator implements Authenticator {
         OtpDeliveryClient.Result result = channel.waDigits() != null
                 ? runtime.delivery().sendWhatsApp(channel.waDigits(), code, OtpDeliveryClient.Purpose.RESET)
                 : runtime.delivery().sendEmail(context.getSession(), context.getRealm(), user, code);
-        if (result != OtpDeliveryClient.Result.SENT) {
+        if (!result.accepted()) {
             otp.clear();
+            CodeForms.setDryRun(authSession, false);
             event.error(KarirEvents.CODE_NOT_SENT);
             return channel.waDigits() != null && user.getEmail() != null
                     ? KarirForms.CODE_NOT_SENT : KarirForms.CODE_NOT_SENT_TRY_LATER;
+        }
+        boolean dryRun = result == OtpDeliveryClient.Result.SENT_DRY_RUN;
+        CodeForms.setDryRun(authSession, dryRun);
+        if (dryRun) {
+            event.detail(KarirEvents.DETAIL_DRY_RUN, "true");
         }
         event.success();
         return null;
@@ -333,9 +339,13 @@ final class ResetByCodeAuthenticator implements Authenticator {
         OtpState otp = CodeForms.state(context.getAuthenticationSession(), runtime);
         String destination = destination(runtime.profile(), user, otp.channel());
         LoginFormsProvider form = context.form();
+        boolean dryRun = CodeForms.dryRun(context.getAuthenticationSession());
         if (message != null) {
             if (success) {
-                form.setSuccess(message, destination == null ? "" : destination);
+                // In dry run the notice below is the whole truth, so the page does not also claim a code was sent.
+                if (!dryRun) {
+                    form.setSuccess(message, destination == null ? "" : destination);
+                }
             } else {
                 form.addError(new FormMessage(CodeForms.FIELD_CODE, message));
             }
@@ -343,6 +353,7 @@ final class ResetByCodeAuthenticator implements Authenticator {
         for (FormMessage extra : extraErrors) {
             form.addError(extra);
         }
+        CodeForms.dryRunNotice(form, dryRun);
         return CodeForms.codePage(form, PURPOSE, destination, otp, user != null).createForm(CodeForms.TEMPLATE);
     }
 

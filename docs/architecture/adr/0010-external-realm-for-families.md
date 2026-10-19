@@ -86,6 +86,10 @@ Families differ from candidates:
 - **Migrated history after a WhatsApp code:** a migrated family sees its historical children and applications right after a successful code sent to the WhatsApp number on record. A family that adds a number not on record sees nothing migrated until staff verify the KK document.
 - **Code channel when WhatsApp delivery fails** (Kirim SQ unavailable, rejects the code, or the device is disconnected): fall back to email when the family has one. Otherwise show "Kode belum bisa dikirim, coba lagi beberapa menit lagi" with the SPMB loket phone number. No third-party SMS fallback without a separate decision.
 
+## Product Owner decisions (2026-10-19)
+- **"Ganti nomor" on the verify screen.** A family that typed the wrong WhatsApp number at sign-up corrects it themselves on the verify screen, without staff. The provider replaces that one not-yet-verified number, keeps the numbers already verified, sends a code to the new number, and records the change in the event log by HMAC, never by number. Karir SQ is unchanged: it keeps the single contact of the account and changes it in Karir SQ.
+- **No "kode terkirim" in dry run.** When the relay answers that it did not really send the message — the app runs with the `log` WhatsApp adapter — the sign-in and reset pages say so plainly instead of claiming a code was sent. This is the follow-up to the stuck sign-up of 2026-10-18 recorded in `sq-core-ops/runbooks/plan-keluarga-spmb-r0-mi8.md` §8b.
+
 No open questions remain.
 
 ## Release gates (not design questions)

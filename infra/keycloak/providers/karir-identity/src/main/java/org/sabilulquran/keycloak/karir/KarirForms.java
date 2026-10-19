@@ -15,6 +15,7 @@ final class KarirForms {
     static final String INVALID_NIK = "karirInvalidNik";
     static final String NAME_REQUIRED = "karirNameRequired";
     static final String INVALID_WA = "karirInvalidWa";
+    static final String WA_SAME = "karirWaSame";
     static final String PASSWORD_REQUIRED = "karirPasswordRequired";
     static final String PASSWORD_MISMATCH = "karirPasswordMismatch";
     static final String CONSENT_REQUIRED = "karirConsentRequired";
@@ -26,6 +27,7 @@ final class KarirForms {
     static final String CODE_TOO_MANY_ATTEMPTS = "karirCodeTooManyAttempts";
     static final String CODE_RESEND_WAIT = "karirCodeResendWait";
     static final String CODE_SENT = "karirCodeSent";
+    static final String CODE_DRY_RUN = "karirCodeDryRun";
     static final String CODE_SENT_GENERIC = "karirCodeSentGeneric";
     static final String NO_CONTACT = "karirNoContact";
     static final String CHOOSE_CHANNEL = "karirChooseChannelRequired";
