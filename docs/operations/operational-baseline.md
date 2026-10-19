@@ -37,5 +37,8 @@ Sebelum production launch:
 
 Target RPO/RTO, retention backup, dan storage backup final adalah keputusan deployment/operations berikutnya.
 
+## Host capacity
+Kapasitas host production dan rencana migrasinya dibahas di `sq-core-capacity-and-migration-plan.md` (DRAFT).
+
 ## Deployment principle
 Independent application lifecycle adalah tujuan: maintenance atau deployment satu aplikasi tidak seharusnya mewajibkan seluruh aplikasi SQ Hub berhenti, kecuali shared dependency yang memang terkena perubahan.

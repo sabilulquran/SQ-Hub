@@ -2,7 +2,7 @@
 
 **Status:** DISCOVERY / DRAFT — not an implementation specification
 
-**Updated:** 2026-10-17
+**Updated:** 2026-10-19
 
 This document reconciles the phase roadmap with accepted repository decisions and
 records the product-owner decisions given for the proposed Staff Lifecycle
@@ -20,6 +20,7 @@ remain authoritative if this register conflicts with them.
 | Application Platform — onboard more SQ applications | **Foundation exists; expansion is demand-led** | Scope one real consumer at a time. Do not build generic integrations without an identified application and owner. |
 | Governance view — Ringkasan Yayasan | **Specification ACCEPTED** 2026-10-17 | Domain specs first (HCIS board-view role and summary endpoint, Aset SQ governance role), then Hub implementation. Production activation needs owner approval. |
 | Kirim SQ — shared WhatsApp sending path | **DISCOVERY** — KIRIM-001 design merged; ADR-0011 **ACCEPTED** (Product Owner, 2026-10-17) | Kirim SQ is an SQ Hub shared capability: the `kirim` module in `apps/api`, no new process on Mi8, no Baileys in SQ Core. The engine is replaceable per device (`log` default, `jalurpesan` for the trial with 2 numbers `hcis` and `spmb`, later its own JalurPesan instance or Meta Cloud API). Consumer apps never call JalurPesan directly; they use their own `WhatsAppSender` port with `log` + `kirim` adapters. Inbox and reply are built once in Kirim SQ and opened from a WhatsApp menu in each module; conversations are kept indefinitely; `kirim_admin` is the Kepala HCM. Admin at `kirim.sabilulquran.or.id` through Application Access. KIRIM-IMPL-001 (R1) ACCEPTED by the PO on 2026-10-17; R1 implemented in the repository (module `kirim`, admin screens Nomor and Antrean, `KIRIM_ENABLED=false` by default); next: owner-approved production steps (KIRIM-IMPL-001 §15). This replaces the earlier plan for a Baileys gateway module inside SQ Core. |
+| Rapat SQ — meetings, minutes, and decision register | **DISCOVERY** — RAPAT-001 design drafted 2026-10-19 (revision 1); no ADR, no specification, no implementation | Owner decisions of 2026-10-19: the module is built, transcription is **Whisper only** (no paid speech-to-text), and no paid Google subscription is bought for it. Three findings shaped this: the foundation is on consumer Google AI Plus/Pro, not Workspace, so Meet transcripts are unavailable; Meet's built-in transcripts do not support Indonesian, so buying Workspace would not help either; and the Meet Media API is still Developer Preview. Google Meet is therefore demoted to a plain video-call tool whose link is pasted in by hand — no Meet or Calendar API integration at all, which makes the module simpler than first drafted. Transcription is a replaceable source (manual typing, Whisper on the minute-taker's laptop, later Whisper on an 8 GB server) following the Kirim SQ engine pattern; joining bots stay rejected. Staged as R1 framework (agenda, attendance, ratified minutes, decision register — no AI, no audio, no privacy decision needed), R2 laptop transcripts, R3 server transcription. Still open: the summarizing language model is a **separate** decision from the Whisper decision and is deliberately unresolved — unlike Whisper, which matches the market's best at 1.5B parameters, an open-weight 9B summarizer is not frontier-class, so choosing free has a real quality cost here. Candidates include Sahabat-AI (Indonesian, with Javanese and Sundanese, runnable under Ollama) against a paid API. Next: interview the Sekretariat for real meeting numbers, then run one test on a real recording that answers both questions at once — Whisper accuracy, and local versus API minute drafts — before R2 is built. R1 needs no language model at all, so it is not blocked. Google for Nonprofits is worth pursuing for organization accounts and service accounts, but this module must not depend on it. See `docs/product/rapat-sq-module-design.md`. |
 | SQ Account / SQ Portal — external identities and journeys | **DISCOVERY** — Recruitment (ADR-0008 ACCEPTED); families for SPMB and Keluarga SQ (ADR-0010 ACCEPTED, 2026-10-17) | Implementation specs next (shared external-identity provider with REC-IMPL-001, SPMB-IMPL-001, KEL-IMPL-001); each production step needs owner approval. No external identity implementation is approved by this roadmap. |
 
 ## Identity Lifecycle decisions
@@ -165,5 +166,7 @@ candidates, and who approves the candidate-to-staff transition.
 - `docs/architecture/adr/0011-kirim-sq-shared-whatsapp-capability.md` — Kirim SQ
   as a shared WhatsApp capability with a replaceable engine (ACCEPTED).
 - `docs/product/kirim-sq-module-design.md` — KIRIM-001 module design.
+- `docs/product/rapat-sq-module-design.md` — RAPAT-001 module design
+  (DRAFT/DISCOVERY; owner decisions in §2, open questions in §11).
 - `docs/product/foundation-prd.md` — Directory operational TBDs and Foundation
   boundaries.
