@@ -9,7 +9,8 @@
 >
 > - Kirim SQ R2 menjadi **API percakapan** untuk modul pemilik nomor (§5.3), bukan layar inbox.
 > - Tidak dibangun lagi: layar inbox `kirim.sabilulquran.or.id/inbox/<nomor>`, menu WhatsApp di tiap modul yang membuka Kirim SQ, tombol aksi modul (`kirim_actions`), petugas per nomor (`kirim_device_members`), dan `kirim_conversations.ditangani_oleh`. Penugasan percakapan kini milik modul.
-> - Isi chat dan media **tetap disimpan di Kirim SQ**, terenkripsi dan selamanya, sesuai saran SPMB-002 §12 no. 1. Ini masih menunggu konfirmasi PO (§13 no. 7).
+> - Isi chat dan media **tetap disimpan di Kirim SQ**, terenkripsi dan selamanya (dikonfirmasi PO 2026-10-19, §13 no. 7).
+> - Tambahan PO 2026-10-19: API grup (§5.4) dan impor riwayat chat lama (§5.5).
 
 ## 1. Dasar
 
@@ -224,6 +225,31 @@ Aturan umum:
 
 Kirim SQ **tidak** menyimpan siapa yang memegang percakapan, status ditangani, catatan, atau label. Semua itu data kerja modul.
 
+### 5.4 Grup WhatsApp (keputusan PO 2026-10-19, SPMB-002 §7.6)
+
+Modul pemilik nomor mengelola grup tempat nomornya menjadi anggota. Aturan umum §5.3 berlaku (pemilik nomor saja, `atas_nama` wajib, audit).
+
+| Panggilan | Isi | Tahap |
+| --- | --- | --- |
+| `GET /internal/kirim/devices/:kode/groups` | Daftar grup nomor itu: `id`, nama, jumlah anggota, apakah nomor ini admin, pesan terakhir | R2 |
+| `GET /internal/kirim/groups/:id/messages?sebelum=&batas=` | Isi pesan grup, dengan pengirim per pesan | R2 |
+| `POST /internal/kirim/groups/:id/messages` | Balasan petugas ke grup (`text \| media_id`, `atas_nama`, `ref`) | R2 |
+| `POST /internal/kirim/devices/:kode/groups` | Membuat grup baru `{ nama, deskripsi?, anggota[] }`; nomor ini menjadi admin | R3 |
+| `POST /internal/kirim/groups/:id/participants`, `DELETE …/participants/:nomor` | Menambah dan mengeluarkan anggota. Bila orang itu tidak bisa ditambahkan langsung karena pengaturan privasinya, jawaban menandai `perlu_undangan` | R3 |
+| `GET /internal/kirim/groups/:id/invite-link`, `PATCH /internal/kirim/groups/:id` | Tautan undangan; ubah nama atau deskripsi | R3 |
+
+- Pesan grup masuk diteruskan ke modul sebagai event `group.message.received` (tanpa membuat percakapan pribadi).
+- Penambahan anggota kena **batas laju sendiri** (awal 20 orang per jam per nomor) dan opt-out; ini untuk menjaga nomor dari blokir WhatsApp.
+- **Mesin:** JalurPesan sudah punya daftar grup dan pesan grup (`/api/v1/platform/tenants/:id/groups…`), tetapi belum punya buat grup, tambah/keluarkan anggota, dan tautan undangan. Itu perlu ditambahkan ke JalurPesan sebelum tahap R3 (Baileys mendukung).
+
+### 5.5 Impor riwayat chat lama (keputusan PO 2026-10-19, SPMB-002 §7.8)
+
+- Riwayat chat nomor yang sudah dipakai sebelum Kirim SQ (mis. nomor SPMB di HP panitia) diimpor ke `kirim_messages` dengan tanda `asal: impor`. Pesan impor tidak memicu event `message.received`, balasan otomatis, atau notifikasi.
+- **Jalur utama:** permintaan riwayat ke WhatsApp lewat perangkat tertaut. JalurPesan sudah menangani riwayat **sesuai permintaan** (`ON_DEMAND`) per percakapan; sinkron awal saat pairing diabaikan untuk isi pesan. Seberapa jauh ke belakang WhatsApp mau mengirim perlu diuji pada nomor `spmb`.
+- **Jalur cadangan:** berkas **Ekspor chat** dari HP (teks + media) diunggah `kirim_admin` dan dipetakan ke percakapan per nomor.
+- File cadangan WhatsApp (`msgstore.db.crypt14/15`) terenkripsi dan tidak dipakai kecuali kuncinya tersedia.
+- Impor dijalankan sekali per nomor oleh `kirim_admin`, dengan ringkasan jumlah percakapan dan pesan, dan tercatat di audit.
+
 ## 6. Pengiriman dan keselamatan nomor
 
 - **Batas laju per nomor:** awal 10 pesan otomatis/menit dengan jeda acak 2–6 detik. Jenis `kode` dan balasan petugas boleh mendahului antrean.
@@ -263,7 +289,8 @@ Tidak ada layar inbox di Kirim SQ. `kirim_admin` **tidak bisa membaca isi chat**
 | Tahap | Isi |
 | --- | --- |
 | **R1** (live sejak 2026-10-18) | Nomor dan pairing, kirim otomatis (§5.1), simpan semua pesan masuk/keluar, event ke modul (§5.2), layar Nomor dan Antrean |
-| **R2** (revisi 3) | API percakapan (§5.3), `message.status` ke pemilik nomor, `markRead`, kirim gambar, cabut opt-out, layar Jangan hubungi dan Aktivitas. Dibutuhkan oleh SPMB-002 tahap K2 |
+| **R2** (revisi 3) | API percakapan (§5.3), baca dan balas grup (§5.4), impor riwayat chat lama (§5.5), `message.status` ke pemilik nomor, `markRead`, kirim gambar, cabut opt-out, layar Jangan hubungi dan Aktivitas. Dibutuhkan oleh SPMB-002 tahap K2 |
+| **R3** | Buat grup, tambah/keluarkan anggota, tautan undangan (§5.4), setelah JalurPesan mendukungnya. Dibutuhkan oleh SPMB-002 tahap K4 |
 | Kelak | Komponen tampilan kotak masuk bersama bila HCIS dan SPMB sama-sama butuh, kanal email, pindah mesin |
 
 Karena R1 sudah menyimpan semua pesan, kotak masuk di modul pemilik langsung punya riwayat sejak trial dimulai.
@@ -315,10 +342,10 @@ Pertanyaan baru dari revisi 3 (dijawab sebelum KIRIM-IMPL-002 diterima):
 | 1 | Kolom `kirim_conversations.ditangani_oleh` yang sudah ada di database (selalu kosong) dihapus atau dibiarkan? | **Dihapus di migration R2.** Kolom itu tidak pernah diisi, jadi aman; sampai migration R2 jalan, biarkan kosong dan jangan dipakai |
 | 2 | SPMB-002 §10 ingin "jangan hubungi" dari SPMB menghentikan pesan otomatis dari modul mana pun, tetapi KIRIM-IMPL-001 D-5 hanya mengizinkan pemakai membuat opt-out cakupan `consumer`. Bagaimana? | **Tambah cakupan per nomor (`device`) yang hanya boleh dibuat pemilik nomor.** Jadi "jangan hubungi" dari SPMB menghentikan semua pesan otomatis lewat nomor `spmb` (termasuk notifikasi modul lain di nomor itu), kecuali `kode`. Cakupan `semua` tetap hanya oleh `kirim_admin` |
 | 3 | Bolehkah petugas membalas nomor yang sudah opt-out? | **Hanya bila orang itu mengirim pesan dalam 24 jam terakhir** (dia sendiri yang menghubungi). Memulai chat atau membalas di luar itu ditolak `422 optout` |
-| 4 | Siapa memeriksa syarat "jejak hubungan" sebelum memulai chat (SPMB-002 §7.4)? | **Modul pemilik nomor.** Kirim SQ hanya memeriksa kepemilikan nomor, opt-out, kuota, dan mencatat petugas |
+| 4 | Siapa memeriksa syarat sebelum memulai chat (SPMB-002 §7.4)? | **Modul pemilik nomor.** PO memutuskan 2026-10-19 bahwa panitia boleh memulai chat ke nomor dari sumber mana pun asal sumbernya dicatat; pencatatan itu tugas SPMB. Kirim SQ hanya memeriksa kepemilikan nomor, opt-out, kuota, dan mencatat petugas |
 | 5 | Pembacaan isi percakapan diaudit di Kirim SQ juga, atau cukup di modul? | **Di keduanya.** Kirim SQ mencatat ringkas (petugas, percakapan, aksi, waktu) supaya jejak tetap ada walau modul berganti; modul mencatat konteks kerjanya |
 | 6 | Jenis media yang boleh dikirim petugas di R2? | **PDF, JPEG, PNG, maks. 5 MiB.** Voice note menyusul setelah kapasitas media Mi8 diukur (SPMB-002 §12 no. 9) |
-| 7 | Isi chat dan media tetap disimpan di Kirim SQ (dibaca modul lewat API), atau disalin ke database modul? (sama dengan SPMB-002 §12 no. 1) | **Tetap di Kirim SQ**, terenkripsi dan selamanya. Sudah berjalan sejak R1, satu tempat untuk semua nomor yayasan, dan tidak menggandakan data di Mi8. Revisi 3 ditulis dengan anggapan ini |
+| 7 | Isi chat dan media tetap disimpan di Kirim SQ (dibaca modul lewat API), atau disalin ke database modul? (sama dengan SPMB-002 §12 no. 1) | **Diputuskan PO 2026-10-19: tetap di Kirim SQ**, terenkripsi dan selamanya |
 
 ## Riwayat keputusan
 
@@ -332,3 +359,4 @@ Pertanyaan baru dari revisi 3 (dijawab sebelum KIRIM-IMPL-002 diterima):
 | 2026-10-17 | ADR-0011 diterima PO. |
 | 2026-10-17 | Urutan bangun dan petugas inbox awal diputuskan (§13); keputusan teknis R1 di KIRIM-IMPL-001 §16. |
 | 2026-10-19 (revisi 3) | **Kirim SQ hanya mesin di balik layar** (API WhatsApp: nomor, kirim, terima, simpan chat dan media, status, jangan-hubungi, batas laju). Kotak masuk staf dan pengelolaan peminat dibangun di modul pemilik nomor, SPMB lebih dulu (SPMB-002). Kirim SQ R2 menjadi API percakapan. |
+| 2026-10-19 | Isi chat tetap di Kirim SQ (dikonfirmasi PO). Tambahan: API grup — baca dan balas di R2, buat grup dan tambah anggota di R3 — dan impor riwayat chat lama (SPMB-002 §7.6, §7.8). |
