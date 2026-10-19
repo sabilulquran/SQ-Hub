@@ -6,7 +6,10 @@ import { z } from "zod";
 import type { ApplicationAccessService } from "../application-access/service.js";
 import { HubAuthError, readCookie, type HubAuthRuntime } from "../hub-auth/service.js";
 import {
+  activityQuerySchema,
+  adminOptoutSchema,
   createDeviceSchema,
+  optoutListQuerySchema,
   optionalReasonBodySchema,
   pairingSchema,
   queueQuerySchema,
@@ -15,6 +18,7 @@ import {
   type AdminActor,
   type KirimAdminService,
 } from "./admin.js";
+import { deviceImportSchema, EXPORT_MAX_BYTES, exportImportSchema, exportPreviewSchema, type KirimHistoryImport } from "./history-import.js";
 import { handleKirimError, sendKirimError } from "./routes-internal.js";
 import { KirimApiError } from "./service.js";
 
@@ -40,6 +44,7 @@ export function registerKirimAdminRoutes(
     auth: HubAuthRuntime;
     access: Pick<ApplicationAccessService, "checkAccess">;
     admin: KirimAdminService;
+    history?: KirimHistoryImport;
     publicOrigin: string;
   },
 ) {
@@ -86,10 +91,17 @@ export function registerKirimAdminRoutes(
     });
   }
 
-  function write<T>(method: "POST" | "PATCH", path: string, handler: (request: FastifyRequest, actor: AdminActor) => Promise<T>, status = 200) {
+  function write<T>(
+    method: "POST" | "PATCH" | "DELETE",
+    path: string,
+    handler: (request: FastifyRequest, actor: AdminActor) => Promise<T>,
+    status = 200,
+    options: { bodyLimit?: number } = {},
+  ) {
     app.route({
       method,
       url: `${KIRIM_ADMIN_PREFIX}${path}`,
+      ...(options.bodyLimit ? { bodyLimit: options.bodyLimit } : {}),
       handler: async (request, reply) => {
         reply.header("Cache-Control", "no-store");
         try {
@@ -107,7 +119,7 @@ export function registerKirimAdminRoutes(
 
   read("/context", async (_request, _actor, displayName) => ({
     displayName,
-    capabilities: { nomor: true, antrean: true },
+    capabilities: { nomor: true, antrean: true, jangan_hubungi: true, aktivitas: true, impor_riwayat: Boolean(input.history) },
   }));
   read("/devices", () => input.admin.listDevices());
   write("POST", "/devices", (request, actor) => input.admin.createDevice(actor, createDeviceSchema.parse(body(request))), 201);
@@ -125,6 +137,22 @@ export function registerKirimAdminRoutes(
   read("/queue", (request) => input.admin.listQueue(queueQuerySchema.parse(request.query)));
   write("POST", "/queue/:id/retry", (request, actor) => input.admin.retry(actor, params(request).id!));
   write("POST", "/queue/:id/cancel", (request, actor) => input.admin.cancel(actor, params(request).id!, reasonBodySchema.parse(body(request)).alasan));
+
+  // KIRIM-IMPL-002 §12
+  read("/optouts", (request) => input.admin.listOptouts(optoutListQuerySchema.parse(request.query)));
+  write("POST", "/optouts", (request, actor) => input.admin.addOptout(actor, adminOptoutSchema.parse(body(request))), 201);
+  write("DELETE", "/optouts/:id", (request, actor) => input.admin.removeOptout(actor, params(request).id!, reasonBodySchema.parse(body(request)).alasan));
+  read("/activity", (request) => input.admin.listActivity(activityQuerySchema.parse(request.query)));
+  read("/activity/summary", () => input.admin.activitySummary());
+  const history = input.history;
+  if (history) {
+    // An export file is read by the browser and sent as text, up to 10 MiB (§10.2).
+    const exportLimit = { bodyLimit: Math.ceil(EXPORT_MAX_BYTES * 1.1) + 4096 };
+    read("/devices/:kode/history-imports", (request) => history.list(params(request).kode!));
+    write("POST", "/devices/:kode/history-imports", (request, actor) => history.startDeviceImport(actor, params(request).kode!, deviceImportSchema.parse(body(request))), 202);
+    write("POST", "/devices/:kode/history-exports/preview", (request) => history.previewExport(params(request).kode!, exportPreviewSchema.parse(body(request))), 200, exportLimit);
+    write("POST", "/devices/:kode/history-exports", (request, actor) => history.importExport(actor, params(request).kode!, exportImportSchema.parse(body(request))), 201, exportLimit);
+  }
 }
 
 /**

@@ -1,4 +1,4 @@
-import { AlertTriangle, ListOrdered, LoaderCircle, LogOut, ShieldAlert, Smartphone } from "lucide-react";
+import { Activity, AlertTriangle, Ban, ListOrdered, LoaderCircle, LogOut, ShieldAlert, Smartphone } from "lucide-react";
 import { useState, type ReactNode } from "react";
 
 import { BrandLockup } from "@/components/BrandLockup";
@@ -6,9 +6,11 @@ import { ThemeToggle } from "@/components/ThemeToggle";
 import type { KirimRoute } from "@/kirim/routes";
 
 
-const navItems: Array<{ key: Exclude<KirimRoute, "not-found">; label: string; href: string; icon: typeof Smartphone }> = [
+const navItems: Array<{ key: Exclude<KirimRoute, "not-found" | "impor">; label: string; href: string; icon: typeof Smartphone }> = [
   { key: "nomor", label: "Nomor", href: "/nomor", icon: Smartphone },
   { key: "antrean", label: "Antrean", href: "/antrean", icon: ListOrdered },
+  { key: "jangan-hubungi", label: "Jangan hubungi", href: "/jangan-hubungi", icon: Ban },
+  { key: "aktivitas", label: "Aktivitas", href: "/aktivitas", icon: Activity },
 ];
 
 /**
@@ -58,18 +60,19 @@ export function KirimShell({
         <nav aria-label="Navigasi Kirim SQ" className="mx-auto flex w-full max-w-6xl gap-1 px-4 pb-2 sm:px-6 lg:px-8">
           {navItems.map((item) => {
             const Icon = item.icon;
-            const current = item.key === active;
+            // Impor riwayat is opened from a number's card, so Nomor stays highlighted.
+            const current = item.key === active || (item.key === "nomor" && active === "impor");
             return (
               <a
                 key={item.key}
                 href={item.href}
                 aria-current={current ? "page" : undefined}
                 className={[
-                  "inline-flex min-h-10 flex-1 items-center justify-center gap-2 rounded-xl px-3 text-sm sm:flex-none",
+                  "inline-flex min-h-10 flex-1 items-center justify-center gap-1.5 rounded-xl px-1.5 text-center text-xs leading-tight sm:flex-none sm:gap-2 sm:px-3 sm:text-sm",
                   current ? "bg-brand-primary-pale font-bold text-brand-primary-deep" : "font-semibold text-muted-foreground hover:bg-muted",
                 ].join(" ")}
               >
-                <Icon className="h-4 w-4" aria-hidden="true" />
+                <Icon className="hidden h-4 w-4 shrink-0 sm:block" aria-hidden="true" />
                 {item.label}
               </a>
             );

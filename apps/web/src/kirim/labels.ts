@@ -1,4 +1,4 @@
-import type { DeviceStatus, OutboxStatus } from "@/kirim/api";
+import type { DeviceStatus, KirimOptout, OutboxStatus } from "@/kirim/api";
 
 export const deviceStatusLabel: Record<DeviceStatus, string> = {
   tersambung: "Tersambung",
@@ -67,4 +67,37 @@ export function formatBytes(value: number | null): string {
   if (value < 1024 * 1024) return `${Math.round(value / 1024)} KiB`;
   if (value < 1024 * 1024 * 1024) return `${(value / 1024 / 1024).toFixed(1)} MiB`;
   return `${(value / 1024 / 1024 / 1024).toFixed(1)} GiB`;
+}
+
+/** Audit actions in Indonesian; unknown ones show their code. */
+export const activityLabel: Record<string, string> = {
+  "nomor.tambah": "Tambah nomor",
+  "nomor.ubah": "Ubah nomor",
+  "nomor.ganti_provider": "Ganti provider",
+  "nomor.provision": "Siapkan nomor di mesin",
+  "nomor.pairing": "Pasang nomor",
+  "nomor.putus": "Putuskan nomor",
+  "nomor.nonaktif": "Nonaktifkan nomor",
+  "antrean.jeda": "Jeda antrean",
+  "antrean.lanjut": "Lanjutkan antrean",
+  "antrean.coba_ulang": "Coba ulang pesan",
+  "antrean.batal": "Batalkan pesan",
+  "optout.tambah": "Tambah jangan hubungi",
+  "optout.cabut": "Cabut jangan hubungi",
+  "percakapan.baca": "Membuka isi percakapan",
+  "percakapan.buka": "Membuka percakapan baru",
+  "percakapan.balas": "Balasan petugas",
+  "percakapan.tandai_dibaca": "Tandai dibaca",
+  "grup.balas": "Balasan petugas ke grup",
+  "grup.tandai_dibaca": "Tandai grup dibaca",
+  "media.unduh": "Unduh media",
+  "riwayat.impor_perangkat": "Impor riwayat dari WhatsApp",
+  "riwayat.impor_ekspor": "Impor berkas ekspor chat",
+};
+
+/** Jangan hubungi scope in words (KIRIM-IMPL-002 §8). */
+export function cakupanText(optout: KirimOptout): string {
+  if (optout.cakupan === "semua") return "Semua pesan otomatis";
+  if (optout.cakupan === "device") return `Nomor ${optout.nomor ?? "—"}`;
+  return `Modul ${optout.modul ?? "—"}`;
 }

@@ -60,6 +60,16 @@ Perubahan JalurPesan yang dibutuhkan (keputusan T-1):
 | **J-2** | Rute platform `POST /api/v1/platform/tenants/:id/history-imports` `{ chatJid, maxMessages }` dan `GET .../history-imports/:importId` (status dan jumlah), serta `GET .../messages?chatJid=&importId=&page=` untuk mengambil hasilnya. Sama dengan rute admin yang sudah ada, dengan kunci platform | Impor jalur utama (§10.1) |
 | **J-3** | Tambah `pushName`, `remoteJidAlt` (nomor telepon untuk kontak LID bila diketahui), dan `mentionedJids` ke payload `message.received` (versi payload naik) | Nama profil langsung, sebutan di grup (SPMB-002 §7.6) |
 
+### 2.1 Bentuk J-1…J-3 yang dipakai Kirim SQ
+
+Implementasi R2 di SQ Hub sudah membaca bentuk berikut. Spesifikasi JalurPesan harus mengikutinya, atau dokumen ini diubah lebih dulu.
+
+- **J-1:** event `message.sent` di `GET .../events` dan webhook platform, payload `{ version: 1, message: { id, direction: "outbound", chatJid, recipientType, messageType, body, whatsappMessageId, sentAt, media? } }`, sama dengan `message.received` kecuali arah dan waktu. Tanda terkirim/dibaca untuk pesan itu memakai event `message.delivered`/`message.read` yang sudah ada.
+- **J-2:** `POST .../history-imports` `{ chatJid, maxMessages }` → `202 { historyImport: { id, status } }`; `GET .../history-imports/:id` → `{ historyImport: { id, status: "awaiting" | "completed" | "failed", error? } }`; `GET .../history-imports/:id/messages?page=&pageSize=` → `{ messages: [{ whatsappMessageId, direction, chatJid, senderJid, messageType, body, occurredAt, media? }], pagination: { page, totalPages } }`.
+- **J-3:** tambahan field di `message`: `pushName`, `peerJidAlt` (atau `remoteJidAlt`), `mentionedJids` (larik JID).
+
+Sampai J-2 terpasang, `KIRIM_HISTORY_IMPORT_ENABLED=false` dan layar Impor riwayat menampilkan "Belum tersedia" untuk jalur WhatsApp; jalur berkas Ekspor chat tetap bisa dipakai. Berkas ekspor dibaca oleh peramban dan dikirim sebagai teks (`POST /api/admin/kirim/devices/:kode/history-exports/preview` lalu `.../history-exports`), sehingga tidak perlu unggahan multipart.
+
 J-1…J-3 dikerjakan di repo JalurPesan dengan spesifikasinya sendiri, seperti D-10. Kirim SQ R2 **tetap bisa dirilis tanpa J-2 dan J-3** (fitur terkait tampil sebagai "belum tersedia"); **J-1 adalah gate** sebelum SPMB memakai kotak masuk untuk kerja harian (§15).
 
 ## 3. Keputusan teknis

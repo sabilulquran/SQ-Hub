@@ -2,7 +2,9 @@ import { randomUUID } from "node:crypto";
 import type { Pool } from "pg";
 import { z } from "zod";
 
-import { maskPhone, type KirimCrypto } from "./crypto.js";
+import { createHash } from "node:crypto";
+
+import { InvalidNumberError, maskPhone, normalizePhone, phoneCanonical, type KirimCrypto } from "./crypto.js";
 import type { KirimIngest } from "./ingest.js";
 import { wibDayStart } from "./policy.js";
 import { ProviderOperationError, type KirimProvider, type ProviderName } from "./providers/types.js";
@@ -62,6 +64,28 @@ export const optionalReasonBodySchema = z.object({ alasan: reasonSchema.optional
 export const queueQuerySchema = z.object({
   device: kodeSchema.optional(),
   status: z.enum(["antre", "diserahkan", "terkirim", "dibaca", "gagal", "dibatalkan"]).optional(),
+  page: z.coerce.number().int().min(1).max(10_000).default(1),
+});
+
+/** KIRIM-IMPL-002 §12: Jangan hubungi and Aktivitas. */
+export const optoutListQuerySchema = z.object({
+  cakupan: z.enum(["semua", "device", "consumer"]).optional(),
+  sumber: z.enum(["admin", "consumer"]).optional(),
+  nomor: z.string().trim().min(1).max(40).optional(),
+  page: z.coerce.number().int().min(1).max(10_000).default(1),
+});
+
+export const adminOptoutSchema = z.discriminatedUnion("cakupan", [
+  z.object({ nomor: z.string().trim().min(1).max(40), cakupan: z.literal("semua"), alasan: reasonSchema }).strict(),
+  z.object({ nomor: z.string().trim().min(1).max(40), cakupan: z.literal("device"), device: kodeSchema, alasan: reasonSchema }).strict(),
+]);
+
+export const activityQuerySchema = z.object({
+  aksi: z.string().trim().min(1).max(100).optional(),
+  device: kodeSchema.optional(),
+  pemakai: z.string().trim().min(1).max(255).optional(),
+  dari: z.string().date().optional(),
+  sampai: z.string().date().optional(),
   page: z.coerce.number().int().min(1).max(10_000).default(1),
 });
 
@@ -420,6 +444,184 @@ export class KirimAdminService {
     };
   }
 
+  // ------------------------------------------------------------------ Jangan hubungi (R2)
+
+  async listOptouts(query: z.infer<typeof optoutListQuerySchema>) {
+    const params: unknown[] = [];
+    const where: string[] = [];
+    if (query.cakupan) {
+      params.push(query.cakupan);
+      where.push(`o.cakupan = $${params.length}`);
+    }
+    if (query.sumber) {
+      params.push(query.sumber);
+      where.push(`o.sumber = $${params.length}`);
+    }
+    if (query.nomor) {
+      params.push(this.crypto.lookup(phoneCanonical(adminNumber(query.nomor))));
+      where.push(`o.nomor_hmac = $${params.length}`);
+    }
+    params.push(QUEUE_PAGE_SIZE, (query.page - 1) * QUEUE_PAGE_SIZE);
+    const rows = await this.pool.query<{ id: string; nomorTersamar: string | null; cakupan: string; device: string | null; consumer: string | null; alasan: string; sumber: string; createdAt: Date }>(
+      `SELECT o.id, o.nomor_tersamar AS "nomorTersamar", o.cakupan, d.kode AS device, c.nama AS consumer, o.alasan, o.sumber, o.created_at AS "createdAt"
+       FROM kirim_optouts o LEFT JOIN kirim_devices d ON d.id = o.device_id LEFT JOIN kirim_consumers c ON c.id = o.consumer_id
+       ${where.length ? `WHERE ${where.join(" AND ")}` : ""}
+       ORDER BY o.created_at DESC, o.id LIMIT $${params.length - 1} OFFSET $${params.length}`,
+      params,
+    );
+    return {
+      page: query.page,
+      optouts: rows.rows.map((row) => ({
+        id: row.id,
+        nomor_tersamar: row.nomorTersamar,
+        cakupan: row.cakupan,
+        nomor: row.cakupan === "device" ? row.device : null,
+        modul: row.cakupan === "consumer" || (row.cakupan === "device" && row.sumber === "consumer") ? row.consumer : null,
+        alasan: row.alasan,
+        sumber: row.sumber,
+        dibuat: row.createdAt.toISOString(),
+        bisa_dihapus: row.sumber === "admin",
+      })),
+    };
+  }
+
+  async addOptout(actor: AdminActor, input: z.infer<typeof adminOptoutSchema>) {
+    const nomor = adminNumber(input.nomor);
+    const nomorHmac = this.crypto.lookup(phoneCanonical(nomor));
+    const deviceId = input.cakupan === "device" ? (await this.requireDevice(input.device)).id : null;
+    return withTransaction(this.pool, async (client) => {
+      const inserted = input.cakupan === "semua"
+        ? await client.query(
+            `INSERT INTO kirim_optouts (id, nomor_hmac, cakupan, alasan, sumber, nomor_tersamar) VALUES ($1, $2, 'semua', $3, 'admin', $4)
+             ON CONFLICT (nomor_hmac) WHERE cakupan = 'semua' DO NOTHING`,
+            [randomUUID(), nomorHmac, input.alasan, maskPhone(nomor)],
+          )
+        : await client.query(
+            `INSERT INTO kirim_optouts (id, nomor_hmac, cakupan, device_id, alasan, sumber, nomor_tersamar) VALUES ($1, $2, 'device', $3, $4, 'admin', $5)
+             ON CONFLICT (nomor_hmac, device_id) WHERE cakupan = 'device' DO NOTHING`,
+            [randomUUID(), nomorHmac, deviceId, input.alasan, maskPhone(nomor)],
+          );
+      const dibuat = (inserted.rowCount ?? 0) > 0;
+      if (dibuat) {
+        await writeAudit(client, {
+          actorKind: "human",
+          actorRef: actor.ref,
+          aksi: "optout.tambah",
+          objekJenis: "optout",
+          objekRef: nomorHmac.slice(0, 16),
+          metadata: { cakupan: input.cakupan, ...(input.cakupan === "device" ? { device: input.device } : {}), sumber: "admin" },
+        });
+      }
+      return { dibuat };
+    });
+  }
+
+  /** Only opt-outs an admin created can be removed here; a module withdraws its own (§8). */
+  async removeOptout(actor: AdminActor, id: string, alasan: string) {
+    if (!z.string().uuid().safeParse(id).success) throw new KirimApiError(404, "not_found", "Opt-out tidak ditemukan.");
+    return withTransaction(this.pool, async (client) => {
+      const removed = await client.query<{ nomorHmac: string; cakupan: string }>(
+        `DELETE FROM kirim_optouts WHERE id = $1 AND sumber = 'admin' RETURNING nomor_hmac AS "nomorHmac", cakupan`,
+        [id],
+      );
+      const row = removed.rows[0];
+      if (!row) throw new KirimApiError(404, "not_found", "Opt-out tidak ditemukan atau dibuat oleh modul.");
+      await writeAudit(client, {
+        actorKind: "human",
+        actorRef: actor.ref,
+        aksi: "optout.cabut",
+        objekJenis: "optout",
+        objekRef: row.nomorHmac.slice(0, 16),
+        metadata: { cakupan: row.cakupan, alasan_panjang: alasan.length },
+      });
+      return { dicabut: true };
+    });
+  }
+
+  // ------------------------------------------------------------------------ Aktivitas (R2)
+
+  /** Audit rows without message bodies or full numbers; officers appear as a short pseudonym. */
+  async listActivity(query: z.infer<typeof activityQuerySchema>) {
+    const params: unknown[] = [];
+    const where: string[] = [];
+    /** Each `?` in `sql` is the same new parameter. */
+    const add = (sql: string, value: unknown) => {
+      params.push(value);
+      where.push(sql.replaceAll("?", `$${params.length}`));
+    };
+    if (query.aksi) add("a.aksi = ?", query.aksi);
+    if (query.device) add("(a.metadata->>'device' = ? OR (a.objek_jenis = 'device' AND a.objek_ref = ?))", query.device);
+    if (query.pemakai) add("a.actor_ref = ?", query.pemakai);
+    if (query.dari) add("a.occurred_at >= (?::date - interval '7 hours')", query.dari);
+    if (query.sampai) add("a.occurred_at < (?::date + interval '1 day' - interval '7 hours')", query.sampai);
+    params.push(QUEUE_PAGE_SIZE, (query.page - 1) * QUEUE_PAGE_SIZE);
+    const rows = await this.pool.query<{ id: string; actorKind: string; actorRef: string; atasNama: string | null; aksi: string; objekJenis: string; objekRef: string; hasil: string; metadata: Record<string, unknown>; occurredAt: Date }>(
+      `SELECT a.id, a.actor_kind AS "actorKind", a.actor_ref AS "actorRef", a.atas_nama AS "atasNama", a.aksi, a.objek_jenis AS "objekJenis",
+              a.objek_ref AS "objekRef", a.hasil, a.metadata, a.occurred_at AS "occurredAt"
+       FROM kirim_audit a ${where.length ? `WHERE ${where.join(" AND ")}` : ""}
+       ORDER BY a.occurred_at DESC, a.id LIMIT $${params.length - 1} OFFSET $${params.length}`,
+      params,
+    );
+    return {
+      page: query.page,
+      aktivitas: rows.rows.map((row) => ({
+        id: row.id,
+        aktor: { jenis: row.actorKind, ref: row.actorRef },
+        petugas: row.atasNama ? `petugas:${createHash("sha256").update(row.atasNama).digest("hex").slice(0, 10)}` : null,
+        aksi: row.aksi,
+        objek: { jenis: row.objekJenis, ref: row.objekRef },
+        hasil: row.hasil,
+        metadata: row.metadata,
+        waktu: row.occurredAt.toISOString(),
+      })),
+    };
+  }
+
+  /** Daily totals per module and number for the last 7 WIB days, plus LID/number duplicates (§9). */
+  async activitySummary() {
+    const messages = await this.pool.query<{ hari: string; device: string; modul: string | null; otomatis: string; petugas: string; hp: string; masuk: string }>(
+      `SELECT to_char(m.created_at + interval '7 hours', 'YYYY-MM-DD') AS hari, d.kode AS device, c.nama AS modul,
+              count(*) FILTER (WHERE m.arah = 'keluar' AND m.asal = 'otomatis') AS otomatis,
+              count(*) FILTER (WHERE m.arah = 'keluar' AND m.asal = 'petugas') AS petugas,
+              count(*) FILTER (WHERE m.arah = 'keluar' AND m.asal = 'hp') AS hp,
+              count(*) FILTER (WHERE m.arah = 'masuk') AS masuk
+       FROM kirim_messages m JOIN kirim_devices d ON d.id = m.device_id LEFT JOIN kirim_consumers c ON c.id = m.consumer_id
+       WHERE m.created_at > now() - interval '7 days' AND NOT m.diimpor
+       GROUP BY 1, 2, 3 ORDER BY 1 DESC, 2, 3`,
+    );
+    const failures = await this.pool.query<{ hari: string; device: string; modul: string; gagal: string }>(
+      `SELECT to_char(o.updated_at + interval '7 hours', 'YYYY-MM-DD') AS hari, d.kode AS device, c.nama AS modul, count(*) AS gagal
+       FROM kirim_outbox o JOIN kirim_devices d ON d.id = o.device_id JOIN kirim_consumers c ON c.id = o.consumer_id
+       WHERE o.status = 'gagal' AND o.updated_at > now() - interval '7 days' GROUP BY 1, 2, 3`,
+    );
+    const reads = await this.pool.query<{ hari: string; aksi: string; count: string }>(
+      `SELECT to_char(occurred_at + interval '7 hours', 'YYYY-MM-DD') AS hari, aksi, count(*) AS count FROM kirim_audit
+       WHERE aksi IN ('percakapan.baca', 'percakapan.buka', 'media.unduh') AND occurred_at > now() - interval '7 days' GROUP BY 1, 2`,
+    );
+    const duplicates = await this.pool.query<{ device: string; count: string }>(
+      `SELECT d.kode AS device, count(*) AS count FROM kirim_conversations lid
+       JOIN kirim_conversations pn ON pn.device_id = lid.device_id AND pn.kontak_hmac = lid.kontak_alt_hmac AND pn.id <> lid.id
+       JOIN kirim_devices d ON d.id = lid.device_id
+       WHERE lid.kontak_jenis = 'lid' GROUP BY d.kode`,
+    );
+    const failureKey = (row: { hari: string; device: string; modul: string | null }) => `${row.hari}|${row.device}|${row.modul ?? ""}`;
+    const failed = new Map(failures.rows.map((row) => [failureKey(row), Number(row.gagal)]));
+    return {
+      harian: messages.rows.map((row) => ({
+        hari: row.hari,
+        nomor: row.device,
+        modul: row.modul,
+        otomatis: Number(row.otomatis),
+        petugas: Number(row.petugas),
+        dari_hp: Number(row.hp),
+        masuk: Number(row.masuk),
+        gagal: failed.get(failureKey(row)) ?? 0,
+      })),
+      akses_isi: reads.rows.map((row) => ({ hari: row.hari, aksi: row.aksi, jumlah: Number(row.count) })),
+      percakapan_ganda: duplicates.rows.map((row) => ({ nomor: row.device, jumlah: Number(row.count) })),
+    };
+  }
+
   private async lockOutbox(client: Pick<Pool, "query">, messageId: string) {
     if (!z.string().uuid().safeParse(messageId).success) throw new KirimApiError(404, "not_found", "Pesan tidak ditemukan.");
     const result = await client.query<{ id: string; status: string; errorCode: string | null }>(
@@ -441,6 +643,15 @@ export class KirimAdminService {
     const provider = this.providers[device.provider];
     if (!provider) throw new KirimApiError(503, "engine_unavailable", "Mesin untuk provider ini belum dikonfigurasi.");
     return provider;
+  }
+}
+
+function adminNumber(value: string): string {
+  try {
+    return normalizePhone(value);
+  } catch (error) {
+    if (error instanceof InvalidNumberError) throw new KirimApiError(422, "invalid_number", "Nomor tidak sah.");
+    throw error;
   }
 }
 

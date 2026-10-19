@@ -1,4 +1,4 @@
-import { AlertTriangle, Pause, Play, Plus, PlugZap, Power, QrCode, RefreshCw, Settings2, Unplug } from "lucide-react";
+import { AlertTriangle, History, Pause, Play, Plus, PlugZap, Power, QrCode, RefreshCw, Settings2, Unplug } from "lucide-react";
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 
 import {
@@ -195,6 +195,9 @@ export function DeviceCard({ device, onOpen }: { device: KirimDevice; onOpen: (d
           <button type="button" className={secondaryButton} onClick={() => onOpen({ kind: "pair", device })}><QrCode className="h-4 w-4" aria-hidden="true" /> Pasang</button>
         ) : null}
         <button type="button" className={secondaryButton} onClick={() => onOpen({ kind: "edit", device })}><Settings2 className="h-4 w-4" aria-hidden="true" /> Ubah</button>
+        {!inactive ? (
+          <a className={secondaryButton} href={`/impor?nomor=${encodeURIComponent(device.kode)}`}><History className="h-4 w-4" aria-hidden="true" /> Impor riwayat</a>
+        ) : null}
         {!inactive ? (
           <button type="button" className={secondaryButton} onClick={() => onOpen({ kind: device.antrean_dijeda ? "resume" : "pause", device })}>
             {device.antrean_dijeda ? <Play className="h-4 w-4" aria-hidden="true" /> : <Pause className="h-4 w-4" aria-hidden="true" />}

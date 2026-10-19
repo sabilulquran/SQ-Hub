@@ -258,3 +258,33 @@ describe("KIRIM-IMPL-001 configuration and boundaries", () => {
     expect(safeLogUrl("/workspace?x=1")).toBe("/workspace?x=1");
   });
 });
+
+describe("KIRIM-IMPL-002 §10.2 WhatsApp export parser", () => {
+  it("reads Android and iPhone lines in Indonesian and English, joins continuation lines, and skips system lines", async () => {
+    const { parseWhatsAppExport } = await import("../src/modules/kirim/history-import.js");
+    const android = parseWhatsAppExport(
+      [
+        "19/10/26 09.12 - Pesan dan panggilan terenkripsi secara end-to-end.",
+        "19/10/26 09.12 - Bu Rina: Assalamu'alaikum",
+        "baris kedua",
+        "19/10/26 21.05 - SPMB: <Media tidak disertakan>",
+        "19/10/26 21.06 - SPMB: Pesan ini telah dihapus",
+      ].join("\r\n"),
+    );
+    expect(android.messages).toEqual([{ at: new Date("2026-10-19T02:12:00.000Z"), nama: "Bu Rina", isi: "Assalamu'alaikum\nbaris kedua" }]);
+    expect(android.dilewati).toBe(3);
+
+    const english = parseWhatsAppExport("10/19/26, 9:12 PM - Mrs Rina: Hello\n10/20/26, 12:01 AM - SPMB: Hi");
+    expect(english.messages.map((message) => [message.at.toISOString(), message.nama, message.isi])).toEqual([
+      ["2026-10-19T14:12:00.000Z", "Mrs Rina", "Hello"],
+      ["2026-10-19T17:01:00.000Z", "SPMB", "Hi"],
+    ]);
+
+    const iphone = parseWhatsAppExport("‎[19/10/26 09.12.33] Bu Rina: Halo\n[19/10/2026 09.13.00] SPMB: Wa'alaikumsalam");
+    expect(iphone.messages.map((message) => [message.at.toISOString(), message.nama])).toEqual([
+      ["2026-10-19T02:12:33.000Z", "Bu Rina"],
+      ["2026-10-19T02:13:00.000Z", "SPMB"],
+    ]);
+    expect(parseWhatsAppExport("bukan ekspor chat").messages).toEqual([]);
+  });
+});

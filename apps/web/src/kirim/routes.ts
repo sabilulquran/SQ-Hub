@@ -1,10 +1,13 @@
-/** Kirim SQ pages on the kirim. host (KIRIM-IMPL-001 §8). */
-export type KirimRoute = "nomor" | "antrean" | "not-found";
+/** Kirim SQ pages on the kirim. host (KIRIM-IMPL-001 §8, KIRIM-IMPL-002 §12). */
+export type KirimRoute = "nomor" | "antrean" | "jangan-hubungi" | "aktivitas" | "impor" | "not-found";
 
 export function resolveKirimRoute(pathname: string): KirimRoute {
   const path = pathname.replace(/\/+$/, "") || "/";
   if (path === "/" || path === "/nomor") return "nomor";
   if (path === "/antrean") return "antrean";
+  if (path === "/jangan-hubungi") return "jangan-hubungi";
+  if (path === "/aktivitas") return "aktivitas";
+  if (path === "/impor") return "impor";
   return "not-found";
 }
 

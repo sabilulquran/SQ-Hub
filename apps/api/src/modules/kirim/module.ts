@@ -10,6 +10,7 @@ import { HubTokenVault } from "../hub-auth/token-vault.js";
 import { KirimAdminService } from "./admin.js";
 import type { KirimConfig } from "./config.js";
 import { KirimConversations } from "./conversations.js";
+import { KirimHistoryImport } from "./history-import.js";
 import { KirimCrypto } from "./crypto.js";
 import { KirimIngest } from "./ingest.js";
 import { JalurPesanProvider, type EngineMediaRefs } from "./providers/jalurpesan.js";
@@ -35,6 +36,7 @@ export interface KirimModule {
   crypto: KirimCrypto;
   service: KirimService;
   conversations: KirimConversations;
+  history: KirimHistoryImport;
   admin: KirimAdminService;
   worker: KirimSendWorker;
   webhooks: KirimWebhookSender;
@@ -90,6 +92,11 @@ export function createKirimModule(input: {
     ? new KirimIngest(pool, crypto, service, providers.jalurpesan, { inboundMediaMaxBytes: config.inboundMediaMaxBytes, log })
     : undefined;
   const admin = new KirimAdminService(pool, crypto, service, providers, ingest);
+  const history = new KirimHistoryImport(pool, crypto, service, providers, {
+    enabled: config.historyImportEnabled ?? false,
+    inboundMediaMaxBytes: config.inboundMediaMaxBytes,
+    log,
+  });
   const conversations = new KirimConversations(pool, crypto, service, providers, {
     ...(config.replyDefaultTtlHours ? { replyTtlHours: config.replyDefaultTtlHours } : {}),
     log,
@@ -129,6 +136,7 @@ export function createKirimModule(input: {
     crypto,
     service,
     conversations,
+    history,
     admin,
     worker,
     webhooks,
@@ -144,7 +152,7 @@ export function createKirimModule(input: {
       });
       if (adminAuth && config.admin) {
         registerKirimAuthRoutes(app, { auth: adminAuth, publicOrigin: config.admin.publicOrigin });
-        registerKirimAdminRoutes(app, { auth: adminAuth, access: input.access, admin, publicOrigin: config.admin.publicOrigin });
+        registerKirimAdminRoutes(app, { auth: adminAuth, access: input.access, admin, history, publicOrigin: config.admin.publicOrigin });
       }
     },
     async start(startLog) {
@@ -159,6 +167,7 @@ export function createKirimModule(input: {
               loop(() => ingest.refreshDirectory("contacts"), config.contactRefreshIntervalMs ?? 21_600_000, startLog, "kirim.contacts"),
             ]
           : []),
+        ...(config.historyImportEnabled ? [loop(() => history.runOnce(), 10_000, startLog, "kirim.history")] : []),
       ];
       return async () => {
         await Promise.all(timers.map((stop) => stop()));
