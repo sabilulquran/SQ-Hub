@@ -3,6 +3,12 @@ import { z } from "zod";
 import type { ApplicationAccessRepository, ApplicationUpsertInput } from "./repository.js";
 import type { AccessDecision, AccessRecord, ActorRef, ApplicationRecord, AuditRecord } from "./types.js";
 
+/**
+ * Stays `.strict()` on purpose: an unknown field in `identity` means the caller is sending
+ * something Hub does not act on, and accepting it quietly would hide that misuse until the
+ * caller believes Hub read a field it never read. The 400 now names the rejected paths
+ * (see `invalid-request.ts`), which is what made the strictness hard to diagnose before.
+ */
 export const identityRefSchema = z
   .object({
     issuer: z.string().url().max(2048),

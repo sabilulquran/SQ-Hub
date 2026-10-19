@@ -2,6 +2,7 @@ import Fastify from "fastify";
 import { z } from "zod";
 
 import type { KeycloakAccountSelfService } from "./modules/account-self-service/client.js";
+import { invalidRequestFields, invalidRequestIssues } from "./invalid-request.js";
 import {
   MachineAuthError,
   readBearerToken,
@@ -91,7 +92,13 @@ export function buildApp(input: {
 
     const parsed = checkBodySchema.safeParse(request.body);
     if (!parsed.success) {
-      return reply.code(400).send({ error: "INVALID_REQUEST" });
+      // Paths and issue codes only: an identity body can carry personal data, so the
+      // submitted values go neither into the answer nor into the log.
+      request.log.warn(
+        { category: "internal_invalid_request", issues: invalidRequestIssues(parsed.error) },
+        "application access check body rejected",
+      );
+      return reply.code(400).send({ error: "INVALID_REQUEST", fields: invalidRequestFields(parsed.error) });
     }
 
     const decision = await input.accessService.checkAccess(

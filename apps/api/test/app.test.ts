@@ -94,7 +94,7 @@ describe("POST /internal/v1/application-access/check", () => {
     await app.close();
 
     expect(response.statusCode).toBe(400);
-    expect(response.json()).toEqual({ error: "INVALID_REQUEST" });
+    expect(response.json()).toEqual({ error: "INVALID_REQUEST", fields: ["permission"] });
   });
 
   it("returns the access decision from the platform service", async () => {

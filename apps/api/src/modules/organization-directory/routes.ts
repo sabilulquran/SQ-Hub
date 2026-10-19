@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
+import { invalidRequestFields } from "../../invalid-request.js";
 import { MachineAuthError, readBearerToken, type VerifyMachineToken } from "../application-access/machine-auth.js";
 import { organizationDirectoryUnitSchema, organizationDirectoryPersonSchema } from "./contract.js";
 import type { Projection } from "./repository.js";
@@ -27,12 +28,17 @@ export function directoryMetadata(projection: Projection, now: Date) {
 }
 
 class ReadError extends Error {
-  constructor(public readonly status: number, public readonly code: string) { super(code); }
+  constructor(
+    public readonly status: number,
+    public readonly code: string,
+    /** Rejected field paths; never the submitted values, which can be personal data. */
+    public readonly fields?: string[],
+  ) { super(code); }
 }
-function invalid(): never { throw new ReadError(400, "INVALID_REQUEST"); }
+function invalid(fields?: string[]): never { throw new ReadError(400, "INVALID_REQUEST", fields); }
 function parse<T extends z.ZodTypeAny>(schema: T, value: unknown): z.output<T> {
   const parsed = schema.safeParse(value);
-  if (!parsed.success) return invalid();
+  if (!parsed.success) return invalid(invalidRequestFields(parsed.error));
   return parsed.data;
 }
 function found<T>(value: T | undefined): T {
@@ -75,7 +81,9 @@ export function registerOrganizationDirectoryRoutes(app: FastifyInstance, input:
       }
     });
     routes.setErrorHandler((error, request, reply) => {
-      if (error instanceof ReadError) return reply.code(error.status).send({ error: error.code });
+      if (error instanceof ReadError) {
+        return reply.code(error.status).send({ error: error.code, ...(error.fields ? { fields: error.fields } : {}) });
+      }
       request.log.error({ category: "directory_read_unavailable" }, "directory read failed");
       return reply.code(503).send({ error: "DIRECTORY_UNAVAILABLE" });
     });

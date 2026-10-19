@@ -213,7 +213,7 @@ describe("bounded machine verification and resolver recovery", () => {
       stall.fetch.mockImplementation(nativeFetch);
       const recovered = await app.inject(request);
       expect(recovered.statusCode).toBe(400);
-      expect(recovered.json()).toEqual({ error: "INVALID_REQUEST" });
+      expect(recovered.json()).toEqual({ error: "INVALID_REQUEST", fields: ["extra"] });
       expect(checkAccess).not.toHaveBeenCalled();
       stall.pending.reject(new TypeError("old transport failed"));
       await vi.advanceTimersByTimeAsync(0);
