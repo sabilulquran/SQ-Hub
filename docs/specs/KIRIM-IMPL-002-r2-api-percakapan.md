@@ -70,6 +70,13 @@ Implementasi R2 di SQ Hub sudah membaca bentuk berikut. Spesifikasi JalurPesan h
 
 Sampai J-2 terpasang, `KIRIM_HISTORY_IMPORT_ENABLED=false` dan layar Impor riwayat menampilkan "Belum tersedia" untuk jalur WhatsApp; jalur berkas Ekspor chat tetap bisa dipakai. Berkas ekspor dibaca oleh peramban dan dikirim sebagai teks (`POST /api/admin/kirim/devices/:kode/history-exports/preview` lalu `.../history-exports`), sehingga tidak perlu unggahan multipart.
 
+**Status di JalurPesan (2026-10-19):** J-1…J-3 dikerjakan di [imadjinasi/jalurpesan#18](https://github.com/imadjinasi/jalurpesan/pull/18) dengan bentuk di atas, ditambah hal-hal berikut:
+
+- **J-1 menyala hanya dengan `LINKED_DEVICE_SENT_EVENTS=true`.** Bawaannya mati, supaya pengguna JalurPesan lain tidak menerima jenis event baru. Payload juga memuat `origin: "linked_device"`, `deviceId`, `peerJidAlt`, `recipientJid`, dan `status: "sent"`. Catatan untuk diri sendiri, reaksi, dan pesan protokol tidak diterbitkan.
+- **Nama profil J-3 bernama `senderDisplayName`**, sudah ada sebelumnya bersama `peerJidAlt`. Kirim SQ membaca `senderDisplayName` lebih dulu, lalu `pushName`. Field `mentionedJids` selalu ada setelah J-3, dan bernilai `[]` bila tidak ada sebutan.
+- **J-2 menolak dengan `409`** bila percakapan belum punya pesan tersimpan (`code: "no_anchor"`) atau masih ada impor yang berjalan di nomor itu (`code: "import_active"`). Impor yang tidak dijawab WhatsApp selama 15 menit digagalkan saat permintaan berikutnya datang. Hasil impor berisi semua pesan percakapan itu yang tersimpan di mesin sampai impor selesai, dan pesan ganda dibuang oleh pencegah ganda §10.1.
+- **Manajemen grup** (anggota, undangan, nama, deskripsi, pengaturan, keluar) sudah ada di mesin. Fitur grup R3 tidak menunggu perubahan JalurPesan.
+
 J-1…J-3 dikerjakan di repo JalurPesan dengan spesifikasinya sendiri, seperti D-10. Kirim SQ R2 **tetap bisa dirilis tanpa J-2 dan J-3** (fitur terkait tampil sebagai "belum tersedia"); **J-1 adalah gate** sebelum SPMB memakai kotak masuk untuk kerja harian (§15).
 
 ## 3. Keputusan teknis
@@ -364,7 +371,7 @@ Langkah production (masing-masing butuh persetujuan owner, dicatat di ledger ope
 
 | # | Langkah | Rollback |
 | --- | --- | --- |
-| 1 | Rilis JalurPesan dengan J-1 (dan J-2/J-3 bila siap), dengan spesifikasinya sendiri | Release JalurPesan sebelumnya |
+| 1 | Rilis JalurPesan dengan J-1…J-3 (migration 21), lalu `LINKED_DEVICE_SENT_EVENTS=true` | `LINKED_DEVICE_SENT_EVENTS=false`; kembali ke release sebelumnya hanya dengan backup sebelum pembaruan |
 | 2 | Backup lalu rilis SQ Hub dengan R2 dan migration 0011 (`KIRIM_HISTORY_IMPORT_ENABLED=false`) | Release SQ Hub sebelumnya (§4.3) |
 | 3 | Ukur gate memori dan beban baca | — |
 | 4 | Uji manual §14 di nomor `spmb` bersama Ketua Panitia SPMB | — |
@@ -411,3 +418,4 @@ Product Owner menyetujui semua saran di bawah pada 2026-10-19. Nomor `T-n` dipak
 | --- | --- |
 | 2026-10-19 | DRAFT pertama untuk R2 dari KIRIM-001 revisi 3 dan keputusan PO §13 no. 1–7, setelah memeriksa kode sumber JalurPesan |
 | 2026-10-19 | PO menyetujui semua saran T-1…T-6 (§17); ACCEPTED, implementasi R2 di repository diizinkan |
+| 2026-10-19 | §2.1 dan §15: status J-1…J-3 di JalurPesan#18 (saklar `LINKED_DEVICE_SENT_EVENTS`, `senderDisplayName`, kode 409 J-2) |
