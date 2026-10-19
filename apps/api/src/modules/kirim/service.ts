@@ -5,10 +5,11 @@ import { join } from "node:path";
 import type { Pool } from "pg";
 import { z } from "zod";
 
-import { columnAad, InvalidNumberError, KirimCryptoError, normalizePhone, phoneCanonical, type KirimCrypto } from "./crypto.js";
+import { columnAad, InvalidNumberError, KirimCryptoError, maskPhone, normalizePhone, phoneCanonical, type KirimCrypto } from "./crypto.js";
 import { wibDayStart } from "./policy.js";
 import {
   dbNow,
+  enqueueWebhook,
   ensureConversation,
   findConsumerByClientId,
   findDevice,
@@ -54,13 +55,23 @@ export const sendMessageSchema = z
 
 export type SendMessageInput = z.infer<typeof sendMessageSchema>;
 
-export const optoutSchema = z
-  .object({
-    nomor: z.string().trim().min(1).max(40),
-    cakupan: z.literal("consumer"),
-    alasan: z.string().trim().min(1).max(500),
-  })
-  .strict();
+const deviceKodeSchema = z.string().trim().regex(/^[a-z][a-z0-9-]{1,30}$/);
+
+/** D-5 and KIRIM-IMPL-002 §8: `consumer` for the caller's own messages, `device` for the number's owner. */
+export const optoutSchema = z.discriminatedUnion("cakupan", [
+  z.object({ nomor: z.string().trim().min(1).max(40), cakupan: z.literal("consumer"), alasan: z.string().trim().min(1).max(500) }).strict(),
+  z.object({ nomor: z.string().trim().min(1).max(40), cakupan: z.literal("device"), device: deviceKodeSchema, alasan: z.string().trim().min(1).max(500) }).strict(),
+]);
+
+export type OptoutInput = z.infer<typeof optoutSchema>;
+
+/** KIRIM-IMPL-002 §5.3: PDF, JPEG and PNG, checked by their magic bytes. */
+const MEDIA_SIGNATURES: Array<{ mime: string; magic: Buffer }> = [
+  { mime: "application/pdf", magic: Buffer.from("%PDF-", "ascii") },
+  { mime: "image/jpeg", magic: Buffer.from([0xff, 0xd8, 0xff]) },
+  { mime: "image/png", magic: Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]) },
+];
+export const OUTBOUND_MEDIA_MIMES = MEDIA_SIGNATURES.map((item) => item.mime);
 
 const NOTIFICATION_TTL_MS = 24 * 60 * 60 * 1000;
 const CODE_TTL_MS = 10 * 60 * 1000;
@@ -108,7 +119,7 @@ export class KirimService {
     }
     const canonical = phoneCanonical(to);
     const toHmac = this.crypto.lookup(canonical);
-    if (input.jenis !== "kode" && (await this.isOptedOut(this.pool, toHmac, consumer.id))) {
+    if (input.jenis !== "kode" && (await this.isOptedOut(this.pool, [toHmac], consumer.id, device.id))) {
       throw new KirimApiError(422, "optout", "Nomor minta tidak dihubungi.");
     }
     const now = await dbNow(this.pool);
@@ -139,8 +150,8 @@ export class KirimService {
         const outboxId = randomUUID();
         const body = input.text ?? input.caption ?? null;
         await client.query(
-          `INSERT INTO kirim_messages (id, conversation_id, device_id, arah, asal, jenis, tipe, body_enc, body_disamarkan, media_id, provider, status)
-           VALUES ($1, $2, $3, 'keluar', 'otomatis', $4, $5, $6, $7, $8, $9, 'antre')`,
+          `INSERT INTO kirim_messages (id, conversation_id, device_id, arah, asal, jenis, tipe, body_enc, body_disamarkan, media_id, provider, status, consumer_id)
+           VALUES ($1, $2, $3, 'keluar', 'otomatis', $4, $5, $6, $7, $8, $9, 'antre', $10)`,
           [
             messageId,
             conversationId,
@@ -151,6 +162,7 @@ export class KirimService {
             input.jenis === "kode",
             input.media_id ?? null,
             device.provider,
+            consumer.id,
           ],
         );
         await client.query(
@@ -171,6 +183,21 @@ export class KirimService {
           ],
         );
         await client.query("UPDATE kirim_conversations SET pesan_terakhir_at = now() WHERE id = $1", [conversationId]);
+        // KIRIM-IMPL-002 §7: the number's owner sees another module's message in its inbox.
+        if (device.pemilikConsumerId !== consumer.id) {
+          await enqueueWebhook(client, this.crypto, device.pemilikConsumerId, "message.sent", {
+            device: device.kode,
+            conversation_id: conversationId,
+            message_id: messageId,
+            asal: "otomatis",
+            dikirim_oleh: consumer.nama,
+            tipe: input.media_id ? "dokumen" : "teks",
+            cuplikan: input.jenis === "kode" || !body ? null : body.slice(0, 200),
+            disamarkan: input.jenis === "kode",
+            status: "antre",
+            waktu: (await dbNow(client)).toISOString(),
+          });
+        }
         return { id: messageId, status: "antre" };
       });
     } catch (error) {
@@ -203,22 +230,28 @@ export class KirimService {
     return { id: row.id, ref: row.ref, status: row.status, error_code: row.errorCode, dry_run: row.dryRun, updated_at: row.updatedAt.toISOString() };
   }
 
-  /** D-5: consumers may only opt a number out of their own messages. Idempotent. */
-  async addConsumerOptout(consumer: ConsumerRow, input: z.infer<typeof optoutSchema>): Promise<{ cakupan: "consumer"; dibuat: boolean }> {
-    let nomor: string;
-    try {
-      nomor = normalizePhone(input.nomor);
-    } catch {
-      throw new KirimApiError(422, "invalid_number", "Nomor tidak sah.");
-    }
+  /**
+   * D-5 and KIRIM-IMPL-002 §8: `consumer` covers the caller's own messages; `device` covers every
+   * automatic message on a number and only its owner may create it. Idempotent.
+   */
+  async addConsumerOptout(consumer: ConsumerRow, input: OptoutInput): Promise<{ cakupan: "consumer" | "device"; dibuat: boolean }> {
+    const nomor = this.optoutNumber(input.nomor);
+    const deviceId = input.cakupan === "device" ? await this.ownedDeviceId(consumer, input.device) : null;
     const nomorHmac = this.crypto.lookup(phoneCanonical(nomor));
     return withTransaction(this.pool, async (client) => {
-      const inserted = await client.query(
-        `INSERT INTO kirim_optouts (id, nomor_hmac, cakupan, consumer_id, alasan, sumber)
-         VALUES ($1, $2, 'consumer', $3, $4, 'consumer')
-         ON CONFLICT (nomor_hmac, consumer_id) WHERE cakupan = 'consumer' DO NOTHING`,
-        [randomUUID(), nomorHmac, consumer.id, input.alasan],
-      );
+      const inserted = input.cakupan === "device"
+        ? await client.query(
+            `INSERT INTO kirim_optouts (id, nomor_hmac, cakupan, consumer_id, device_id, alasan, sumber, nomor_tersamar)
+             VALUES ($1, $2, 'device', $3, $4, $5, 'consumer', $6)
+             ON CONFLICT (nomor_hmac, device_id) WHERE cakupan = 'device' DO NOTHING`,
+            [randomUUID(), nomorHmac, consumer.id, deviceId, input.alasan, maskPhone(nomor)],
+          )
+        : await client.query(
+            `INSERT INTO kirim_optouts (id, nomor_hmac, cakupan, consumer_id, alasan, sumber, nomor_tersamar)
+             VALUES ($1, $2, 'consumer', $3, $4, 'consumer', $5)
+             ON CONFLICT (nomor_hmac, consumer_id) WHERE cakupan = 'consumer' DO NOTHING`,
+            [randomUUID(), nomorHmac, consumer.id, input.alasan, maskPhone(nomor)],
+          );
       const dibuat = (inserted.rowCount ?? 0) > 0;
       if (dibuat) {
         await writeAudit(client, {
@@ -227,11 +260,50 @@ export class KirimService {
           aksi: "optout.tambah",
           objekJenis: "optout",
           objekRef: nomorHmac.slice(0, 16),
-          metadata: { cakupan: "consumer", consumer: consumer.nama },
+          metadata: { cakupan: input.cakupan, consumer: consumer.nama, ...(input.cakupan === "device" ? { device: input.device } : {}) },
         });
       }
-      return { cakupan: "consumer", dibuat };
+      return { cakupan: input.cakupan, dibuat };
     });
+  }
+
+  /** KIRIM-IMPL-002 §8: a consumer withdraws only an opt-out it created itself. */
+  async removeConsumerOptout(consumer: ConsumerRow, input: OptoutInput): Promise<{ dicabut: true }> {
+    const nomor = this.optoutNumber(input.nomor);
+    const deviceId = input.cakupan === "device" ? await this.ownedDeviceId(consumer, input.device) : null;
+    const nomorHmac = this.crypto.lookup(phoneCanonical(nomor));
+    return withTransaction(this.pool, async (client) => {
+      const removed = await client.query(
+        `DELETE FROM kirim_optouts WHERE nomor_hmac = $1 AND cakupan = $2 AND consumer_id = $3 AND sumber = 'consumer'
+           AND device_id IS NOT DISTINCT FROM $4`,
+        [nomorHmac, input.cakupan, consumer.id, deviceId],
+      );
+      if ((removed.rowCount ?? 0) === 0) throw new KirimApiError(404, "not_found", "Tidak ada opt-out milik pemakai ini untuk nomor itu.");
+      await writeAudit(client, {
+        actorKind: "service",
+        actorRef: consumer.clientId,
+        aksi: "optout.cabut",
+        objekJenis: "optout",
+        objekRef: nomorHmac.slice(0, 16),
+        metadata: { cakupan: input.cakupan, consumer: consumer.nama, alasan_panjang: input.alasan.length },
+      });
+      return { dicabut: true };
+    });
+  }
+
+  private optoutNumber(value: string): string {
+    try {
+      return normalizePhone(value);
+    } catch {
+      throw new KirimApiError(422, "invalid_number", "Nomor tidak sah.");
+    }
+  }
+
+  /** The number's owner only (KIRIM-001 §3.3); anyone else gets `403 not_owner`. */
+  async ownedDeviceId(consumer: ConsumerRow, kode: string): Promise<string> {
+    const device = await findDevice(this.pool, kode);
+    if (!device || device.pemilikConsumerId !== consumer.id) throw new KirimApiError(403, "not_owner", "Hanya modul pemilik nomor yang boleh memakai ini.");
+    return device.id;
   }
 
   /**
@@ -247,14 +319,15 @@ export class KirimService {
     const owns = device.pemilikConsumerId === consumer.id;
     const routed = await this.pool.query("SELECT 1 FROM kirim_routes WHERE consumer_id = $1 AND device_id = $2", [consumer.id, device.id]);
     if (!owns && (routed.rowCount ?? 0) === 0) throw new KirimApiError(422, "route_denied", "Pemakai tidak boleh memakai nomor ini.");
+    const signature = MEDIA_SIGNATURES.find((item) => item.mime === input.mime);
     if (
       input.truncated ||
       input.data.length === 0 ||
       input.data.length > MEDIA_MAX_BYTES ||
-      input.mime !== "application/pdf" ||
-      !input.data.subarray(0, 5).equals(Buffer.from("%PDF-", "ascii"))
+      !signature ||
+      !input.data.subarray(0, signature.magic.length).equals(signature.magic)
     ) {
-      throw new KirimApiError(422, "media_invalid", "Hanya PDF sampai 5 MiB yang diterima.");
+      throw new KirimApiError(422, "media_invalid", "Hanya PDF, JPEG, atau PNG sampai 5 MiB yang diterima.");
     }
     const id = randomUUID();
     const sha256 = createHash("sha256").update(input.data).digest("hex");
@@ -297,15 +370,17 @@ export class KirimService {
     return free !== null && free < LOW_DISK_BYTES;
   }
 
-  private async isOptedOut(db: Queryable, nomorHmac: string, consumerId: string): Promise<boolean> {
+  /** Opt-outs that stop a consumer's messages to a number: `semua`, its own, and the number's (§8). */
+  async isOptedOut(db: Queryable, nomorHmacs: string[], consumerId: string, deviceId: string): Promise<boolean> {
     const result = await db.query(
-      `SELECT 1 FROM kirim_optouts WHERE nomor_hmac = $1 AND (cakupan = 'semua' OR consumer_id = $2) LIMIT 1`,
-      [nomorHmac, consumerId],
+      `SELECT 1 FROM kirim_optouts WHERE nomor_hmac = ANY($1::text[])
+         AND (cakupan = 'semua' OR (cakupan = 'consumer' AND consumer_id = $2) OR (cakupan = 'device' AND device_id = $3)) LIMIT 1`,
+      [nomorHmacs, consumerId, deviceId],
     );
     return (result.rowCount ?? 0) > 0;
   }
 
-  private async findIdempotent(db: Queryable, consumerId: string, key: string, requestHash: string) {
+  async findIdempotent(db: Queryable, consumerId: string, key: string, requestHash: string) {
     const existing = await db.query<{ messageId: string; status: string; requestHash: string }>(
       `SELECT message_id AS "messageId", status, request_hash AS "requestHash" FROM kirim_outbox WHERE consumer_id = $1 AND idempotency_key = $2`,
       [consumerId, key],

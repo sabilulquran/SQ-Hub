@@ -406,7 +406,7 @@ describe("Send worker (§5.2)", () => {
     );
     expect(status.rows[0]).toMatchObject({ status: "diserahkan", dryRun: true, providerMessageId: expect.stringMatching(/^log:kirim:/) });
     const events = await webhookPayloads("message.status");
-    expect(events.at(-1)?.data).toEqual({ id: created.json().id, ref: null, status: "diserahkan", error_code: null, dry_run: true });
+    expect(events.at(-1)?.data).toEqual({ id: created.json().id, ref: null, status: "diserahkan", error_code: null, dry_run: true, conversation_id: expect.any(String) });
   });
 
   it("retries after 1, 5 and 30 minutes with the same engine key, then fails with message.status", async () => {
@@ -508,14 +508,14 @@ describe("Ingest (§6.3)", () => {
     await kirim.ingest!.runOnce();
   }
 
-  it("stores inbound text and media encrypted, ignores groups, and forwards message.received", async () => {
+  it("stores inbound text and media encrypted, keeps groups out of private chats, and forwards message.received", async () => {
     stub.media.set("engine-media-1", Buffer.from("%PDF-1.7 bukti transfer"));
     stub.addEvent("spmb", "message.received", receivedPayload({ body: "Mau tanya biaya" }));
     stub.addEvent("spmb", "message.received", receivedPayload({ body: null, media: { id: "engine-media-1", sizeBytes: 23 } }));
     stub.addEvent("spmb", "message.received", receivedPayload({ body: "di grup", group: true }));
     stub.addEvent("spmb", "message.received", receivedPayload({ from: "99887766554433@lid", body: "dari lid" }));
     await pull();
-    const messages = await pool.query<{ tipe: string; mediaId: string | null }>(`SELECT tipe, media_id AS "mediaId" FROM kirim_messages WHERE arah = 'masuk' ORDER BY provider_at, tipe`);
+    const messages = await pool.query<{ tipe: string; mediaId: string | null }>(`SELECT tipe, media_id AS "mediaId" FROM kirim_messages WHERE arah = 'masuk' AND conversation_id IS NOT NULL ORDER BY provider_at, tipe`);
     expect(messages.rows.map((row) => row.tipe).sort()).toEqual(["dokumen", "teks", "teks"]);
     const media = await pool.query<{ path: string; id: string }>("SELECT id, path FROM kirim_media WHERE arah = 'masuk'");
     const file = await readFile(join(mediaRoot, media.rows[0]!.path));

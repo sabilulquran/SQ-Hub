@@ -4,12 +4,22 @@ import { z } from "zod";
 
 import { invalidRequestFields, invalidRequestIssues } from "../../invalid-request.js";
 import { MachineAuthError, readBearerToken, type VerifyMachineToken } from "../application-access/machine-auth.js";
+import {
+  atasNamaFromHeaders,
+  conversationListQuerySchema,
+  groupListQuerySchema,
+  messageListQuerySchema,
+  openConversationSchema,
+  readSchema,
+  replySchema,
+  type KirimConversations,
+} from "./conversations.js";
 import { verifyJalurPesanSignature } from "./crypto.js";
 import type { KirimIngest } from "./ingest.js";
 import { KirimApiError, MEDIA_MAX_BYTES, optoutSchema, sendMessageSchema, type KirimService } from "./service.js";
 import type { ConsumerRow } from "./repository.js";
 
-/** KIRIM-IMPL-001 §6.1 and §6.3. Loopback only; the edge answers 404 for `/internal/*` (§10). */
+/** KIRIM-IMPL-001 §6.1 and §6.3, KIRIM-IMPL-002 §6 and §8. Loopback only; the edge answers 404 for `/internal/*` (§10). */
 export const KIRIM_INTERNAL_PREFIX = "/internal/kirim";
 
 export function sendKirimError(
@@ -46,6 +56,7 @@ export function registerKirimInternalRoutes(
   app: FastifyInstance,
   input: {
     service: KirimService;
+    conversations?: KirimConversations;
     verifyMachineToken: VerifyMachineToken;
     ingest?: KirimIngest;
     jalurpesanWebhookSecret?: string | null;
@@ -122,6 +133,21 @@ export function registerKirimInternalRoutes(
       }
     });
 
+    scope.delete("/optouts", async (request, reply) => {
+      const consumer = await authenticate(request, reply);
+      if (!consumer) return reply;
+      const parsed = optoutSchema.safeParse(request.body);
+      if (!parsed.success) return sendInvalidBody(request, reply, parsed.error);
+      try {
+        return reply.send(await input.service.removeConsumerOptout(consumer, parsed.data));
+      } catch (error) {
+        return handleKirimError(reply, error);
+      }
+    });
+
+    const conversations = input.conversations;
+    if (conversations) registerConversationRoutes(scope, conversations, authenticate);
+
     scope.post("/media", async (request, reply) => {
       const consumer = await authenticate(request, reply);
       if (!consumer) return reply;
@@ -139,7 +165,7 @@ export function registerKirimInternalRoutes(
           file = { mime: part.mimetype, data, truncated: part.file.truncated };
         }
       } catch {
-        return sendKirimError(reply, 422, "media_invalid", "Hanya PDF sampai 5 MiB yang diterima.");
+        return sendKirimError(reply, 422, "media_invalid", "Hanya PDF, JPEG, atau PNG sampai 5 MiB yang diterima.");
       }
       if (!device || !file) return sendKirimError(reply, 400, "invalid_request", "Field device dan satu berkas wajib.");
       try {
@@ -185,6 +211,115 @@ export function registerKirimInternalRoutes(
       });
     }, { prefix: KIRIM_INTERNAL_PREFIX });
   }
+}
+
+type Authenticate = (request: FastifyRequest, reply: FastifyReply) => Promise<ConsumerRow | null>;
+
+/** KIRIM-IMPL-002 §6: the number owner's conversation API. Every handler checks ownership itself. */
+function registerConversationRoutes(scope: FastifyInstance, conversations: KirimConversations, authenticate: Authenticate) {
+  type Params = { Params: Record<string, string> };
+
+  function read<Q extends z.ZodTypeAny>(
+    path: string,
+    query: Q | null,
+    handler: (consumer: ConsumerRow, params: Record<string, string>, query: z.infer<Q>, request: FastifyRequest) => Promise<unknown>,
+  ) {
+    scope.get<Params>(path, async (request, reply) => {
+      const consumer = await authenticate(request, reply);
+      if (!consumer) return reply;
+      try {
+        const parsed = query ? query.parse(request.query) : undefined;
+        return reply.send(await handler(consumer, request.params, parsed, request));
+      } catch (error) {
+        return handleKirimError(reply, error);
+      }
+    });
+  }
+
+  function write<B extends z.ZodTypeAny>(
+    path: string,
+    body: B,
+    handler: (consumer: ConsumerRow, params: Record<string, string>, body: z.infer<B>, request: FastifyRequest, reply: FastifyReply) => Promise<unknown>,
+  ) {
+    scope.post<Params>(path, async (request, reply) => {
+      const consumer = await authenticate(request, reply);
+      if (!consumer) return reply;
+      const parsed = body.safeParse(request.body);
+      if (!parsed.success) {
+        const missingOfficer = parsed.error.issues.some((issue) => issue.path[0] === "atas_nama");
+        if (missingOfficer) return sendKirimError(reply, 400, "atas_nama_required", "Sebutkan petugas yang sedang bekerja (atas_nama).");
+        return sendInvalidBody(request, reply, parsed.error);
+      }
+      try {
+        return await handler(consumer, request.params, parsed.data, request, reply);
+      } catch (error) {
+        return handleKirimError(reply, error);
+      }
+    });
+  }
+
+  function idempotencyKey(request: FastifyRequest): string {
+    const key = request.headers["idempotency-key"];
+    if (typeof key !== "string" || key.length < 1 || key.length > 200) {
+      throw new KirimApiError(400, "idempotency_key_required", "Idempotency-Key wajib, 1–200 karakter.");
+    }
+    return key;
+  }
+
+  read("/devices/:kode/conversations", conversationListQuerySchema, async (consumer, params, query, request) => {
+    atasNamaFromHeaders(request.headers);
+    return conversations.listConversations(consumer, params.kode!, query);
+  });
+  read("/conversations/:id", null, async (consumer, params, _query, request) => {
+    atasNamaFromHeaders(request.headers);
+    return conversations.getConversation(consumer, params.id!);
+  });
+  read("/conversations/:id/messages", messageListQuerySchema, (consumer, params, query, request) =>
+    conversations.listMessages(consumer, params.id!, query, atasNamaFromHeaders(request.headers)),
+  );
+  read("/devices/:kode/groups", groupListQuerySchema, async (consumer, params, query, request) => {
+    atasNamaFromHeaders(request.headers);
+    return conversations.listGroups(consumer, params.kode!, query);
+  });
+  read("/groups/:id", null, async (consumer, params, _query, request) => {
+    atasNamaFromHeaders(request.headers);
+    return conversations.getGroup(consumer, params.id!);
+  });
+  read("/groups/:id/messages", messageListQuerySchema, (consumer, params, query, request) =>
+    conversations.listGroupMessages(consumer, params.id!, query, atasNamaFromHeaders(request.headers)),
+  );
+
+  scope.get<Params>("/media/:id", async (request, reply) => {
+    const consumer = await authenticate(request, reply);
+    if (!consumer) return reply;
+    try {
+      const media = await conversations.media(consumer, request.params.id!, atasNamaFromHeaders(request.headers));
+      return reply
+        .header("Content-Type", media.mime)
+        .header("Content-Disposition", "attachment")
+        .header("X-Content-Type-Options", "nosniff")
+        .send(media.data);
+    } catch (error) {
+      return handleKirimError(reply, error);
+    }
+  });
+
+  write("/devices/:kode/conversations", openConversationSchema, async (consumer, params, body, _request, reply) => {
+    const result = await conversations.openConversation(consumer, params.kode!, body);
+    return reply.status(result.created ? 201 : 200).send(result.conversation);
+  });
+  write("/conversations/:id/messages", replySchema, async (consumer, params, body, request, reply) =>
+    reply.status(202).send(await conversations.reply(consumer, params.id!, idempotencyKey(request), body)),
+  );
+  write("/conversations/:id/read", readSchema, async (consumer, params, body, _request, reply) =>
+    reply.send(await conversations.markRead(consumer, params.id!, body)),
+  );
+  write("/groups/:id/messages", replySchema, async (consumer, params, body, request, reply) =>
+    reply.status(202).send(await conversations.replyGroup(consumer, params.id!, idempotencyKey(request), body)),
+  );
+  write("/groups/:id/read", readSchema, async (consumer, params, body, _request, reply) =>
+    reply.send(await conversations.markGroupRead(consumer, params.id!, body)),
+  );
 }
 
 function headerValue(value: string | string[] | undefined): string | undefined {

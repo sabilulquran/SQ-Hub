@@ -1,5 +1,14 @@
 import { maskPhone } from "../crypto.js";
-import { ProviderOperationError, type KirimProvider, type ProviderDeviceStatus, type SendResult } from "./types.js";
+import {
+  ProviderOperationError,
+  type GroupContent,
+  type KirimProvider,
+  type ProviderContactPage,
+  type ProviderDeviceStatus,
+  type ProviderGroup,
+  type Recipient,
+  type SendResult,
+} from "./types.js";
 
 export type KirimLog = (entry: Record<string, unknown>, message: string) => void;
 
@@ -12,19 +21,20 @@ export class LogProvider implements KirimProvider {
 
   constructor(private readonly log: KirimLog = () => undefined) {}
 
-  async sendText(device: { kode: string }, to: { phoneDigits: string }, text: string, idempotencyKey: string): Promise<SendResult> {
-    this.log({ event: "kirim.log.send", device: device.kode, to: maskPhone(`+${to.phoneDigits}`), length: text.length, tipe: "teks" }, "kirim log provider (dry run)");
+  async sendText(device: { kode: string }, to: Recipient, text: string, idempotencyKey: string): Promise<SendResult> {
+    this.log({ event: "kirim.log.send", device: device.kode, to: maskRecipient(to), length: text.length, tipe: "teks" }, "kirim log provider (dry run)");
     return { ok: true, providerMessageId: `log:${idempotencyKey}`, dryRun: true };
   }
 
   async sendDocument(
     device: { kode: string },
-    to: { phoneDigits: string },
-    _file: unknown,
+    to: Recipient,
+    file: { kind?: "document" | "image" },
     caption: string | null,
     idempotencyKey: string,
   ): Promise<SendResult> {
-    this.log({ event: "kirim.log.send", device: device.kode, to: maskPhone(`+${to.phoneDigits}`), length: caption?.length ?? 0, tipe: "dokumen" }, "kirim log provider (dry run)");
+    const tipe = file.kind === "image" ? "gambar" : "dokumen";
+    this.log({ event: "kirim.log.send", device: device.kode, to: maskRecipient(to), length: caption?.length ?? 0, tipe }, "kirim log provider (dry run)");
     return { ok: true, providerMessageId: `log:${idempotencyKey}`, dryRun: true };
   }
 
@@ -48,4 +58,37 @@ export class LogProvider implements KirimProvider {
   async downloadMedia(): Promise<Buffer | null> {
     return null;
   }
+
+  async sendGroup(device: { kode: string }, _groupJid: string, content: GroupContent, idempotencyKey: string): Promise<SendResult> {
+    const length = "text" in content ? content.text.length : content.caption?.length ?? 0;
+    this.log({ event: "kirim.log.send", device: device.kode, to: "grup", length, tipe: "text" in content ? "teks" : "dokumen" }, "kirim log provider (dry run)");
+    return { ok: true, providerMessageId: `log:${idempotencyKey}`, dryRun: true };
+  }
+
+  async markRead(): Promise<void> {}
+
+  async listGroups(): Promise<ProviderGroup[]> {
+    return [];
+  }
+
+  async listContacts(): Promise<ProviderContactPage> {
+    return { contacts: [], hasMore: false };
+  }
+
+  async requestHistory(): Promise<never> {
+    throw new ProviderOperationError("engine_rejected", "log provider has no WhatsApp history");
+  }
+
+  async historyStatus(): Promise<never> {
+    throw new ProviderOperationError("engine_rejected", "log provider has no WhatsApp history");
+  }
+
+  async historyMessages(): Promise<never> {
+    throw new ProviderOperationError("engine_rejected", "log provider has no WhatsApp history");
+  }
+}
+
+/** Only the masked number reaches a log; a LID contact has no number to show. */
+export function maskRecipient(to: Recipient): string {
+  return "phoneDigits" in to ? maskPhone(`+${to.phoneDigits}`) : "lid";
 }

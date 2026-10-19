@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-/** KIRIM-IMPL-001 §11. Secrets live only in the production env, never in the repository or database. */
+/** KIRIM-IMPL-001 §11 and KIRIM-IMPL-002 §13. Secrets live only in the production env, never in the repository or database. */
 export interface KirimConfig {
   tokenAudience: string;
   dataKeys: Array<{ kid: string; key: Buffer }>;
@@ -11,6 +11,11 @@ export interface KirimConfig {
   eventPullIntervalMs: number;
   jalurpesan: { baseUrl: string; platformKey: string; webhookSecret: string | null } | null;
   admin: { clientId: string; clientSecret: string; publicOrigin: string } | null;
+  /** KIRIM-IMPL-002 §13; omitted values take the documented defaults. */
+  groupRefreshIntervalMs?: number;
+  contactRefreshIntervalMs?: number;
+  replyDefaultTtlHours?: number;
+  historyImportEnabled?: boolean;
 }
 
 const booleanString = z.enum(["true", "false"]).transform((value) => value === "true");
@@ -26,6 +31,10 @@ const envSchema = z.object({
   KIRIM_INBOUND_MEDIA_MAX_BYTES: z.coerce.number().int().min(1).max(64 * 1024 * 1024).default(16 * 1024 * 1024),
   KIRIM_WORKER_INTERVAL_MS: z.coerce.number().int().min(250).max(60_000).default(2_000),
   KIRIM_EVENT_PULL_INTERVAL_MS: z.coerce.number().int().min(5_000).max(3_600_000).default(60_000),
+  KIRIM_GROUP_REFRESH_INTERVAL_MS: z.coerce.number().int().min(60_000).max(86_400_000).default(900_000),
+  KIRIM_CONTACT_REFRESH_INTERVAL_MS: z.coerce.number().int().min(60_000).max(604_800_000).default(21_600_000),
+  KIRIM_REPLY_DEFAULT_TTL_HOURS: z.coerce.number().int().min(1).max(168).default(72),
+  KIRIM_HISTORY_IMPORT_ENABLED: booleanString.default("false"),
   JALURPESAN_BASE_URL: optionalNonempty(z.string().url()),
   JALURPESAN_PLATFORM_KEY: optionalNonempty(z.string().min(1)),
   JALURPESAN_WEBHOOK_SECRET: optionalNonempty(z.string().min(1)),
@@ -60,6 +69,10 @@ export function loadKirimConfig(env: NodeJS.ProcessEnv = process.env): KirimConf
     inboundMediaMaxBytes: parsed.KIRIM_INBOUND_MEDIA_MAX_BYTES,
     workerIntervalMs: parsed.KIRIM_WORKER_INTERVAL_MS,
     eventPullIntervalMs: parsed.KIRIM_EVENT_PULL_INTERVAL_MS,
+    groupRefreshIntervalMs: parsed.KIRIM_GROUP_REFRESH_INTERVAL_MS,
+    contactRefreshIntervalMs: parsed.KIRIM_CONTACT_REFRESH_INTERVAL_MS,
+    replyDefaultTtlHours: parsed.KIRIM_REPLY_DEFAULT_TTL_HOURS,
+    historyImportEnabled: parsed.KIRIM_HISTORY_IMPORT_ENABLED,
     jalurpesan: parsed.JALURPESAN_BASE_URL && parsed.JALURPESAN_PLATFORM_KEY
       ? {
           baseUrl: parsed.JALURPESAN_BASE_URL.replace(/\/$/, ""),
