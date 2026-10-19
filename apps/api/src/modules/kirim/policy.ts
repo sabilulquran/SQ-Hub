@@ -32,13 +32,14 @@ export type WindowDecision =
 
 export function windowDecision(input: {
   now: Date;
-  jenis: "notifikasi" | "kode";
+  jenis: "notifikasi" | "kode" | "percakapan";
   start: string;
   end: string;
   expiresAt: Date;
 }): WindowDecision {
   if (input.expiresAt.getTime() <= input.now.getTime()) return { action: "expire" };
-  if (input.jenis === "kode") return { action: "send" };
+  // `kode` and officer replies (`percakapan`, KIRIM-IMPL-002 §5.2) ignore the send window.
+  if (input.jenis !== "notifikasi") return { action: "send" };
   const window = sendWindow(input.now, input.start, input.end);
   if (window.open) return { action: "send" };
   if (input.expiresAt.getTime() <= window.nextOpenAt.getTime()) return { action: "expire" };

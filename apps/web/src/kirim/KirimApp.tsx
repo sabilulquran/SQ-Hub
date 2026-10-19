@@ -1,6 +1,9 @@
 import { useCallback, useEffect, useState } from "react";
 
+import { AktivitasPage, type AktivitasState } from "@/kirim/AktivitasPage";
 import { AntreanPage, type AntreanState } from "@/kirim/AntreanPage";
+import { ImporPage, type ImporState } from "@/kirim/ImporPage";
+import { JanganHubungiPage, type JanganHubungiState } from "@/kirim/JanganHubungiPage";
 import { kirimFetch, KirimRequestError, type KirimContext } from "@/kirim/api";
 import { KirimShell, secondaryButton, StateCard } from "@/kirim/KirimShell";
 import { resolveKirimRoute } from "@/kirim/routes";
@@ -89,7 +92,7 @@ export function KirimAppView({
   route: ReturnType<typeof resolveKirimRoute>;
   onLogout?: () => void | Promise<void>;
   onRetry?: () => void;
-  preview?: { nomor?: NomorState; antrean?: AntreanState };
+  preview?: { nomor?: NomorState; antrean?: AntreanState; janganHubungi?: JanganHubungiState; aktivitas?: AktivitasState; impor?: ImporState };
 }) {
   const displayName = state.status === "ready" ? state.context.displayName : undefined;
   return (
@@ -103,6 +106,9 @@ export function KirimAppView({
       ) : null}
       {state.status === "ready" && route === "nomor" ? <NomorPage {...(preview?.nomor ? { preview: preview.nomor } : {})} /> : null}
       {state.status === "ready" && route === "antrean" ? <AntreanPage {...(preview?.antrean ? { preview: preview.antrean } : {})} /> : null}
+      {state.status === "ready" && route === "jangan-hubungi" ? <JanganHubungiPage {...(preview?.janganHubungi ? { preview: preview.janganHubungi } : {})} /> : null}
+      {state.status === "ready" && route === "aktivitas" ? <AktivitasPage {...(preview?.aktivitas ? { preview: preview.aktivitas } : {})} /> : null}
+      {state.status === "ready" && route === "impor" ? <ImporPage {...(preview?.impor ? { preview: preview.impor } : {})} /> : null}
       {state.status === "ready" && route === "not-found" ? <StateCard kind="empty" title="Halaman tidak ditemukan" action={<a className={secondaryButton} href="/nomor">Ke Nomor</a>} /> : null}
     </KirimShell>
   );

@@ -9,6 +9,8 @@ import { HubAuthService, type HubAuthRuntime } from "../hub-auth/service.js";
 import { HubTokenVault } from "../hub-auth/token-vault.js";
 import { KirimAdminService } from "./admin.js";
 import type { KirimConfig } from "./config.js";
+import { KirimConversations } from "./conversations.js";
+import { KirimHistoryImport } from "./history-import.js";
 import { KirimCrypto } from "./crypto.js";
 import { KirimIngest } from "./ingest.js";
 import { JalurPesanProvider, type EngineMediaRefs } from "./providers/jalurpesan.js";
@@ -33,6 +35,8 @@ import { KirimSendWorker } from "./worker.js";
 export interface KirimModule {
   crypto: KirimCrypto;
   service: KirimService;
+  conversations: KirimConversations;
+  history: KirimHistoryImport;
   admin: KirimAdminService;
   worker: KirimSendWorker;
   webhooks: KirimWebhookSender;
@@ -88,6 +92,15 @@ export function createKirimModule(input: {
     ? new KirimIngest(pool, crypto, service, providers.jalurpesan, { inboundMediaMaxBytes: config.inboundMediaMaxBytes, log })
     : undefined;
   const admin = new KirimAdminService(pool, crypto, service, providers, ingest);
+  const history = new KirimHistoryImport(pool, crypto, service, providers, {
+    enabled: config.historyImportEnabled ?? false,
+    inboundMediaMaxBytes: config.inboundMediaMaxBytes,
+    log,
+  });
+  const conversations = new KirimConversations(pool, crypto, service, providers, {
+    ...(config.replyDefaultTtlHours ? { replyTtlHours: config.replyDefaultTtlHours } : {}),
+    log,
+  });
   const worker = new KirimSendWorker(pool, crypto, service, providers, { log });
   const webhooks = new KirimWebhookSender(pool, crypto, { ...(input.webhookTransport ? { transport: input.webhookTransport } : {}), log });
 
@@ -122,6 +135,8 @@ export function createKirimModule(input: {
   return {
     crypto,
     service,
+    conversations,
+    history,
     admin,
     worker,
     webhooks,
@@ -129,6 +144,7 @@ export function createKirimModule(input: {
     register(app) {
       registerKirimInternalRoutes(app, {
         service,
+        conversations,
         verifyMachineToken,
         ...(ingest ? { ingest } : {}),
         jalurpesanWebhookSecret: config.jalurpesan?.webhookSecret ?? null,
@@ -136,7 +152,7 @@ export function createKirimModule(input: {
       });
       if (adminAuth && config.admin) {
         registerKirimAuthRoutes(app, { auth: adminAuth, publicOrigin: config.admin.publicOrigin });
-        registerKirimAdminRoutes(app, { auth: adminAuth, access: input.access, admin, publicOrigin: config.admin.publicOrigin });
+        registerKirimAdminRoutes(app, { auth: adminAuth, access: input.access, admin, history, publicOrigin: config.admin.publicOrigin });
       }
     },
     async start(startLog) {
@@ -144,7 +160,14 @@ export function createKirimModule(input: {
       const timers = [
         loop(() => worker.runOnce(), config.workerIntervalMs, startLog, "kirim.worker"),
         loop(() => webhooks.runOnce(), config.workerIntervalMs, startLog, "kirim.webhooks"),
-        ...(ingest ? [loop(() => ingest.runOnce(), config.eventPullIntervalMs, startLog, "kirim.ingest")] : []),
+        ...(ingest
+          ? [
+              loop(() => ingest.runOnce(), config.eventPullIntervalMs, startLog, "kirim.ingest"),
+              loop(() => ingest.refreshDirectory("groups"), config.groupRefreshIntervalMs ?? 900_000, startLog, "kirim.groups"),
+              loop(() => ingest.refreshDirectory("contacts"), config.contactRefreshIntervalMs ?? 21_600_000, startLog, "kirim.contacts"),
+            ]
+          : []),
+        ...(config.historyImportEnabled ? [loop(() => history.runOnce(), 10_000, startLog, "kirim.history")] : []),
       ];
       return async () => {
         await Promise.all(timers.map((stop) => stop()));

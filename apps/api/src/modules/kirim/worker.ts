@@ -3,10 +3,11 @@ import type { Pool } from "pg";
 import { columnAad, type KirimCrypto } from "./crypto.js";
 import { MAX_SEND_ATTEMPTS, rateAllows, retryDelayMs, sendGapMs, windowDecision } from "./policy.js";
 import type { KirimLog } from "./providers/log.js";
-import type { DeviceRef, KirimProvider, ProviderName, SendResult } from "./providers/types.js";
+import type { DeviceRef, KirimProvider, MediaFile, ProviderName, Recipient, SendResult } from "./providers/types.js";
 import {
   conversationContact,
   dbNow,
+  groupJid,
   setDeviceStatus,
   transitionOutbox,
   withTransaction,
@@ -20,8 +21,9 @@ const MAX_CANDIDATES_PER_DEVICE = 20;
 interface ClaimedRow {
   outboxId: string;
   messageId: string;
-  conversationId: string;
-  jenis: "notifikasi" | "kode";
+  conversationId: string | null;
+  groupId: string | null;
+  jenis: "notifikasi" | "kode" | "percakapan";
   tipe: string;
   bodyEnc: string | null;
   mediaId: string | null;
@@ -60,7 +62,7 @@ export class KirimSendWorker {
       if ((this.nextSendAt.get(device.id) ?? 0) > this.now()) continue;
       const recent = await this.pool.query<{ count: string }>(
         `SELECT count(*) AS count FROM kirim_messages
-         WHERE device_id = $1 AND arah = 'keluar' AND asal = 'otomatis' AND provider_at > now() - interval '60 seconds'`,
+         WHERE device_id = $1 AND arah = 'keluar' AND asal IN ('otomatis', 'petugas') AND provider_at > now() - interval '60 seconds'`,
         [device.id],
       );
       if (!rateAllows(Number(recent.rows[0]?.count ?? 0), device.ratePerMenit)) continue;
@@ -99,11 +101,11 @@ export class KirimSendWorker {
     return withTransaction(this.pool, async (client) => {
       const now = await dbNow(client);
       const candidates = await client.query<ClaimedRow & { expiresAt: Date }>(
-        `SELECT o.id AS "outboxId", o.message_id AS "messageId", m.conversation_id AS "conversationId", o.jenis, m.tipe,
+        `SELECT o.id AS "outboxId", o.message_id AS "messageId", m.conversation_id AS "conversationId", m.group_id AS "groupId", o.jenis, m.tipe,
                 m.body_enc AS "bodyEnc", m.media_id AS "mediaId", o.attempts, o.expires_at AS "expiresAt"
          FROM kirim_outbox o JOIN kirim_messages m ON m.id = o.message_id
          WHERE o.device_id = $1 AND o.status = 'antre' AND o.next_attempt_at <= now()
-         ORDER BY CASE o.prioritas WHEN 'kode' THEN 0 WHEN 'tinggi' THEN 1 ELSE 2 END, o.created_at
+         ORDER BY CASE o.prioritas WHEN 'kode' THEN 0 WHEN 'petugas' THEN 1 WHEN 'tinggi' THEN 2 ELSE 3 END, o.created_at
          LIMIT ${MAX_CANDIDATES_PER_DEVICE}
          FOR UPDATE OF o SKIP LOCKED`,
         [device.id],
@@ -133,27 +135,29 @@ export class KirimSendWorker {
   }
 
   private async send(device: DeviceRef & { provider: ProviderName }, provider: KirimProvider, row: ClaimedRow): Promise<void> {
-    const contact = await conversationContact(this.pool, this.crypto, row.conversationId);
-    const phoneDigits = contact.startsWith("pn:+") ? contact.slice(4) : null;
     const body = row.bodyEnc ? this.crypto.open(row.bodyEnc, columnAad("kirim_messages", "body_enc", row.messageId)) : null;
     const idempotencyKey = `kirim:${row.outboxId}`;
-    let result: SendResult;
-    if (!phoneDigits) {
-      result = { ok: false, kind: "rejected", code: "invalid_number" };
-    } else if (row.mediaId) {
+    let file: MediaFile | null = null;
+    if (row.mediaId) {
       const media = await this.pool.query<{ mime: string; path: string | null }>("SELECT mime, path FROM kirim_media WHERE id = $1", [row.mediaId]);
       const stored = media.rows[0];
-      result = stored?.path
-        ? await provider.sendDocument(
-            device,
-            { phoneDigits },
-            { mediaId: row.mediaId, mime: stored.mime, filename: `${row.mediaId}.pdf`, data: () => this.service.readMediaFile(row.mediaId!, stored.path!) },
-            body,
-            idempotencyKey,
-          )
-        : { ok: false, kind: "rejected", code: "media_invalid" };
+      if (!stored?.path) {
+        await this.applyResult(device, provider.name, row, { ok: false, kind: "rejected", code: "media_invalid" });
+        return;
+      }
+      file = mediaFile(row.mediaId, stored.mime, () => this.service.readMediaFile(row.mediaId!, stored.path!));
+    }
+    let result: SendResult;
+    if (row.groupId) {
+      const jid = await groupJid(this.pool, this.crypto, row.groupId);
+      result = await provider.sendGroup(device, jid, file ? { file, caption: body } : { text: body ?? "" }, idempotencyKey);
     } else {
-      result = await provider.sendText(device, { phoneDigits }, body ?? "", idempotencyKey);
+      const to = recipientFromContact(await conversationContact(this.pool, this.crypto, row.conversationId!));
+      result = !to
+        ? { ok: false, kind: "rejected", code: "invalid_number" }
+        : file
+          ? await provider.sendDocument(device, to, file, body, idempotencyKey)
+          : await provider.sendText(device, to, body ?? "", idempotencyKey);
     }
     await this.applyResult(device, provider.name, row, result);
   }
@@ -206,4 +210,17 @@ export class KirimSendWorker {
   private now(): number {
     return this.options.clock?.() ?? Date.now();
   }
+}
+
+/** `pn:+62…` sends to the number; `lid:<jid>` sends to the JID (KIRIM-IMPL-002 §5.1). */
+export function recipientFromContact(contact: string): Recipient | null {
+  if (contact.startsWith("pn:+")) return { phoneDigits: contact.slice(4) };
+  if (contact.startsWith("lid:")) return { jid: contact.slice(4) };
+  return null;
+}
+
+const EXTENSION_BY_MIME: Record<string, string> = { "application/pdf": "pdf", "image/jpeg": "jpg", "image/png": "png" };
+
+export function mediaFile(mediaId: string, mime: string, data: () => Promise<Buffer>): MediaFile {
+  return { mediaId, mime, filename: `${mediaId}.${EXTENSION_BY_MIME[mime] ?? "bin"}`, kind: mime.startsWith("image/") ? "image" : "document", data };
 }

@@ -21,6 +21,7 @@ import { LogProvider } from "../src/modules/kirim/providers/log.js";
 import type { KirimProvider, ProviderName } from "../src/modules/kirim/providers/types.js";
 import { verifyKeyCanaries } from "../src/modules/kirim/service.js";
 import { KirimWebhookSender } from "../src/modules/kirim/webhooks.js";
+import { KirimHistoryImport } from "../src/modules/kirim/history-import.js";
 import { KirimSendWorker } from "../src/modules/kirim/worker.js";
 import { JalurPesanStub, receiptPayload, receivedPayload } from "./kirim.fixture.js";
 
@@ -113,7 +114,7 @@ async function auditCount() {
   return Number((await pool.query<{ count: string }>("SELECT count(*) AS count FROM kirim_audit")).rows[0]!.count);
 }
 
-function admin(method: "GET" | "POST" | "PATCH", url: string, options: { session?: string; origin?: string | null; payload?: unknown } = {}) {
+function admin(method: "GET" | "POST" | "PATCH" | "DELETE", url: string, options: { session?: string; origin?: string | null; payload?: unknown } = {}) {
   return app.inject({
     method,
     url: `/admin/kirim${url}`,
@@ -406,7 +407,7 @@ describe("Send worker (§5.2)", () => {
     );
     expect(status.rows[0]).toMatchObject({ status: "diserahkan", dryRun: true, providerMessageId: expect.stringMatching(/^log:kirim:/) });
     const events = await webhookPayloads("message.status");
-    expect(events.at(-1)?.data).toEqual({ id: created.json().id, ref: null, status: "diserahkan", error_code: null, dry_run: true });
+    expect(events.at(-1)?.data).toEqual({ id: created.json().id, ref: null, status: "diserahkan", error_code: null, dry_run: true, conversation_id: expect.any(String) });
   });
 
   it("retries after 1, 5 and 30 minutes with the same engine key, then fails with message.status", async () => {
@@ -508,14 +509,14 @@ describe("Ingest (§6.3)", () => {
     await kirim.ingest!.runOnce();
   }
 
-  it("stores inbound text and media encrypted, ignores groups, and forwards message.received", async () => {
+  it("stores inbound text and media encrypted, keeps groups out of private chats, and forwards message.received", async () => {
     stub.media.set("engine-media-1", Buffer.from("%PDF-1.7 bukti transfer"));
     stub.addEvent("spmb", "message.received", receivedPayload({ body: "Mau tanya biaya" }));
     stub.addEvent("spmb", "message.received", receivedPayload({ body: null, media: { id: "engine-media-1", sizeBytes: 23 } }));
     stub.addEvent("spmb", "message.received", receivedPayload({ body: "di grup", group: true }));
     stub.addEvent("spmb", "message.received", receivedPayload({ from: "99887766554433@lid", body: "dari lid" }));
     await pull();
-    const messages = await pool.query<{ tipe: string; mediaId: string | null }>(`SELECT tipe, media_id AS "mediaId" FROM kirim_messages WHERE arah = 'masuk' ORDER BY provider_at, tipe`);
+    const messages = await pool.query<{ tipe: string; mediaId: string | null }>(`SELECT tipe, media_id AS "mediaId" FROM kirim_messages WHERE arah = 'masuk' AND conversation_id IS NOT NULL ORDER BY provider_at, tipe`);
     expect(messages.rows.map((row) => row.tipe).sort()).toEqual(["dokumen", "teks", "teks"]);
     const media = await pool.query<{ path: string; id: string }>("SELECT id, path FROM kirim_media WHERE arah = 'masuk'");
     const file = await readFile(join(mediaRoot, media.rows[0]!.path));
@@ -784,5 +785,96 @@ describe("Media files", () => {
     const row = await pool.query<{ path: string }>("SELECT path FROM kirim_media WHERE id = $1", [media.media_id]);
     expect(row.rows[0]!.path).toMatch(/^\d{4}[\\/]\d{2}[\\/][0-9a-f-]{36}$/);
     expect(await readdir(mediaRoot)).toContain(String(new Date().getUTCFullYear()));
+  });
+});
+
+describe("Admin R2: Jangan hubungi, Aktivitas, Impor riwayat (KIRIM-IMPL-002 §10, §12)", () => {
+  it("adds and removes admin opt-outs, lists module ones without letting the admin remove them", async () => {
+    await adminAs("admin-session");
+    expect((await admin("POST", "/optouts", { payload: { nomor: PHONE, cakupan: "semua", alasan: "Permintaan orang tua" } })).statusCode).toBe(201);
+    expect((await admin("POST", "/optouts", { payload: { nomor: "081200002222", cakupan: "device", device: "spmb", alasan: "Salah sambung" } })).json()).toEqual({ dibuat: true });
+    await app.inject({
+      method: "POST",
+      url: "/internal/kirim/optouts",
+      headers: { authorization: `Bearer ${await token({ azp: "spmb-api" })}` },
+      payload: { nomor: "081200003333", cakupan: "consumer", alasan: "Dari SPMB" },
+    });
+    const list = (await admin("GET", "/optouts")).json().optouts;
+    expect(list.map((row: { cakupan: string }) => row.cakupan).sort()).toEqual(["consumer", "device", "semua"]);
+    expect(JSON.stringify(list)).not.toContain("6281234567890");
+    expect(list.find((row: { cakupan: string }) => row.cakupan === "semua").nomor_tersamar).toBe("+62 812-••••-7890");
+    const fromModule = list.find((row: { sumber: string }) => row.sumber === "consumer");
+    expect(fromModule).toMatchObject({ modul: "spmb", bisa_dihapus: false });
+    expect((await admin("DELETE", `/optouts/${fromModule.id}`, { payload: { alasan: "x" } })).statusCode).toBe(404);
+    const own = list.find((row: { cakupan: string }) => row.cakupan === "semua");
+    expect((await admin("DELETE", `/optouts/${own.id}`, { payload: {} })).statusCode).toBe(400);
+    expect((await admin("DELETE", `/optouts/${own.id}`, { payload: { alasan: "Orang tua minta dihubungi lagi" } })).json()).toEqual({ dicabut: true });
+    expect((await admin("GET", `/optouts?nomor=${encodeURIComponent(PHONE)}`)).json().optouts).toHaveLength(0);
+  });
+
+  it("shows activity and a daily summary without bodies or full numbers", async () => {
+    await adminAs("admin-session");
+    await allDay();
+    await send("spmb-api", { device: "spmb", jenis: "notifikasi", to: PHONE, text: BODY_TEXT });
+    await admin("POST", "/devices/spmb/pause", { payload: { alasan: "uji aktivitas" } });
+    const activity = (await admin("GET", "/activity?device=spmb")).json().aktivitas;
+    expect(activity.map((row: { aksi: string }) => row.aksi)).toContain("antrean.jeda");
+    const summary = (await admin("GET", "/activity/summary")).json();
+    expect(summary.harian).toEqual([expect.objectContaining({ nomor: "spmb", modul: "spmb", otomatis: 1 })]);
+    const serialized = JSON.stringify({ activity, summary });
+    expect(serialized).not.toContain("tautan pendaftaran");
+    expect(serialized).not.toMatch(/628\d{6}/);
+  });
+
+  it("imports an export file once, with the admin picking the yayasan's name, and raises no events", async () => {
+    await adminAs("admin-session");
+    const teks = [
+      "19/10/26 09.12 - Pesan dan panggilan terenkripsi secara end-to-end.",
+      "19/10/26 09.12 - Bu Rina: Assalamu'alaikum, mau tanya biaya SDIT",
+      "19/10/26 09.15 - SPMB Sabilul Quran: Wa'alaikumsalam Bu,",
+      "biaya pendaftaran Rp350.000",
+      "19/10/26 09.16 - Bu Rina: <Media tidak disertakan>",
+    ].join("\n");
+    const preview = await admin("POST", "/devices/spmb/history-exports/preview", { payload: { nomor: PHONE, teks } });
+    expect(preview.json()).toMatchObject({ pesan: 2, dilewati: 2, nama: [{ nama: "Bu Rina", jumlah: 1 }, { nama: "SPMB Sabilul Quran", jumlah: 1 }] });
+    expect((await admin("POST", "/devices/spmb/history-exports", { payload: { nomor: PHONE, teks, nama_yayasan: "Orang lain" } })).statusCode).toBe(422);
+    const first = await admin("POST", "/devices/spmb/history-exports", { payload: { nomor: PHONE, teks, nama_yayasan: "SPMB Sabilul Quran" } });
+    expect(first.statusCode).toBe(201);
+    expect(first.json()).toMatchObject({ dimasukkan: 2, ganda: 0, dilewati: 2 });
+    expect((await admin("POST", "/devices/spmb/history-exports", { payload: { nomor: PHONE, teks, nama_yayasan: "SPMB Sabilul Quran" } })).json()).toMatchObject({ dimasukkan: 0, ganda: 2 });
+    const rows = await pool.query<{ arah: string; asal: string | null; diimpor: boolean; createdAt: Date }>(
+      `SELECT arah, asal, diimpor, created_at AS "createdAt" FROM kirim_messages ORDER BY created_at`,
+    );
+    expect(rows.rows.map((row) => [row.arah, row.asal, row.diimpor])).toEqual([["masuk", null, true], ["keluar", "hp", true]]);
+    expect(rows.rows[0]!.createdAt.toISOString()).toBe("2026-10-19T02:12:00.000Z");
+    const conversation = await pool.query<{ belumDibaca: number; masuk: Date | null }>(`SELECT belum_dibaca AS "belumDibaca", pesan_masuk_terakhir_at AS masuk FROM kirim_conversations`);
+    expect(conversation.rows[0]).toEqual({ belumDibaca: 0, masuk: null });
+    expect(await webhookPayloads()).toHaveLength(0);
+    const imports = (await admin("GET", "/devices/spmb/history-imports")).json();
+    expect(imports).toMatchObject({ impor_perangkat_tersedia: false, ringkasan: { selesai: 2, dimasukkan: 2, ganda: 2 } });
+    expect((await admin("POST", "/devices/spmb/history-imports", { payload: {} })).json().error.code).toBe("history_import_unavailable");
+  });
+
+  it("imports history from the engine (J-2) per conversation without duplicates or events", async () => {
+    stub.addEvent("spmb", "message.received", receivedPayload({ body: "Halo lagi", whatsappMessageId: "WA-NEW" }));
+    await kirim.ingest!.runOnce();
+    const before = (await webhookPayloads()).length;
+    stub.pendingHistory.set("6281234567890@s.whatsapp.net", [
+      { whatsappMessageId: "WA-OLD-1", direction: "inbound", chatJid: "6281234567890@s.whatsapp.net", messageType: "text", body: "Pesan lama", occurredAt: "2026-09-01T03:00:00.000Z" },
+      { whatsappMessageId: "WA-OLD-2", direction: "outbound", chatJid: "6281234567890@s.whatsapp.net", messageType: "text", body: "Balasan lama", occurredAt: "2026-09-01T03:05:00.000Z" },
+      { whatsappMessageId: "WA-NEW", direction: "inbound", chatJid: "6281234567890@s.whatsapp.net", messageType: "text", body: "Halo lagi", occurredAt: new Date().toISOString() },
+    ]);
+    const history = new KirimHistoryImport(pool, kirim.crypto, kirim.service, providers, { enabled: true, inboundMediaMaxBytes: 64 * 1024, now: () => Date.now() + 60_000 });
+    expect(await history.startDeviceImport({ ref: "staff:test" }, "spmb", { jumlah_per_percakapan: 100 })).toEqual({ percakapan: 1 });
+    await expect(history.startDeviceImport({ ref: "staff:test" }, "spmb", { jumlah_per_percakapan: 100 })).rejects.toMatchObject({ code: "history_import_running" });
+    await history.runOnce(); // request
+    await history.runOnce(); // completed → insert
+    const summary = await history.list("spmb");
+    expect(summary.impor[0]).toMatchObject({ status: "selesai", dimasukkan: 2, ganda: 1 });
+    const imported = await pool.query<{ count: string }>("SELECT count(*) AS count FROM kirim_messages WHERE diimpor");
+    expect(imported.rows[0]!.count).toBe("2");
+    expect((await webhookPayloads()).length).toBe(before);
+    const request = stub.requests.find((entry) => entry.path.endsWith("/history-imports") && entry.method === "POST");
+    expect(JSON.parse(request!.body)).toEqual({ chatJid: "6281234567890@s.whatsapp.net", maxMessages: 100 });
   });
 });

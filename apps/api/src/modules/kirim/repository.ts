@@ -137,12 +137,14 @@ export interface AuditInput {
   hasil?: "berhasil" | "gagal";
   /** Never message bodies, full numbers, QR data or pairing codes. */
   metadata?: Record<string, unknown>;
+  /** KIRIM-IMPL-002 §3: the officer a module named, as `issuer sub`. */
+  atasNama?: string | null;
 }
 
 export async function writeAudit(db: Queryable, input: AuditInput): Promise<void> {
   await db.query(
-    `INSERT INTO kirim_audit (id, actor_kind, actor_ref, aksi, objek_jenis, objek_ref, hasil, metadata)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb)`,
+    `INSERT INTO kirim_audit (id, actor_kind, actor_ref, aksi, objek_jenis, objek_ref, hasil, metadata, atas_nama)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9)`,
     [
       randomUUID(),
       input.actorKind,
@@ -152,11 +154,12 @@ export async function writeAudit(db: Queryable, input: AuditInput): Promise<void
       input.objekRef,
       input.hasil ?? "berhasil",
       JSON.stringify(input.metadata ?? {}),
+      input.atasNama ?? null,
     ],
   );
 }
 
-export type WebhookEventType = "message.status" | "message.received" | "device.status";
+export type WebhookEventType = "message.status" | "message.received" | "message.sent" | "group.message.received" | "device.status";
 
 /**
  * Queues one signed event for a consumer, in the caller's transaction. Consumers without a
@@ -245,6 +248,14 @@ export async function ensureConversation(
   return raced.rows[0]!.id;
 }
 
+/** Decrypts a group JID (`…@g.us`). */
+export async function groupJid(db: Queryable, crypto: KirimCrypto, groupId: string): Promise<string> {
+  const result = await db.query<{ jidEnc: string }>(`SELECT group_jid_enc AS "jidEnc" FROM kirim_groups WHERE id = $1`, [groupId]);
+  const row = result.rows[0];
+  if (!row) throw new Error("group not found");
+  return crypto.open(row.jidEnc, columnAad("kirim_groups", "group_jid_enc", groupId));
+}
+
 /** Decrypts a conversation contact; `pn:+62…` or `lid:<jid>`. */
 export async function conversationContact(db: Queryable, crypto: KirimCrypto, conversationId: string): Promise<string> {
   const result = await db.query<{ kontakEnc: string }>(
@@ -264,17 +275,23 @@ export interface OutboxStatusChange {
   status: string;
   errorCode: KirimErrorCode | null;
   dryRun: boolean;
+  /** KIRIM-IMPL-002 §7: the number's owner also learns the status of every outbound message. */
+  ownerConsumerId?: string;
+  conversationId?: string | null;
+  groupId?: string | null;
 }
 
-/** `message.status` for the sending consumer; written in the same transaction as the change (§5.2). */
+/**
+ * `message.status` for the sending consumer and, when it is another module, for the number's
+ * owner; written in the same transaction as the change (§5.2). `ref` belongs to the sender only.
+ */
 export async function enqueueMessageStatus(db: Queryable, crypto: KirimCrypto, change: OutboxStatusChange): Promise<void> {
-  await enqueueWebhook(db, crypto, change.consumerId, "message.status", {
-    id: change.messageId,
-    ref: change.ref,
-    status: change.status,
-    error_code: change.errorCode,
-    dry_run: change.dryRun,
-  });
+  const where = change.groupId ? { group_id: change.groupId } : change.conversationId ? { conversation_id: change.conversationId } : {};
+  const data = { id: change.messageId, status: change.status, error_code: change.errorCode, dry_run: change.dryRun, ...where };
+  await enqueueWebhook(db, crypto, change.consumerId, "message.status", { ...data, ref: change.ref });
+  if (change.ownerConsumerId && change.ownerConsumerId !== change.consumerId) {
+    await enqueueWebhook(db, crypto, change.ownerConsumerId, "message.status", { ...data, ref: null });
+  }
 }
 
 /**
@@ -317,16 +334,19 @@ export async function transitionOutbox(
   );
   const row = updated.rows[0];
   if (!row) return null;
-  const message = await db.query<{ dryRun: boolean }>(
-    `UPDATE kirim_messages SET
+  // A JalurPesan send answers with the WhatsApp id, which is also the read-receipt and import key.
+  const message = await db.query<{ dryRun: boolean; conversationId: string | null; groupId: string | null; ownerConsumerId: string }>(
+    `UPDATE kirim_messages m SET
        status = $2,
-       provider_message_id = COALESCE($3, provider_message_id),
-       dry_run = COALESCE($4, dry_run),
-       provider = COALESCE($5, provider),
-       provider_at = CASE WHEN $3::text IS NOT NULL THEN now() ELSE provider_at END,
+       provider_message_id = COALESCE($3, m.provider_message_id),
+       wa_message_id = CASE WHEN $3::text IS NOT NULL AND COALESCE($5, m.provider) = 'jalurpesan' THEN $3 ELSE m.wa_message_id END,
+       dry_run = COALESCE($4, m.dry_run),
+       provider = COALESCE($5, m.provider),
+       provider_at = CASE WHEN $3::text IS NOT NULL THEN now() ELSE m.provider_at END,
        updated_at = now()
-     WHERE id = $1
-     RETURNING dry_run AS "dryRun"`,
+     FROM kirim_devices d
+     WHERE m.id = $1 AND d.id = m.device_id
+     RETURNING m.dry_run AS "dryRun", m.conversation_id AS "conversationId", m.group_id AS "groupId", d.pemilik_consumer_id AS "ownerConsumerId"`,
     [row.messageId, input.status, input.provider?.messageId ?? null, input.provider?.dryRun ?? null, input.provider?.provider ?? null],
   );
   const change: OutboxStatusChange = {
@@ -337,6 +357,9 @@ export async function transitionOutbox(
     status: input.status,
     errorCode: input.errorCode ?? null,
     dryRun: message.rows[0]?.dryRun ?? false,
+    ...(message.rows[0]
+      ? { ownerConsumerId: message.rows[0].ownerConsumerId, conversationId: message.rows[0].conversationId, groupId: message.rows[0].groupId }
+      : {}),
   };
   await enqueueMessageStatus(db, crypto, change);
   return change;

@@ -30,6 +30,16 @@ export class JalurPesanStub {
   readonly requests: Array<{ method: string; path: string; idempotencyKey: string | null; body: string }> = [];
   readonly events: StubEvent[] = [];
   readonly media = new Map<string, Buffer>();
+  /** KIRIM-IMPL-002: groups per tenant, contacts per tenant, read receipts and J-2 history. */
+  readonly groups = new Map<string, Array<{ id: string; subject: string; size: number; participants: Array<{ jid: string; admin: string | null }> }>>();
+  readonly contacts = new Map<string, Array<{ jid: string; canonicalJid: string; displayName: string }>>();
+  readonly reads: Array<{ remoteJid: string; whatsappMessageId: string }> = [];
+  readonly uploadTypes: string[] = [];
+  readonly history = new Map<string, { status: "awaiting" | "completed" | "failed"; chatJid: string; messages: unknown[] }>();
+  /** History the engine will return for a chat once an import is requested. */
+  readonly pendingHistory = new Map<string, unknown[]>();
+  /** When false the J-2 routes answer 404, like an engine without them. */
+  historyRoutes = true;
   uploads = 0;
   /** Next responses for POST …/messages, consumed in order; default is 200. */
   sendQueue: Array<{ status: number; body: Record<string, unknown> } | "hang"> = [];
@@ -69,6 +79,13 @@ export class JalurPesanStub {
     this.requests.length = 0;
     this.events.length = 0;
     this.media.clear();
+    this.groups.clear();
+    this.contacts.clear();
+    this.reads.length = 0;
+    this.uploadTypes.length = 0;
+    this.history.clear();
+    this.pendingHistory.clear();
+    this.historyRoutes = true;
     this.uploads = 0;
     this.sendQueue = [];
     this.provisionResponse = null;
@@ -142,6 +159,7 @@ export class JalurPesanStub {
     }
     if (request.method === "POST" && path === "/media") {
       this.uploads += 1;
+      this.uploadTypes.push(url.searchParams.get("type") ?? "");
       const id = randomUUID();
       this.media.set(id, raw);
       return { status: 201, body: { success: true, mediaId: id } };
@@ -161,6 +179,61 @@ export class JalurPesanStub {
       this.messageIdByKey.set(key, messageId);
       return { status: 200, body: { success: true, messageId } };
     }
+    if (request.method === "POST" && path === "/messages/read") {
+      const body = JSON.parse(raw.toString("utf8")) as { messages: Array<{ remoteJid: string; whatsappMessageId: string }> };
+      this.reads.push(...body.messages);
+      return { status: 200, body: { success: true, count: body.messages.length } };
+    }
+    if (request.method === "GET" && path === "/groups") {
+      return { status: 200, body: { groups: this.groups.get(tenantId) ?? [] } };
+    }
+    const groupSend = /^\/groups\/([^/]+)\/messages$/.exec(path);
+    if (request.method === "POST" && groupSend) {
+      const jid = decodeURIComponent(groupSend[1]!);
+      if (!(this.groups.get(tenantId) ?? []).some((group) => group.id === jid)) {
+        return { status: 404, body: { success: false, error: "WhatsApp group not found for this device" } };
+      }
+      const key = idempotencyKey ?? "";
+      this.sendsByKey.set(key, (this.sendsByKey.get(key) ?? 0) + 1);
+      const messageId = this.messageIdByKey.get(key) ?? randomUUID();
+      this.messageIdByKey.set(key, messageId);
+      return { status: 200, body: { success: true, messageId, to: jid } };
+    }
+    if (request.method === "GET" && path === "/contacts") {
+      const all = this.contacts.get(tenantId) ?? [];
+      const page = Number(url.searchParams.get("page") ?? "1");
+      const size = Number(url.searchParams.get("pageSize") ?? "100");
+      return {
+        status: 200,
+        body: { contacts: all.slice((page - 1) * size, page * size), pagination: { page, pageSize: size, total: all.length, totalPages: Math.max(1, Math.ceil(all.length / size)) } },
+      };
+    }
+    if (path.startsWith("/history-imports")) {
+      if (!this.historyRoutes) return { status: 404, body: {} };
+      if (request.method === "POST" && path === "/history-imports") {
+        const body = JSON.parse(raw.toString("utf8")) as { chatJid: string };
+        const id = randomUUID();
+        this.history.set(id, { status: "completed", chatJid: body.chatJid, messages: [] });
+        return { status: 202, body: { success: true, historyImport: { id, status: "awaiting" } } };
+      }
+      const status = /^\/history-imports\/([^/]+)$/.exec(path);
+      if (request.method === "GET" && status) {
+        const record = this.history.get(decodeURIComponent(status[1]!));
+        return record ? { status: 200, body: { historyImport: { id: status[1], status: record.status } } } : { status: 404, body: {} };
+      }
+      const list = /^\/history-imports\/([^/]+)\/messages$/.exec(path);
+      if (request.method === "GET" && list) {
+        const record = this.history.get(decodeURIComponent(list[1]!));
+        if (!record) return { status: 404, body: {} };
+        const page = Number(url.searchParams.get("page") ?? "1");
+        const size = Number(url.searchParams.get("pageSize") ?? "100");
+        const messages = record.messages.length ? record.messages : (this.pendingHistory.get(record.chatJid) ?? []);
+        return {
+          status: 200,
+          body: { messages: messages.slice((page - 1) * size, page * size), pagination: { page, pageSize: size, totalPages: Math.max(1, Math.ceil(messages.length / size)) } },
+        };
+      }
+    }
     if (request.method === "GET" && path === "/events") {
       const after = Number(url.searchParams.get("after") ?? "0");
       const limit = Number(url.searchParams.get("limit") ?? "100");
@@ -173,7 +246,7 @@ export class JalurPesanStub {
 }
 
 /** JalurPesan `message.received` payload (version 1 text, version 2 media). */
-export function receivedPayload(input: { id?: string; from?: string; body?: string | null; group?: boolean; media?: { id: string; sizeBytes: number; mimeType?: string } }) {
+export function receivedPayload(input: { id?: string; from?: string; body?: string | null; group?: boolean; media?: { id: string; sizeBytes: number; mimeType?: string }; whatsappMessageId?: string; extra?: Record<string, unknown> }) {
   const chatJid = input.group ? "120363000000@g.us" : input.from ?? "6281234567890@s.whatsapp.net";
   return {
     version: input.media ? 2 : 1,
@@ -188,9 +261,10 @@ export function receivedPayload(input: { id?: string; from?: string; body?: stri
       recipientType: input.group ? "group" : "individual",
       messageType: input.media ? "document" : "text",
       body: input.body === undefined ? "Assalamu'alaikum, mau tanya pendaftaran" : input.body,
-      whatsappMessageId: randomUUID(),
+      whatsappMessageId: input.whatsappMessageId ?? randomUUID(),
       status: "received",
       receivedAt: new Date().toISOString(),
+      ...input.extra,
       ...(input.media
         ? { media: { id: input.media.id, mediaType: "document", mimeType: input.media.mimeType ?? "application/pdf", sizeBytes: input.media.sizeBytes, sha256: null, originalFilename: "berkas.pdf" } }
         : {}),
@@ -201,4 +275,25 @@ export function receivedPayload(input: { id?: string; from?: string; body?: stri
 /** Like JalurPesan: the send answer's messageId is the WhatsApp id; receipts carry the engine's own id plus that WhatsApp id. */
 export function receiptPayload(whatsappMessageId: string, status: "delivered" | "read") {
   return { version: 1, message: { id: randomUUID(), deviceId: "engine", direction: "outbound", whatsappMessageId, status } };
+}
+
+/** J-1: a message typed on the number's phone, as the engine reports it (`message.sent`). */
+export function sentPayload(input: { to?: string; body?: string; group?: boolean; whatsappMessageId?: string }) {
+  const chatJid = input.group ? "120363000000@g.us" : input.to ?? "6281234567890@s.whatsapp.net";
+  return {
+    version: 1,
+    message: {
+      id: randomUUID(),
+      deviceId: "engine",
+      direction: "outbound",
+      chatJid,
+      recipientJid: chatJid,
+      recipientType: input.group ? "group" : "individual",
+      messageType: "text",
+      body: input.body ?? "Wa'alaikumsalam, silakan daftar lewat tautan ini",
+      whatsappMessageId: input.whatsappMessageId ?? randomUUID(),
+      status: "sent",
+      sentAt: new Date().toISOString(),
+    },
+  };
 }

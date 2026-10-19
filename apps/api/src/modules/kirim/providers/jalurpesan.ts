@@ -1,11 +1,17 @@
 import {
   ProviderOperationError,
   type DeviceRef,
+  type GroupContent,
   type KirimProvider,
   type MediaFile,
   type PairingResult,
+  type ProviderContactPage,
   type ProviderDeviceStatus,
   type ProviderEventPage,
+  type ProviderGroup,
+  type ProviderHistoryMessage,
+  type ProviderHistoryStatus,
+  type ReadReceiptKey,
   type Recipient,
   type SendResult,
 } from "./types.js";
@@ -72,7 +78,7 @@ export class JalurPesanProvider implements KirimProvider {
   }
 
   async sendText(device: DeviceRef, to: Recipient, text: string, idempotencyKey: string): Promise<SendResult> {
-    return this.sendMessage(device, { to: to.phoneDigits, message: text }, idempotencyKey);
+    return this.sendMessage(device, { ...target(to), message: text }, idempotencyKey);
   }
 
   async sendDocument(
@@ -82,23 +88,130 @@ export class JalurPesanProvider implements KirimProvider {
     caption: string | null,
     idempotencyKey: string,
   ): Promise<SendResult> {
-    let engineMediaId = await this.mediaRefs.get(file.mediaId, device.id);
-    if (!engineMediaId) {
-      const uploaded = await this.upload(device, file);
-      if (!uploaded.ok) return uploaded.result;
-      engineMediaId = uploaded.mediaId;
-      await this.mediaRefs.put(file.mediaId, device.id, engineMediaId);
-    }
-    const result = await this.sendMessage(
+    const engineMediaId = await this.engineMedia(device, file);
+    if (typeof engineMediaId !== "string") return engineMediaId;
+    return this.sendMessage(
       device,
-      { to: to.phoneDigits, mediaId: engineMediaId, ...(caption ? { caption } : {}) },
+      { ...target(to), mediaId: engineMediaId, ...(caption ? { caption } : {}) },
       idempotencyKey,
-      async () => {
-        // The engine no longer holds the file: forget the reference and upload again on retry.
-        await this.mediaRefs.remove(file.mediaId, device.id);
-      },
+      () => this.forgetMedia(device, file),
     );
-    return result;
+  }
+
+  /** KIRIM-IMPL-002 §6.2. The group answer carries the WhatsApp message id like a private send. */
+  async sendGroup(device: DeviceRef, groupJid: string, content: GroupContent, idempotencyKey: string): Promise<SendResult> {
+    let body: Record<string, unknown>;
+    let onMediaMissing: (() => Promise<void>) | undefined;
+    if ("text" in content) {
+      body = { message: content.text };
+    } else {
+      const engineMediaId = await this.engineMedia(device, content.file);
+      if (typeof engineMediaId !== "string") return engineMediaId;
+      body = { mediaId: engineMediaId, ...(content.caption ? { caption: content.caption } : {}) };
+      onMediaMissing = () => this.forgetMedia(device, content.file);
+    }
+    let response: EngineResponse;
+    try {
+      response = await this.request("POST", this.url(device, `/groups/${encodeURIComponent(groupJid)}/messages`), {
+        json: body,
+        headers: { "idempotency-key": idempotencyKey },
+      });
+    } catch {
+      return { ok: false, kind: "retryable", code: "engine_unavailable" };
+    }
+    // The number left the group or the group is gone: retrying cannot help.
+    if (response.status === 404 && typeof response.body.error === "string" && response.body.error.startsWith("WhatsApp group not found")) {
+      return { ok: false, kind: "rejected", code: "engine_rejected" };
+    }
+    return mapSendResponse(response, onMediaMissing);
+  }
+
+  async markRead(device: DeviceRef, messages: ReadReceiptKey[]): Promise<void> {
+    for (let index = 0; index < messages.length; index += 100) {
+      const response = await this.lifecycle("POST", device, "/messages/read", { messages: messages.slice(index, index + 100) });
+      if (response.status !== 200) throw this.lifecycleError(response);
+    }
+  }
+
+  async listGroups(device: DeviceRef): Promise<ProviderGroup[]> {
+    const response = await this.lifecycle("GET", device, "/groups");
+    if (response.status !== 200 || !Array.isArray(response.body.groups)) throw this.lifecycleError(response);
+    return (response.body.groups as Array<Record<string, unknown>>).flatMap((group) =>
+      typeof group.id === "string"
+        ? [{
+            jid: group.id,
+            name: typeof group.subject === "string" ? group.subject.slice(0, 200) : "",
+            size: typeof group.size === "number" ? group.size : null,
+            participants: Array.isArray(group.participants)
+              ? (group.participants as Array<Record<string, unknown>>).flatMap((participant) =>
+                  typeof participant.jid === "string" ? [{ jid: participant.jid, admin: participant.admin === "admin" || participant.admin === "superadmin" }] : [],
+                )
+              : [],
+          }]
+        : [],
+    );
+  }
+
+  async listContacts(device: DeviceRef, page: number): Promise<ProviderContactPage> {
+    const response = await this.lifecycle("GET", device, `/contacts?page=${page}&pageSize=200`);
+    if (response.status !== 200 || !Array.isArray(response.body.contacts)) throw this.lifecycleError(response);
+    const pagination = (response.body.pagination ?? {}) as Record<string, unknown>;
+    return {
+      contacts: (response.body.contacts as Array<Record<string, unknown>>).flatMap((contact) =>
+        typeof contact.jid === "string"
+          ? [{
+              jid: contact.jid,
+              canonicalJid: typeof contact.canonicalJid === "string" ? contact.canonicalJid : contact.jid,
+              displayName: typeof contact.displayName === "string" && contact.displayName.trim() ? contact.displayName.trim().slice(0, 200) : null,
+            }]
+          : [],
+      ),
+      hasMore: typeof pagination.totalPages === "number" && page < pagination.totalPages,
+    };
+  }
+
+  /** J-2 platform routes (KIRIM-IMPL-002 §2); a 404 on the route means the engine predates J-2. */
+  async requestHistory(device: DeviceRef, chatJid: string, maxMessages: number): Promise<{ importId: string }> {
+    const response = await this.lifecycle("POST", device, "/history-imports", { chatJid, maxMessages });
+    const record = (response.body.historyImport ?? {}) as Record<string, unknown>;
+    if (response.status === 202 && typeof record.id === "string") return { importId: record.id };
+    throw this.lifecycleError(response);
+  }
+
+  async historyStatus(device: DeviceRef, importId: string): Promise<ProviderHistoryStatus> {
+    const response = await this.lifecycle("GET", device, `/history-imports/${encodeURIComponent(importId)}`);
+    if (response.status !== 200) throw this.lifecycleError(response);
+    const record = (response.body.historyImport ?? {}) as Record<string, unknown>;
+    if (record.status === "completed") return { status: "completed" };
+    if (record.status === "failed") return { status: "failed", reason: typeof record.error === "string" ? record.error.slice(0, 200) : "failed" };
+    return { status: "awaiting" };
+  }
+
+  async historyMessages(device: DeviceRef, importId: string, page: number): Promise<{ messages: ProviderHistoryMessage[]; hasMore: boolean }> {
+    const response = await this.lifecycle("GET", device, `/history-imports/${encodeURIComponent(importId)}/messages?page=${page}&pageSize=100`);
+    if (response.status !== 200 || !Array.isArray(response.body.messages)) throw this.lifecycleError(response);
+    const pagination = (response.body.pagination ?? {}) as Record<string, unknown>;
+    return {
+      messages: (response.body.messages as unknown[]).flatMap((item) => {
+        const message = readHistoryMessage(item);
+        return message ? [message] : [];
+      }),
+      hasMore: typeof pagination.totalPages === "number" && page < pagination.totalPages,
+    };
+  }
+
+  private async engineMedia(device: DeviceRef, file: MediaFile): Promise<string | SendResult> {
+    const cached = await this.mediaRefs.get(file.mediaId, device.id);
+    if (cached) return cached;
+    const uploaded = await this.upload(device, file);
+    if (!uploaded.ok) return uploaded.result;
+    await this.mediaRefs.put(file.mediaId, device.id, uploaded.mediaId);
+    return uploaded.mediaId;
+  }
+
+  /** The engine no longer holds the file: forget the reference and upload again on retry. */
+  private async forgetMedia(device: DeviceRef, file: MediaFile): Promise<void> {
+    await this.mediaRefs.remove(file.mediaId, device.id);
   }
 
   async pullEvents(device: DeviceRef, cursor: number, limit: number): Promise<ProviderEventPage> {
@@ -228,7 +341,7 @@ export class JalurPesanProvider implements KirimProvider {
     form.append("file", new Blob([await file.data()], { type: file.mime }), file.filename);
     let response: EngineResponse;
     try {
-      response = await this.request("POST", this.url(device, "/media?type=document"), { form });
+      response = await this.request("POST", this.url(device, `/media?type=${file.kind ?? "document"}`), { form });
     } catch {
       return { ok: false, result: { ok: false, kind: "retryable", code: "engine_unavailable" } };
     }
@@ -277,6 +390,40 @@ async function mapSendResponse(response: EngineResponse, onMediaMissing?: () => 
   }
   if (status >= 500 || status === 429) return { ok: false, kind: "retryable", code: "engine_unavailable" };
   return { ok: false, kind: "rejected", code: "engine_rejected" };
+}
+
+function target(to: Recipient): { to: string } | { toJid: string } {
+  return "jid" in to ? { toJid: to.jid } : { to: to.phoneDigits };
+}
+
+/** Reads one J-2 history message defensively; unknown shapes are skipped, never guessed. */
+export function readHistoryMessage(item: unknown): ProviderHistoryMessage | null {
+  if (!item || typeof item !== "object") return null;
+  const value = item as Record<string, unknown>;
+  if (typeof value.whatsappMessageId !== "string" || !value.whatsappMessageId || typeof value.chatJid !== "string") return null;
+  if (value.direction !== "inbound" && value.direction !== "outbound") return null;
+  const occurredAt = [value.occurredAt, value.receivedAt, value.sentAt, value.createdAt].find(
+    (candidate): candidate is string => typeof candidate === "string" && !Number.isNaN(Date.parse(candidate)),
+  );
+  if (!occurredAt) return null;
+  const media = value.media && typeof value.media === "object" ? (value.media as Record<string, unknown>) : null;
+  return {
+    whatsappMessageId: value.whatsappMessageId.slice(0, 200),
+    direction: value.direction,
+    chatJid: value.chatJid,
+    senderJid: typeof value.senderJid === "string" ? value.senderJid : null,
+    messageType: typeof value.messageType === "string" ? value.messageType : "lainnya",
+    body: typeof value.body === "string" && value.body.length > 0 ? value.body : null,
+    occurredAt,
+    media: media && typeof media.id === "string"
+      ? {
+          id: media.id,
+          mimeType: typeof media.mimeType === "string" ? media.mimeType.slice(0, 255) : "application/octet-stream",
+          sizeBytes: typeof media.sizeBytes === "number" && media.sizeBytes >= 0 ? media.sizeBytes : 0,
+          sha256: typeof media.sha256 === "string" && /^[0-9a-f]{64}$/.test(media.sha256) ? media.sha256 : null,
+        }
+      : null,
+  };
 }
 
 function mapDeviceState(body: Record<string, unknown>): ProviderDeviceStatus {

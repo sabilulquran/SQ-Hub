@@ -19,10 +19,14 @@ import {
   setDeviceStatus,
   transitionOutbox,
   withTransaction,
+  type Queryable,
 } from "./repository.js";
 import type { KirimService } from "./service.js";
 
-/** KIRIM-IMPL-001 §6.3: engine events into stored conversations and consumer webhooks. */
+/**
+ * KIRIM-IMPL-001 §6.3 and KIRIM-IMPL-002 §6.2, §7, §9: engine events into stored conversations
+ * and groups, and the consumer webhooks that follow from them.
+ */
 
 const PAGE_LIMIT = 100;
 const MAX_PAGES_PER_PULL = 10;
@@ -45,6 +49,8 @@ export class KirimIngest {
   /** Engine device id → Kirim device id, learnt from status calls, to route engine webhooks. */
   private readonly engineDevices = new Map<string, string>();
   private readonly pulling = new Map<string, Promise<void>>();
+  /** Numbers that received a message from a group not yet named: refreshed right after the pull. */
+  private readonly unnamedGroups = new Set<string>();
 
   constructor(
     private readonly pool: Pool,
@@ -129,7 +135,15 @@ export class KirimIngest {
       const cursor = Number(cursorRow.rows[0]?.cursor ?? 0);
       const result = await this.provider.pullEvents(device, cursor, PAGE_LIMIT);
       for (const event of result.events) await this.processEvent(device, event);
-      if (!result.hasMore || result.events.length === 0) return;
+      if (!result.hasMore || result.events.length === 0) break;
+    }
+    if (this.unnamedGroups.delete(device.id)) {
+      await this.refreshGroups(device).catch((error: unknown) => {
+        this.options.log?.(
+          { event: "kirim.groups.refresh_failed", device: device.kode, code: error instanceof ProviderOperationError ? error.code : "error" },
+          "kirim directory refresh failed; retrying next round",
+        );
+      });
     }
   }
 
@@ -140,7 +154,7 @@ export class KirimIngest {
 
     // Media is copied before the transaction so no network call holds database locks.
     let media: MediaCopy | null = null;
-    if (event.type === "message.received" && message && !message.group && message.media) {
+    if ((event.type === "message.received" || event.type === "message.sent") && message?.media) {
       media = await this.copyMedia(device, message.media);
     }
 
@@ -161,24 +175,20 @@ export class KirimIngest {
       if ((recorded.rowCount ?? 0) === 0 || !message) return;
 
       if (event.type === "message.received") {
-        if (message.group || message.direction !== "inbound") return;
+        if (message.direction !== "inbound") return;
+        if (message.group) {
+          await this.storeGroupMessage(client, device, message, media);
+          return;
+        }
         const contact = contactFromJid(message.senderJid ?? message.chatJid);
         if (!contact) return;
         const conversationId = await ensureConversation(client, this.crypto, { deviceId: device.id, canonical: contact.canonical, jenis: contact.jenis });
+        await this.learnContact(client, conversationId, contact, message);
         const messageId = randomUUID();
-        let mediaId: string | null = null;
-        if (media) {
-          mediaId = randomUUID();
-          const path = media.data ? await this.service.writeMediaFile(mediaId, media.data, await dbNow(client)) : null;
-          await client.query(
-            `INSERT INTO kirim_media (id, device_id, arah, mime, ukuran, sha256, path, dienkripsi, tidak_disalin, provider_media_id)
-             VALUES ($1, $2, 'masuk', $3, $4, $5, $6, $7, $8, $9)`,
-            [mediaId, device.id, media.mime, media.size, media.sha256, path, path !== null, media.reason, media.providerMediaId],
-          );
-        }
+        const mediaId = await this.storeMedia(client, device, media, "masuk");
         const inserted = await client.query(
-          `INSERT INTO kirim_messages (id, conversation_id, device_id, arah, tipe, body_enc, media_id, provider, provider_message_id, status, provider_at)
-           VALUES ($1, $2, $3, 'masuk', $4, $5, $6, 'jalurpesan', $7, 'diterima', $8)
+          `INSERT INTO kirim_messages (id, conversation_id, device_id, arah, tipe, body_enc, media_id, provider, provider_message_id, wa_message_id, status, provider_at)
+           VALUES ($1, $2, $3, 'masuk', $4, $5, $6, 'jalurpesan', $7, $8, 'diterima', $9)
            ON CONFLICT (provider, device_id, provider_message_id) WHERE provider_message_id IS NOT NULL DO NOTHING`,
           [
             messageId,
@@ -188,24 +198,35 @@ export class KirimIngest {
             message.body ? this.crypto.seal(message.body, columnAad("kirim_messages", "body_enc", messageId)) : null,
             mediaId,
             message.id,
+            message.whatsappMessageId,
             message.receivedAt,
           ],
         );
         if ((inserted.rowCount ?? 0) === 0) return;
         await client.query(
-          "UPDATE kirim_conversations SET belum_dibaca = belum_dibaca + 1, pesan_terakhir_at = greatest(coalesce(pesan_terakhir_at, $2), $2) WHERE id = $1",
+          `UPDATE kirim_conversations SET belum_dibaca = belum_dibaca + 1,
+             pesan_terakhir_at = greatest(coalesce(pesan_terakhir_at, $2), $2),
+             pesan_masuk_terakhir_at = greatest(coalesce(pesan_masuk_terakhir_at, $2), $2)
+           WHERE id = $1`,
           [conversationId, message.receivedAt],
         );
+        const from = await this.phoneOf(client, conversationId, contact);
         await enqueueWebhook(client, this.crypto, device.pemilikConsumerId, "message.received", {
           device: device.kode,
           conversation_id: conversationId,
           message_id: messageId,
-          from: contact.jenis === "pn" ? contact.canonical.slice(3) : null,
-          nama_profil: null,
+          from,
+          nama_profil: message.pushName,
           tipe: TIPE_BY_ENGINE[message.messageType] ?? "lainnya",
           cuplikan: message.body ? message.body.slice(0, 200) : null,
           received_at: message.receivedAt,
         });
+        return;
+      }
+
+      // J-1: a message typed on the number's phone or another linked device, not sent through the API.
+      if (event.type === "message.sent") {
+        await this.storeDeviceSent(client, device, message, media);
         return;
       }
 
@@ -220,12 +241,274 @@ export class KirimIngest {
           [device.id, ids],
         );
         const row = outbox.rows[0];
-        if (!row) return;
-        const next = advanceStatus(row.status, event.type === "message.read" ? "dibaca" : "terkirim");
+        const incoming = event.type === "message.read" ? "dibaca" : "terkirim";
+        if (!row) {
+          // A message typed on the phone (J-1) has no outbox row; its status lives on the message.
+          await this.advanceDeviceSent(client, device, ids, incoming);
+          return;
+        }
+        const next = advanceStatus(row.status, incoming);
         if (!next) return;
         await transitionOutbox(client, this.crypto, { outboxId: row.id, fromStatuses: [row.status], status: next, errorCode: null });
       }
     });
+  }
+
+  private async storeMedia(client: Queryable, device: EngineDevice, media: MediaCopy | null, arah: "masuk" | "keluar"): Promise<string | null> {
+    if (!media) return null;
+    const mediaId = randomUUID();
+    const path = media.data ? await this.service.writeMediaFile(mediaId, media.data, await dbNow(client)) : null;
+    await client.query(
+      `INSERT INTO kirim_media (id, device_id, arah, mime, ukuran, sha256, path, dienkripsi, tidak_disalin, provider_media_id)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+      [mediaId, device.id, arah, media.mime, media.size, media.sha256, path, path !== null, media.reason, media.providerMediaId],
+    );
+    return mediaId;
+  }
+
+  /** §9 / J-3: profile name and, for a LID contact, its phone number when the engine knows it. */
+  private async learnContact(client: Queryable, conversationId: string, contact: { canonical: string; jenis: "pn" | "lid" }, message: EngineMessage) {
+    if (message.pushName) {
+      await client.query("UPDATE kirim_conversations SET nama_profil_enc = $2 WHERE id = $1", [
+        conversationId,
+        this.crypto.seal(message.pushName, columnAad("kirim_conversations", "nama_profil_enc", conversationId)),
+      ]);
+    }
+    if (contact.jenis === "lid" && message.peerJidAlt) {
+      const alt = contactFromJid(message.peerJidAlt);
+      if (alt?.jenis === "pn") await this.setContactAlt(client, conversationId, alt.canonical);
+    }
+  }
+
+  async setContactAlt(client: Queryable, conversationId: string, canonical: string): Promise<void> {
+    await client.query(
+      "UPDATE kirim_conversations SET kontak_alt_hmac = $2, kontak_alt_enc = $3 WHERE id = $1 AND kontak_alt_hmac IS DISTINCT FROM $2",
+      [conversationId, this.crypto.lookup(canonical), this.crypto.seal(canonical, columnAad("kirim_conversations", "kontak_alt_enc", conversationId))],
+    );
+  }
+
+  /** `from` in `message.received`: the number, or a LID contact's known number, else null (D-6). */
+  private async phoneOf(client: Queryable, conversationId: string, contact: { canonical: string; jenis: "pn" | "lid" }): Promise<string | null> {
+    if (contact.jenis === "pn") return contact.canonical.slice(3);
+    const alt = await client.query<{ altEnc: string | null }>(`SELECT kontak_alt_enc AS "altEnc" FROM kirim_conversations WHERE id = $1`, [conversationId]);
+    const altEnc = alt.rows[0]?.altEnc;
+    if (!altEnc) return null;
+    const value = this.crypto.open(altEnc, columnAad("kirim_conversations", "kontak_alt_enc", conversationId));
+    return value.startsWith("pn:+") ? value.slice(3) : null;
+  }
+
+  /** Finds or creates the group row; its name arrives with the next group refresh. */
+  async ensureGroup(client: Queryable, deviceId: string, jid: string): Promise<{ id: string; created: boolean }> {
+    const hmac = this.crypto.lookup(`group:${jid}`);
+    const existing = await client.query<{ id: string }>("SELECT id FROM kirim_groups WHERE device_id = $1 AND group_hmac = $2", [deviceId, hmac]);
+    if (existing.rows[0]) return { id: existing.rows[0].id, created: false };
+    const id = randomUUID();
+    const inserted = await client.query<{ id: string }>(
+      `INSERT INTO kirim_groups (id, device_id, group_hmac, group_jid_enc) VALUES ($1, $2, $3, $4)
+       ON CONFLICT (device_id, group_hmac) DO NOTHING RETURNING id`,
+      [id, deviceId, hmac, this.crypto.seal(jid, columnAad("kirim_groups", "group_jid_enc", id))],
+    );
+    if (inserted.rows[0]) {
+      this.unnamedGroups.add(deviceId);
+      return { id, created: true };
+    }
+    const raced = await client.query<{ id: string }>("SELECT id FROM kirim_groups WHERE device_id = $1 AND group_hmac = $2", [deviceId, hmac]);
+    return { id: raced.rows[0]!.id, created: false };
+  }
+
+  private async storeGroupMessage(client: Queryable, device: EngineDevice, message: EngineMessage, media: MediaCopy | null): Promise<void> {
+    const group = await this.ensureGroup(client, device.id, message.chatJid);
+    const sender = message.senderJid ? contactFromJid(message.senderJid) : null;
+    const messageId = randomUUID();
+    const mediaId = await this.storeMedia(client, device, media, "masuk");
+    const tipe = TIPE_BY_ENGINE[message.messageType] ?? "lainnya";
+    const inserted = await client.query(
+      `INSERT INTO kirim_messages (id, group_id, device_id, arah, tipe, body_enc, media_id, provider, provider_message_id, wa_message_id,
+                                   pengirim_hmac, pengirim_enc, status, provider_at)
+       VALUES ($1, $2, $3, 'masuk', $4, $5, $6, 'jalurpesan', $7, $8, $9, $10, 'diterima', $11)
+       ON CONFLICT (provider, device_id, provider_message_id) WHERE provider_message_id IS NOT NULL DO NOTHING`,
+      [
+        messageId,
+        group.id,
+        device.id,
+        tipe,
+        message.body ? this.crypto.seal(message.body, columnAad("kirim_messages", "body_enc", messageId)) : null,
+        mediaId,
+        message.id,
+        message.whatsappMessageId,
+        sender ? this.crypto.lookup(sender.canonical) : null,
+        sender ? this.crypto.seal(sender.canonical, columnAad("kirim_messages", "pengirim_enc", messageId)) : null,
+        message.receivedAt,
+      ],
+    );
+    if ((inserted.rowCount ?? 0) === 0) return;
+    await client.query(
+      "UPDATE kirim_groups SET belum_dibaca = belum_dibaca + 1, pesan_terakhir_at = greatest(coalesce(pesan_terakhir_at, $2), $2) WHERE id = $1",
+      [group.id, message.receivedAt],
+    );
+    const ownPhone = await this.ownPhone(client, device.id);
+    await enqueueWebhook(client, this.crypto, device.pemilikConsumerId, "group.message.received", {
+      device: device.kode,
+      group_id: group.id,
+      message_id: messageId,
+      pengirim: { nomor: sender?.jenis === "pn" ? sender.canonical.slice(3) : null, nama_profil: message.pushName },
+      tipe,
+      cuplikan: message.body ? message.body.slice(0, 200) : null,
+      // J-3: null until the engine forwards mentions.
+      menyebut_nomor_ini: message.mentionedJids === null ? null : ownPhone !== null && message.mentionedJids.some((jid) => jid.startsWith(`${ownPhone}@`) || jid.startsWith(`${ownPhone}:`)),
+      received_at: message.receivedAt,
+    });
+  }
+
+  /** Digits of the number itself, from the stored encrypted device number. */
+  private async ownPhone(client: Queryable, deviceId: string): Promise<string | null> {
+    const row = await client.query<{ nomorEnc: string | null }>(`SELECT nomor_enc AS "nomorEnc" FROM kirim_devices WHERE id = $1`, [deviceId]);
+    const enc = row.rows[0]?.nomorEnc;
+    if (!enc) return null;
+    const value = this.crypto.open(enc, columnAad("kirim_devices", "nomor_enc", deviceId));
+    return value.startsWith("pn:+") ? value.slice(4) : null;
+  }
+
+  private async storeDeviceSent(client: Queryable, device: EngineDevice, message: EngineMessage, media: MediaCopy | null): Promise<void> {
+    if (!message.whatsappMessageId) return;
+    // A message Kirim SQ itself handed over carries the same WhatsApp id: never store it twice.
+    const known = await client.query("SELECT 1 FROM kirim_messages WHERE device_id = $1 AND wa_message_id = $2 LIMIT 1", [device.id, message.whatsappMessageId]);
+    if ((known.rowCount ?? 0) > 0) return;
+    let conversationId: string | null = null;
+    let groupId: string | null = null;
+    if (message.group) {
+      groupId = (await this.ensureGroup(client, device.id, message.chatJid)).id;
+    } else {
+      const contact = contactFromJid(message.chatJid);
+      if (!contact) return;
+      conversationId = await ensureConversation(client, this.crypto, { deviceId: device.id, canonical: contact.canonical, jenis: contact.jenis });
+    }
+    const messageId = randomUUID();
+    const mediaId = await this.storeMedia(client, device, media, "keluar");
+    const tipe = TIPE_BY_ENGINE[message.messageType] ?? "lainnya";
+    const inserted = await client.query(
+      `INSERT INTO kirim_messages (id, conversation_id, group_id, device_id, arah, asal, tipe, body_enc, media_id, provider, provider_message_id,
+                                   wa_message_id, status, provider_at)
+       VALUES ($1, $2, $3, $4, 'keluar', 'hp', $5, $6, $7, 'jalurpesan', $8, $8, 'diserahkan', $9)
+       ON CONFLICT (provider, device_id, provider_message_id) WHERE provider_message_id IS NOT NULL DO NOTHING`,
+      [
+        messageId,
+        conversationId,
+        groupId,
+        device.id,
+        tipe,
+        message.body ? this.crypto.seal(message.body, columnAad("kirim_messages", "body_enc", messageId)) : null,
+        mediaId,
+        message.whatsappMessageId,
+        message.receivedAt,
+      ],
+    );
+    if ((inserted.rowCount ?? 0) === 0) return;
+    // Whoever answered on the phone has read the chat.
+    if (conversationId) {
+      await client.query(
+        "UPDATE kirim_conversations SET belum_dibaca = 0, pesan_terakhir_at = greatest(coalesce(pesan_terakhir_at, $2), $2) WHERE id = $1",
+        [conversationId, message.receivedAt],
+      );
+    } else {
+      await client.query(
+        "UPDATE kirim_groups SET belum_dibaca = 0, pesan_terakhir_at = greatest(coalesce(pesan_terakhir_at, $2), $2) WHERE id = $1",
+        [groupId, message.receivedAt],
+      );
+    }
+    await enqueueWebhook(client, this.crypto, device.pemilikConsumerId, "message.sent", {
+      device: device.kode,
+      ...(conversationId ? { conversation_id: conversationId } : { group_id: groupId }),
+      message_id: messageId,
+      asal: "hp",
+      dikirim_oleh: null,
+      tipe,
+      cuplikan: message.body ? message.body.slice(0, 200) : null,
+      disamarkan: false,
+      status: "diserahkan",
+      waktu: message.receivedAt,
+    });
+  }
+
+  private async advanceDeviceSent(client: Queryable, device: EngineDevice, ids: string[], incoming: "terkirim" | "dibaca"): Promise<void> {
+    const rows = await client.query<{ id: string; status: OutboundStatus }>(
+      `SELECT id, status FROM kirim_messages WHERE provider = 'jalurpesan' AND device_id = $1 AND provider_message_id = ANY($2::text[])
+         AND arah = 'keluar' AND asal = 'hp' FOR UPDATE`,
+      [device.id, ids],
+    );
+    const row = rows.rows[0];
+    if (!row) return;
+    const next = advanceStatus(row.status, incoming);
+    if (next) await client.query("UPDATE kirim_messages SET status = $2, updated_at = now() WHERE id = $1", [row.id, next]);
+  }
+
+  /**
+   * §6.2: refresh the groups the number belongs to (name, size, admin), and mark the ones it
+   * left. Every 15 minutes and when a message arrives from a group not yet named.
+   */
+  async refreshGroups(device: EngineDevice): Promise<void> {
+    const groups = await this.provider.listGroups(device);
+    const ownPhone = await this.ownPhone(this.pool, device.id);
+    await withTransaction(this.pool, async (client) => {
+      const seen: string[] = [];
+      for (const group of groups) {
+        const { id } = await this.ensureGroup(client, device.id, group.jid);
+        seen.push(id);
+        const admin = ownPhone !== null && group.participants.some((participant) => participant.admin && participant.jid.startsWith(ownPhone));
+        await client.query(
+          `UPDATE kirim_groups SET nama_enc = $2, jumlah_anggota = $3, nomor_ini_admin = $4, keluar_at = NULL, disegarkan_at = now() WHERE id = $1`,
+          [id, group.name ? this.crypto.seal(group.name, columnAad("kirim_groups", "nama_enc", id)) : null, group.size ?? group.participants.length, admin],
+        );
+      }
+      await client.query(
+        "UPDATE kirim_groups SET keluar_at = now() WHERE device_id = $1 AND keluar_at IS NULL AND NOT (id = ANY($2::uuid[]))",
+        [device.id, seen],
+      );
+    });
+  }
+
+  /** §9: profile names, and phone numbers for LID conversations, from the engine's contacts. */
+  async refreshContacts(device: EngineDevice): Promise<void> {
+    for (let page = 1; page <= 50; page += 1) {
+      const result = await this.provider.listContacts(device, page);
+      for (const contact of result.contacts) {
+        const own = contactFromJid(contact.jid);
+        if (!own) continue;
+        const conversation = await this.pool.query<{ id: string; namaProfilEnc: string | null }>(
+          `SELECT id, nama_profil_enc AS "namaProfilEnc" FROM kirim_conversations WHERE device_id = $1 AND kontak_hmac = $2`,
+          [device.id, this.crypto.lookup(own.canonical)],
+        );
+        const row = conversation.rows[0];
+        if (!row) continue;
+        if (own.jenis === "lid") {
+          const canonical = contactFromJid(contact.canonicalJid);
+          if (canonical?.jenis === "pn") await this.setContactAlt(this.pool, row.id, canonical.canonical);
+        }
+        if (contact.displayName && !row.namaProfilEnc) {
+          await this.pool.query("UPDATE kirim_conversations SET nama_profil_enc = $2 WHERE id = $1 AND nama_profil_enc IS NULL", [
+            row.id,
+            this.crypto.seal(contact.displayName, columnAad("kirim_conversations", "nama_profil_enc", row.id)),
+          ]);
+        }
+      }
+      if (!result.hasMore) return;
+    }
+  }
+
+  /** Timers in module.ts: every `jalurpesan` number, errors logged without content. */
+  async refreshDirectory(kind: "groups" | "contacts"): Promise<void> {
+    for (const device of await this.devices()) {
+      if (device.status !== "tersambung") continue;
+      try {
+        if (kind === "groups") await this.refreshGroups(device);
+        else await this.refreshContacts(device);
+      } catch (error) {
+        this.options.log?.(
+          { event: `kirim.${kind}.refresh_failed`, device: device.kode, code: error instanceof ProviderOperationError ? error.code : "error" },
+          "kirim directory refresh failed; retrying next round",
+        );
+      }
+    }
   }
 
   private async copyMedia(device: EngineDevice, media: EngineMedia): Promise<MediaCopy> {
@@ -269,6 +552,10 @@ interface MediaCopy {
 interface EngineMessage {
   id: string;
   whatsappMessageId: string | null;
+  /** J-3; null until the engine forwards them. */
+  pushName: string | null;
+  peerJidAlt: string | null;
+  mentionedJids: string[] | null;
   direction: string;
   chatJid: string;
   senderJid: string | null;
@@ -277,6 +564,11 @@ interface EngineMessage {
   body: string | null;
   receivedAt: string;
   media: EngineMedia | null;
+}
+
+/** JalurPesan names the profile name `senderDisplayName`; `pushName` is the Baileys name. */
+function displayName(value: unknown): string | null {
+  return typeof value === "string" && value.trim() ? value.trim().slice(0, 200) : null;
 }
 
 /** Reads the JalurPesan event payload (`{ version, message: {...} }`) defensively. */
@@ -291,13 +583,16 @@ function readMessage(payload: unknown): EngineMessage | null {
   return {
     id: value.id,
     whatsappMessageId: typeof value.whatsappMessageId === "string" && value.whatsappMessageId ? value.whatsappMessageId : null,
+    pushName: displayName(value.senderDisplayName) ?? displayName(value.pushName),
+    peerJidAlt: typeof value.peerJidAlt === "string" ? value.peerJidAlt : typeof value.remoteJidAlt === "string" ? value.remoteJidAlt : null,
+    mentionedJids: Array.isArray(value.mentionedJids) ? value.mentionedJids.filter((jid): jid is string => typeof jid === "string").slice(0, 256) : null,
     direction: typeof value.direction === "string" ? value.direction : "",
     chatJid,
     senderJid: typeof value.senderJid === "string" ? value.senderJid : null,
     group: value.recipientType === "group" || chatJid.endsWith("@g.us"),
     messageType: typeof value.messageType === "string" ? value.messageType : "lainnya",
     body: typeof value.body === "string" && value.body.length > 0 ? value.body : null,
-    receivedAt: typeof value.receivedAt === "string" && !Number.isNaN(Date.parse(value.receivedAt)) ? value.receivedAt : new Date().toISOString(),
+    receivedAt: [value.receivedAt, value.sentAt].find((at): at is string => typeof at === "string" && !Number.isNaN(Date.parse(at))) ?? new Date().toISOString(),
     media: media && typeof media.id === "string"
       ? {
           id: media.id,

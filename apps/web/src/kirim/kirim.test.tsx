@@ -6,7 +6,10 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
 import { kirimAntreanFixture, kirimNomorFixture } from "@/dev/kirimFixture";
+import { AktivitasView, type AktivitasState } from "@/kirim/AktivitasPage";
 import { AntreanView, type AntreanFilter } from "@/kirim/AntreanPage";
+import { ImporView, type ImporState } from "@/kirim/ImporPage";
+import { JanganHubungiView, type JanganHubungiState, type OptoutFilter } from "@/kirim/JanganHubungiPage";
 import { KirimAppView } from "@/kirim/KirimApp";
 import { NomorView, PairingContent } from "@/kirim/NomorPage";
 import { isKirimHost, resolveKirimRoute } from "@/kirim/routes";
@@ -127,5 +130,72 @@ describe("Privacy in the browser (§12 web)", () => {
       expect(source).not.toMatch(/history\.(push|replace)State\([^)]*(qr|pairing|code)/i);
       expect(source).not.toMatch(/searchParams\.set\(\s*["'](qr|pairing|kode)/i);
     }
+  });
+});
+
+describe("KIRIM-IMPL-002 §12 screens", () => {
+  it("routes Jangan hubungi, Aktivitas and Impor riwayat, with four tabs in the shell", () => {
+    expect(resolveKirimRoute("/jangan-hubungi")).toBe("jangan-hubungi");
+    expect(resolveKirimRoute("/aktivitas/")).toBe("aktivitas");
+    expect(resolveKirimRoute("/impor")).toBe("impor");
+    const html = renderToStaticMarkup(<KirimAppView state={ready} route="impor" preview={{ impor: { status: "missing" } }} />);
+    expect(html).toContain('href="/jangan-hubungi"');
+    expect(html).toContain('href="/aktivitas"');
+    expect(html).toMatch(/href="\/nomor"[^>]*aria-current="page"|aria-current="page"[^>]*href="\/nomor"/);
+    expect(html).toContain("Pilih nomor dari halaman Nomor");
+  });
+
+  it("lists opt-outs masked and lets the admin remove only its own", () => {
+    const filterAll: OptoutFilter = { cakupan: "", sumber: "", page: 1 };
+    const state: JanganHubungiState = {
+      status: "ready",
+      devices: ["spmb"],
+      page: {
+        page: 1,
+        optouts: [
+          { id: "a", nomor_tersamar: "+62 812-••••-7890", cakupan: "semua", nomor: null, modul: null, alasan: "Permintaan orang tua", sumber: "admin", dibuat: "2026-10-19T02:00:00Z", bisa_dihapus: true },
+          { id: "b", nomor_tersamar: "+62 813-••••-1111", cakupan: "device", nomor: "spmb", modul: "spmb", alasan: "Dari SPMB", sumber: "consumer", dibuat: "2026-10-19T02:00:00Z", bisa_dihapus: false },
+        ],
+      },
+    };
+    const html = renderToStaticMarkup(<JanganHubungiView state={state} filter={filterAll} busy={false} error={null} onFilter={noop} onAdd={async () => true} onRemove={noop} onReload={noop} />);
+    expect(html).toContain("+62 812-••••-7890");
+    expect(html).toContain("Nomor spmb");
+    expect(html).toContain("Dicabut oleh modulnya");
+    expect(html.match(/>.*Hapus<\/button>/g)).toHaveLength(1);
+    for (const status of ["loading", "error", "forbidden"] as const) {
+      expect(renderToStaticMarkup(<JanganHubungiView state={{ status }} filter={filterAll} busy={false} error={null} onFilter={noop} onAdd={async () => true} onRemove={noop} onReload={noop} />)).toContain(`data-state="${status}"`);
+    }
+  });
+
+  it("shows activity in Indonesian without bodies, and warns about duplicate conversations", () => {
+    const state: AktivitasState = {
+      status: "ready",
+      page: { page: 1, aktivitas: [{ id: "1", aktor: { jenis: "service", ref: "spmb-api" }, petugas: "petugas:1a2b3c4d5e", aksi: "percakapan.baca", objek: { jenis: "percakapan", ref: "c0ffee00-0000-4000-8000-000000000000" }, hasil: "berhasil", metadata: {}, waktu: "2026-10-19T02:00:00Z" }] },
+      summary: { harian: [{ hari: "2026-10-19", nomor: "spmb", modul: "spmb", otomatis: 3, petugas: 2, dari_hp: 1, masuk: 5, gagal: 0 }], akses_isi: [], percakapan_ganda: [{ nomor: "spmb", jumlah: 1 }] },
+    };
+    const html = renderToStaticMarkup(<AktivitasView state={state} filter={{ aksi: "", device: "", page: 1 }} onFilter={noop} onReload={noop} />);
+    expect(html).toContain("Membuka isi percakapan");
+    expect(html).toContain("petugas:1a2b3c4d5e");
+    expect(html).toContain("percakapan ganda");
+    expect(renderToStaticMarkup(<AktivitasView state={{ ...state, page: { page: 1, aktivitas: [] } }} filter={{ aksi: "", device: "", page: 1 }} onFilter={noop} onReload={noop} />)).toContain("Belum ada aktivitas");
+  });
+
+  it("explains when the engine cannot import history yet and offers the export file path", () => {
+    const state: ImporState = {
+      status: "ready",
+      kode: "spmb",
+      imports: { impor_perangkat_tersedia: false, ringkasan: { antre: 0, berjalan: 0, selesai: 1, gagal: 0, dimasukkan: 12, ganda: 0, dilewati: 2 }, impor: [{ id: "x", jalur: "ekspor", status: "selesai", dimasukkan: 12, ganda: 0, dilewati: 2, galat: null, dibuat: "2026-10-19T02:00:00Z", selesai: "2026-10-19T02:00:01Z" }] },
+    };
+    const html = renderToStaticMarkup(<ImporView state={state} busy={false} error={null} notice={null} onReload={noop} onDeviceImport={noop} onPreview={async () => null} onImport={async () => true} />);
+    expect(html).toContain("Impor riwayat · spmb");
+    expect(html).toMatch(/disabled=""[^>]*>.*Impor dari WhatsApp/);
+    expect(html).toContain("Belum tersedia");
+    expect(html).toContain("Tanpa media");
+    expect(html).toContain("12 masuk");
+  });
+
+  it("links each active number to its history import", () => {
+    expect(renderToStaticMarkup(<NomorView state={kirimNomorFixture} onOpen={noop} onRetry={noop} />)).toContain('href="/impor?nomor=spmb"');
   });
 });
