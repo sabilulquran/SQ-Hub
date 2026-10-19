@@ -1,7 +1,7 @@
 # Kirim SQ — Desain modul
 
 **Status:** DRAFT / DISCOVERY. Dokumen ini tidak mengizinkan implementasi atau perubahan production.
-**Spesifikasi:** KIRIM-001; spesifikasi implementasi R1: KIRIM-IMPL-001 (ACCEPTED 2026-10-17); R2 belum punya spesifikasi implementasi
+**Spesifikasi:** KIRIM-001; spesifikasi implementasi R1: KIRIM-IMPL-001 (ACCEPTED 2026-10-17); R2: KIRIM-IMPL-002 (ACCEPTED 2026-10-19)
 **Tanggal:** 2026-10-19 (revisi 3)
 **Terkait:** ADR-0001, ADR-0006, ADR-0010, ADR-0011 (dengan amandemen 2026-10-19); SPMB SQ `sq-spmb/docs/product/kelola-peminat-dan-whatsapp.md` (SPMB-002), `sq-spmb/docs/product/module-design.md` (§6.8, §8), `sq-spmb/docs/specs/SPMB-IMPL-001-r0-fondasi-pengaturan-publik.md`; JalurPesan `jalurpesan.web.id/README.md`
 
@@ -194,6 +194,8 @@ Kirim SQ memanggil `webhook_url` pemakai dengan tanda tangan HMAC, **segera sete
 | `message.status` | `id`, `ref`, `status`, `error_code`; untuk pemilik nomor juga `conversation_id` | Modul yang mengirim, **dan** modul pemilik nomor untuk semua pesan keluar di nomornya (revisi 3), supaya tanda terkirim/dibaca tampil di kotak masuk |
 | `message.received` | `device`, `conversation_id`, `message_id`, `from`, `nama_profil`, `tipe` (teks, gambar, dokumen, audio, …), `cuplikan` (maks. 200 karakter), `received_at` | Modul pemilik nomor |
 | `device.status` | `device`, `status` | Modul pemilik dan modul yang punya rute |
+| `message.sent` (R2) | Pesan keluar baru di nomor itu yang tidak dibuat pemilik: diketik di HP nomor itu, atau pesan otomatis modul lain (KIRIM-IMPL-002 §7) | Modul pemilik nomor |
+| `group.message.received` (R2) | `group_id`, `message_id`, `pengirim`, `tipe`, `cuplikan`, `menyebut_nomor_ini` | Modul pemilik nomor |
 
 Pemakai juga bisa menarik status lewat `GET /internal/kirim/messages/:id`.
 
@@ -249,6 +251,7 @@ Modul pemilik nomor mengelola grup tempat nomornya menjadi anggota. Aturan umum 
 - **Jalur cadangan:** berkas **Ekspor chat** dari HP (teks + media) diunggah `kirim_admin` dan dipetakan ke percakapan per nomor.
 - File cadangan WhatsApp (`msgstore.db.crypt14/15`) terenkripsi dan tidak dipakai kecuali kuncinya tersedia.
 - Impor dijalankan sekali per nomor oleh `kirim_admin`, dengan ringkasan jumlah percakapan dan pesan, dan tercatat di audit.
+- **Batas yang ditemukan di kode JalurPesan (KIRIM-IMPL-002 §2, §10):** permintaan riwayat hanya bisa untuk percakapan yang sudah punya minimal satu pesan tersimpan sejak nomor ditautkan, maks. 500 pesan per percakapan, dan baru ada lewat API admin JalurPesan (perlu J-2). Sinkron awal saat pairing hanya memuat kontak, bukan isi pesan. Chat lama yang tidak aktif lagi sejak pairing dipindahkan lewat Ekspor chat (teks saja di R2).
 
 ## 6. Pengiriman dan keselamatan nomor
 
@@ -289,7 +292,7 @@ Tidak ada layar inbox di Kirim SQ. `kirim_admin` **tidak bisa membaca isi chat**
 | Tahap | Isi |
 | --- | --- |
 | **R1** (live sejak 2026-10-18) | Nomor dan pairing, kirim otomatis (§5.1), simpan semua pesan masuk/keluar, event ke modul (§5.2), layar Nomor dan Antrean |
-| **R2** (revisi 3) | API percakapan (§5.3), baca dan balas grup (§5.4), impor riwayat chat lama (§5.5), `message.status` ke pemilik nomor, `markRead`, kirim gambar, cabut opt-out, layar Jangan hubungi dan Aktivitas. Dibutuhkan oleh SPMB-002 tahap K2 |
+| **R2** (revisi 3; KIRIM-IMPL-002) | API percakapan (§5.3), baca dan balas grup (§5.4), impor riwayat chat lama (§5.5), `message.status` ke pemilik nomor, `markRead`, kirim gambar, cabut opt-out, layar Jangan hubungi dan Aktivitas. Dibutuhkan oleh SPMB-002 tahap K2 |
 | **R3** | Buat grup, tambah/keluarkan anggota, tautan undangan (§5.4), setelah JalurPesan mendukungnya. Dibutuhkan oleh SPMB-002 tahap K4 |
 | Kelak | Komponen tampilan kotak masuk bersama bila HCIS dan SPMB sama-sama butuh, kanal email, pindah mesin |
 
@@ -362,3 +365,4 @@ adanya. Tidak ada pertanyaan terbuka yang tersisa, jadi KIRIM-IMPL-002 boleh dit
 | 2026-10-19 (revisi 3) | **Kirim SQ hanya mesin di balik layar** (API WhatsApp: nomor, kirim, terima, simpan chat dan media, status, jangan-hubungi, batas laju). Kotak masuk staf dan pengelolaan peminat dibangun di modul pemilik nomor, SPMB lebih dulu (SPMB-002). Kirim SQ R2 menjadi API percakapan. |
 | 2026-10-19 | Isi chat tetap di Kirim SQ (dikonfirmasi PO). Tambahan: API grup — baca dan balas di R2, buat grup dan tambah anggota di R3 — dan impor riwayat chat lama (SPMB-002 §7.6, §7.8). |
 | 2026-10-19 | **Enam pertanyaan teknis §13 no. 1–6 dijawab PO, seluruh saran disetujui:** kolom `ditangani_oleh` dihapus di migration R2; opt-out bertambah cakupan `device` yang hanya boleh dibuat pemilik nomor, sehingga "jangan hubungi" dari SPMB menghentikan semua pesan otomatis lewat nomor itu kecuali `kode`; petugas boleh membalas nomor ber-opt-out hanya bila orang itu menyapa dalam 24 jam terakhir; syarat sebelum memulai chat diperiksa modul pemilik nomor; pembacaan isi percakapan diaudit di Kirim SQ dan di modul; media petugas di R2 adalah PDF, JPEG dan PNG maksimal 5 MiB, voice note menyusul. KIRIM-IMPL-002 boleh ditulis. |
+| 2026-10-19 | **KIRIM-IMPL-002 ACCEPTED.** Perubahan JalurPesan J-1 (pesan yang diketik di HP nomor itu ikut tercatat; gate kerja harian kotak masuk SPMB), J-2 (impor riwayat lewat platform API), J-3 (nama profil, nomor kontak LID, sebutan di grup); balasan petugas kedaluwarsa 72 jam dan tidak dihitung kuota harian; delegasi `kirim_admin` tetap CLI; Ekspor chat teks saja di R2; percakapan ganda LID/nomor tidak digabung otomatis. |

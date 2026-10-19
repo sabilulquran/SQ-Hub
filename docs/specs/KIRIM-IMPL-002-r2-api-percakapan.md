@@ -1,6 +1,6 @@
 # KIRIM-IMPL-002 — Kirim SQ R2: API percakapan, grup, dan impor riwayat
 
-**Status:** DRAFT — menunggu keputusan Product Owner atas §17 (T-1…T-6). Spesifikasi ini belum mengizinkan implementasi.
+**Status:** ACCEPTED (Product Owner, 2026-10-19; seluruh saran §17 disetujui). Spesifikasi ini mengizinkan implementasi di repository; setiap langkah production tetap memerlukan persetujuan owner (§15).
 **Produk:** SQ Hub — modul `kirim` (Kirim SQ)
 **Owner produk:** Kepala HCM (`kirim_admin`, KIRIM-001 §1 butir 9)
 **Tanggal:** 2026-10-19
@@ -374,9 +374,11 @@ Langkah production (masing-masing butuh persetujuan owner, dicatat di ledger ope
 10. Kolom `ditangani_oleh` hilang dari skema; release R1 masih bisa berjalan di skema R2 dengan langkah rollback §4.3 no. 3.
 11. Gate §15 tercatat.
 
-## 17. Hal yang perlu diputuskan Product Owner
+## 17. Keputusan atas hal yang sebelumnya TBD
 
-| # | Topik | Saran |
+Product Owner menyetujui semua saran di bawah pada 2026-10-19. Nomor `T-n` dipakai sebagai rujukan di seluruh dokumen ini.
+
+| # | Topik | Keputusan (PO, 2026-10-19) |
 | --- | --- | --- |
 | T-1 | Perubahan JalurPesan J-1…J-3 (§2). J-1 menutup celah besar: tanpa itu balasan panitia dari HP nomor SPMB tidak tampil di kotak masuk | **Dikerjakan di repo JalurPesan dengan spesifikasi kecil sendiri, sebelum rilis R2.** J-1 wajib (gate), J-2 dan J-3 boleh menyusul tanpa menahan R2 |
 | T-2 | Berapa lama balasan petugas boleh menunggu saat nomor terputus sebelum dianggap gagal? | **72 jam bawaan**, boleh diatur modul sampai 7 hari. Lebih dari itu isi balasan kemungkinan sudah tidak relevan |
@@ -398,3 +400,4 @@ Langkah production (masing-masing butuh persetujuan owner, dicatat di ledger ope
 | Tanggal | Perubahan |
 | --- | --- |
 | 2026-10-19 | DRAFT pertama untuk R2 dari KIRIM-001 revisi 3 dan keputusan PO §13 no. 1–7, setelah memeriksa kode sumber JalurPesan |
+| 2026-10-19 | PO menyetujui semua saran T-1…T-6 (§17); ACCEPTED, implementasi R2 di repository diizinkan |

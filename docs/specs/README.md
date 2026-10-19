@@ -26,7 +26,7 @@ Indeks ini membantu maintainer membedakan specification yang sudah berada di `ma
 | HUB-IMPL-018 | [Organization Directory v1](HUB-IMPL-018-organization-directory-foundation.md) | **ACCEPTED**; full-snapshot HCIS -> Hub contract, service identity, LKG/staleness, dan read contract untuk consumer termasuk Aset SQ. |
 | HUB-IMPL-020 | [Cross-system Visual Polish](HUB-IMPL-020-cross-system-visual-polish.md) | **ACCEPTED** atas permintaan pengguna; enhancement visual non-blocking pasca-closure. Foundation dan Organization Directory tetap **CLOSED**. |
 | KIRIM-IMPL-001 | [Kirim SQ R1: nomor dan kirim](KIRIM-IMPL-001-r1-nomor-dan-kirim.md) | **ACCEPTED** (PO, 2026-10-17); R1 diimplementasikan di repository (bawaan `KIRIM_ENABLED=false`). Langkah production §15 butuh persetujuan owner. |
-| KIRIM-IMPL-002 | [Kirim SQ R2: API percakapan, grup, dan impor riwayat](KIRIM-IMPL-002-r2-api-percakapan.md) | **DRAFT** (2026-10-19); menunggu keputusan PO §17 (T-1…T-6). Belum mengizinkan implementasi. |
+| KIRIM-IMPL-002 | [Kirim SQ R2: API percakapan, grup, dan impor riwayat](KIRIM-IMPL-002-r2-api-percakapan.md) | **ACCEPTED** (PO, 2026-10-19); T-1…T-6 disetujui. Langkah production §15 butuh persetujuan owner; J-1 di JalurPesan adalah gate kerja harian SPMB. |
 
 ## ID proposal aktif yang belum berada di `main`
 
