@@ -1,6 +1,6 @@
 # ADR-0011: Kirim SQ as an SQ Hub Shared WhatsApp Capability
 
-**Status:** ACCEPTED (Product Owner, 2026-10-17)
+**Status:** ACCEPTED (Product Owner, 2026-10-17); AMENDED 2026-10-19 (see [Amendment 2026-10-19](#amendment-2026-10-19-kirim-sq-is-the-engine-the-inbox-lives-in-the-owning-module))
 **Date:** 2026-10-17
 **Related:** ADR-0001, ADR-0006, ADR-0010; `docs/product/kirim-sq-module-design.md` (KIRIM-001, revision 2); SPMB SQ `sq-spmb/docs/product/module-design.md` (SPMB-001 §6.8, §8); JalurPesan `jalurpesan.web.id/README.md`
 
@@ -83,3 +83,28 @@ The roadmap previously recorded a future SQ Core WhatsApp gateway module that wo
 - Keluarga SQ's code relay (ADR-0010, KEL-IMPL-001) sends through Kirim SQ with `jenis: "kode"`. This is the "SQ Core WhatsApp gateway" that ADR-0010 refers to; the Keycloak provider does not change.
 - Separating numbers by department (`hcis` and `spmb`, later one per department) means a blocked number does not stop other departments' messages. Messages are not rerouted automatically to another number.
 - A Kirim SQ implementation specification is still needed. This ADR does not authorize implementation or production changes.
+
+## Amendment 2026-10-19: Kirim SQ is the engine; the inbox lives in the owning module
+**Status:** PROPOSED. Product Owner decision of 2026-10-19 (recorded in SPMB-002); the amended module design is `docs/product/kirim-sq-module-design.md` (KIRIM-001, revision 3). The text above is kept as decided on 2026-10-17; where it conflicts with this amendment, this amendment wins once accepted.
+
+### Context
+On 2026-10-19 the Product Owner decided that the admissions committee's WhatsApp inbox and lead management belong in the SPMB module (SPMB SQ `sq-spmb/docs/product/kelola-peminat-dan-whatsapp.md`, SPMB-002), and that **Kirim SQ is only the engine behind the scenes**: the Yayasan's WhatsApp API. Committee work (assignment, takeover, "handled" state, notes, quick replies, a CS Android app) is domain work and fits the owning module better than a generic Kirim SQ screen.
+
+### Changes to the decision
+- **Responsibility boundary.** Kirim SQ owns numbers, sending, receiving, **storage of conversations and media** (encrypted, kept indefinitely), delivery/read status, the do-not-contact list, rate limits, quotas, and audit. It no longer owns an inbox, staff replies as a screen, or module action buttons.
+- **R2 becomes a conversation API** for the module that owns a number (`kirim_devices.pemilik_consumer_id`), under `/internal/kirim/*` with the existing client-credentials authentication: list conversations per device, read messages, download media, open a conversation with a number, reply on behalf of a staff principal, mark read, add and remove opt-outs, and real-time `message.received` / `message.status` webhooks (status events also go to the owning module for every outgoing message on its number). Every call names the acting staff principal (`issuer + sub`), which Kirim SQ records on outgoing messages and in its audit. Staff authorization is checked by the owning module, not by Kirim SQ. Modules that only have a send route cannot read conversations.
+- **Inboxes are built in the owning module**, on top of that API. Browsers and staff apps talk only to the owning module's API, never to Kirim SQ or the engine. SPMB is first (SPMB-002). The planned HCIS admin inbox follows the same pattern: built in HCIS, or as a shared UI component if SPMB and HCIS both need it (AGENTS.md §8).
+- **Superseded:** the inbox at `kirim.sabilulquran.or.id/inbox/<number>`, the per-module WhatsApp menu that opens Kirim SQ, module action buttons (`kirim_actions`, `PUT /internal/kirim/devices/:kode/actions`), per-number `petugas` and `kirim_device_members`, `kirim_conversations.ditangani_oleh` (assignment now lives in the module), and the reserved `/api/kirim/*` prefix. `kirim_device_members` and `kirim_actions` were never created; `ditangani_oleh` exists in the R1 schema and stays empty.
+- **Kirim SQ screens** remain admin-only (`kirim_admin`): Nomor, Antrean, and in R2 Jangan hubungi and Aktivitas. `kirim_admin` cannot read chat content from Kirim SQ.
+- **Retention unchanged.** Message bodies and media stay in Kirim SQ only; owning modules read them through the API and store only their own work data. This follows the recommendation in SPMB-002 §12 no. 1 and is listed for Product Owner confirmation in KIRIM-001 §13.
+
+### Alternatives considered
+- **Keep the Kirim SQ inbox (revision 2).** One inbox for all modules, but committee workflow (leads, family lookup, follow-ups, assignment) would either be duplicated across two screens or pushed into Kirim SQ as domain logic. Rejected by the Product Owner on 2026-10-19.
+- **Copy chat content into each owning module.** Simpler reads for the module, but duplicates personal data on Mi8, splits retention and encryption rules, and loses the single history that survives an engine move. Not recommended.
+
+### Consequences
+- The alternative "Each module builds its own inbox", rejected on 2026-10-17, is now the chosen direction for the inbox UI; the shared parts (storage, sending, status, opt-out) stay built once in Kirim SQ.
+- Consequence "the SPMB shared inbox (SPMB-001 §6.8) is the Kirim SQ inbox opened from SPMB's WhatsApp menu" is replaced: the SPMB inbox is built in SPMB on the Kirim SQ conversation API.
+- KIRIM-IMPL-001 (R1) is unchanged. R2 needs a new implementation specification (proposed KIRIM-IMPL-002), including the R2 migration and the open questions in KIRIM-001 §13.
+- An owning module's inbox depends on Kirim SQ being up to show chat history; the module's own work data stays available when it is not.
+- This amendment does not authorize implementation or production changes.
