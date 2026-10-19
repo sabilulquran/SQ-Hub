@@ -2,6 +2,7 @@ import multipart from "@fastify/multipart";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { z } from "zod";
 
+import { invalidRequestFields, invalidRequestIssues } from "../../invalid-request.js";
 import { MachineAuthError, readBearerToken, type VerifyMachineToken } from "../application-access/machine-auth.js";
 import { verifyJalurPesanSignature } from "./crypto.js";
 import type { KirimIngest } from "./ingest.js";
@@ -11,13 +12,33 @@ import type { ConsumerRow } from "./repository.js";
 /** KIRIM-IMPL-001 §6.1 and §6.3. Loopback only; the edge answers 404 for `/internal/*` (§10). */
 export const KIRIM_INTERNAL_PREFIX = "/internal/kirim";
 
-export function sendKirimError(reply: FastifyReply, status: number, code: string, message: string) {
-  return reply.status(status).send({ error: { code, message } });
+export function sendKirimError(
+  reply: FastifyReply,
+  status: number,
+  code: string,
+  message: string,
+  fields?: string[],
+) {
+  return reply.status(status).send({ error: { code, message, ...(fields ? { fields } : {}) } });
+}
+
+/**
+ * 400 for a body the schema rejected: the field paths, never the submitted values, which
+ * for Kirim include phone numbers and message text.
+ */
+function sendInvalidBody(request: FastifyRequest, reply: FastifyReply, error: z.ZodError) {
+  request.log.warn(
+    { category: "internal_invalid_request", issues: invalidRequestIssues(error) },
+    "kirim request body rejected",
+  );
+  return sendKirimError(reply, 400, "invalid_request", "Permintaan tidak sah.", invalidRequestFields(error));
 }
 
 export function handleKirimError(reply: FastifyReply, error: unknown) {
   if (error instanceof KirimApiError) return sendKirimError(reply, error.statusCode, error.code, error.message);
-  if (error instanceof z.ZodError) return sendKirimError(reply, 400, "invalid_request", "Permintaan tidak sah.");
+  if (error instanceof z.ZodError) {
+    return sendKirimError(reply, 400, "invalid_request", "Permintaan tidak sah.", invalidRequestFields(error));
+  }
   throw error;
 }
 
@@ -71,7 +92,7 @@ export function registerKirimInternalRoutes(
         return sendKirimError(reply, 400, "idempotency_key_required", "Idempotency-Key wajib, 1–200 karakter.");
       }
       const parsed = sendMessageSchema.safeParse(request.body);
-      if (!parsed.success) return sendKirimError(reply, 400, "invalid_request", "Permintaan tidak sah.");
+      if (!parsed.success) return sendInvalidBody(request, reply, parsed.error);
       try {
         return reply.status(202).send(await input.service.acceptMessage(consumer, key, parsed.data));
       } catch (error) {
@@ -93,7 +114,7 @@ export function registerKirimInternalRoutes(
       const consumer = await authenticate(request, reply);
       if (!consumer) return reply;
       const parsed = optoutSchema.safeParse(request.body);
-      if (!parsed.success) return sendKirimError(reply, 400, "invalid_request", "Permintaan tidak sah.");
+      if (!parsed.success) return sendInvalidBody(request, reply, parsed.error);
       try {
         return reply.send(await input.service.addConsumerOptout(consumer, parsed.data));
       } catch (error) {
