@@ -232,7 +232,7 @@ describe("access (§3, §11)", () => {
 
 describe("reading conversations (§6.1)", () => {
   it("lists conversations newest first with full number and body, and masks codes", async () => {
-    const id = await inbound("Assalamu'alaikum, mau tanya biaya SDIT", { pushName: "Rina" });
+    const id = await inbound("Assalamu'alaikum, mau tanya biaya SDIT", { senderDisplayName: "Rina" });
     await allDay();
     await call("POST", "/messages", { client: "keluarga-api", key: "kode-1", payload: { device: "spmb", jenis: "kode", to: PHONE, text: "Kode Anda 481702" } });
     const list = await call("GET", "/devices/spmb/conversations");

@@ -566,6 +566,11 @@ interface EngineMessage {
   media: EngineMedia | null;
 }
 
+/** JalurPesan names the profile name `senderDisplayName`; `pushName` is the Baileys name. */
+function displayName(value: unknown): string | null {
+  return typeof value === "string" && value.trim() ? value.trim().slice(0, 200) : null;
+}
+
 /** Reads the JalurPesan event payload (`{ version, message: {...} }`) defensively. */
 function readMessage(payload: unknown): EngineMessage | null {
   if (!payload || typeof payload !== "object") return null;
@@ -578,7 +583,7 @@ function readMessage(payload: unknown): EngineMessage | null {
   return {
     id: value.id,
     whatsappMessageId: typeof value.whatsappMessageId === "string" && value.whatsappMessageId ? value.whatsappMessageId : null,
-    pushName: typeof value.pushName === "string" && value.pushName.trim() ? value.pushName.trim().slice(0, 200) : null,
+    pushName: displayName(value.senderDisplayName) ?? displayName(value.pushName),
     peerJidAlt: typeof value.peerJidAlt === "string" ? value.peerJidAlt : typeof value.remoteJidAlt === "string" ? value.remoteJidAlt : null,
     mentionedJids: Array.isArray(value.mentionedJids) ? value.mentionedJids.filter((jid): jid is string => typeof jid === "string").slice(0, 256) : null,
     direction: typeof value.direction === "string" ? value.direction : "",
