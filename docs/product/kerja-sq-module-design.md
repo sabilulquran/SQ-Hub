@@ -2,7 +2,7 @@
 
 **Status:** DRAFT / DISCOVERY. Dokumen ini tidak mengizinkan implementasi, pembelian, atau perubahan production.
 **Spesifikasi:** KERJA-001 (usulan). Spesifikasi implementasi belum ada.
-**Tanggal:** 2026-10-20 (revisi 2 — keputusan peluncuran dan `kerja_admin` masuk, penyimpanan lampiran dijawab di §7.4. Revisi 1 pada 2026-10-19 menambah §4.4, §6.6–6.9, §7, §8, dan Lampiran B)
+**Tanggal:** 2026-10-20 (revisi 3 — struktur dan jangkauan peluncuran nyata masuk ke §1.3; penyimpanan lampiran berubah ke pola Karir SQ di §7.4, **mengoreksi revisi 2** yang menolaknya atas dasar skala yang ternyata keliru. Revisi 2 memasukkan keputusan peluncuran dan `kerja_admin`; revisi 1 pada 2026-10-19 menambah §4.4, §6.6–6.9, §7, §8, dan Lampiran B)
 **Terkait:** ADR-0001 (batas platform), ADR-0006 (stack), ADR-0007 (Organization Directory), ADR-0011 + `kirim-sq-module-design.md` (pola modul di dalam Hub), `rapat-sq-module-design.md` (batas dengan register keputusan)
 **Referensi luar:** bedah aplikasi Cicle 3.22.5 (Lampiran A); penelusuran enam alat kanban sumber terbuka (Lampiran B)
 
@@ -30,7 +30,47 @@ Tiga gejala yang sudah terlihat di repo ini sendiri:
 
 ### 1.3 Asumsi yang belum diverifikasi
 
-> **DISCOVERY.** Belum ada pendataan. Sebelum spesifikasi implementasi dibuat, perlu dicek: berapa staf aktif yang akan memakai, berapa unit dan kepanitiaan yang berjalan bersamaan, dan berapa besar lampiran yang realistis per bulan. Angka kapasitas di §4.3 memakai perkiraan kasar dan harus diganti.
+Struktur dan jangkauan peluncuran diberikan Product Owner 2026-10-20. Ini bukan lagi perkiraan.
+
+**Struktur yang masuk tahap pertama**, dari direktur sampai setara wakil kepala sekolah:
+
+```text
+Direktur
+├── Kepala Bidang Pendidikan
+│     ├── Taman Tahfizh Sabilul Qur'an (TTSQ)
+│     ├── SDIT Tahfizh Sabilul Qur'an (SDITTSQ)
+│     └── Mudir Pesantren                 ← lapisan tambahan, hanya untuk dua unit di bawahnya
+│           ├── SMPIT Tahfizh Sabilul Qur'an
+│           └── PKBM Sabilul Qur'an (setingkat SMA)
+├── Biro Qur'an                            ← unit pelatih Qur'an
+└── Unit operasional
+      ├── Human Capital Management
+      ├── General Affair
+      ├── Keuangan
+      ├── Marketing, Komunikasi & Media
+      └── Sosial dan Dakwah
+```
+
+| Lapis | Orang |
+| --- | --- |
+| Direktur | 1 |
+| Kepala Bidang Pendidikan | 1 |
+| Mudir Pesantren | 1 |
+| Kepala Biro Qur'an | 1 |
+| Kepala unit operasional (5 unit) | 5 |
+| Kepala unit sekolah (4 unit) | 4 |
+| Wakil kepala sekolah | **belum diisi** |
+| **Perkiraan total** | **13 + wakil kepala** |
+
+**Ruang kerja tetap: 13** — Direksi, Bidang Pendidikan, Pesantren, Biro Qur'an, lima unit operasional, empat unit sekolah. Ruang kepanitiaan di luar angka ini.
+
+Catatan yang berpengaruh pada rancangan:
+
+1. **Rantai atasan tidak seragam.** TTSQ dan SDITTSQ berada langsung di bawah Kepala Bidang Pendidikan, sedangkan SMPIT dan PKBM lewat Mudir Pesantren lebih dulu. Model ruang menangani ini tanpa perubahan — ruang mengikuti unit dan keanggotaan dicatat eksplisit (§5.3) — tetapi usulan peninjau harus mengikuti rantai yang benar per unit, bukan satu pola untuk semua.
+2. **Unit operasional punya jabatan setara wakil kepala, tetapi tahap pertama hanya kepala unit.** Jadi lima orang, bukan lebih.
+3. **Skalanya kecil.** Dua puluhan orang, bukan ratusan. Ini mengubah dua keputusan di dokumen ini: pengaman peluncuran serentak (§13.1) dan penyimpanan lampiran (§7.4).
+
+> Yang masih kosong: berapa wakil kepala di tiap unit sekolah. Itu satu-satunya angka yang tersisa sebelum `KERJA-IMPL-001` ditulis.
 
 ## 2. Keputusan Product Owner
 
@@ -51,7 +91,9 @@ Keputusan tambahan 2026-10-20:
 | --- | --- |
 | 7 | **Peluncuran langsung ke seluruh unit**, bukan bertahap dari satu panitia. Konsekuensinya ditangani di §13. |
 | 8 | **`kerja_admin` dipegang Kepala HCM**, sama dengan `kirim_admin`. |
-| 9 | Google Drive **dievaluasi dan ditolak** sebagai penyimpanan lampiran yang dilayani ke pengguna; tetap dipakai untuk salinan cadangan basis data seperti sekarang. Alasannya dan usulan penggantinya di §7.4. |
+| 9 | **Lampiran memakai pola Karir SQ**: berkas di disk Mi8, salinan terenkripsi ke Drive sebagai cadangan. Tidak menambah penyimpanan pihak ketiga. Drive tetap tidak melayani berkas langsung ke pengguna — alasannya di §7.4. |
+| 10 | **Struktur dan jangkauan peluncuran** diberikan dan dicatat di §1.3: direktur sampai setara wakil kepala sekolah, empat unit sekolah, lima unit operasional, Biro Qur'an, dengan Mudir Pesantren sebagai lapisan tambahan untuk SMPIT dan PKBM. |
+| 11 | **Unit operasional tahap pertama hanya kepala unit**, meski jabatan setara wakil kepala ada. |
 
 ## 3. Batas tanggung jawab
 
@@ -103,8 +145,10 @@ Kerja SQ berbeda dari Kirim SQ dan Rapat SQ dalam satu hal yang penting: **volum
 
 Dua konsekuensi yang harus masuk spesifikasi implementasi:
 
-1. **Lampiran tidak boleh menumpuk di disk Mi8**, dan byte-nya tidak boleh melewati Mi8 saat dibuka. Sejalan dengan `sq-core-capacity-and-migration-plan.md` §3.4. Dijawab di §7.4.
-2. **Gate memori seperti Kirim SQ.** Ukur RSS Hub API sebelum dan sesudah, dan tetapkan ambang berhenti sebelum fitur ditambah. Angka pembanding: mengaktifkan Kirim SQ menaikkan RSS Hub API dari 93 ke 122 MiB. Keputusan peluncuran serentak (§2 nomor 7) membuat gate ini lebih penting, bukan kurang.
+1. **Lampiran tidak boleh menumpuk tanpa batas di disk Mi8.** Dijawab di §7.4 dengan batas ukuran berkas, kuota per ruang, dan pemindahan lampiran lama ke salinan Drive. Ambang peringatan disk yang sudah berlaku (sisa bebas di bawah 10 GiB) tetap menjadi penjaga terakhir.
+2. **Gate memori seperti Kirim SQ.** Ukur RSS Hub API sebelum dan sesudah, dan tetapkan ambang berhenti sebelum fitur ditambah. Angka pembanding: mengaktifkan Kirim SQ menaikkan RSS Hub API dari 93 ke 122 MiB.
+
+Tabel di atas disusun sebelum jangkauan peluncuran diketahui. Dengan angka §1.3 — dua puluhan pengguna, bukan ratusan — kolom "Kerja SQ" turun kelas: baris baru per hari belasan sampai puluhan, bukan ratusan. Gate-nya tetap dipasang, tetapi sebagai pengukur, bukan sebagai kekhawatiran.
 
 ### 4.4 Bangun sendiri atau adopsi
 
@@ -369,34 +413,39 @@ Pertanyaan yang diajukan 2026-10-20: bisakah memakai Google Drive, yang sudah di
 
 Token yang ditulis ulang tiap jalan itu catatan penting: runbook `2026-10-19-sq-core-daily-offhost-humancapital.md` secara eksplisit memperingatkan bahwa menyalin balik `rclone.conf` lama akan basi "dalam hitungan jam". Jalur yang begitu tidak boleh berada di antara pengguna dan berkas yang ia klik.
 
-#### Pola Karir SQ bukan tandingan
+#### Yang dipilih: pola Karir SQ
 
-Karir SQ menyimpan dokumen pelamar di disk Mi8 (`/srv/karir-sq/shared/documents`) dan Drive hanya menerima **salinan terenkripsi** lewat `rclone copy --immutable`. Jadi Drive di sana adalah cadangan, bukan sumber yang dilayani.
+Karir SQ menyimpan dokumen pelamar di disk Mi8 (`/srv/karir-sq/shared/documents`) dan Drive hanya menerima **salinan terenkripsi** lewat `rclone copy --immutable`. Drive di sana adalah cadangan, bukan sumber yang dilayani. Kerja SQ memakai pola yang sama.
 
-Pola itu tidak bisa dipinjam Kerja SQ, karena bedanya ada di §4.3: dokumen Karir masuk sesekali, lampiran Kerja SQ masuk setiap hari dari seluruh staf. Menaruhnya di disk Mi8 berarti mengulang masalah yang sedang diawasi rencana kapasitas.
+**Ini mengoreksi revisi 2.** Di revisi 2 pola ini ditolak dengan alasan "lampiran Kerja SQ masuk setiap hari dari seluruh staf". Alasan itu disusun ketika jangkauan peluncuran belum diketahui dan dibayangkan ratusan orang. Setelah §1.3 diisi, angkanya dua puluhan orang. Pada ukuran itu hitungannya berbeda:
 
-#### Yang diusulkan
+| | |
+| --- | --- |
+| Perkiraan pertumbuhan | 20 orang × 2 berkas/minggu × 2 MB ≈ **4 GB per tahun** |
+| Disk Mi8 bebas | **28 GB** (tercatat di rencana kapasitas) |
+| Ambang peringatan yang sudah berlaku | sisa bebas di bawah 10 GiB |
 
-**Object storage dengan tautan bertanda tangan**, sehingga byte lampiran tidak pernah melewati Mi8:
+Jadi disk Mi8 cukup untuk beberapa tahun, asalkan dibatasi. Keuntungannya besar: tidak ada vendor baru, tidak ada akun baru, dan skripnya sudah berjalan serta terbukti di Karir SQ.
 
-```text
-unggah : peramban → tautan unggah bertanda tangan → object storage
-         Hub hanya menerbitkan tautan dan mencatat metadata
-unduh  : peramban → tautan unduh bertanda tangan (masa berlaku pendek)
-         Hub memeriksa keanggotaan ruang, lalu menerbitkan tautan
-```
+Tiga pembatas wajib ikut sejak R1:
 
-Hub tetap menjadi gerbang izin — tautan hanya diterbitkan setelah keanggotaan ruang diperiksa — tetapi tidak pernah menjadi jalur byte.
+1. **Batas ukuran per berkas — usul 25 MB.** Alasannya server, bukan perangkat pengguna: Mi8 adalah satu ponsel dengan RAM ±1 GB, dan menyalurkan berkas besar lewat proses Node di sana mahal. (Sebagai pembanding, Cicle membatasi 100 MB per unggahan — mereka punya aplikasi ponsel juga, tetapi back-end-nya bukan ponsel.)
+2. **Kuota per ruang**, supaya satu unit tidak menghabiskan jatah semua orang.
+3. **Pemindahan lampiran lama.** Setelah setahun, berkas tinggal di salinan Drive saja dan dihapus dari disk Mi8. Masih bisa diambil bila diperlukan, hanya tidak seketika.
 
-Kandidat utama **Cloudflare R2**, karena: yayasan sudah memakai Cloudflare untuk DNS dan tunnel, API-nya S3 sehingga tidak mengunci, tautan bertanda tangan tersedia, dan biaya keluarnya nol. Diperiksa 2026-10-20: akun Cloudflare yang terjangkau dari mesin ini bisa memanggil API R2 dan belum punya bucket sama sekali.
+#### Yang tidak dipilih, dan kapan ditinjau ulang
 
-Alternatif setara yang tidak perlu ditutup sekarang: penyedia S3 lain, atau MinIO sendiri bila kelak ada server. Yang penting bentuknya — tautan bertanda tangan, bukan proksi lewat Mi8.
+**Object storage pihak ketiga dengan tautan bertanda tangan** (Cloudflare R2 dan sejenisnya) ditelusuri dan tidak diambil. Bentuknya lebih ringan untuk Mi8 karena byte lampiran tidak melewatinya sama sekali, dan biaya unduhnya nol. Yang membuatnya tidak dipilih sekarang: pada dua puluhan pengguna, keringanan itu belum dibutuhkan, sementara ongkosnya nyata — satu vendor baru, satu akun baru yang harus dimiliki yayasan dan bukan pribadi, dan satu lagi tempat yang harus diingat saat pindah host.
 
-#### Yang masih harus diputuskan
+Product Owner juga menyatakan preferensinya 2026-10-20: kalau bisa di server sendiri, jangan menambah penyimpanan pihak ketiga.
 
-Bukan lagi "di mana", melainkan **akun siapa**. Ini pertanyaan yang sama yang pernah dijawab untuk Drive: data SQ Core dipindahkan ke akun milik yayasan (`humancapital.ysq`), bukan akun pribadi pengelola. Prinsip itu harus berlaku juga di sini, dan perlu dicek karena zona DNS `sabilulquran.or.id` berada di akun Cloudflare yang berbeda dari akun yang dipakai perkakas.
+**Kapan ini ditinjau ulang.** Tiga pemicu, bukan jadwal:
 
-Keputusan ini tetap terbuka di §14 nomor 4, tetapi lingkupnya sudah menyempit.
+1. Pemakaian melebar ke seluruh guru dan staf, bukan lagi jajaran kepala.
+2. Lampiran tumbuh jauh di atas perkiraan 4 GB per tahun, atau disk bebas Mi8 mendekati ambang 10 GiB.
+3. Host pindah, sehingga keputusan penyimpanan memang sedang dibuka.
+
+Rancangan menjaga agar peninjauan itu murah: modul hanya menyimpan **kunci penyimpanan**, bukan jalur berkas (§7.3 nomor 4), sehingga mengganti tempat simpan tidak menyentuh papan, kartu, maupun izin.
 
 ## 8. Layar
 
@@ -440,8 +489,9 @@ Acceptance criteria usulan:
 7. Riwayat kartu mencatat pemindahan kolom, penugasan, perubahan tenggat, dan penutupan, dengan aktor dan waktu.
 8. Pengingat terkirim tepat satu kali per penanda, dibuktikan dengan worker yang dijalankan ulang.
 9. Geser kartu antar kolom tetap responsif pada perangkat kelas bawah, diuji pada perangkat nyata (§13).
-10. Lampiran diunggah dan diunduh lewat tautan bertanda tangan, dibuktikan dengan byte-nya tidak melewati Hub (§7.4), dan tautan yang diterbitkan untuk bukan-anggota ruang ditolak.
-11. Orang yang tidak punya Application Access ke `kerja-sq` ditolak, dan penolakannya fail-closed.
+10. Lampiran di atas batas ukuran ditolak saat diunggah, kuota ruang ditegakkan, dan permintaan unduh dari bukan-anggota ruang ditolak.
+11. Lampiran yang diunggah muncul di salinan Drive terenkripsi pada jadwal berikutnya, dibuktikan dengan `cryptcheck` seperti jalur Karir SQ.
+12. Orang yang tidak punya Application Access ke `kerja-sq` ditolak, dan penolakannya fail-closed.
 
 ### R2 — Pengumuman, apresiasi, kartu berulang, dan WhatsApp
 
@@ -581,7 +631,13 @@ Peluncuran bertahap adalah cara termurah mengetahui bahwa sebuah modul tidak dip
 3. **Satu rujukan per unit, bukan semua bertanya ke Kepala HCM.** Tanpa ini, `kerja_admin` menjadi hambatan sejak minggu pertama.
 4. **Tinjau pemakaian pada minggu ketiga.** Ruang yang tidak dipakai ditutup, bukan dibiarkan. Daftar ruang yang separuhnya kosong mengajarkan kepada semua orang bahwa modul ini opsional.
 
-Satu angka yang perlu disepakati sebelum peluncuran: berapa unit dan berapa orang sekaligus. Itu bagian dari wawancara di §15 langkah 1, dan sekarang menjadi masukan untuk gate memori, bukan sekadar bahan perkiraan.
+**Catatan 2026-10-20: risikonya ternyata jauh lebih kecil dari yang ditulis di atas.** Dua hal mengubahnya.
+
+Pertama, skalanya. "Semua unit sekaligus" pada lapis ini berarti dua puluhan orang dan 13 ruang (§1.3), bukan ratusan. Kegagalan pada ukuran itu bisa diperbaiki dalam hitungan hari.
+
+Kedua, sosialisasinya ternyata tetap bertahap. Product Owner menetapkan tahap pertama hanya jajaran direktur sampai kepala unit, dengan dirinya sendiri sebagai tempat bertanya; wakil kepala menyusul. Jadi lapisan percobaan yang hilang dari keputusan §2 nomor 7 kembali lewat urutan sosialisasi — dan itu justru bentuk yang paling aman.
+
+Keempat pengaman di atas tetap berlaku, tetapi sebagai kebiasaan kerja, bukan sebagai penahan risiko besar. Yang tersisa untuk diputuskan: kapan wakil kepala ikut — bersamaan dengan kepala unit, atau setelah kepala unitnya paham.
 
 ## 14. Keputusan terbuka
 
@@ -590,19 +646,23 @@ Satu angka yang perlu disepakati sebelum peluncuran: berapa unit dan berapa oran
 | 1 | ~~Unit mana yang memakai lebih dulu~~ | **Terjawab 2026-10-20**: seluruh unit sekaligus (§2 nomor 7). Pengamannya di §13.1 |
 | 2 | ~~Siapa `kerja_admin`~~ | **Terjawab 2026-10-20**: Kepala HCM (§2 nomor 8) |
 | 3 | Modul di Hub atau proses sendiri | **Modul di Hub untuk R1**, dengan pengukuran RSS sebelum/sesudah. Tinjau ulang setelah R1 dipakai sebulan; §4.1 sudah menyiapkan jalan ekstraksi, dan §4.4 menyebut dua pemicu |
-| 4 | Lampiran: akun dan penyedia mana | Bentuknya sudah diputuskan — object storage dengan tautan bertanda tangan, bukan Drive (§7.4). Yang tersisa: **akun milik yayasan, bukan akun pribadi pengelola**, mengikuti preseden pemindahan data ke `humancapital.ysq`. Perlu dicek karena zona DNS ada di akun Cloudflare yang berbeda |
+| 4 | ~~Di mana lampiran disimpan~~ | **Terjawab 2026-10-20**: pola Karir SQ — disk Mi8 dengan salinan terenkripsi ke Drive (§2 nomor 9, §7.4). Yang tersisa hanya angka batas ukuran berkas; usul 25 MB |
 | 5 | Retensi kartu dan lampiran ruang yang sudah ditutup | **Kartu dan riwayatnya selamanya, lampiran ditinjau setelah setahun.** Angka usulan, belum dihitung terhadap disk |
 | 6 | Apakah peninjau organ melihat seluruh ruang | **Tidak.** Organ melihat Ringkasan Yayasan (angka), bukan isi kartu tiap unit. Beri akses isi hanya bila diminta dan dicatat |
 | 7 | Apakah R1 perlu aplikasi ponsel | **Tidak.** Web responsif dulu, tetapi papan wajib bisa dipakai pada lebar ponsel sejak R1 (§8) |
+| 8 | Berapa wakil kepala di tiap unit sekolah | Satu-satunya angka §1.3 yang masih kosong, dan satu-satunya yang menghalangi `KERJA-IMPL-001` |
+| 9 | Kapan wakil kepala ikut memakai | **Setelah kepala unitnya paham**, bukan bersamaan. Mengikuti urutan sosialisasi yang sudah ditetapkan (§13.1) |
+| 10 | Batas ukuran lampiran per berkas | **25 MB.** Alasannya kapasitas Mi8 sebagai server, bukan perangkat pengguna (§7.4) |
 
 ## 15. Langkah berikutnya
 
-1. **Wawancara singkat** satu kepala unit dan panitia SPMB untuk mengganti asumsi §1.3 dengan angka. Dengan keputusan peluncuran serentak, angka yang paling dibutuhkan adalah berapa unit dan berapa orang sekaligus (§13.1) — itu masukan untuk gate memori, bukan lagi sekadar perkiraan.
+1. ~~Ganti asumsi §1.3 dengan angka.~~ **Selesai 2026-10-20**, kecuali jumlah wakil kepala di tiap unit sekolah (§14 nomor 8).
 2. ~~Putuskan §14 nomor 1 dan 2.~~ **Selesai 2026-10-20.**
-3. **Tetapkan akun object storage** bersama pemilik rencana kapasitas (§14 nomor 4). Bentuknya sudah diputuskan di §7.4; yang tersisa akun milik siapa.
-4. Baru setelah itu: ADR bila diperlukan (kandidat ADR-0012), lalu spesifikasi `KERJA-IMPL-001` untuk **R1 saja**.
+3. ~~Tetapkan tujuan penyimpanan lampiran.~~ **Selesai 2026-10-20** (§2 nomor 9). Yang tersisa hanya angka batas ukuran berkas.
+4. **Isi jumlah wakil kepala sekolah.** Satu angka, dan setelah itu tidak ada lagi yang menghalangi.
+5. Baru setelah itu: ADR bila diperlukan (kandidat ADR-0012), lalu spesifikasi `KERJA-IMPL-001` untuk **R1 saja**.
 
-Sebelum langkah 1 dan 3 selesai, tidak ada kode yang ditulis. Nomor 3 nyaris bisa diselesaikan sekarang; nomor 1 menuntut berbicara dengan orang dan tidak bisa diganti dengan asumsi.
+Sebelum langkah 4 selesai, tidak ada kode yang ditulis.
 
 ## Lampiran A — Apa yang diambil dari Cicle
 
