@@ -2,7 +2,9 @@
 
 **Status:** DRAFT / DISCOVERY. Dokumen ini tidak mengizinkan implementasi, pembelian, atau perubahan production.
 **Spesifikasi:** KERJA-001 (usulan). Spesifikasi implementasi belum ada.
-**Tanggal:** 2026-10-20 (revisi 3 — struktur dan jangkauan peluncuran nyata masuk ke §1.3; penyimpanan lampiran berubah ke pola Karir SQ di §7.4, **mengoreksi revisi 2** yang menolaknya atas dasar skala yang ternyata keliru. Revisi 2 memasukkan keputusan peluncuran dan `kerja_admin`; revisi 1 pada 2026-10-19 menambah §4.4, §6.6–6.9, §7, §8, dan Lampiran B)
+**Tanggal:** 2026-10-20 (revisi 4 — **discovery selesai**: §1.3 lengkap dengan 26 pengguna dan 13 ruang, dan tidak ada lagi keputusan yang menghalangi spesifikasi)
+
+**Riwayat revisi:** r0 rancangan awal · r1 menambah §4.4 bangun-atau-adopsi, §6.6–6.9, §7, §8, Lampiran B · r2 keputusan peluncuran dan `kerja_admin` · r3 struktur nyata dan penyimpanan lampiran pindah ke pola Karir SQ, mengoreksi r2 yang menolaknya atas dasar skala yang keliru · r4 angka akhir
 **Terkait:** ADR-0001 (batas platform), ADR-0006 (stack), ADR-0007 (Organization Directory), ADR-0011 + `kirim-sq-module-design.md` (pola modul di dalam Hub), `rapat-sq-module-design.md` (batas dengan register keputusan)
 **Referensi luar:** bedah aplikasi Cicle 3.22.5 (Lampiran A); penelusuran enam alat kanban sumber terbuka (Lampiran B)
 
@@ -59,8 +61,16 @@ Direktur
 | Kepala Biro Qur'an | 1 |
 | Kepala unit operasional (5 unit) | 5 |
 | Kepala unit sekolah (4 unit) | 4 |
-| Wakil kepala sekolah | **belum diisi** |
-| **Perkiraan total** | **13 + wakil kepala** |
+| **Subtotal pimpinan** | **13** |
+| Setara wakasek langsung di bawah Mudir | 2 |
+| Wakasek SDIT | 4 |
+| Wakasek SMPIT + PKBM (dipakai bersama) | 3 |
+| TU/operator SDIT | 1 |
+| TU/operator SMPIT | 1 |
+| TU/operator PKBM | 1 |
+| Admin Taman Tahfizh (tidak ada wakasek) | 1 |
+| **Subtotal pelaksana** | **13** |
+| **Total pengguna tahap pertama** | **26 orang** |
 
 **Ruang kerja tetap: 13** — Direksi, Bidang Pendidikan, Pesantren, Biro Qur'an, lima unit operasional, empat unit sekolah. Ruang kepanitiaan di luar angka ini.
 
@@ -68,9 +78,11 @@ Catatan yang berpengaruh pada rancangan:
 
 1. **Rantai atasan tidak seragam.** TTSQ dan SDITTSQ berada langsung di bawah Kepala Bidang Pendidikan, sedangkan SMPIT dan PKBM lewat Mudir Pesantren lebih dulu. Model ruang menangani ini tanpa perubahan — ruang mengikuti unit dan keanggotaan dicatat eksplisit (§5.3) — tetapi usulan peninjau harus mengikuti rantai yang benar per unit, bukan satu pola untuk semua.
 2. **Unit operasional punya jabatan setara wakil kepala, tetapi tahap pertama hanya kepala unit.** Jadi lima orang, bukan lebih.
-3. **Skalanya kecil.** Dua puluhan orang, bukan ratusan. Ini mengubah dua keputusan di dokumen ini: pengaman peluncuran serentak (§13.1) dan penyimpanan lampiran (§7.4).
+3. **Skalanya kecil.** 26 orang, bukan ratusan. Ini mengubah dua keputusan di dokumen ini: pengaman peluncuran serentak (§13.1) dan penyimpanan lampiran (§7.4).
+4. **Ada orang yang mengisi dua ruang sekaligus.** Tiga wakasek melayani SMPIT dan PKBM bersama-sama. Model keanggotaan sudah menanganinya tanpa perubahan — keanggotaan dicatat per ruang dan satu orang boleh berada di banyak ruang (§5.3) — tetapi layar **Tugas Saya** (§8) menjadi lebih penting bagi mereka daripada papan mana pun, karena pekerjaannya datang dari dua tempat.
+5. **TU/operator sekolah ikut sejak tahap pertama.** Mereka bukan pimpinan, tetapi merekalah yang paling sering benar-benar mengerjakan dan melampirkan berkas. Mengeluarkan mereka akan membuat papan berisi penugasan yang tidak pernah ditutup oleh pelakunya.
 
-> Yang masih kosong: berapa wakil kepala di tiap unit sekolah. Itu satu-satunya angka yang tersisa sebelum `KERJA-IMPL-001` ditulis.
+Taman Tahfizh tidak punya wakasek; yang ikut adalah satu admin. Jadi ruangnya tetap ada, isinya kepala unit dan admin.
 
 ## 2. Keputusan Product Owner
 
@@ -650,19 +662,18 @@ Keempat pengaman di atas tetap berlaku, tetapi sebagai kebiasaan kerja, bukan se
 | 5 | Retensi kartu dan lampiran ruang yang sudah ditutup | **Kartu dan riwayatnya selamanya, lampiran ditinjau setelah setahun.** Angka usulan, belum dihitung terhadap disk |
 | 6 | Apakah peninjau organ melihat seluruh ruang | **Tidak.** Organ melihat Ringkasan Yayasan (angka), bukan isi kartu tiap unit. Beri akses isi hanya bila diminta dan dicatat |
 | 7 | Apakah R1 perlu aplikasi ponsel | **Tidak.** Web responsif dulu, tetapi papan wajib bisa dipakai pada lebar ponsel sejak R1 (§8) |
-| 8 | Berapa wakil kepala di tiap unit sekolah | Satu-satunya angka §1.3 yang masih kosong, dan satu-satunya yang menghalangi `KERJA-IMPL-001` |
+| 8 | ~~Berapa wakil kepala di tiap unit sekolah~~ | **Terjawab 2026-10-20**: total 26 pengguna tahap pertama (§1.3). Tidak ada lagi yang menghalangi `KERJA-IMPL-001` |
 | 9 | Kapan wakil kepala ikut memakai | **Setelah kepala unitnya paham**, bukan bersamaan. Mengikuti urutan sosialisasi yang sudah ditetapkan (§13.1) |
 | 10 | Batas ukuran lampiran per berkas | **25 MB.** Alasannya kapasitas Mi8 sebagai server, bukan perangkat pengguna (§7.4) |
 
 ## 15. Langkah berikutnya
 
-1. ~~Ganti asumsi §1.3 dengan angka.~~ **Selesai 2026-10-20**, kecuali jumlah wakil kepala di tiap unit sekolah (§14 nomor 8).
+1. ~~Ganti asumsi §1.3 dengan angka.~~ **Selesai 2026-10-20**: 26 pengguna, 13 ruang tetap.
 2. ~~Putuskan §14 nomor 1 dan 2.~~ **Selesai 2026-10-20.**
-3. ~~Tetapkan tujuan penyimpanan lampiran.~~ **Selesai 2026-10-20** (§2 nomor 9). Yang tersisa hanya angka batas ukuran berkas.
-4. **Isi jumlah wakil kepala sekolah.** Satu angka, dan setelah itu tidak ada lagi yang menghalangi.
-5. Baru setelah itu: ADR bila diperlukan (kandidat ADR-0012), lalu spesifikasi `KERJA-IMPL-001` untuk **R1 saja**.
+3. ~~Tetapkan tujuan penyimpanan lampiran.~~ **Selesai 2026-10-20** (§2 nomor 9).
+4. **Tulis `KERJA-IMPL-001` untuk R1 saja.** ADR hanya bila muncul keputusan lintas modul yang belum tercakup; sejauh ini tidak ada — modul mengikuti pola ADR-0011 yang sudah diterima.
 
-Sebelum langkah 4 selesai, tidak ada kode yang ditulis.
+Semua yang menghalangi sudah terjawab. Spesifikasi boleh ditulis.
 
 ## Lampiran A — Apa yang diambil dari Cicle
 
