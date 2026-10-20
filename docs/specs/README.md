@@ -33,6 +33,7 @@ Indeks ini membantu maintainer membedakan specification yang sudah berada di `ma
 | --- | --- | --- |
 | HUB-IMPL-013 | [Identity Lifecycle pegawai](HUB-IMPL-013-go5c-staff-provisioning-offboarding.md) | **ACCEPTED** 2026-10-02; controlled production UAT amendment. Repository implementation and production activation evidence are tracked separately. |
 | HUB-IMPL-021 | [Ringkasan Yayasan](HUB-IMPL-021-ringkasan-yayasan.md) | **ACCEPTED** 2026-10-17 (in this PR until merged); governance landing page for Organ Yayasan with per-app summaries, with ADR-0009. Production activation needs separate owner approval. |
+| KERJA-IMPL-001 | [Kerja SQ R1: papan kerja](KERJA-IMPL-001-r1-papan-kerja.md) | **DRAFT** 2026-10-20 (in this PR until merged); rooms per unit and per committee, boards and cards, checklists, comments, attachments, cross-room "my tasks", in-room search, card history, in-app reminders. Follows the ADR-0011 module pattern; no new process on Mi8. Seven decisions in §16 are open, and implementation is not authorized until the PO accepts. |
 
 ## Proposal yang disupersede
 

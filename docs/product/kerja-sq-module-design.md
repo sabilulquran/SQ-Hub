@@ -671,9 +671,10 @@ Keempat pengaman di atas tetap berlaku, tetapi sebagai kebiasaan kerja, bukan se
 1. ~~Ganti asumsi §1.3 dengan angka.~~ **Selesai 2026-10-20**: 26 pengguna, 13 ruang tetap.
 2. ~~Putuskan §14 nomor 1 dan 2.~~ **Selesai 2026-10-20.**
 3. ~~Tetapkan tujuan penyimpanan lampiran.~~ **Selesai 2026-10-20** (§2 nomor 9).
-4. **Tulis `KERJA-IMPL-001` untuk R1 saja.** ADR hanya bila muncul keputusan lintas modul yang belum tercakup; sejauh ini tidak ada — modul mengikuti pola ADR-0011 yang sudah diterima.
+4. ~~Tulis `KERJA-IMPL-001` untuk R1 saja.~~ **DRAFT ditulis 2026-10-20**: [KERJA-IMPL-001](../specs/KERJA-IMPL-001-r1-papan-kerja.md). Tidak ada ADR baru yang diperlukan — modul mengikuti pola ADR-0011 yang sudah diterima.
+5. **Putuskan tujuh butir di KERJA-IMPL-001 §16**, lalu terima spesifikasinya. Setelah itu implementasi di repository diizinkan; langkah production tetap satu per satu dengan persetujuan owner.
 
-Semua yang menghalangi sudah terjawab. Spesifikasi boleh ditulis.
+Tidak ada kode yang ditulis sebelum spesifikasi diterima.
 
 ## Lampiran A — Apa yang diambil dari Cicle
 
