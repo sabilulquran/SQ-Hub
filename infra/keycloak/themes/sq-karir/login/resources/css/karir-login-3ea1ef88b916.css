@@ -5,7 +5,8 @@
    (owner, 2026-10-21: no large app name, no "SQ" abbreviation). */
 .sq-karir-brand .sq-account-brand__logo { width: 15rem; }
 
-body:has(.sq-karir-lede) .pf-v5-c-login__main-header { padding-bottom: .5rem !important; }
+/* Pages that still show a title (steps such as reset or code entry): keep the description close to it. */
+body:has(.sq-karir-lede):not([data-page-id="login-login"]):not([data-page-id="login-register"]) .pf-v5-c-login__main-header { padding-bottom: .5rem !important; }
 
 .sq-karir-lede {
   order: -1;
