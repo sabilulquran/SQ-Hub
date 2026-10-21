@@ -1308,3 +1308,14 @@ body[data-page-id="login-register"] #kc-page-title {
 
 body[data-page-id="login-login"] .pf-v5-c-login__main-header,
 body[data-page-id="login-register"] .pf-v5-c-login__main-header { padding: 0 !important; }
+
+/* Staff sign-in: one short muted line under the logo in place of the page title. */
+.sq-account-lede {
+  order: -1;
+  margin: 0 0 1.5rem;
+  color: var(--sq-muted);
+  font-size: .875rem;
+  line-height: 1.5;
+  text-align: center;
+  text-wrap: balance;
+}
