@@ -5,6 +5,10 @@
       <img class="sq-account-brand__logo" src="${url.resourcesPath}/img/logo.png" alt="" aria-hidden="true" width="2240" height="721">
     </picture>
   </div>
+  <#if (pageId!"") == "login">
+    <#-- A short description stands in for the hidden page title (owner, 2026-10-21). -->
+    <p class="sq-account-lede">${msg("akunSqLoginLede")}</p>
+  </#if>
   <p class="sq-login-footer">${msg("akunSqFooter")}</p>
   <#if (pageId!"") == "info">
     <#-- Native info.ftl repeats the message as title and body when there is no separate header. -->

@@ -1289,3 +1289,33 @@ body[data-page-id="login-login-verify-email"] #kc-info .instruction { color: var
     transition-duration: .01ms !important;
   }
 }
+
+/* Sign-in and sign-up pages show no visible page title: the logo and the form say enough
+   (owner, 2026-10-21). The heading stays in the page for screen readers. Step and status pages
+   keep their title, because there it is the instruction. */
+body[data-page-id="login-login"] #kc-page-title,
+body[data-page-id="login-register"] #kc-page-title {
+  position: absolute !important;
+  width: 1px !important;
+  height: 1px !important;
+  margin: -1px !important;
+  padding: 0 !important;
+  overflow: hidden !important;
+  clip: rect(0 0 0 0) !important;
+  white-space: nowrap !important;
+  border: 0 !important;
+}
+
+body[data-page-id="login-login"] .pf-v5-c-login__main-header,
+body[data-page-id="login-register"] .pf-v5-c-login__main-header { padding: 0 !important; }
+
+/* Staff sign-in: one short muted line under the logo in place of the page title. */
+.sq-account-lede {
+  order: -1;
+  margin: 0 0 1.5rem;
+  color: var(--sq-muted);
+  font-size: .875rem;
+  line-height: 1.5;
+  text-align: center;
+  text-wrap: balance;
+}

@@ -133,7 +133,7 @@ jobs:
           test "$status" = "200"
           grep -Fq 'Akun SQ' /tmp/akun-sq-login.html
           grep -Fq 'Masuk ke Akun SQ' /tmp/akun-sq-login.html
-          grep -Fq 'css/akun-sq-login-040ef6d18eac.css' /tmp/akun-sq-login.html
+          grep -Fq 'css/akun-sq-login-605008c42945.css' /tmp/akun-sq-login.html
           ! grep -Fq 'css/sq-account-hcis-d8e0fab49a38.css' /tmp/akun-sq-login.html
           ! grep -Fq 'css/sq-identity-066c6982e041.css' /tmp/akun-sq-login.html
           ! grep -Fq 'css/sq-account-41ad9ff20ec3.css' /tmp/akun-sq-login.html
@@ -1134,6 +1134,16 @@ jobs:
           jq empty infra/keycloak/realm/sq-keluarga-desired-state.json
           bash -n infra/keycloak/scripts/reconcile-spmb-staff-clients.sh
           jq empty infra/keycloak/clients/spmb-sq-staff.json
+
+      - name: Karir stylesheet name follows its content
+        # Cloudflare and browsers keep theme CSS for 30 days, so a changed file needs a new name.
+        run: |
+          css=$(sed -n 's/^styles=.* css\/\(karir-login-[0-9a-f]\{12\}[.]css\)$/\1/p' infra/keycloak/themes/sq-karir/login/theme.properties)
+          test -n "$css"
+          grep -Fq "css/$css" infra/keycloak/themes/sq-keluarga/login/theme.properties
+          file="infra/keycloak/themes/sq-karir/login/resources/css/$css"
+          test "$(git hash-object "$file" | cut -c1-12)" = "$(echo "$css" | sed 's/^karir-login-\(.*\)[.]css$/\1/')"
+          test "$(ls infra/keycloak/themes/sq-karir/login/resources/css | wc -l)" = 1
 
       - name: Unit and integration tests
         working-directory: infra/keycloak/providers/karir-identity
