@@ -1,27 +1,21 @@
 /* Karir SQ candidate sign-in (realm sq-karir). Builds on the Akun SQ login theme tokens (sq-hub),
    so light and dark follow the same --sq-* values. */
 
-/* Lockup: the foundation logo first, then the service name as a small label below it
-   (owner, 2026-10-21: a large app name above the logo looked detached). */
-.sq-karir-brand {
-  flex-direction: column;
-  align-items: center;
-  gap: .625rem;
-}
-
-.sq-karir-brand__app {
-  padding: .25rem .75rem;
-  border-radius: 999px;
-  background: var(--sq-primary-soft);
-  color: var(--sq-primary-soft-ink);
-  font-size: .75rem;
-  font-weight: 800;
-  line-height: 1.2;
-  letter-spacing: .08em;
-  text-transform: uppercase;
-}
-
+/* The foundation logo alone; the service name is a short description under the title
+   (owner, 2026-10-21: no large app name, no "SQ" abbreviation). */
 .sq-karir-brand .sq-account-brand__logo { width: 15rem; }
+
+body:has(.sq-karir-lede) .pf-v5-c-login__main-header { padding-bottom: .5rem !important; }
+
+.sq-karir-lede {
+  order: -1;
+  margin: 0 0 1.5rem;
+  color: var(--sq-muted);
+  font-size: .875rem;
+  line-height: 1.5;
+  text-align: center;
+  text-wrap: balance;
+}
 
 /* No social sign-in here: the info row ("Belum punya akun? Daftar") follows the form. */
 .pf-v5-c-login__main-body > .pf-v5-c-login__main-footer {
@@ -149,4 +143,5 @@ form > .sq-karir-help:first-child,
 
 @media (max-width: 480px) {
   .sq-karir-brand .sq-account-brand__logo { width: 13rem; }
+  .sq-karir-lede { font-size: .8125rem; }
 }
