@@ -1135,6 +1135,16 @@ jobs:
           bash -n infra/keycloak/scripts/reconcile-spmb-staff-clients.sh
           jq empty infra/keycloak/clients/spmb-sq-staff.json
 
+      - name: Karir stylesheet name follows its content
+        # Cloudflare and browsers keep theme CSS for 30 days, so a changed file needs a new name.
+        run: |
+          css=$(sed -n 's/^styles=.* css\/\(karir-login-[0-9a-f]\{12\}[.]css\)$/\1/p' infra/keycloak/themes/sq-karir/login/theme.properties)
+          test -n "$css"
+          grep -Fq "css/$css" infra/keycloak/themes/sq-keluarga/login/theme.properties
+          file="infra/keycloak/themes/sq-karir/login/resources/css/$css"
+          test "$(git hash-object "$file" | cut -c1-12)" = "$(echo "$css" | sed 's/^karir-login-\(.*\)[.]css$/\1/')"
+          test "$(ls infra/keycloak/themes/sq-karir/login/resources/css | wc -l)" = 1
+
       - name: Unit and integration tests
         working-directory: infra/keycloak/providers/karir-identity
         run: mvn --batch-mode --no-transfer-progress verify -Pintegration
