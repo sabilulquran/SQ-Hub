@@ -1,7 +1,7 @@
 # SQ Core — Rencana kapasitas dan migrasi host
 
 **Status:** DRAFT / DISCOVERY. Dokumen ini tidak mengotorisasi pembelian, perubahan production, maupun migrasi.
-**Tanggal:** 2026-10-19
+**Tanggal:** 2026-10-19 · **Revisi 1:** 2026-10-21 — ditambah §4.1b (kredit Azure nirlaba) dan penyesuaian §7 butir 2, 3, serta butir 8 dan 9 yang baru.
 **Terkait:** `operational-baseline.md`, `vps-deployment-retired-2026-10-19.md`, `HUB-IMPL-013-mi8-activation-plan.md`, `HUB-IMPL-013-mi8-keycloak-rehearsal.md`, `mi8-tailscale-management-plane-incident-2026-10-06.md`, `sq-core-login-theme-resource-recovery-2026-10-06.md`, ADR-0011, `docs/product/kirim-sq-module-design.md`, `docs/product/rapat-sq-module-design.md`
 **Sumber operasional utama:** repositori **`sabilulquran/sq-core-ops`** — `reference/` dan `runbooks/`
 
@@ -193,6 +193,71 @@ Catatan: halaman daftar harga Biznet Gio tidak menyatakan apakah harga sudah ter
 
 Hetzner menaikkan harga seluruh lini pada Juni 2026, sehingga angka pihak ketiga mana pun untuk Hetzner harus dianggap kedaluwarsa.
 
+### 4.1b Kredit Azure nirlaba — USD 2.000 per tahun, diperbarui
+
+Keterangan Product Owner, 2026-10-21: yayasan memegang kredit Azure dari program nirlaba Microsoft,
+**USD 2.000 per tahun dan diperbarui tiap tahun** selama syarat kelayakan masih terpenuhi. Besaran itu cocok
+dengan keterangan publik: hibahnya turun dari USD 3.500 menjadi USD 2.000 berlaku 1 Oktober 2023, diberikan
+tahunan, dan sisa yang tidak terpakai **tidak** digulung ke tahun berikutnya.
+
+> **ASUMSI kurs.** Rp 17.900/USD, mengikuti kisaran kurs pasar pertengahan Oktober 2026. Perlu diperiksa lagi
+> saat belanja, sama seperti asumsi Rp 18.500/EUR di §4.1.
+
+Kredit itu setara **± Rp 35,8 juta per tahun**, atau pagu **± USD 165 (Rp 2,95 juta) per bulan**. Sebagai
+pembanding, seluruh pilihan VPS di §4.1 berkisar Rp 1,3–5,5 juta per tahun. Jadi kreditnya bukan sedikit lebih
+besar daripada anggaran yang sedang dibahas — ia **enam sampai dua puluh tujuh kali** lipatnya.
+
+**Azure punya wilayah Jakarta.** Indonesia Central tersedia umum sejak April 2025, dengan tiga zona
+ketersediaan. Artinya syarat §3.3 "Lokasi: Indonesia" terpenuhi tanpa menukar latensi, dan keputusan §7 butir 2
+(lokal versus Eropa) kehilangan dilema biayanya: yang lebih baik untuk pengguna sekaligus yang gratis.
+
+**Perkiraan biaya untuk spesifikasi target §3.3**, satu mesin menanggung semuanya seperti Mi8 hari ini:
+
+| Pos | Perkiraan per bulan |
+| --- | --- |
+| Sewa mesin 4 vCPU / 16 GB, dikunci satu tahun di muka (diskon ± 40%) | ± USD 85 |
+| Disk mesin 256 GB SSD standar | ± USD 20 |
+| Penyimpanan objek untuk backup, media Kirim, dan dokumen Karir, 100 GB | ± USD 2 |
+| Alamat IP tetap | ± USD 4 |
+| Lalu lintas keluar, di balik Cloudflare dan di bawah jatah gratis 100 GB | ± USD 0 |
+| **Perkiraan total** | **± USD 111 (Rp 1,99 juta) per bulan** |
+
+**± USD 1.330 per tahun dari jatah USD 2.000.** Tanpa penguncian setahun di muka, sewa mesinnya naik ke
+± USD 140 dan totalnya ± USD 166/bulan — tepat di pagu, tanpa margin. Penguncian itu karena itu bukan
+penghematan opsional, melainkan bagian dari cara agar kreditnya cukup. Yang perlu dipastikan lebih dulu:
+apakah pembelian *reservation* bisa dibayar dari kredit sponsorship, dan apakah ditagih bulanan atau sekaligus
+di muka.
+
+> **Peringatan angka.** Harga Azure di atas berasal dari agregator pihak ketiga untuk wilayah Asia Tenggara
+> (Singapura), bukan kutipan resmi Microsoft dan bukan harga Indonesia Central — yang sebagai wilayah baru bisa
+> berbeda. Sumber-sumber itu pun saling berselisih cukup jauh. Angka yang dipakai untuk belanja harus diambil
+> dari Azure Pricing Calculator dengan wilayah Indonesia Central.
+
+**Tiga risiko yang harus ditangani, bukan diabaikan:**
+
+1. **Kredit habis berarti layanan berhenti.** Langganan sponsorship berhenti melayani ketika kreditnya habis,
+   dan sisa kredit tidak digulung. Untuk host yang melayani `adms` — perangkat presensi yang trafiknya tidak
+   bisa dijeda (§6 langkah 9) — dan Karir SQ yang berstatus `RUNNING_PUBLIC_LIVE`, itu bukan risiko yang boleh
+   dibiarkan terbuka. Penanganan: rancang pemakaian di **± USD 130/bulan**, bukan mepet di 165; pasang
+   peringatan anggaran di 50%, 75%, dan 90%; dan siapkan satu langganan berbayar cadangan yang siap menampung
+   kalau kredit habis sebelum tahun berjalan selesai.
+2. **Kelayakan diperiksa ulang tiap perpanjangan.** Kalau suatu tahun tidak diperpanjang, tagihan melompat dari
+   nol ke ± Rp 22 juta per tahun — sekitar enam belas kali Contabo Cloud VPS 6.
+3. **Karena itu: pakai Azure seperti VPS biasa.** Satu mesin Linux, PostgreSQL dipasang sendiri seperti di Mi8,
+   berkas di penyimpanan objek, Cloudflare tetap di depan. **Jangan** memakai layanan khas Azure — AKS, App
+   Service, Front Door, Azure Database for PostgreSQL — yang membuat pindah keluar berarti merancang ulang,
+   bukan memindahkan. Dengan disiplin ini, pindah ke Contabo atau Biznet kalau hibahnya berhenti hanyalah
+   pekerjaan akhir pekan, memakai runbook yang sama dengan §6.
+
+Dua hal yang ikut terjawab oleh butir 3: sesi WhatsApp Kirim SQ menuntut mesin yang hidup terus, sehingga
+layanan "bayar per pemakaian" memang tidak terpakai di sini; dan Azure Database for PostgreSQL yang dikelola
+(± USD 76/bulan) membeli backup otomatis yang **sudah** kita punya lewat `sq-core-backup.sh` dan
+`sq-core-daily-restore-test`, sehingga biayanya tidak sepadan.
+
+Yang **tidak** boleh dibiayai dari kredit ini: mesin AI untuk Rapat SQ (§4.2). Mesin ber-GPU di Azure
+menghabiskan USD 2.000 dalam hitungan minggu, dan `rapat-sq-module-design.md` §5.5 memang melarangnya berbagi
+mesin dengan production.
+
 ### 4.2 Mesin untuk pekerjaan AI (bila Rapat SQ berlanjut)
 
 | Pilihan | Biaya | Catatan |
@@ -266,19 +331,23 @@ Itu justru alasan untuk tidak menunda, bukan alasan untuk ragu.
 | # | Pertanyaan | Saran |
 | --- | --- | --- |
 | 1 | Ukur dulu, atau belanja berdasarkan perkiraan? | **Ukur dulu.** Satu jam kerja mengganti seluruh §3.1 dengan angka nyata. Tanpa itu, belanja berdasarkan tebakan |
-| 2 | Lokal atau Eropa? | **Lokal.** Selisih ± Rp 158rb/bulan sepadan untuk menjaga latensi bagi pengguna yang semuanya di Indonesia |
-| 3 | Berapa RAM? | **12 GB.** Setelah RuangHadir, Samijaya, dan Karir SQ ikut dihitung, 8 GB menjadi lantai yang sempit, bukan target yang nyaman |
+| 2 | Lokal atau Eropa? | **Lokal — Azure Indonesia Central (Jakarta).** Pertanyaan ini tidak lagi soal biaya: kredit nirlaba menutupinya, jadi yang lebih baik untuk pengguna sekaligus yang gratis (§4.1b) |
+| 3 | Berapa RAM? | **16 GB.** Saran sebelumnya 12 GB diambil saat setiap GB harus dibayar sendiri. Dengan kredit, menekan ke 12 GB tidak menghemat apa pun yang terpakai (§4.1b) |
 | 4 | Kapan? | Sebelum pengguna nyata masuk ke SQ Core. Sesudahnya, migrasi yang sekarang murah akan menjadi mahal |
 | 4b | RuangHadir dan Samijaya ikut pindah? | Libatkan pemiliknya sebelum memutuskan. Keduanya ditandai "Do not change" dan tidak boleh ikut terbawa diam-diam |
 | 5 | Mi8 jadi apa setelahnya? | Dipertahankan tanpa diubah selama masa pengamatan, lalu dijadikan simpanan dingin. Jangan langsung dipakai ulang |
 | 6 | Backup dan media ke object storage? | Ya, dan Cloudflare R2 lebih dipilih karena tidak menambah vendor baru. Rinciannya dokumen tersendiri |
-| 7 | Mesin AI untuk Rapat SQ | Tunda. Bergantung pada tes akurasi Whisper, dan tidak boleh menyandera keputusan 1–6 |
+| 7 | Mesin AI untuk Rapat SQ | Tunda. Bergantung pada tes akurasi Whisper, dan tidak boleh menyandera keputusan 1–6. **Tidak** dibiayai dari kredit Azure (§4.1b) |
+| 8 | Pakai kredit Azure nirlaba? | **Ya, tetapi dipakai seperti VPS biasa:** satu mesin Linux, PostgreSQL dipasang sendiri, berkas di penyimpanan objek, Cloudflare di depan. Tidak ada layanan khas Azure, supaya pindah keluar tetap sehari kerja kalau hibahnya berhenti (§4.1b risiko 3) |
+| 9 | Pengaman kalau kredit habis di tengah tahun? | **Wajib ada sebelum pindah.** Rancang pemakaian di ± USD 130/bulan, pasang peringatan anggaran 50/75/90%, dan siapkan satu langganan berbayar cadangan. `adms` dan Karir SQ sudah melayani orang; berhenti karena kredit habis bukan kegagalan yang bisa diterima (§4.1b risiko 1) |
 
 ## 8. Langkah berikutnya
 
 1. Pengukuran di Mi8 (keputusan 1), hasilnya menggantikan §3.1.
 2. Commit skrip runtime yang hilang (§2.5).
-3. Putuskan §7 butir 2 dan 3.
-4. Baru setelah itu: runbook migrasi rinci beserta jendela pemeliharaan dan kriteria penerimaannya.
+3. Putuskan §7 butir 2, 3, 8, dan 9.
+4. Ambil harga sebenarnya dari Azure Pricing Calculator untuk wilayah Indonesia Central, menggantikan perkiraan §4.1b; sekalian pastikan apakah *reservation* bisa dibayar dari kredit sponsorship.
+5. Baru setelah itu: runbook migrasi rinci beserta jendela pemeliharaan dan kriteria penerimaannya.
 
-Tidak ada pembelian maupun perubahan production sebelum butir 1–3 selesai.
+Tidak ada pembelian maupun perubahan production sebelum butir 1–4 selesai. Kredit nirlaba menghapus
+pertanyaan biaya, bukan pertanyaan kesiapan: urutan §6 dan prasyaratnya tetap berlaku apa adanya.
