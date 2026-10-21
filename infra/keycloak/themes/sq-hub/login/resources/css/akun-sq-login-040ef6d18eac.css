@@ -202,7 +202,7 @@ h1, h2 {
   margin: 0 !important;
   color: var(--sq-ink) !important;
   font-family: var(--sq-font) !important;
-  font-size: 1.625rem !important;
+  font-size: 1.25rem !important;
   font-weight: 800 !important;
   line-height: 1.2 !important;
   letter-spacing: -.02em !important;
@@ -999,7 +999,7 @@ body[data-page-id="login-logout-confirm"] #kc-page-title,
 body[data-page-id="login-login-page-expired"] #kc-page-title,
 body[data-page-id="login-frontchannel-logout"] #kc-page-title {
   max-width: 22rem;
-  font-size: 1.375rem !important;
+  font-size: 1.25rem !important;
   text-wrap: balance;
 }
 
@@ -1254,7 +1254,7 @@ body[data-page-id="login-login-verify-email"] #kc-info .instruction { color: var
 
   #kc-page-title,
   .pf-v5-c-title,
-  h1, h2 { font-size: 1.5rem !important; }
+  h1, h2 { font-size: 1.1875rem !important; }
 
   .pf-v5-c-form-control,
   .form-control,

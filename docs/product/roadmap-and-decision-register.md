@@ -138,7 +138,7 @@ implementation or any production change.
 | Initial journey | Recruitment: candidates apply and follow their selection process. |
 | Application placement | Recruitment is its own SQ Core application, outside HCIS. HCIS stays the authority for employment; a hired candidate becomes an Employee only through an HCIS-owned contract. This supersedes the HCIS capability-map placement of REC-001 as an HCIS workspace. |
 | Identity boundary | Candidates use Akun SQ in a separate external Keycloak realm, not the staff realm. See ADR-0008 (PROPOSED). |
-| Product name | Karir SQ. The app lockup reads "Karir" above the gold Sabilul Qur'an wordmark. |
+| Product name | Karir SQ. On the Akun SQ sign-in pages the foundation logo comes first, with "Karir SQ" as a small label below it (owner, 2026-10-21; replaces the earlier large "Karir" above the wordmark). |
 | Staffing requests | A staffing request is approved by the unit head, then by the Yayasan, before a vacancy opens. |
 | SIRE migration | Applicants and their data move from the SIRE spreadsheet. Existing applicants sign in without creating a new account. |
 | Candidate sign-in | Candidates sign in with NIK and kata sandi. A former applicant who tries to register is told the NIK is already registered, signs in, and creates a kata sandi through password reset with a WhatsApp or email code. NIK stays out of tokens, URLs and logs. |
