@@ -1,9 +1,14 @@
 import { Activity, AlertTriangle, Ban, ListOrdered, LoaderCircle, LogOut, ShieldAlert, Smartphone } from "lucide-react";
 import { useState, type ReactNode } from "react";
 
+import { AppLauncher } from "@/components/AppLauncher";
 import { BrandLockup } from "@/components/BrandLockup";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import type { KirimRoute } from "@/kirim/routes";
+import type { WorkspaceApplication } from "@/types";
+
+/** Kirim SQ's own launcher tile when SQ Hub's list is unavailable or leaves it out (HUB-IMPL-022). */
+const KIRIM_LAUNCHER_APPLICATION: WorkspaceApplication = { key: "kirim-sq", name: "Kirim SQ", canonicalUrl: "/" };
 
 
 const navItems: Array<{ key: Exclude<KirimRoute, "not-found" | "impor">; label: string; href: string; icon: typeof Smartphone }> = [
@@ -20,11 +25,16 @@ const navItems: Array<{ key: Exclude<KirimRoute, "not-found" | "impor">; label: 
 export function KirimShell({
   active,
   displayName,
+  launcherApplications,
+  launcherPreviewOpen = false,
   onLogout,
   children,
 }: {
   active: KirimRoute;
   displayName?: string;
+  /** HUB-IMPL-022: the user's applications from SQ Hub; null or absent shows Kirim SQ only. */
+  launcherApplications?: WorkspaceApplication[] | null;
+  launcherPreviewOpen?: boolean;
   onLogout?: () => void | Promise<void>;
   children: ReactNode;
 }) {
@@ -40,6 +50,12 @@ export function KirimShell({
             <div className="hidden sm:block">
               <ThemeToggle />
             </div>
+            {/* sq-core-app-shell.md: Notifications → Launcher → Account. Kirim SQ has no notifications. */}
+            <AppLauncher
+              applications={launcherApplications ?? []}
+              current={launcherApplications?.find((application) => application.key === KIRIM_LAUNCHER_APPLICATION.key) ?? KIRIM_LAUNCHER_APPLICATION}
+              previewOpen={launcherPreviewOpen}
+            />
             {displayName ? <span className="hidden max-w-[12rem] truncate text-sm font-semibold text-muted-foreground md:inline">{displayName}</span> : null}
             {onLogout ? (
               <button

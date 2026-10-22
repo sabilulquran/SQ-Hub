@@ -4,10 +4,11 @@ import { AktivitasPage, type AktivitasState } from "@/kirim/AktivitasPage";
 import { AntreanPage, type AntreanState } from "@/kirim/AntreanPage";
 import { ImporPage, type ImporState } from "@/kirim/ImporPage";
 import { JanganHubungiPage, type JanganHubungiState } from "@/kirim/JanganHubungiPage";
-import { kirimFetch, KirimRequestError, type KirimContext } from "@/kirim/api";
+import { kirimFetch, KirimRequestError, loadKirimLauncher, type KirimContext } from "@/kirim/api";
 import { KirimShell, secondaryButton, StateCard } from "@/kirim/KirimShell";
 import { resolveKirimRoute } from "@/kirim/routes";
 import { NomorPage, type NomorState } from "@/kirim/NomorPage";
+import type { WorkspaceApplication } from "@/types";
 
 type AppState =
   | { status: "loading" }
@@ -34,6 +35,7 @@ export function KirimApp() {
     return error ? { status: "error", message: error } : { status: "loading" };
   });
   const route = resolveKirimRoute(window.location.pathname);
+  const [launcherApplications, setLauncherApplications] = useState<WorkspaceApplication[] | null>(null);
 
   const load = useCallback(async () => {
     setState({ status: "loading" });
@@ -56,6 +58,8 @@ export function KirimApp() {
     document.title = "Kirim SQ · Yayasan Sabilul Qur'an";
     if (startupError()) return;
     void load();
+    // HUB-IMPL-022: independent of the access check, so the way back to SQ Hub shows on every screen.
+    void loadKirimLauncher().then(setLauncherApplications);
   }, [load]);
 
   const logout = useCallback(async () => {
@@ -72,6 +76,7 @@ export function KirimApp() {
     <KirimAppView
       state={state}
       route={route}
+      launcherApplications={launcherApplications}
       onLogout={logout}
       onRetry={() => {
         window.history.replaceState({}, "", window.location.pathname);
@@ -84,19 +89,21 @@ export function KirimApp() {
 export function KirimAppView({
   state,
   route,
+  launcherApplications,
   onLogout,
   onRetry,
   preview,
 }: {
   state: AppState;
   route: ReturnType<typeof resolveKirimRoute>;
+  launcherApplications?: WorkspaceApplication[] | null;
   onLogout?: () => void | Promise<void>;
   onRetry?: () => void;
   preview?: { nomor?: NomorState; antrean?: AntreanState; janganHubungi?: JanganHubungiState; aktivitas?: AktivitasState; impor?: ImporState };
 }) {
   const displayName = state.status === "ready" ? state.context.displayName : undefined;
   return (
-    <KirimShell active={route} {...(displayName ? { displayName } : {})} {...(state.status === "ready" && onLogout ? { onLogout } : {})}>
+    <KirimShell active={route} launcherApplications={launcherApplications ?? null} {...(displayName ? { displayName } : {})} {...(state.status === "ready" && onLogout ? { onLogout } : {})}>
       {state.status === "loading" ? <StateCard kind="loading" title="Memeriksa akses Kirim SQ" /> : null}
       {state.status === "forbidden" ? (
         <StateCard kind="forbidden" title={FORBIDDEN_TEXT[state.code] ?? "Akses Kirim SQ ditolak"} body="Hubungi Kepala HCM bila Anda perlu mengelola nomor WhatsApp yayasan." />

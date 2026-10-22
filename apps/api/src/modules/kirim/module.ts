@@ -7,6 +7,7 @@ import { HubOidcProvider } from "../hub-auth/oidc-provider.js";
 import { PgHubAuthRepository } from "../hub-auth/repository.js";
 import { HubAuthService, type HubAuthRuntime } from "../hub-auth/service.js";
 import { HubTokenVault } from "../hub-auth/token-vault.js";
+import { PgHubWorkspaceRepository, type HubWorkspaceApplicationSource } from "../hub-auth/workspace-repository.js";
 import { KirimAdminService } from "./admin.js";
 import type { KirimConfig } from "./config.js";
 import { KirimConversations } from "./conversations.js";
@@ -72,6 +73,10 @@ export function createKirimModule(input: {
   config: KirimConfig;
   keycloakIssuer: string;
   access: Pick<ApplicationAccessService, "checkAccess">;
+  /** HUB-IMPL-022: the header launcher list; defaults to the Hub workspace rows in the same database. */
+  workspaceApplications?: HubWorkspaceApplicationSource;
+  /** Hub public origin, so a registry row for SQ Hub itself never shows twice in the launcher. */
+  hubOrigin?: string;
   secureCookies?: boolean;
   /** Test seams; production uses Keycloak, the OIDC client and fetch. */
   verifyMachineToken?: VerifyMachineToken;
@@ -104,6 +109,8 @@ export function createKirimModule(input: {
   const worker = new KirimSendWorker(pool, crypto, service, providers, { log });
   const webhooks = new KirimWebhookSender(pool, crypto, { ...(input.webhookTransport ? { transport: input.webhookTransport } : {}), log });
 
+  const workspaceApplications = input.workspaceApplications ?? new PgHubWorkspaceRepository(pool);
+
   const verifyMachineToken = input.verifyMachineToken ?? createKeycloakMachineTokenVerifier({
     issuer: input.keycloakIssuer,
     audience: config.tokenAudience,
@@ -120,7 +127,7 @@ export function createKirimModule(input: {
           redirectUri: `${config.admin.publicOrigin}/api/auth/callback`,
           postLogoutRedirectUri: `${config.admin.publicOrigin}/`,
         }),
-        { listAuthorizedApplications: async () => [] },
+        workspaceApplications,
         {
           sessionIdleHours: 8,
           sessionMaxHours: 12,
@@ -152,7 +159,14 @@ export function createKirimModule(input: {
       });
       if (adminAuth && config.admin) {
         registerKirimAuthRoutes(app, { auth: adminAuth, publicOrigin: config.admin.publicOrigin });
-        registerKirimAdminRoutes(app, { auth: adminAuth, access: input.access, admin, history, publicOrigin: config.admin.publicOrigin });
+        registerKirimAdminRoutes(app, {
+          auth: adminAuth,
+          access: input.access,
+          admin,
+          history,
+          publicOrigin: config.admin.publicOrigin,
+          launcher: { applications: workspaceApplications, ...(input.hubOrigin ? { hubOrigin: input.hubOrigin } : {}) },
+        });
       }
     },
     async start(startLog) {

@@ -58,6 +58,13 @@ describe("SQ Hub navigation experience", () => {
     expect(html).toContain('aria-expanded="true"');
   });
 
+  it("in SQ Hub the SQ Hub row is the current page and links stay relative", () => {
+    const html = renderToStaticMarkup(<AppLauncher applications={workspace.applications} previewOpen />);
+    expect(html).toContain('href="/" aria-current="page"');
+    expect(html).toContain('href="/apps"');
+    expect(html.match(/Di sini/g)?.length).toBe(1);
+  });
+
   it("account menu holds identity, Akun SQ, Tampilan and Keluar only", () => {
     const ordinary = renderToStaticMarkup(
       <AccountMenu user={workspace.user} onLogout={() => undefined} previewOpen />,

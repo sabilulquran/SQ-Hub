@@ -3,8 +3,10 @@ import { createHash } from "node:crypto";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { z } from "zod";
 
+import { listLauncherApplications } from "../application-access/launcher.js";
 import type { ApplicationAccessService } from "../application-access/service.js";
 import { HubAuthError, readCookie, type HubAuthRuntime } from "../hub-auth/service.js";
+import type { HubWorkspaceApplicationSource } from "../hub-auth/workspace-repository.js";
 import {
   activityQuerySchema,
   adminOptoutSchema,
@@ -46,6 +48,8 @@ export function registerKirimAdminRoutes(
     admin: KirimAdminService;
     history?: KirimHistoryImport;
     publicOrigin: string;
+    /** HUB-IMPL-022: the user's applications for the header launcher. */
+    launcher?: { applications: HubWorkspaceApplicationSource; hubOrigin?: string };
   },
 ) {
   /**
@@ -121,6 +125,29 @@ export function registerKirimAdminRoutes(
     displayName,
     capabilities: { nomor: true, antrean: true, jangan_hubungi: true, aktivitas: true, impor_riwayat: Boolean(input.history) },
   }));
+  const launcher = input.launcher;
+  if (launcher) {
+    // HUB-IMPL-022 §5: Kirim SQ runs in the Hub API process, so it reads the list directly.
+    // Only a Kirim session is needed: the list is the signed-in person's own applications, and
+    // someone without the Kirim admin role still needs the way back to SQ Hub. A failed read is
+    // not an error page; the browser falls back to the Kirim SQ tile only.
+    app.get(`${KIRIM_ADMIN_PREFIX}/launcher`, async (request, reply) => {
+      reply.header("Cache-Control", "no-store");
+      let identity;
+      try {
+        const session = await input.auth.getSession(readCookie(request.headers.cookie, KIRIM_SESSION_COOKIE_NAME));
+        identity = { issuer: session.issuer, subject: session.subject };
+      } catch (error) {
+        if (error instanceof HubAuthError) return sendKirimError(reply, 401, "unauthenticated", "Sesi Kirim SQ tidak ada atau sudah berakhir.");
+        return reply.send({ applications: null, unavailable: true });
+      }
+      try {
+        return reply.send({ applications: await listLauncherApplications(launcher.applications, identity, launcher.hubOrigin) });
+      } catch {
+        return reply.send({ applications: null, unavailable: true });
+      }
+    });
+  }
   read("/devices", () => input.admin.listDevices());
   write("POST", "/devices", (request, actor) => input.admin.createDevice(actor, createDeviceSchema.parse(body(request))), 201);
   write("PATCH", "/devices/:kode", (request, actor) => input.admin.updateDevice(actor, params(request).kode!, updateDeviceSchema.parse(body(request))));

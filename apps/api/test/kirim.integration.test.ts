@@ -632,6 +632,45 @@ async function adminAs(session: string, options: { access?: boolean; admin?: boo
 }
 
 describe("Admin API (§6.4, §7.2)", () => {
+  it("HUB-IMPL-022: lists the signed-in person's applications for the launcher, Kirim SQ included", async () => {
+    expect((await admin("GET", "/launcher", { session: "nobody" })).statusCode).toBe(401);
+    const identity = await adminAs("no-role", { admin: false });
+    const actor = { kind: "system" as const, ref: "test" };
+    await accessService.upsertApplication({ applicationKey: "hcis", name: "HCIS", canonicalUrl: "https://hcis.sabilulquran.or.id", status: "active", actor });
+    await accessService.upsertApplication({ applicationKey: "aset-sq", name: "Aset SQ", canonicalUrl: "https://aset.sabilulquran.or.id", status: "inactive", actor });
+    await accessService.grant({ identity, applicationKey: "hcis", actor });
+    await accessService.grant({ identity, applicationKey: "aset-sq", actor });
+
+    // No kirim_admins row: the launcher still answers, so the way back to SQ Hub stays.
+    const response = await admin("GET", "/launcher", { session: "no-role" });
+    expect(response.statusCode).toBe(200);
+    expect(response.headers["cache-control"]).toBe("no-store");
+    expect(response.json()).toEqual({
+      applications: [
+        { key: "hcis", name: "HCIS", canonicalUrl: "https://hcis.sabilulquran.or.id" },
+        { key: "kirim-sq", name: "Kirim SQ", canonicalUrl: ORIGIN },
+      ],
+    });
+  });
+
+  it("HUB-IMPL-022: answers unavailable instead of an error when the list cannot be read", async () => {
+    await adminAs("admin-session");
+    const failing = createKirimModule({
+      pool,
+      config,
+      keycloakIssuer: issuer,
+      access: accessService,
+      adminAuth,
+      providers,
+      workspaceApplications: { listAuthorizedApplications: () => Promise.reject(new Error("database down")) },
+    });
+    const failingApp = buildApp({ accessService, verifyMachineToken: async () => ({ clientId: "unused" }), kirim: failing });
+    const response = await failingApp.inject({ method: "GET", url: "/admin/kirim/launcher", headers: { cookie: "sq_kirim_session=admin-session" } });
+    await failingApp.close();
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({ applications: null, unavailable: true });
+  });
+
   it("requires Application Access and a kirim_admins row", async () => {
     expect((await admin("GET", "/devices", { session: "nobody" })).statusCode).toBe(401);
     await adminAs("no-access", { access: false });
