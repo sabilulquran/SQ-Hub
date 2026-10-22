@@ -50,10 +50,20 @@ const previewApplications = [
   },
 ];
 
+// HUB-IMPL-022 preview: `?launcher=unavailable` shows the Kirim SQ-only fallback.
+const kirimLauncherPreview =
+  params.get("launcher") === "unavailable"
+    ? null
+    : [
+        { key: "aset-sq", name: "Aset SQ", canonicalUrl: "https://aset.example" },
+        { key: "hcis", name: "HCIS", canonicalUrl: "https://hcis.example" },
+        { key: "kirim-sq", name: "Kirim SQ", canonicalUrl: "/kirim" },
+      ];
+
 function renderKirimPreview() {
   const state = params.get("state");
   const route = resolveKirimRoute(window.location.pathname.replace(/^\/kirim/, "") || "/");
-  if (state === "forbidden") return <KirimAppView state={{ status: "forbidden", code: "kirim_admin_required" }} route={route} />;
+  if (state === "forbidden") return <KirimAppView state={{ status: "forbidden", code: "kirim_admin_required" }} route={route} launcherApplications={kirimLauncherPreview} />;
   const pageState = state === "loading" ? { status: "loading" as const } : state === "error" ? { status: "error" as const } : null;
   const nomor = pageState ?? (state === "empty" ? { ...kirimNomorFixture, list: { devices: [], peringatan: { terputus: [], webhook_habis: 0 } } } as typeof kirimNomorFixture : kirimNomorFixture);
   const antrean = pageState ?? (state === "empty" && kirimAntreanFixture.status === "ready" ? { ...kirimAntreanFixture, queue: { ...kirimAntreanFixture.queue, items: [] } } : kirimAntreanFixture);
@@ -61,6 +71,7 @@ function renderKirimPreview() {
     <KirimAppView
       state={{ status: "ready", context: { displayName: "Kepala HCM (pratinjau)" } }}
       route={route}
+      launcherApplications={kirimLauncherPreview}
       onLogout={() => undefined}
       preview={{ nomor, antrean }}
     />

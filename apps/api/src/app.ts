@@ -1,4 +1,4 @@
-import Fastify from "fastify";
+import Fastify, { type FastifyReply, type FastifyRequest } from "fastify";
 import { z } from "zod";
 
 import type { KeycloakAccountSelfService } from "./modules/account-self-service/client.js";
@@ -13,7 +13,9 @@ import {
   identityRefSchema,
   type ApplicationAccessService,
 } from "./modules/application-access/service.js";
+import { listLauncherApplications } from "./modules/application-access/launcher.js";
 import { registerHubAuthRoutes } from "./modules/hub-auth/routes.js";
+import type { HubWorkspaceApplicationSource } from "./modules/hub-auth/workspace-repository.js";
 import type { KirimModule } from "./modules/kirim/module.js";
 import { KIRIM_ADMIN_PREFIX } from "./modules/kirim/routes-admin.js";
 import { KIRIM_INTERNAL_PREFIX } from "./modules/kirim/routes-internal.js";
@@ -33,6 +35,13 @@ const checkBodySchema = z
   .object({
     identity: identityRefSchema,
     applicationKey: applicationKeySchema,
+  })
+  .strict();
+
+// HUB-IMPL-022 §3: identity only; an extra key is rejected the same way as on /check.
+const launcherBodySchema = z
+  .object({
+    identity: identityRefSchema,
   })
   .strict();
 
@@ -58,6 +67,8 @@ export function buildApp(input: {
   logStream?: NodeJS.WritableStream;
   organizationDirectory?: Parameters<typeof registerOrganizationDirectoryRoutes>[1];
   kirim?: Pick<KirimModule, "register">;
+  /** HUB-IMPL-022: source of POST /internal/v1/application-access/launcher (same rows as /api/workspace). */
+  launcher?: { applications: HubWorkspaceApplicationSource; hubOrigin?: string };
 }) {
   const app = Fastify({ logger: input.logger || input.logStream ? {
     ...(input.logStream ? { stream: input.logStream } : {}),
@@ -74,21 +85,29 @@ export function buildApp(input: {
 
   app.get("/health", async () => ({ status: "ok" }));
 
-  app.post("/internal/v1/application-access/check", async (request, reply) => {
+  /** One machine-token check for every Application Access internal route; false means already answered. */
+  async function machineAuthorized(request: FastifyRequest, reply: FastifyReply): Promise<boolean> {
     const token = readBearerToken(request.headers.authorization);
     if (!token) {
-      return reply.code(401).send({ error: "UNAUTHENTICATED" });
+      await reply.code(401).send({ error: "UNAUTHENTICATED" });
+      return false;
     }
 
     try {
       await input.verifyMachineToken(token);
+      return true;
     } catch (error) {
       if (error instanceof MachineAuthError) {
         const status = error.code === "FORBIDDEN_CLIENT" ? 403 : 401;
-        return reply.code(status).send({ error: error.code });
+        await reply.code(status).send({ error: error.code });
+        return false;
       }
       throw error;
     }
+  }
+
+  app.post("/internal/v1/application-access/check", async (request, reply) => {
+    if (!(await machineAuthorized(request, reply))) return reply;
 
     const parsed = checkBodySchema.safeParse(request.body);
     if (!parsed.success) {
@@ -107,6 +126,29 @@ export function buildApp(input: {
     );
     return reply.code(200).send(decision);
   });
+
+  const launcher = input.launcher;
+  if (launcher) {
+    // HUB-IMPL-022: the header launcher list for one staff identity, asked server-to-server by an app.
+    app.post("/internal/v1/application-access/launcher", async (request, reply) => {
+      reply.header("Cache-Control", "no-store");
+      if (!(await machineAuthorized(request, reply))) return reply;
+
+      const parsed = launcherBodySchema.safeParse(request.body);
+      if (!parsed.success) {
+        // Paths and issue codes only, as on /check: identity values stay out of answer and log.
+        request.log.warn(
+          { category: "internal_invalid_request", issues: invalidRequestIssues(parsed.error) },
+          "application launcher body rejected",
+        );
+        return reply.code(400).send({ error: "INVALID_REQUEST", fields: invalidRequestFields(parsed.error) });
+      }
+
+      // An unknown identity has no grants, so it gets an empty list rather than an error.
+      const applications = await listLauncherApplications(launcher.applications, parsed.data.identity, launcher.hubOrigin);
+      return reply.code(200).send({ applications });
+    });
+  }
 
   if (input.hubAuth) {
     if (!input.hubRedirectUri) {

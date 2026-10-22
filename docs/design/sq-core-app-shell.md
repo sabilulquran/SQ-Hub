@@ -35,6 +35,13 @@ After the direction C rollout (2026-10-16) the apps shared colours but not struc
 | 5 | **Account menu** | Avatar + name + role, opening a menu with: identity block (name, masked NIP, unit, role badges), **Akun SQ** (profile, security, sessions; opens SQ Hub `/account`), **Tampilan** (Terang · Gelap · Sistem), **Bantuan**, then **Keluar** (danger tone, separated). This is the **only** place for account, role and sign-out. |
 | 6 | **Sidebar** | 248 px, below the header, scrolls independently. **Navigation only:** grouped links with small uppercase group labels, category dots, counts as badges. No profile card, Keluar button, app description or info boxes. |
 
+### Launcher list (HUB-IMPL-022)
+
+- The list comes from SQ Hub: the same rows as Hub's own launcher (active application + active Application Access grant, ordered by name), without SQ Hub itself. Apps fetch it on their backend through `POST /internal/v1/application-access/launcher` with their existing machine client and pass it to the browser on a same-origin route. The browser never calls SQ Hub across origins and no cookie is shared across subdomains.
+- Outside SQ Hub, the SQ Hub row links to `https://hub.sabilulquran.or.id` and "Lihat semua aplikasi" to `https://hub.sabilulquran.or.id/apps`. The current app's tile is marked "Di sini" and is shown even when the list is unavailable, empty or leaves it out.
+- Icons and category colours per application key are listed in [HUB-IMPL-022 §6](../specs/HUB-IMPL-022-shared-app-launcher-list.md#6-key--icon-and-category-colour); apps copy that table.
+- Kirim SQ follows this from HUB-IMPL-022 (launcher between the theme toggle and the account controls).
+
 Fixed order on the right of the header: **Notifications → Launcher → Account**. Apps may add a search field to the left of notifications. They must not add other controls there.
 
 ### Admin area

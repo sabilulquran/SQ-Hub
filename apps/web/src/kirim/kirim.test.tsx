@@ -11,6 +11,7 @@ import { AntreanView, type AntreanFilter } from "@/kirim/AntreanPage";
 import { ImporView, type ImporState } from "@/kirim/ImporPage";
 import { JanganHubungiView, type JanganHubungiState, type OptoutFilter } from "@/kirim/JanganHubungiPage";
 import { KirimAppView } from "@/kirim/KirimApp";
+import { KirimShell } from "@/kirim/KirimShell";
 import { NomorView, PairingContent } from "@/kirim/NomorPage";
 import { isKirimHost, resolveKirimRoute } from "@/kirim/routes";
 
@@ -197,5 +198,58 @@ describe("KIRIM-IMPL-002 §12 screens", () => {
 
   it("links each active number to its history import", () => {
     expect(renderToStaticMarkup(<NomorView state={kirimNomorFixture} onOpen={noop} onRetry={noop} />)).toContain('href="/impor?nomor=spmb"');
+  });
+});
+
+describe("Kirim SQ header launcher (HUB-IMPL-022)", () => {
+  const applications = [
+    { key: "aset-sq", name: "Aset SQ", canonicalUrl: "https://aset.sabilulquran.or.id" },
+    { key: "hcis", name: "HCIS", canonicalUrl: "https://hcis.sabilulquran.or.id" },
+    { key: "kirim-sq", name: "Kirim SQ", canonicalUrl: "https://kirim.sabilulquran.or.id" },
+  ];
+
+  function shell(launcherApplications: typeof applications | null) {
+    return renderToStaticMarkup(
+      <KirimShell active="nomor" displayName="Kepala HCM" onLogout={noop} launcherApplications={launcherApplications} launcherPreviewOpen>
+        <p>isi</p>
+      </KirimShell>,
+    );
+  }
+
+  it("shows SQ Hub first, then the user's applications, with Kirim SQ marked Di sini", () => {
+    const html = shell(applications);
+    expect(html).toContain('href="https://hub.sabilulquran.or.id"');
+    expect(html).toContain("Beranda semua aplikasi Anda");
+    expect(html.indexOf("Beranda semua aplikasi Anda")).toBeLessThan(html.indexOf("Aset SQ"));
+    expect(html.indexOf("Aset SQ")).toBeLessThan(html.indexOf(">HCIS<"));
+    expect(html).toContain('href="https://hub.sabilulquran.or.id/apps"');
+    expect(html).toContain("Lihat semua aplikasi");
+    // Only Kirim SQ is the current page; SQ Hub is not.
+    expect(html.match(/aria-current="page"/g)?.length).toBe(2); // nav tab + launcher tile
+    const dialog = html.slice(html.indexOf('role="dialog"'));
+    const currentTile = dialog.slice(dialog.indexOf('aria-current="page"'));
+    expect(currentTile.slice(0, currentTile.indexOf("</a>"))).toMatch(/Kirim SQ.*Di sini/);
+    expect(html.match(/Di sini/g)?.length).toBe(1);
+  });
+
+  it("puts the launcher between the theme toggle and the account controls", () => {
+    const html = shell(applications);
+    expect(html.indexOf("Buka peluncur aplikasi")).toBeLessThan(html.indexOf("Kepala HCM"));
+    expect(html.indexOf("Buka peluncur aplikasi")).toBeLessThan(html.indexOf("Keluar"));
+  });
+
+  it("falls back to the Kirim SQ tile only when the list is unavailable", () => {
+    const html = shell(null);
+    expect(html).toContain("Beranda semua aplikasi Anda");
+    expect(html).toContain("Di sini");
+    expect(html).not.toContain("Belum ada aplikasi yang tersedia");
+    expect(html).not.toContain("HCIS");
+  });
+
+  it("still shows Kirim SQ when the list leaves it out", () => {
+    const html = shell(applications.filter((application) => application.key !== "kirim-sq"));
+    expect(html).toContain("HCIS");
+    expect(html.match(/Di sini/g)?.length).toBe(1);
+    expect(html.indexOf("Kirim SQ</span>")).toBeLessThan(html.indexOf("Aset SQ"));
   });
 });

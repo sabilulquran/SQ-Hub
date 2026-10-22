@@ -1,3 +1,5 @@
+import type { WorkspaceApplication } from "@/types";
+
 /** Browser contract for `/api/admin/kirim/*` (KIRIM-IMPL-001 §6.4, KIRIM-IMPL-002 §12). No message bodies or full numbers. */
 
 export type DeviceStatus = "belum_dipasang" | "menunggu_pairing" | "tersambung" | "terputus" | "nonaktif";
@@ -148,4 +150,17 @@ export async function kirimFetch<T>(path: string, init: { method?: "GET" | "POST
     throw new KirimRequestError(response.status, payload.error?.code ?? "unknown", payload.error?.message ?? "Permintaan gagal.");
   }
   return (await response.json()) as T;
+}
+
+/**
+ * HUB-IMPL-022: the signed-in person's applications for the header launcher. Any failure
+ * (no session, SQ Hub list unavailable, network) returns null, and the launcher shows Kirim SQ only.
+ */
+export async function loadKirimLauncher(): Promise<WorkspaceApplication[] | null> {
+  try {
+    const body = await kirimFetch<{ applications: WorkspaceApplication[] | null }>("/launcher");
+    return Array.isArray(body.applications) ? body.applications : null;
+  } catch {
+    return null;
+  }
 }

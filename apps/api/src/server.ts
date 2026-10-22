@@ -43,6 +43,9 @@ const accessService = new ApplicationAccessService(repository);
 const organMembershipStore = new PgOrganMembershipRepository(pool);
 const governanceObservations = new PgGovernanceObservationStore(pool);
 const platformAdmin = new PlatformAdminService(new PgPlatformAdminRepository(pool));
+// HUB-IMPL-022: one workspace source for Hub's own launcher, the internal launcher route and Kirim SQ.
+const workspaceApplications = new PgHubWorkspaceRepository(pool);
+const hubOrigin = new URL(config.hubOidcRedirectUri).origin;
 const identityDirectory = new KeycloakIdentityDirectory({
   baseUrl: config.keycloakDirectoryBaseUrl,
   realm: config.keycloakDirectoryRealm,
@@ -102,7 +105,7 @@ const accountSelfService = new KeycloakAccountSelfService(config.keycloakIssuer)
 const hubAuth = new HubAuthService(
   new PgHubAuthRepository(pool),
   hubOidcProvider,
-  new PgHubWorkspaceRepository(pool),
+  workspaceApplications,
   {
     sessionIdleHours: config.hubSessionIdleHours,
     sessionMaxHours: config.hubSessionMaxHours,
@@ -137,6 +140,8 @@ const kirim = kirimConfig
       config: kirimConfig,
       keycloakIssuer: config.keycloakIssuer,
       access: accessService,
+      workspaceApplications,
+      hubOrigin,
       secureCookies: config.hubCookieSecure,
       log: (entry, message) => kirimLog(entry, message),
     })
@@ -147,7 +152,8 @@ const app = buildApp({
   verifyMachineToken,
   hubAuth,
   hubRedirectUri: config.hubOidcRedirectUri,
-  adminAllowedOrigin: new URL(config.hubOidcRedirectUri).origin,
+  adminAllowedOrigin: hubOrigin,
+  launcher: { applications: workspaceApplications, hubOrigin },
   platformAdmin,
   adminApplicationRegistry: accessService,
   adminApplicationAccess: accessService,
