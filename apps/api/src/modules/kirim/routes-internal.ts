@@ -228,7 +228,7 @@ function registerConversationRoutes(scope: FastifyInstance, conversations: Kirim
       const consumer = await authenticate(request, reply);
       if (!consumer) return reply;
       try {
-        const parsed = query ? query.parse(request.query) : undefined;
+        const parsed = (query ? query.parse(request.query) : undefined) as z.infer<Q>;
         return reply.send(await handler(consumer, request.params, parsed, request));
       } catch (error) {
         return handleKirimError(reply, error);
