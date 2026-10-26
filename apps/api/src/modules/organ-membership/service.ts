@@ -498,7 +498,7 @@ export class OrganMembershipService {
   }
 
   private async requireMembership(id: string): Promise<OrganMembershipRecord> {
-    const safeId = z.string().uuid().safeParse(id);
+    const safeId = z.guid().safeParse(id);
     if (!safeId.success) throw new OrganMembershipError("ORGAN_MEMBERSHIP_NOT_FOUND", 404);
     const membership = await this.store.getById(safeId.data);
     if (!membership) throw new OrganMembershipError("ORGAN_MEMBERSHIP_NOT_FOUND", 404);

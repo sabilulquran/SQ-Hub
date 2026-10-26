@@ -518,7 +518,7 @@ export class KirimAdminService {
 
   /** Only opt-outs an admin created can be removed here; a module withdraws its own (§8). */
   async removeOptout(actor: AdminActor, id: string, alasan: string) {
-    if (!z.string().uuid().safeParse(id).success) throw new KirimApiError(404, "not_found", "Opt-out tidak ditemukan.");
+    if (!z.guid().safeParse(id).success) throw new KirimApiError(404, "not_found", "Opt-out tidak ditemukan.");
     return withTransaction(this.pool, async (client) => {
       const removed = await client.query<{ nomorHmac: string; cakupan: string }>(
         `DELETE FROM kirim_optouts WHERE id = $1 AND sumber = 'admin' RETURNING nomor_hmac AS "nomorHmac", cakupan`,
@@ -623,7 +623,7 @@ export class KirimAdminService {
   }
 
   private async lockOutbox(client: Pick<Pool, "query">, messageId: string) {
-    if (!z.string().uuid().safeParse(messageId).success) throw new KirimApiError(404, "not_found", "Pesan tidak ditemukan.");
+    if (!z.guid().safeParse(messageId).success) throw new KirimApiError(404, "not_found", "Pesan tidak ditemukan.");
     const result = await client.query<{ id: string; status: string; errorCode: string | null }>(
       `SELECT id, status, error_code AS "errorCode" FROM kirim_outbox WHERE message_id = $1 FOR UPDATE`,
       [messageId],

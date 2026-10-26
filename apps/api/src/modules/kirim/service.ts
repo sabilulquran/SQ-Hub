@@ -39,7 +39,7 @@ export const sendMessageSchema = z
     jenis: z.enum(["notifikasi", "kode"]),
     to: z.string().trim().min(1).max(40),
     text: z.string().min(1).max(4096).optional(),
-    media_id: z.string().uuid().optional(),
+    media_id: z.guid().optional(),
     caption: z.string().min(1).max(4096).optional(),
     prioritas: z.enum(["normal", "tinggi"]).default("normal"),
     kedaluwarsa: z.string().datetime({ offset: true }).optional(),
@@ -211,7 +211,7 @@ export class KirimService {
   }
 
   async getMessage(consumer: ConsumerRow, id: string) {
-    if (!z.string().uuid().safeParse(id).success) throw new KirimApiError(404, "not_found", "Pesan tidak ditemukan.");
+    if (!z.guid().safeParse(id).success) throw new KirimApiError(404, "not_found", "Pesan tidak ditemukan.");
     const result = await this.pool.query<{
       id: string;
       ref: string | null;

@@ -15,13 +15,13 @@ const MAX_SEGMENT_LENGTH = 64;
 
 export type InvalidRequestIssue = { path: string; code: string };
 
-function segment(value: string | number): string {
+function segment(value: PropertyKey): string {
   const text = String(value).slice(0, MAX_SEGMENT_LENGTH);
   return text.replace(/[^A-Za-z0-9_-]/g, "?");
 }
 
 /** An issue on the body as a whole (a cross-field rule) has no path of its own. */
-function join(path: readonly (string | number)[]): string {
+function join(path: readonly PropertyKey[]): string {
   return path.length === 0 ? "(body)" : path.map(segment).join(".");
 }
 

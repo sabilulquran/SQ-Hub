@@ -10,7 +10,7 @@ const optionalNonempty = <T extends z.ZodTypeAny>(schema: T) => z.preprocess(
 
 const foundationConfigSchema = z.object({
   PORT: z.coerce.number().int().min(1).max(65535).default(3100),
-  HOST: z.string().ip().default("0.0.0.0"),
+  HOST: z.union([z.ipv4(), z.ipv6()]).default("0.0.0.0"),
   DATABASE_URL: z.string().min(1),
   HCIS_CANONICAL_URL: z.string().url(),
   KEYCLOAK_ISSUER: z.string().url(),
@@ -26,7 +26,7 @@ const serverConfigSchema = foundationConfigSchema.extend({
   HUB_SESSION_IDLE_HOURS: z.coerce.number().positive().max(8).default(8),
   HUB_SESSION_MAX_HOURS: z.coerce.number().positive().max(12).default(12),
   HUB_OIDC_TRANSACTION_TTL_MINUTES: z.coerce.number().positive().max(15).default(10),
-  HUB_COOKIE_SECURE: booleanString.default("true"),
+  HUB_COOKIE_SECURE: booleanString.prefault("true"),
   KEYCLOAK_DIRECTORY_BASE_URL: z.string().url(),
   KEYCLOAK_DIRECTORY_REALM: z.string().trim().min(1).default("sq-staff-staging"),
   KEYCLOAK_DIRECTORY_CLIENT_ID: z.string().trim().min(1).default("sq-hub-directory-staging"),
