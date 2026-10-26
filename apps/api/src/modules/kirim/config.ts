@@ -23,7 +23,7 @@ const optionalNonempty = <T extends z.ZodTypeAny>(schema: T) =>
   z.preprocess((value) => (value === "" ? undefined : value), schema.optional());
 
 const envSchema = z.object({
-  KIRIM_ENABLED: booleanString.default("false"),
+  KIRIM_ENABLED: booleanString.prefault("false"),
   KIRIM_TOKEN_AUDIENCE: z.string().trim().min(1).default("sq-hub-kirim"),
   KIRIM_DATA_KEYS: optionalNonempty(z.string().min(1)),
   KIRIM_LOOKUP_KEY: optionalNonempty(z.string().min(1)),
@@ -34,7 +34,7 @@ const envSchema = z.object({
   KIRIM_GROUP_REFRESH_INTERVAL_MS: z.coerce.number().int().min(60_000).max(86_400_000).default(900_000),
   KIRIM_CONTACT_REFRESH_INTERVAL_MS: z.coerce.number().int().min(60_000).max(604_800_000).default(21_600_000),
   KIRIM_REPLY_DEFAULT_TTL_HOURS: z.coerce.number().int().min(1).max(168).default(72),
-  KIRIM_HISTORY_IMPORT_ENABLED: booleanString.default("false"),
+  KIRIM_HISTORY_IMPORT_ENABLED: booleanString.prefault("false"),
   JALURPESAN_BASE_URL: optionalNonempty(z.string().url()),
   JALURPESAN_PLATFORM_KEY: optionalNonempty(z.string().min(1)),
   JALURPESAN_WEBHOOK_SECRET: optionalNonempty(z.string().min(1)),

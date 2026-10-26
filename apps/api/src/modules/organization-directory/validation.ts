@@ -57,7 +57,7 @@ export function validateSnapshot(value: unknown, expectedAsOf: string): Snapshot
   for (const kind of ["units", "positions", "people"] as const) {
     assert(s[kind].length === s.counts[kind]);
     assert(new Set(s[kind].map((row) => row.id)).size === s[kind].length);
-    for (const row of s[kind]) assert(z.string().uuid().safeParse(row.id.split(":")[2]).success);
+    for (const row of s[kind]) assert(z.guid().safeParse(row.id.split(":")[2]).success);
   }
   for (const row of [...s.units, ...s.positions]) {
     assert(businessDateSchema.safeParse(row.effectiveFrom).success && row.effectiveFrom <= s.asOf);

@@ -51,7 +51,7 @@ export const organizationDirectorySnapshotSchema = z.object({
   schemaVersion: z.literal(ORGANIZATION_DIRECTORY_SCHEMA_VERSION),
   source: z.object({
     system: z.literal("hcis"),
-    snapshotId: z.string().uuid(),
+    snapshotId: z.guid(),
     effectiveOn: isoDate,
     publishedAt: z.string().datetime(),
     createdAt: z.string().datetime(),

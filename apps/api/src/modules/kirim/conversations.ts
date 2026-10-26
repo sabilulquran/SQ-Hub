@@ -42,7 +42,7 @@ export const openConversationSchema = z.object({ to: z.string().trim().min(1).ma
 export const replySchema = z
   .object({
     text: z.string().min(1).max(4096).optional(),
-    media_id: z.string().uuid().optional(),
+    media_id: z.guid().optional(),
     caption: z.string().min(1).max(4096).optional(),
     atas_nama: atasNamaSchema,
     ref: z.string().max(200).optional(),
@@ -53,7 +53,7 @@ export const replySchema = z
   .refine((body) => body.caption === undefined || body.media_id !== undefined, { message: "caption is only allowed with media_id" });
 export type ReplyInput = z.infer<typeof replySchema>;
 
-export const readSchema = z.object({ atas_nama: atasNamaSchema, sampai_message_id: z.string().uuid() }).strict();
+export const readSchema = z.object({ atas_nama: atasNamaSchema, sampai_message_id: z.guid() }).strict();
 
 /** T-2: an officer reply waits up to 72 hours by default, at most 7 days. */
 export const REPLY_DEFAULT_TTL_HOURS = 72;
@@ -95,7 +95,7 @@ export function decodeCursor(value: string | undefined): { at: Date; id: string 
   if (!value) return null;
   const decoded = Buffer.from(value, "base64url").toString("utf8");
   const [at, id] = decoded.split("|");
-  if (!at || !id || Number.isNaN(Date.parse(at)) || !z.string().uuid().safeParse(id).success) {
+  if (!at || !id || Number.isNaN(Date.parse(at)) || !z.guid().safeParse(id).success) {
     throw new KirimApiError(400, "invalid_cursor", "Cursor tidak sah.");
   }
   return { at: new Date(at), id };
@@ -183,7 +183,7 @@ export class KirimConversations {
 
   /** A conversation on another consumer's number answers 404, like one that does not exist. */
   private async ownedConversation(db: Queryable, consumer: ConsumerRow, id: string, lock = false): Promise<ConversationRow> {
-    if (!z.string().uuid().safeParse(id).success) throw new KirimApiError(404, "not_found", "Percakapan tidak ditemukan.");
+    if (!z.guid().safeParse(id).success) throw new KirimApiError(404, "not_found", "Percakapan tidak ditemukan.");
     const result = await db.query<ConversationRow>(
       `SELECT ${CONVERSATION_COLUMNS} FROM kirim_conversations c JOIN kirim_devices d ON d.id = c.device_id
        WHERE c.id = $1 AND d.pemilik_consumer_id = $2 ${lock ? "FOR UPDATE OF c" : ""}`,
@@ -195,7 +195,7 @@ export class KirimConversations {
   }
 
   private async ownedGroup(db: Queryable, consumer: ConsumerRow, id: string, lock = false) {
-    if (!z.string().uuid().safeParse(id).success) throw new KirimApiError(404, "not_found", "Grup tidak ditemukan.");
+    if (!z.guid().safeParse(id).success) throw new KirimApiError(404, "not_found", "Grup tidak ditemukan.");
     const result = await db.query<GroupRow>(
       `SELECT ${GROUP_COLUMNS} FROM kirim_groups g JOIN kirim_devices d ON d.id = g.device_id
        WHERE g.id = $1 AND d.pemilik_consumer_id = $2 AND g.keluar_at IS NULL ${lock ? "FOR UPDATE OF g" : ""}`,
@@ -345,7 +345,7 @@ export class KirimConversations {
 
   /** §6.1: media of the caller's own number, decrypted for the loopback caller only. */
   async media(consumer: ConsumerRow, id: string, atasNama: AtasNama): Promise<{ mime: string; data: Buffer }> {
-    if (!z.string().uuid().safeParse(id).success) throw new KirimApiError(404, "not_found", "Media tidak ditemukan.");
+    if (!z.guid().safeParse(id).success) throw new KirimApiError(404, "not_found", "Media tidak ditemukan.");
     const result = await this.pool.query<{ id: string; mime: string; path: string | null; tidakDisalin: string | null; kode: string }>(
       `SELECT md.id, md.mime, md.path, md.tidak_disalin AS "tidakDisalin", d.kode
        FROM kirim_media md JOIN kirim_devices d ON d.id = md.device_id WHERE md.id = $1 AND d.pemilik_consumer_id = $2`,
