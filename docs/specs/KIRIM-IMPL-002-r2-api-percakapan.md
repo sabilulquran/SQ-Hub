@@ -261,10 +261,31 @@ Pemeriksaan opt-out R1 (§5.1 langkah 9) ditambah cakupan `device`. Aturan 24 ja
 ## 9. Kontak LID dan nama profil
 
 - Penyegar kontak berjalan tiap 6 jam per nomor `jalurpesan`, dan segera setelah percakapan LID baru dibuat: membaca `GET .../contacts` per halaman 200.
-- Untuk percakapan `lid` yang `canonicalJid`-nya nomor telepon: isi `kontak_alt_hmac`/`kontak_alt_enc`. Percakapan **tidak digabung**: riwayatnya tetap satu, dan kiriman berikutnya ke nomor itu memakai percakapan LID tersebut (§6.1 `POST /devices/:kode/conversations`, `POST /messages` R1).
-- Bila sebelumnya sudah ada percakapan `pn` terpisah untuk nomor yang sama, keduanya tetap ada; daftar percakapan menampilkan keduanya dengan nomor yang sama, dan admin mendapat ringkasan "percakapan ganda" di layar Aktivitas. Penggabungan otomatis tidak dilakukan di R2 karena tidak bisa dibatalkan.
+- Untuk percakapan `lid` yang `canonicalJid`-nya nomor telepon: isi `kontak_alt_hmac`/`kontak_alt_enc`. Percakapan lama **tidak digabung**: riwayatnya tetap satu, dan kiriman berikutnya ke nomor itu memakai percakapan LID tersebut (§6.1 `POST /devices/:kode/conversations`, `POST /messages` R1).
+- **Pesan masuk ber-LID mencari percakapan nomornya lebih dulu (revisi 2026-10-30).** Bila mesin menyertakan
+  nomor pada pesan itu (`peerJidAlt`, J-1), Kirim mencari percakapan dengan nomor tersebut — cocok pada
+  `kontak_hmac` maupun `kontak_alt_hmac`, sama seperti `POST /devices/:kode/conversations` — dan memakai
+  percakapan itu. Hanya bila tidak ada, percakapan `lid` baru dibuat. Pada percakapan yang dikunci nomor,
+  `kontak_alt` diisi **LID**-nya, sehingga pesan masuk berikutnya yang hanya membawa LID tetap ke situ.
+  Sebelum revisi ini, chat yang dimulai panitia (dikunci nomor) dan balasan orangnya (dikunci LID) menjadi **dua
+  percakapan**, dan balasannya tampak hilang bagi panitia (dilaporkan owner 2026-10-30; di produksi 7 dari 8
+  percakapan berkunci LID).
+- Bila percakapan `pn` dan `lid` untuk orang yang sama **sudah telanjur ada**, keduanya tetap ada: penggabungan
+  otomatis tetap tidak dilakukan karena tidak bisa dibatalkan. Pesan masuk berikutnya masuk ke percakapan
+  nomornya, dan admin tetap melihat ringkasan "percakapan ganda" di layar Aktivitas sampai digabung manual.
+  Ringkasan itu kini menghitung kedua bentuk pasangan: baris `lid` yang mengingat nomornya, dan baris nomor yang
+  mengingat LID-nya.
+- **Yang terlihat setelah rilis revisi ini.** Untuk orang yang percakapannya sudah terbelah, pesan masuk berpindah
+  dari baris `lid` (tempat riwayatnya) ke baris nomor: di daftar, percakapan lama berhenti bertambah, jumlah belum
+  dibaca pindah, dan `pesan_masuk_terakhir_at` — yang menentukan jendela 24 jam untuk nomor yang minta tidak
+  dihubungi (§8) — mulai terisi pada baris nomor. Karena itu, setelah rilis periksa ringkasan "percakapan ganda"
+  dan gabungkan pasangan yang ada secara manual; riwayat tidak hilang, hanya berada di dua baris sampai digabung.
+- `message.sent` dari HP (J-3) mengikuti jalur yang sama, supaya balasan yang diketik di HP tidak membuat
+  percakapan terbelah ke arah sebaliknya.
 - `displayName` mengisi `nama_profil_enc` bila kosong; J-3 (`pushName`) menimpanya dengan nama terbaru dari pesan masuk.
 - `message.received.from` tetap `null` untuk LID yang nomornya belum diketahui, dan berisi nomor bila sudah (R1 D-6 selesai).
+  Nomornya dibaca dari percakapan tempat pesan itu mendarat, bukan dari alamat pesannya, karena pesan ber-LID bisa
+  mendarat di percakapan yang dikunci nomor (revisi 2026-10-30).
 
 ## 10. Impor riwayat chat lama
 

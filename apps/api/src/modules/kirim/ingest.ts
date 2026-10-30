@@ -45,6 +45,12 @@ const TIPE_BY_ENGINE: Record<string, string> = {
   sticker: "stiker",
 };
 
+/** The conversation an inbound message belongs to, and whether that conversation is keyed by the number. */
+interface ResolvedConversation {
+  id: string;
+  keyedByPhone: boolean;
+}
+
 export class KirimIngest {
   /** Engine device id → Kirim device id, learnt from status calls, to route engine webhooks. */
   private readonly engineDevices = new Map<string, string>();
@@ -182,8 +188,9 @@ export class KirimIngest {
         }
         const contact = contactFromJid(message.senderJid ?? message.chatJid);
         if (!contact) return;
-        const conversationId = await ensureConversation(client, this.crypto, { deviceId: device.id, canonical: contact.canonical, jenis: contact.jenis });
-        await this.learnContact(client, conversationId, contact, message);
+        const resolved = await this.conversationFor(client, device.id, contact, message);
+        const conversationId = resolved.id;
+        await this.learnContact(client, resolved, contact, message);
         const messageId = randomUUID();
         const mediaId = await this.storeMedia(client, device, media, "masuk");
         const inserted = await client.query(
@@ -266,18 +273,70 @@ export class KirimIngest {
     return mediaId;
   }
 
-  /** §9 / J-3: profile name and, for a LID contact, its phone number when the engine knows it. */
-  private async learnContact(client: Queryable, conversationId: string, contact: { canonical: string; jenis: "pn" | "lid" }, message: EngineMessage) {
+  /**
+   * The person's conversation (D-6 revisi 2026-10-30). WhatsApp addresses inbound chats by LID while a chat the
+   * committee starts is addressed by number, so keying a LID message on its LID alone gave one person two
+   * conversations and their replies landed in the one nobody was reading. When the engine tells us the number
+   * (`peerJidAlt`), that number's conversation is the person's conversation — `kontak_alt_hmac` is matched too, as
+   * `openConversation` already does for the other direction.
+   */
+  private async conversationFor(
+    client: Queryable,
+    deviceId: string,
+    contact: { canonical: string; jenis: "pn" | "lid" },
+    message: EngineMessage,
+  ): Promise<ResolvedConversation> {
+    const ownHmac = this.crypto.lookup(contact.canonical);
+    const alt = contact.jenis === "lid" && message.peerJidAlt ? contactFromJid(message.peerJidAlt) : null;
+    const phoneHmac = alt?.jenis === "pn" ? this.crypto.lookup(alt.canonical) : null;
+    // Both identities, in one look: the number first when the message carries one, then the address the message
+    // was actually sent to. A LID-only message therefore still finds the number's conversation, which remembers
+    // that LID in `kontak_alt_hmac`.
+    const found = await client.query<{ id: string; jenis: "pn" | "lid" }>(
+      `SELECT id, kontak_jenis AS jenis FROM kirim_conversations
+        WHERE device_id = $1
+          AND (($2::text IS NOT NULL AND $2 IN (kontak_hmac, kontak_alt_hmac)) OR $3 IN (kontak_hmac, kontak_alt_hmac))
+        ORDER BY coalesce($2::text IS NOT NULL AND kontak_hmac = $2, false) DESC,
+                 coalesce($2::text IS NOT NULL AND kontak_alt_hmac = $2, false) DESC,
+                 (kontak_jenis = 'pn') DESC,
+                 (kontak_hmac = $3) DESC, created_at, id LIMIT 1`,
+      [deviceId, phoneHmac, ownHmac],
+    );
+    const row = found.rows[0];
+    if (row) {
+      if (row.jenis !== contact.jenis) {
+        // Attached by the person's other identity. Logged with no number and no LID, so a wrong binding — a
+        // recycled number, a stale contact refresh — can be traced without putting a contact in the log.
+        this.options.log?.(
+          { event: "kirim.ingest.conversation_matched", conversation_id: row.id, pesan: contact.jenis, percakapan: row.jenis },
+          "inbound message attached to the contact's other identity",
+        );
+      }
+      return { id: row.id, keyedByPhone: row.jenis === "pn" };
+    }
+    const id = await ensureConversation(client, this.crypto, { deviceId, canonical: contact.canonical, jenis: contact.jenis });
+    return { id, keyedByPhone: contact.jenis === "pn" };
+  }
+
+  /** §9 / J-3: profile name, and the contact's other identity so the two never split into two conversations. */
+  private async learnContact(
+    client: Queryable,
+    conversation: ResolvedConversation,
+    contact: { canonical: string; jenis: "pn" | "lid" },
+    message: EngineMessage,
+  ) {
     if (message.pushName) {
       await client.query("UPDATE kirim_conversations SET nama_profil_enc = $2 WHERE id = $1", [
-        conversationId,
-        this.crypto.seal(message.pushName, columnAad("kirim_conversations", "nama_profil_enc", conversationId)),
+        conversation.id,
+        this.crypto.seal(message.pushName, columnAad("kirim_conversations", "nama_profil_enc", conversation.id)),
       ]);
     }
-    if (contact.jenis === "lid" && message.peerJidAlt) {
-      const alt = contactFromJid(message.peerJidAlt);
-      if (alt?.jenis === "pn") await this.setContactAlt(client, conversationId, alt.canonical);
-    }
+    if (contact.jenis !== "lid" || !message.peerJidAlt) return;
+    const alt = contactFromJid(message.peerJidAlt);
+    if (alt?.jenis !== "pn") return;
+    // On the number's own conversation it is the LID that is worth remembering, so a later LID-only message —
+    // one the engine sends without `peerJidAlt` — still finds its way here instead of starting a second chat.
+    await this.setContactAlt(client, conversation.id, conversation.keyedByPhone ? contact.canonical : alt.canonical);
   }
 
   async setContactAlt(client: Queryable, conversationId: string, canonical: string): Promise<void> {
@@ -287,13 +346,23 @@ export class KirimIngest {
     );
   }
 
-  /** `from` in `message.received`: the number, or a LID contact's known number, else null (D-6). */
+  /**
+   * `from` in `message.received`: the number of the conversation this landed in, whichever of its two identities
+   * carries it, else null (D-6). Read from the conversation rather than from the message, because a LID message
+   * can land in a conversation that is keyed by number.
+   */
   private async phoneOf(client: Queryable, conversationId: string, contact: { canonical: string; jenis: "pn" | "lid" }): Promise<string | null> {
     if (contact.jenis === "pn") return contact.canonical.slice(3);
-    const alt = await client.query<{ altEnc: string | null }>(`SELECT kontak_alt_enc AS "altEnc" FROM kirim_conversations WHERE id = $1`, [conversationId]);
-    const altEnc = alt.rows[0]?.altEnc;
-    if (!altEnc) return null;
-    const value = this.crypto.open(altEnc, columnAad("kirim_conversations", "kontak_alt_enc", conversationId));
+    const row = await client.query<{ kontakEnc: string; altEnc: string | null }>(
+      `SELECT kontak_enc AS "kontakEnc", kontak_alt_enc AS "altEnc" FROM kirim_conversations WHERE id = $1`,
+      [conversationId],
+    );
+    const found = row.rows[0];
+    if (!found) return null;
+    const own = this.crypto.open(found.kontakEnc, columnAad("kirim_conversations", "kontak_enc", conversationId));
+    if (own.startsWith("pn:+")) return own.slice(3);
+    if (!found.altEnc) return null;
+    const value = this.crypto.open(found.altEnc, columnAad("kirim_conversations", "kontak_alt_enc", conversationId));
     return value.startsWith("pn:+") ? value.slice(3) : null;
   }
 
@@ -381,7 +450,10 @@ export class KirimIngest {
     } else {
       const contact = contactFromJid(message.chatJid);
       if (!contact) return;
-      conversationId = await ensureConversation(client, this.crypto, { deviceId: device.id, canonical: contact.canonical, jenis: contact.jenis });
+      const resolved = await this.conversationFor(client, device.id, contact, message);
+      conversationId = resolved.id;
+      // Only the other identity: on a message we sent, the display name is the yayasan's own, not the contact's (§9).
+      await this.learnContact(client, resolved, contact, { ...message, pushName: null });
     }
     const messageId = randomUUID();
     const mediaId = await this.storeMedia(client, device, media, "keluar");

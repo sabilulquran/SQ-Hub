@@ -145,7 +145,15 @@ export class KirimService {
 
     try {
       return await withTransaction(this.pool, async (client) => {
-        const conversationId = await ensureConversation(client, this.crypto, { deviceId: device.id, canonical, jenis: "pn" });
+        // The person may already be known by their LID; match that too, as `openConversation` and ingest do,
+        // so an automatic message does not start a second conversation beside it (D-6 revisi 2026-10-30).
+        const known = await client.query<{ id: string }>(
+          `SELECT id FROM kirim_conversations WHERE device_id = $1 AND (kontak_hmac = $2 OR kontak_alt_hmac = $2)
+           ORDER BY (kontak_hmac = $2) DESC, created_at, id LIMIT 1`,
+          [device.id, toHmac],
+        );
+        const conversationId = known.rows[0]?.id
+          ?? (await ensureConversation(client, this.crypto, { deviceId: device.id, canonical, jenis: "pn" }));
         const messageId = randomUUID();
         const outboxId = randomUUID();
         const body = input.text ?? input.caption ?? null;

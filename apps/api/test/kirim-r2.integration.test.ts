@@ -470,6 +470,42 @@ describe("contacts (§9)", () => {
   });
 });
 
+describe("satu orang satu percakapan (D-6 revisi 2026-10-30)", () => {
+  it("a LID reply lands in the chat the committee started, not in a second one", async () => {
+    // The committee opens a chat with the number, as "Chat baru" does.
+    const opened = await call("POST", "/devices/spmb/conversations", { payload: { to: PHONE, atas_nama: OFFICER } });
+    expect(opened.statusCode).toBe(201);
+
+    // The person answers. WhatsApp addresses the reply by LID and carries the number as peerJidAlt.
+    stub.addEvent("spmb", "message.received", receivedPayload({
+      from: "99887766554433@lid", body: "Waalaikumsalam",
+      extra: { peerJidAlt: `${PHONE.replace("+", "")}@s.whatsapp.net`, pushName: "Bu Rina" },
+    }));
+    await pull();
+
+    const items = (await call("GET", "/devices/spmb/conversations")).json().items;
+    expect(items).toHaveLength(1);
+    expect(items[0].id).toBe(opened.json().id);
+    // The owner of the number is told who wrote, so it can be matched to a peminat.
+    expect((await webhookPayloads("message.received")).at(-1)!.data).toMatchObject({ conversation_id: opened.json().id, from: PHONE });
+
+    // A later LID-only event, with no number on it, still belongs to that same chat.
+    stub.addEvent("spmb", "message.received", receivedPayload({ from: "99887766554433@lid", body: "satu lagi" }));
+    await pull();
+    expect((await call("GET", "/devices/spmb/conversations")).json().items).toHaveLength(1);
+    expect((await webhookPayloads("message.received")).at(-1)!.data).toMatchObject({ conversation_id: opened.json().id, from: PHONE });
+
+    // And a reply typed on the phone itself (J-3), which WhatsApp also addresses by LID.
+    stub.addEvent("spmb", "message.sent", sentPayload({ to: "99887766554433@lid", body: "Dibalas dari HP", whatsappMessageId: "WA-HP-LID" }));
+    await pull();
+    expect((await call("GET", "/devices/spmb/conversations")).json().items).toHaveLength(1);
+    const isi = (await call("GET", `/conversations/${opened.json().id}/messages`)).json().items.map((m: { isi: string | null }) => m.isi);
+    expect(isi).toContain("Dibalas dari HP");
+    // The name stays the contact's: a message we sent carries our own profile name, which must not overwrite it.
+    expect((await call("GET", "/devices/spmb/conversations")).json().items[0].nama_profil).toBe("Bu Rina");
+  });
+});
+
 describe("privacy (§11)", () => {
   it("never logs bodies, full numbers, officer ids or profile names", async () => {
     const id = await inbound("Rahasia keluarga Rina", { pushName: "Rina Lestari" });
