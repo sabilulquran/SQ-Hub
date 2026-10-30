@@ -478,10 +478,8 @@ describe("contacts (§9)", () => {
 });
 
 describe("pesan masuk tidak menunggu ronde berikutnya", () => {
-  it("a push that arrives mid-pull gets a round of its own, not one that has already looked", async () => {
-    const deviceId = (await pool.query<{ id: string }>("SELECT id FROM kirim_devices WHERE kode = 'spmb'")).rows[0]!.id;
-
-    // The first pull reads its page — empty — and is held there.
+  /** Starts a pull and holds it at the point where its page has been read but not yet answered. */
+  async function pullHeldAfterReading() {
     let release: () => void = () => undefined;
     const reading = new Promise<void>((seen) => {
       stub.onEventsRead = () => {
@@ -492,42 +490,35 @@ describe("pesan masuk tidak menunggu ronde berikutnya", () => {
         });
       };
     });
-    const first = kirim.ingest!.pullDevice(deviceId);
+    const pulling = kirim.ingest!.pullDevice(spmbDeviceId);
     await reading;
+    return { pulling, release: () => release() };
+  }
 
-    // Now the message lands and the engine pushes it. Joining the pull above would answer with the
-    // page it has already read, and the message would wait for the next round instead.
+  it("a push that arrives mid-pull gets a round of its own, not one that has already looked", async () => {
+    const held = await pullHeldAfterReading();
+
+    // The message lands and the engine pushes it. Being handed the pull above would mean being
+    // answered by the page it has already read, leaving the message until the next round.
     stub.addEvent("spmb", "message.received", receivedPayload({ from: "6281277776666@s.whatsapp.net", body: "Assalamualaikum" }));
-    const second = kirim.ingest!.pullDevice(deviceId);
-    release();
-    await Promise.all([first, second]);
+    const pushed = kirim.ingest!.pullDevice(spmbDeviceId);
+    held.release();
+    await Promise.all([held.pulling, pushed]);
 
-    const stored = await pool.query<{ n: string }>("SELECT count(*) AS n FROM kirim_events WHERE device_id = $1", [deviceId]);
-    expect(Number(stored.rows[0]!.n)).toBe(1);
-    expect((await webhookPayloads("message.received")).at(-1)!.data).toMatchObject({ from: "+6281277776666" });
+    const items = (await call("GET", "/devices/spmb/conversations")).json().items;
+    expect(items).toHaveLength(1);
+    expect(items[0]).toMatchObject({ kontak: { nomor: "+6281277776666" } });
   });
 
   it("a burst of pushes during one pull costs one follow-up round, not one each", async () => {
-    const deviceId = (await pool.query<{ id: string }>("SELECT id FROM kirim_devices WHERE kode = 'spmb'")).rows[0]!.id;
-    let release: () => void = () => undefined;
-    const reading = new Promise<void>((seen) => {
-      stub.onEventsRead = () => {
-        stub.onEventsRead = null;
-        seen();
-        return new Promise<void>((done) => {
-          release = done;
-        });
-      };
-    });
-    const first = kirim.ingest!.pullDevice(deviceId);
-    await reading;
+    const held = await pullHeldAfterReading();
+    const events = () => stub.requests.filter((request) => request.path.endsWith("/events")).length;
 
-    const waiting = [kirim.ingest!.pullDevice(deviceId), kirim.ingest!.pullDevice(deviceId), kirim.ingest!.pullDevice(deviceId)];
-    const before = stub.requests.filter((request) => request.path.endsWith("/events")).length;
-    release();
-    await Promise.all([first, ...waiting]);
-    const after = stub.requests.filter((request) => request.path.endsWith("/events")).length;
-    expect(after - before).toBe(1);
+    const waiting = [kirim.ingest!.pullDevice(spmbDeviceId), kirim.ingest!.pullDevice(spmbDeviceId), kirim.ingest!.pullDevice(spmbDeviceId)];
+    const before = events();
+    held.release();
+    await Promise.all([held.pulling, ...waiting]);
+    expect(events() - before).toBe(1);
   });
 });
 
