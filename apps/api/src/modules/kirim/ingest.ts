@@ -29,6 +29,8 @@ import type { KirimService } from "./service.js";
  */
 
 const PAGE_LIMIT = 100;
+/** How often a number's status is refreshed, however often its events are pulled. */
+const STATUS_REFRESH_MS = 60_000;
 const MAX_PAGES_PER_PULL = 10;
 
 interface EngineDevice extends DeviceRef {
@@ -55,6 +57,10 @@ export class KirimIngest {
   /** Engine device id → Kirim device id, learnt from status calls, to route engine webhooks. */
   private readonly engineDevices = new Map<string, string>();
   private readonly pulling = new Map<string, Promise<void>>();
+  /** At most one queued follow-up pull per number; see `pullDevice`. */
+  private readonly pullAgain = new Map<string, Promise<void>>();
+  /** When each number's status was last asked after, so the pull loop does not ask every round. */
+  private readonly statusCheckedAt = new Map<string, number>();
   /** Numbers that received a message from a group not yet named: refreshed right after the pull. */
   private readonly unnamedGroups = new Set<string>();
 
@@ -66,11 +72,22 @@ export class KirimIngest {
     private readonly options: { inboundMediaMaxBytes: number; log?: KirimLog },
   ) {}
 
-  /** Every 60 s and at start: refresh each `jalurpesan` number's status, then pull its events. */
+  /**
+   * Every pull interval and at start: pull each `jalurpesan` number's events, refreshing its status
+   * on the slower beat below.
+   *
+   * The status call is a round trip to the engine and a write of its own, so at a pull interval
+   * shorter than a minute it cost more than the pull it preceded while telling us the same thing.
+   * The time is recorded before the call, not after, so an engine that is down is not asked again
+   * every round; the delay in noticing costs at most one beat.
+   */
   async runOnce(): Promise<void> {
     for (const device of await this.devices()) {
       try {
-        await this.refreshStatus(device);
+        if (Date.now() - (this.statusCheckedAt.get(device.id) ?? 0) >= STATUS_REFRESH_MS) {
+          this.statusCheckedAt.set(device.id, Date.now());
+          await this.refreshStatus(device);
+        }
         await this.pullDevice(device.id);
       } catch (error) {
         this.options.log?.(
@@ -121,13 +138,31 @@ export class KirimIngest {
     return "queued";
   }
 
-  /** Pulls one number's events from its last stored cursor. Concurrent calls share one pull. */
+  /**
+   * Pulls one number's events from its last stored cursor.
+   *
+   * A caller that arrives while a pull is in flight is not given that pull: it may already have read
+   * its last cursor, in which case it would finish without the event this caller is waiting for, and
+   * the message would sit until the next round. Such callers get exactly one follow-up round instead,
+   * shared between them, so a burst of webhooks still costs one extra pull rather than one each.
+   */
   pullDevice(deviceId: string): Promise<void> {
     const running = this.pulling.get(deviceId);
-    if (running) return running;
-    const pull = this.pullPages(deviceId).finally(() => this.pulling.delete(deviceId));
-    this.pulling.set(deviceId, pull);
-    return pull;
+    if (!running) {
+      const pull = this.pullPages(deviceId).finally(() => this.pulling.delete(deviceId));
+      this.pulling.set(deviceId, pull);
+      return pull;
+    }
+    const queued = this.pullAgain.get(deviceId);
+    if (queued) return queued;
+    const follow = running.catch(() => undefined).then(() => {
+      // Cleared first, so a caller arriving during the follow-up queues the next one rather than
+      // joining a round that is itself already under way.
+      this.pullAgain.delete(deviceId);
+      return this.pullDevice(deviceId);
+    });
+    this.pullAgain.set(deviceId, follow);
+    return follow;
   }
 
   private async pullPages(deviceId: string): Promise<void> {
@@ -539,28 +574,48 @@ export class KirimIngest {
     });
   }
 
-  /** §9: profile names, and phone numbers for LID conversations, from the engine's contacts. */
+  /**
+   * §9: profile names, and phone numbers for LID conversations, from the engine's contacts.
+   *
+   * The engine's address book holds every contact the number has ever seen, while we keep a
+   * conversation only for the few that have written to us. Asking after each contact in turn meant
+   * thousands of round trips for a handful of matches, which took minutes on the phone and slowed
+   * everything sharing the database with it; the whole page is looked up at once instead, and only
+   * the contacts that matched are written.
+   */
   async refreshContacts(device: EngineDevice): Promise<void> {
     for (let page = 1; page <= 50; page += 1) {
       const result = await this.provider.listContacts(device, page);
+      const byHmac = new Map<string, { jenis: "pn" | "lid"; canonicalJid: string; displayName: string | null }>();
       for (const contact of result.contacts) {
         const own = contactFromJid(contact.jid);
-        if (!own) continue;
-        const conversation = await this.pool.query<{ id: string; namaProfilEnc: string | null }>(
-          `SELECT id, nama_profil_enc AS "namaProfilEnc" FROM kirim_conversations WHERE device_id = $1 AND kontak_hmac = $2`,
-          [device.id, this.crypto.lookup(own.canonical)],
-        );
-        const row = conversation.rows[0];
-        if (!row) continue;
-        if (own.jenis === "lid") {
-          const canonical = contactFromJid(contact.canonicalJid);
-          if (canonical?.jenis === "pn") await this.setContactAlt(this.pool, row.id, canonical.canonical);
+        if (own) {
+          byHmac.set(this.crypto.lookup(own.canonical), {
+            jenis: own.jenis,
+            canonicalJid: contact.canonicalJid,
+            displayName: contact.displayName,
+          });
         }
-        if (contact.displayName && !row.namaProfilEnc) {
-          await this.pool.query("UPDATE kirim_conversations SET nama_profil_enc = $2 WHERE id = $1 AND nama_profil_enc IS NULL", [
-            row.id,
-            this.crypto.seal(contact.displayName, columnAad("kirim_conversations", "nama_profil_enc", row.id)),
-          ]);
+      }
+      if (byHmac.size > 0) {
+        const known = await this.pool.query<{ id: string; kontakHmac: string; namaProfilEnc: string | null }>(
+          `SELECT id, kontak_hmac AS "kontakHmac", nama_profil_enc AS "namaProfilEnc"
+             FROM kirim_conversations WHERE device_id = $1 AND kontak_hmac = ANY($2::text[])`,
+          [device.id, [...byHmac.keys()]],
+        );
+        for (const row of known.rows) {
+          const contact = byHmac.get(row.kontakHmac);
+          if (!contact) continue;
+          if (contact.jenis === "lid") {
+            const canonical = contactFromJid(contact.canonicalJid);
+            if (canonical?.jenis === "pn") await this.setContactAlt(this.pool, row.id, canonical.canonical);
+          }
+          if (contact.displayName && !row.namaProfilEnc) {
+            await this.pool.query("UPDATE kirim_conversations SET nama_profil_enc = $2 WHERE id = $1 AND nama_profil_enc IS NULL", [
+              row.id,
+              this.crypto.seal(contact.displayName, columnAad("kirim_conversations", "nama_profil_enc", row.id)),
+            ]);
+          }
         }
       }
       if (!result.hasMore) return;

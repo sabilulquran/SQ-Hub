@@ -457,7 +457,14 @@ describe("contacts (§9)", () => {
   it("learns a LID contact's number and profile name", async () => {
     stub.addEvent("spmb", "message.received", receivedPayload({ from: "99887766554433@lid", body: "dari lid" }));
     await pull();
-    stub.contacts.set("spmb", [{ jid: "99887766554433@lid", canonicalJid: "6281277778888@s.whatsapp.net", displayName: "Pak Budi" }]);
+    // The address book is mostly strangers: everyone the number has ever seen, against the one chat
+    // we keep. The page is matched in one go, so the one that counts must still be found among them.
+    const strangers = Array.from({ length: 250 }, (_, index) => ({
+      jid: `628120000${String(index).padStart(4, "0")}@s.whatsapp.net`,
+      canonicalJid: `628120000${String(index).padStart(4, "0")}@s.whatsapp.net`,
+      displayName: `Bukan Siapa-siapa ${index}`,
+    }));
+    stub.contacts.set("spmb", [...strangers.slice(0, 120), { jid: "99887766554433@lid", canonicalJid: "6281277778888@s.whatsapp.net", displayName: "Pak Budi" }, ...strangers.slice(120)]);
     await kirim.ingest!.refreshDirectory("contacts");
     const [item] = (await call("GET", "/devices/spmb/conversations")).json().items;
     expect(item).toMatchObject({ kontak: { nomor: "+6281277778888", jenis: "lid" }, nama_profil: "Pak Budi" });
@@ -467,6 +474,60 @@ describe("contacts (§9)", () => {
     stub.addEvent("spmb", "message.received", receivedPayload({ from: "99887766554433@lid", body: "lagi" }));
     await pull();
     expect((await webhookPayloads("message.received")).at(-1)!.data.from).toBe("+6281277778888");
+  });
+});
+
+describe("pesan masuk tidak menunggu ronde berikutnya", () => {
+  it("a push that arrives mid-pull gets a round of its own, not one that has already looked", async () => {
+    const deviceId = (await pool.query<{ id: string }>("SELECT id FROM kirim_devices WHERE kode = 'spmb'")).rows[0]!.id;
+
+    // The first pull reads its page — empty — and is held there.
+    let release: () => void = () => undefined;
+    const reading = new Promise<void>((seen) => {
+      stub.onEventsRead = () => {
+        stub.onEventsRead = null;
+        seen();
+        return new Promise<void>((done) => {
+          release = done;
+        });
+      };
+    });
+    const first = kirim.ingest!.pullDevice(deviceId);
+    await reading;
+
+    // Now the message lands and the engine pushes it. Joining the pull above would answer with the
+    // page it has already read, and the message would wait for the next round instead.
+    stub.addEvent("spmb", "message.received", receivedPayload({ from: "6281277776666@s.whatsapp.net", body: "Assalamualaikum" }));
+    const second = kirim.ingest!.pullDevice(deviceId);
+    release();
+    await Promise.all([first, second]);
+
+    const stored = await pool.query<{ n: string }>("SELECT count(*) AS n FROM kirim_events WHERE device_id = $1", [deviceId]);
+    expect(Number(stored.rows[0]!.n)).toBe(1);
+    expect((await webhookPayloads("message.received")).at(-1)!.data).toMatchObject({ from: "+6281277776666" });
+  });
+
+  it("a burst of pushes during one pull costs one follow-up round, not one each", async () => {
+    const deviceId = (await pool.query<{ id: string }>("SELECT id FROM kirim_devices WHERE kode = 'spmb'")).rows[0]!.id;
+    let release: () => void = () => undefined;
+    const reading = new Promise<void>((seen) => {
+      stub.onEventsRead = () => {
+        stub.onEventsRead = null;
+        seen();
+        return new Promise<void>((done) => {
+          release = done;
+        });
+      };
+    });
+    const first = kirim.ingest!.pullDevice(deviceId);
+    await reading;
+
+    const waiting = [kirim.ingest!.pullDevice(deviceId), kirim.ingest!.pullDevice(deviceId), kirim.ingest!.pullDevice(deviceId)];
+    const before = stub.requests.filter((request) => request.path.endsWith("/events")).length;
+    release();
+    await Promise.all([first, ...waiting]);
+    const after = stub.requests.filter((request) => request.path.endsWith("/events")).length;
+    expect(after - before).toBe(1);
   });
 });
 
