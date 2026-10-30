@@ -218,30 +218,63 @@ export async function setDeviceStatus(
   return true;
 }
 
-/** Finds or creates the conversation for a contact; the stored contact value is encrypted. */
+/**
+ * Finds or creates the conversation for a contact; the stored contact value is encrypted.
+ *
+ * `lid` is the same person's LID when the message carried both. It is recorded so that a conversation keyed on a
+ * phone number is still found from a LID-only event, instead of starting a second chat for the same person
+ * (KIRIM-IMPL-001 D-6 revisi 2026-10-30). `namaProfil` is the name WhatsApp advertises: filled in once, then left.
+ */
 export async function ensureConversation(
   db: Queryable,
   crypto: KirimCrypto,
-  input: { deviceId: string; canonical: string; jenis: "pn" | "lid" },
+  input: { deviceId: string; canonical: string; jenis: "pn" | "lid"; lid?: string | null; namaProfil?: string | null },
 ): Promise<string> {
   const kontakHmac = crypto.lookup(input.canonical);
+  const lidHmac = input.lid && input.lid !== input.canonical ? crypto.lookup(input.lid) : null;
+  const note = async (id: string) => {
+    if (lidHmac) {
+      await db.query("UPDATE kirim_conversations SET kontak_lid_hmac = $2 WHERE id = $1 AND kontak_lid_hmac IS NULL", [id, lidHmac]);
+    }
+    if (input.namaProfil) {
+      await db.query(
+        "UPDATE kirim_conversations SET nama_profil_enc = $2 WHERE id = $1 AND nama_profil_enc IS NULL",
+        [id, crypto.seal(input.namaProfil, columnAad("kirim_conversations", "nama_profil_enc", id))],
+      );
+    }
+  };
   const existing = await db.query<{ id: string }>(
     "SELECT id FROM kirim_conversations WHERE device_id = $1 AND kontak_hmac = $2",
     [input.deviceId, kontakHmac],
   );
-  if (existing.rows[0]) return existing.rows[0].id;
+  if (existing.rows[0]) {
+    await note(existing.rows[0].id);
+    return existing.rows[0].id;
+  }
+  // A LID-only event for someone we already know by number: keep them in that one chat.
+  if (input.jenis === "lid") {
+    const byLid = await db.query<{ id: string }>(
+      "SELECT id FROM kirim_conversations WHERE device_id = $1 AND kontak_lid_hmac = $2",
+      [input.deviceId, kontakHmac],
+    );
+    if (byLid.rows[0]) return byLid.rows[0].id;
+  }
   const id = randomUUID();
   const inserted = await db.query<{ id: string }>(
-    `INSERT INTO kirim_conversations (id, device_id, kontak_hmac, kontak_enc, kontak_jenis)
-     VALUES ($1, $2, $3, $4, $5)
+    `INSERT INTO kirim_conversations (id, device_id, kontak_hmac, kontak_enc, kontak_jenis, kontak_lid_hmac)
+     VALUES ($1, $2, $3, $4, $5, $6)
      ON CONFLICT (device_id, kontak_hmac) DO NOTHING RETURNING id`,
-    [id, input.deviceId, kontakHmac, crypto.seal(input.canonical, columnAad("kirim_conversations", "kontak_enc", id)), input.jenis],
+    [id, input.deviceId, kontakHmac, crypto.seal(input.canonical, columnAad("kirim_conversations", "kontak_enc", id)), input.jenis, lidHmac],
   );
-  if (inserted.rows[0]) return inserted.rows[0].id;
+  if (inserted.rows[0]) {
+    await note(inserted.rows[0].id);
+    return inserted.rows[0].id;
+  }
   const raced = await db.query<{ id: string }>(
     "SELECT id FROM kirim_conversations WHERE device_id = $1 AND kontak_hmac = $2",
     [input.deviceId, kontakHmac],
   );
+  await note(raced.rows[0]!.id);
   return raced.rows[0]!.id;
 }
 

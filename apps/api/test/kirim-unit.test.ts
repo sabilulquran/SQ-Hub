@@ -13,7 +13,7 @@ import {
   signKirimWebhook,
   verifyJalurPesanSignature,
 } from "../src/modules/kirim/crypto.js";
-import { contactFromJid } from "../src/modules/kirim/ingest.js";
+import { contactFromJid, contactFromMessage } from "../src/modules/kirim/ingest.js";
 import {
   MAX_SEND_ATTEMPTS,
   advanceStatus,
@@ -246,6 +246,20 @@ describe("KIRIM-IMPL-001 configuration and boundaries", () => {
     expect(contactFromJid("6281234567890:12@s.whatsapp.net")).toEqual({ canonical: "pn:+6281234567890", jenis: "pn" });
     expect(contactFromJid("123456789012345@lid")).toEqual({ canonical: "lid:123456789012345@lid", jenis: "lid" });
     expect(contactFromJid("12036302@g.us")).toBeNull();
+  });
+
+  it("keys a chat on the phone number even when WhatsApp addresses it by LID (D-6 revisi 2026-10-30)", () => {
+    // A LID chat: the number rides along as peerJidAlt, and that is what the conversation is keyed on, so the
+    // chat a staff member started and the person's replies stay one conversation.
+    expect(contactFromMessage({ chatJid: "123456789012345@lid", senderJid: "123456789012345@lid", peerJidAlt: "6281234567890@s.whatsapp.net" }))
+      .toEqual({ canonical: "pn:+6281234567890", jenis: "pn", lid: "lid:123456789012345@lid" });
+    // No number anywhere: the LID still identifies the contact.
+    expect(contactFromMessage({ chatJid: "123456789012345@lid", senderJid: null, peerJidAlt: null }))
+      .toEqual({ canonical: "lid:123456789012345@lid", jenis: "lid", lid: "lid:123456789012345@lid" });
+    // The old shape, before WhatsApp moved to LID.
+    expect(contactFromMessage({ chatJid: "6281234567890@s.whatsapp.net", senderJid: "6281234567890@s.whatsapp.net", peerJidAlt: null }))
+      .toEqual({ canonical: "pn:+6281234567890", jenis: "pn", lid: null });
+    expect(contactFromMessage({ chatJid: "12036302@g.us", senderJid: null, peerJidAlt: null })).toBeNull();
   });
 
   it("hashes request bodies independently of key order", () => {

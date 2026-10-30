@@ -529,6 +529,32 @@ describe("Ingest (§6.3)", () => {
     expect(cursor.rows[0]).toEqual({ cursor: 4 });
   });
 
+  it("keeps a LID chat and the number's chat as one conversation (D-6 revisi 2026-10-30)", async () => {
+    // The committee messages the number first, which is what "Chat baru" does: a chat keyed on the number.
+    expect((await send("spmb-api", { device: "spmb", jenis: "notifikasi", to: PHONE, text: "Assalamualaikum" })).statusCode).toBe(202);
+    const started = { conversationId: (await pool.query<{ id: string }>("SELECT id FROM kirim_conversations")).rows[0]!.id };
+    // The person answers. WhatsApp addresses their reply by LID and carries the number as peerJidAlt.
+    stub.addEvent("spmb", "message.received", receivedPayload({
+      from: "99887766554433@lid", peerJidAlt: `${PHONE.replace("+", "")}@s.whatsapp.net`, senderDisplayName: "Bu Rina", body: "Waalaikumsalam",
+    }));
+    await pull();
+
+    const rows = await pool.query<{ id: string; jenis: string }>(
+      `SELECT id, kontak_jenis AS jenis FROM kirim_conversations`,
+    );
+    expect(rows.rows).toHaveLength(1);
+    expect(rows.rows[0]).toMatchObject({ id: started.conversationId, jenis: "pn" });
+
+    // SPMB is told the number and the name, not a blank contact it cannot match to a peminat.
+    const received = await webhookPayloads("message.received");
+    expect(received.at(-1)).toMatchObject({ data: { conversation_id: started.conversationId, from: PHONE, nama_profil: "Bu Rina" } });
+
+    // A later LID-only event, with no number, still lands in that same chat.
+    stub.addEvent("spmb", "message.received", receivedPayload({ from: "99887766554433@lid", body: "satu lagi" }));
+    await pull();
+    expect((await pool.query("SELECT id FROM kirim_conversations")).rows).toHaveLength(1);
+  });
+
   it("stores a duplicate event from webhook and pull only once and drops unknown tenants", async () => {
     const event = stub.addEvent("spmb", "message.received", receivedPayload({ body: "sekali saja" }));
     const raw = JSON.stringify(event);

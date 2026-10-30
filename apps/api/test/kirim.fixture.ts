@@ -173,7 +173,16 @@ export class JalurPesanStub {
 }
 
 /** JalurPesan `message.received` payload (version 1 text, version 2 media). */
-export function receivedPayload(input: { id?: string; from?: string; body?: string | null; group?: boolean; media?: { id: string; sizeBytes: number; mimeType?: string } }) {
+export function receivedPayload(input: {
+  id?: string;
+  from?: string;
+  body?: string | null;
+  group?: boolean;
+  media?: { id: string; sizeBytes: number; mimeType?: string };
+  /** The phone JID WhatsApp sends beside a LID chat (Baileys v7 `remoteJidAlt`). */
+  peerJidAlt?: string | null;
+  senderDisplayName?: string | null;
+}) {
   const chatJid = input.group ? "120363000000@g.us" : input.from ?? "6281234567890@s.whatsapp.net";
   return {
     version: input.media ? 2 : 1,
@@ -183,6 +192,8 @@ export function receivedPayload(input: { id?: string; from?: string; body?: stri
       direction: "inbound",
       chatJid,
       senderJid: input.group ? "6289999999999@s.whatsapp.net" : chatJid,
+      peerJidAlt: input.peerJidAlt ?? null,
+      senderDisplayName: input.senderDisplayName ?? null,
       recipient: null,
       recipientJid: null,
       recipientType: input.group ? "group" : "individual",

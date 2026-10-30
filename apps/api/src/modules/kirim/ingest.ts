@@ -162,9 +162,15 @@ export class KirimIngest {
 
       if (event.type === "message.received") {
         if (message.group || message.direction !== "inbound") return;
-        const contact = contactFromJid(message.senderJid ?? message.chatJid);
+        const contact = contactFromMessage(message);
         if (!contact) return;
-        const conversationId = await ensureConversation(client, this.crypto, { deviceId: device.id, canonical: contact.canonical, jenis: contact.jenis });
+        const conversationId = await ensureConversation(client, this.crypto, {
+          deviceId: device.id,
+          canonical: contact.canonical,
+          jenis: contact.jenis,
+          lid: contact.lid,
+          namaProfil: message.senderDisplayName,
+        });
         const messageId = randomUUID();
         let mediaId: string | null = null;
         if (media) {
@@ -201,7 +207,7 @@ export class KirimIngest {
           conversation_id: conversationId,
           message_id: messageId,
           from: contact.jenis === "pn" ? contact.canonical.slice(3) : null,
-          nama_profil: null,
+          nama_profil: message.senderDisplayName,
           tipe: TIPE_BY_ENGINE[message.messageType] ?? "lainnya",
           cuplikan: message.body ? message.body.slice(0, 200) : null,
           received_at: message.receivedAt,
@@ -272,6 +278,9 @@ interface EngineMessage {
   direction: string;
   chatJid: string;
   senderJid: string | null;
+  /** Baileys v7 alternate peer identity: the phone JID when the chat is addressed by LID. */
+  peerJidAlt: string | null;
+  senderDisplayName: string | null;
   group: boolean;
   messageType: string;
   body: string | null;
@@ -294,6 +303,11 @@ function readMessage(payload: unknown): EngineMessage | null {
     direction: typeof value.direction === "string" ? value.direction : "",
     chatJid,
     senderJid: typeof value.senderJid === "string" ? value.senderJid : null,
+    peerJidAlt: typeof value.peerJidAlt === "string" && value.peerJidAlt ? value.peerJidAlt : null,
+    senderDisplayName:
+      typeof value.senderDisplayName === "string" && value.senderDisplayName.trim()
+        ? value.senderDisplayName.trim().slice(0, 100)
+        : null,
     group: value.recipientType === "group" || chatJid.endsWith("@g.us"),
     messageType: typeof value.messageType === "string" ? value.messageType : "lainnya",
     body: typeof value.body === "string" && value.body.length > 0 ? value.body : null,
@@ -316,4 +330,27 @@ export function contactFromJid(jid: string): { canonical: string; jenis: "pn" | 
   if (phone) return { canonical: `pn:+${phone[1]}`, jenis: "pn" };
   if (/^[0-9a-z._:-]{1,100}@lid$/.test(normalized)) return { canonical: `lid:${normalized}`, jenis: "lid" };
   return null;
+}
+
+/**
+ * Who an inbound message is from (D-6 revised 2026-10-30). WhatsApp now addresses chats by LID, and the engine
+ * carries the phone number beside it as `peerJidAlt`. Keying on the LID gave one person two conversations — the
+ * one a staff member started, addressed by number, and the one their replies arrived in — so replies looked lost
+ * (reported 2026-10-30). The phone number wins whenever any field carries one; the LID is kept so the two can
+ * still be recognised as the same contact.
+ */
+export function contactFromMessage(message: {
+  chatJid: string;
+  senderJid: string | null;
+  peerJidAlt: string | null;
+}): { canonical: string; jenis: "pn" | "lid"; lid: string | null } | null {
+  const candidates = [message.peerJidAlt, message.senderJid, message.chatJid];
+  const lid = candidates
+    .map((jid) => (jid ? contactFromJid(jid) : null))
+    .find((found) => found?.jenis === "lid")?.canonical ?? null;
+  for (const jid of candidates) {
+    const found = jid ? contactFromJid(jid) : null;
+    if (found?.jenis === "pn") return { ...found, lid };
+  }
+  return lid ? { canonical: lid, jenis: "lid", lid } : null;
 }
