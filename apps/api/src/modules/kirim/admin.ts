@@ -599,8 +599,11 @@ export class KirimAdminService {
        WHERE aksi IN ('percakapan.baca', 'percakapan.buka', 'media.unduh') AND occurred_at > now() - interval '7 days' GROUP BY 1, 2`,
     );
     const duplicates = await this.pool.query<{ device: string; count: string }>(
-      `SELECT d.kode AS device, count(*) AS count FROM kirim_conversations lid
-       JOIN kirim_conversations pn ON pn.device_id = lid.device_id AND pn.kontak_hmac = lid.kontak_alt_hmac AND pn.id <> lid.id
+      // Either half may be the one that knows the other: a LID row remembering the number, or the number's row
+      // remembering the LID (revisi 2026-10-30). Counting only the first shape hid the pairs this creates.
+      `SELECT d.kode AS device, count(DISTINCT lid.id) AS count FROM kirim_conversations lid
+       JOIN kirim_conversations pn ON pn.device_id = lid.device_id AND pn.id <> lid.id AND pn.kontak_jenis = 'pn'
+         AND (pn.kontak_hmac = lid.kontak_alt_hmac OR pn.kontak_alt_hmac = lid.kontak_hmac)
        JOIN kirim_devices d ON d.id = lid.device_id
        WHERE lid.kontak_jenis = 'lid' GROUP BY d.kode`,
     );
