@@ -2,6 +2,8 @@ import { createRemoteJWKSet, customFetch, errors, jwtVerify } from "jose";
 
 export const MACHINE_VERIFICATION_DEADLINE_MS = 3_000;
 const JWKS_TRANSPORT_TIMEOUT_MS = 2_500;
+/** One JWKS request may be sent twice: the original and a single transport retry. */
+const JWKS_TRANSPORT_ATTEMPTS = 2;
 
 interface ResolverGeneration {
   jwks: ReturnType<typeof createRemoteJWKSet>;
@@ -42,13 +44,31 @@ export function createKeycloakMachineTokenVerifier(input: {
       abort,
       jwks: createRemoteJWKSet(jwksUrl, {
         timeoutDuration: JWKS_TRANSPORT_TIMEOUT_MS,
-        [customFetch]: (url, options) => fetch(url, {
-          ...options,
-          signal: AbortSignal.any([
+        [customFetch]: async (url, options) => {
+          const signal = AbortSignal.any([
             abort.signal,
             ...(options.signal ? [options.signal] : []),
-          ]),
-        }),
+          ]);
+          for (let attempt = 1; ; attempt++) {
+            try {
+              return await fetch(url, { ...options, signal });
+            } catch (error) {
+              // Keycloak and the load balancer in front of it close idle keep-alive
+              // sockets. Writing a JWKS request to one that the peer has just closed
+              // fails as a TypeError before any response exists: a transport fault,
+              // not a verdict on the presented token. Resend once on the same signal,
+              // so the pair of attempts still shares the transport timeout and the
+              // caller's deadline. Never resend after an abort or a timeout, and never
+              // for a request the server actually answered — a non-200 status or an
+              // unparsable body is rejected by JOSE outside this hook.
+              if (
+                attempt >= JWKS_TRANSPORT_ATTEMPTS ||
+                signal.aborted ||
+                !(error instanceof TypeError)
+              ) throw error;
+            }
+          }
+        },
       }),
     };
     return current;
