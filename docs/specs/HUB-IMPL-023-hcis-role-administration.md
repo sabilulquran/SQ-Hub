@@ -81,7 +81,7 @@ Realm `sq-staff`. Dijalankan owner lewat skrip `kcadm`; `AGENTS.md` §9 melarang
 
 | ID | Perubahan | Status |
 | --- | --- | --- |
-| **K-1** | `manage-users` pada akun mesin `sq-hub-identity-management` | **DITERAPKAN 2026-10-31, DAN DIPERTANYAKAN** — lihat §1.2 |
+| ~~**K-1**~~ | ~~`manage-users` pada akun mesin `sq-hub-identity-management`~~ | **DITERAPKAN lalu DICABUT 2026-10-31** atas keputusan owner — §1.2, akibatnya §1.4 |
 | **K-2** | Client `sq-hub-role-administration` (confidential, service account, tanpa alur login). Client `hcis-role-administration-actor` sebagai sasaran audience. Client scope `role-administration.manage` → audience `hcis-role-administration`, dipasang **default** pada client mesin | diterapkan 2026-10-31 |
 | **K-4** | Saklar standard token exchange pada **`sq-hub`** — bukan pada client mesin seperti rancangan awal | **belum**; koreksi §1 |
 | **K-5** | Client scope `role-administration.actor` → audience `hcis-role-administration-actor`, dipasang **OPTIONAL** pada **`sq-hub`**. Dan audience mapper pada `sq-hub-dedicated` yang menjadikan `sq-hub` audience token-nya sendiri (langkah 2 HUB-IMPL-021; dipakai bersama, bukan ditambahkan dua kali) | **belum** |
@@ -102,9 +102,9 @@ Perubahan 2026-10-31 menambahkan `manage-users` ke client itu. `AGENTS.md` §1 m
 
 Akibat nyatanya bukan soal dokumen: `manage-users` memberi kemampuan mereset kredensial dan mengubah peran **setiap** pengguna realm `sq-staff` — termasuk para Admin Platform dan akun break-glass `SUPER_ADMIN` milik HCIS. Itu kebalikan dari pemisahan yang ADR-0006 R-1 susun, dan membuat H-10 di §3 tidak ada artinya.
 
-**Dijawab owner 2026-10-31: cabut.** Dijalankan hari itu juga. §1.5 mencatat apa yang sesudahnya benar-benar berubah — yang ternyata bukan apa yang pencabutnya kira.
+**Dijawab owner 2026-10-31: cabut.** Dijalankan hari itu juga. §1.4 mencatat apa yang sesudahnya benar-benar berubah — yang ternyata bukan apa yang pencabutnya kira.
 
-### 1.3 Apa yang terbukti soal saklar token exchange
+### 1.3 Apa yang terbukti soal saklar token exchange — dan satu hal yang hanya disimpulkan
 
 Percobaan 2026-10-31 menyelesaikan pertanyaan yang tidak bisa dijawab dengan membaca:
 
@@ -112,9 +112,9 @@ Percobaan 2026-10-31 menyelesaikan pertanyaan yang tidak bisa dijawab dengan mem
 - Yang bisa dipakai hanya percobaan. Dengan saklar menyala, exchange menjawab `200`; setelah disetel `false`, `400 "Standard token exchange is not enabled for the requested client"`.
 - Jadi nama atribut `standard.token.exchange.enabled` **benar dan berpengaruh**; hanya pembacaannya yang tidak dapat dipercaya.
 
-Satu kesimpulan menyusul dari situ. Bila saklar pada `sq-hub` mati, exchange governance akan gagal dengan galat yang sama, Hub menyembunyikan kartunya, dan HCIS tidak pernah dihubungi. Padahal HUB-IMPL-021 mencatat HCIS menjawab **404** untuk path registry pada 2026-10-18. Maka saklar pada `sq-hub` **sudah menyala sejak sebelum itu**, dan K-4 di dokumen ini kemungkinan besar tidak mengubah apa pun untuk `sq-hub`. Tetap dijalankan sebagai penegasan, bukan sebagai perubahan.
+**Yang berikut ini kesimpulan, bukan bukti.** Ia bersandar pada dua hal yang belum diuji: bahwa `404` pada 2026-10-18 benar-benar datang dari HCIS dan bukan dari proxy di depannya, dan bahwa jalur itu memang melewati token exchange. Dibiarkan di sini karena berguna, tetapi tidak boleh dipakai sebagai dasar keputusan tanpa diuji ulang. Bila saklar pada `sq-hub` mati, exchange governance akan gagal dengan galat yang sama, Hub menyembunyikan kartunya, dan HCIS tidak pernah dihubungi. Padahal HUB-IMPL-021 mencatat HCIS menjawab **404** untuk path registry pada 2026-10-18. Maka saklar pada `sq-hub` **sudah menyala sejak sebelum itu**, dan K-4 di dokumen ini kemungkinan besar tidak mengubah apa pun untuk `sq-hub`. Tetap dijalankan sebagai penegasan, bukan sebagai perubahan.
 
-### 1.5 Apa yang sebenarnya berubah ketika `manage-users` dicabut
+### 1.4 Apa yang sebenarnya berubah ketika `manage-users` dicabut
 
 Peran langsung `service-account-sq-hub-identity-management` pada `realm-management` kini tinggal `query-users`, dan token client-credentials-nya hanya membawa itu.
 
@@ -135,7 +135,9 @@ Jadi SQ Hub tetap dapat mengelola akun staf sesudah pencabutan, lewat FGAP, dan 
 
 Itulah pemisahan yang dicari ADR-0006 R-1: SQ Hub mengurus akun, tetapi tidak dapat mengubah peran realm siapa pun — termasuk Admin Platform dan akun break-glass `SUPER_ADMIN` milik HCIS.
 
-### 1.6 Sumber dan urutan pemeriksaan izin menentukan probe mana yang berarti
+**Satu batas pada bukti di atas, menurut aturan §1.5 sendiri.** Baris `role-mappings` dijalankan hanya sesudah pencabutan, tanpa keadaan "sebelum" dan tanpa subjek pembanding dalam run yang sama. Aturan 1 dan 2 di §1.5 melarang persis itu. Urutan validasi-vs-otorisasi untuk `POST .../role-mappings/realm` dengan badan `[]` juga belum dibuktikan di realm ini — jebakan yang sama bentuknya dengan `POST users` berbadan `{}`. Jadi kesimpulan "yang hilang adalah `map-roles`" berstatus `DRAFT` sampai probe itu diulang berpasangan: satu subjek yang diharapkan ditolak dan satu yang diharapkan lolos, dalam satu run. Dua baris lainnya (`GET users/{id}` dan `DELETE .../consents/...`) tidak terkena batas ini: keduanya dijalankan berpasangan terhadap subjek terlindungi dan tidak terlindungi.
+
+### 1.5 Sumber dan urutan pemeriksaan izin menentukan probe mana yang berarti
 
 Dua kali berturut-turut, probe yang dipilih untuk membuktikan pencabutan ternyata tidak sah. Keduanya gagal dengan cara yang sama berbahayanya: **jawabannya terbaca meyakinkan**.
 
@@ -155,21 +157,23 @@ Aturan untuk siapa pun yang menulis skrip verifikasi berikutnya:
 
 Probe yang terbukti sah di realm ini, dan karena itu dipakai seterusnya: `GET users/{id}` berpasangan dengan `DELETE users/{id}/consents/<client yang tidak ada>` — `403/403` untuk subjek yang terlindungi, `200/404` untuk yang tidak.
 
-### 1.7 Drift: daftar akun mesin yang dilindungi tidak ikut bertambah
+### 1.6 Drift: daftar akun mesin yang dilindungi tidak ikut bertambah
 
 Permission `staff lifecycle: deny service accounts` menyebut akun mesin **satu per satu**. Daftarnya dibuat saat HUB-IMPL-013 dipasang dan berisi **7** resource. Realm per 2026-10-31 punya **11** akun mesin. Empat yang tidak terlindungi — `karir-sq-api`, `keluarga-sq-api`, `spmb-api`, dan `sq-hub-role-administration` — terbukti lewat probe menjawab `200/404`, sedangkan `hcis-api` sebagai pembanding menjawab `403/403`.
 
 Akibatnya SQ Hub dapat, misalnya, menonaktifkan akun mesin Karir, SPMB, atau Keluarga. Bahwa `sq-hub-role-administration` ikut di dalamnya berarti kanal pemberian peran HCIS sendiri dapat dimatikan dari Hub.
 
+**Tiga di antaranya drift historis; satu adalah kelalaian dokumen ini sendiri.** `karir-sq-api`, `keluarga-sq-api`, dan `spmb-api` dibuat setelah HUB-IMPL-013 dipasang dan tidak pernah didaftarkan. `sq-hub-role-administration` lain: client itu **baru dibuat oleh K-2 pada 2026-10-31** (§1.1), dalam penerapan spesifikasi ini, dan langkah pendaftarannya terlewat pada hari yang sama. Jadi pelanggaran pertama D-DRIFT-2 dilakukan oleh dokumen yang menetapkan D-DRIFT-2. Dicatat begitu, bukan dirapikan menjadi "drift lama", karena justru itu yang membuktikan bahwa langkah wajib di checklist bukan formalitas.
+
 Tidak ada yang rusak, tidak ada yang memberi tanda, dan selisihnya hanya terlihat kalau seseorang sengaja membandingkan. Inilah bentuk "sudah diset lalu terlewat" yang owner minta jangan terulang, jadi penutupannya tidak boleh berhenti pada menambah empat nama.
 
 **D-DRIFT-1 — pemeriksaan drift.** Harus ada langkah yang membandingkan daftar akun mesin realm dengan daftar resource permission tersebut, dan menyatakan **TIDAK LULUS** bila tidak sama. Daftar akun mesin diambil dari realm (client yang `serviceAccountsEnabled`, lalu `clients/{id}/service-account-user`), bukan dari daftar yang ditulis tangan di mana pun — daftar tangan adalah persis penyebab masalah ini. `kc-auth014-d-kecualikan-akun-mesin.sh` tanpa `--apply` sudah menjalankan pembandingan itu dan tidak mengubah apa pun, jadi ia dapat dipakai langsung sebagai pemeriksaannya.
 
-**D-DRIFT-2 — checklist onboarding aplikasi baru.** Setiap aplikasi SQ Core baru yang membawa service account menambahkan satu langkah wajib: daftarkan akun mesinnya pada permission tersebut, lalu buktikan `403/403` dengan probe §1.6. Langkah ini masuk ke prosedur onboarding, bukan ke ingatan seseorang.
+**D-DRIFT-2 — checklist onboarding aplikasi baru.** Setiap aplikasi SQ Core baru yang membawa service account menambahkan satu langkah wajib: daftarkan akun mesinnya pada permission tersebut, lalu buktikan `403/403` dengan probe §1.5. Langkah ini masuk ke prosedur onboarding, bukan ke ingatan seseorang.
 
 Keduanya `DRAFT` sampai owner menyetujui tempat pemeriksaannya dijalankan; isinya tidak menunggu siapa pun.
 
-### 1.8 Satu temuan yang perlu ditindaklanjuti di luar spesifikasi ini
+### 1.7 Satu temuan yang perlu ditindaklanjuti di luar spesifikasi ini
 
 `docs/operations/HUB-IMPL-021-token-exchange.md` berstatus "PREPARED, NOT APPLIED", tetapi penelusuran realm 2026-10-31 menunjukkan client scope `sq-governance-hcis` dan `sq-governance-aset-sq` **sudah ada**, dan §4 dokumen itu sendiri mencatat koreksi production 2026-10-18. Status di kepalanya tertinggal dari isinya sendiri. Pemiliknya HUB-IMPL-021, bukan dokumen ini.
 
@@ -275,7 +279,9 @@ Maka Hub **menolak** reset kata sandi untuk akun yang merupakan Admin Platform. 
 
 Pertama, hari ini Hub **tidak punya** operasi reset kata sandi umum untuk ditolak. Satu-satunya jalur adalah `sendPasswordInitialization` (`apps/api/src/modules/identity-management/client.ts`), yang hanya berlaku untuk akun yang belum pernah diaktifkan dan mengirim surel ke alamat akun itu sendiri — bukan menyetel kredensial. Jadi H-10 adalah aturan untuk operasi yang **akan** ada, bukan penjagaan atas yang sudah ada. Tulis begitu, jangan seolah sudah menutup sesuatu.
 
-Kedua, dan lebih penting: kemampuan yang ditakuti H-10 hidup di **akun mesin Keycloak**, bukan di Hub. Siapa pun yang memegang secret `sq-hub-identity-management` — atau jalur kode Hub mana pun di masa depan — memanggil admin API Keycloak langsung dan melewati pemeriksaan Hub sama sekali. Selama §1.2 belum dijawab, H-10 adalah polisi tidur, bukan pagar. Pagarnya adalah tidak memberikan `manage-users` sejak awal.
+Kedua, dan lebih penting: kemampuan yang ditakuti H-10 hidup di **akun mesin Keycloak**, bukan di Hub. Siapa pun yang memegang secret `sq-hub-identity-management` — atau jalur kode Hub mana pun di masa depan — memanggil admin API Keycloak langsung dan melewati pemeriksaan Hub sama sekali.
+
+Pencabutan `manage-users` pada 2026-10-31 **tidak** menutup itu, dan premis pembuka H-10 di atas perlu diperbaiki karenanya: kemampuan mengelola credential tidak datang dari `manage-users`, ia datang dari permission FGAP `staff lifecycle: view and manage users` yang tetap terpasang (§1.4). Jadi H-10 tetap relevan, tetapi alasannya berbeda dari yang tertulis semula. Yang hilang karena pencabutan adalah `map-roles` — langkah "lalu memberi dirinya peran apa pun" di paragraf pembuka kini terhalang di Keycloak, sedangkan langkah "mereset kata sandi, masuk sebagai orang itu" tidak. H-10 menutup sisa itu di sisi Hub, dan hanya di sisi Hub.
 
 `DRAFT`: "peran istimewa modul" dikeluarkan dari v1. Hub belum tahu peran mana di tiap modul yang istimewa, dan menanyakannya ke tiap aplikasi adalah pekerjaan tersendiri.
 
@@ -318,7 +324,7 @@ Sebagian sudah ada, dan H-11 **memperluas**, bukan menciptakan: `platform_audit_
 
 Wajib diperiksa dan dilaporkan apa adanya, termasuk yang tidak bisa dijalankan:
 
-identity mapping; perilaku fail-closed; penyimpanan token; keamanan cookie; Application Access; kontinuitas otorisasi lokal; logout; backup/restore; latihan rollback; **pemeriksaan drift D-DRIFT-1** (§1.7).
+identity mapping; perilaku fail-closed; penyimpanan token; keamanan cookie; Application Access; kontinuitas otorisasi lokal; logout; backup/restore; latihan rollback; **pemeriksaan drift D-DRIFT-1** (§1.6).
 
 Catatan jujur sejak sekarang, tiga hal yang **tidak dapat dijalankan dari CI** dan karena itu tidak boleh diklaim lulus di PR:
 
@@ -328,6 +334,10 @@ Catatan jujur sejak sekarang, tiga hal yang **tidak dapat dijalankan dari CI** d
 
 Ketiganya dijalankan owner saat rollout dan dilaporkan di situ.
 
+Dua lagi yang **belum punya objek uji sama sekali**, dan karena itu tidak boleh dihitung lulus mau pun gagal: **AC 9** (H-9) dan **AC 10** (H-10). §3 sendiri mencatat `PlatformAdminService.grant` tidak punya pemanggil di `src/` dan tidak ada rute yang membuat Admin Platform, serta Hub tidak punya operasi reset kata sandi umum untuk ditolak. Keduanya menjadi dapat diuji begitu rutenya ada, tidak sebelum itu.
+
+Satu lagi yang bukan ketidakmampuan CI melainkan keadaan: **keputusan §1.1 bahwa peminta exchange adalah `sq-hub` belum pernah dijalankan satu kali pun**, karena K-4 dan K-5 belum diterapkan. Ia keputusan beralasan, bukan fakta teruji.
+
 ## 7. Rollback
 
 | Langkah | Akibatnya |
@@ -335,7 +345,7 @@ Ketiganya dijalankan owner saat rollout dan dilaporkan di situ.
 | Matikan `HCIS_ROLE_ADMIN_ENABLED` di HCIS | kanal menjawab 503; layar Hub menampilkan "belum aktif" |
 | Lepas optional scope `role-administration.actor` dari `sq-hub` | exchange gagal; tidak ada yang lain berubah |
 | Matikan saklar standard token exchange pada `sq-hub` | **juga mematikan Ringkasan Yayasan** (HUB-IMPL-021). Jangan dipakai sebagai rollback spesifikasi ini |
-| Cabut `manage-users` dari `sq-hub-identity-management` | Hub kembali tidak bisa mengelola pengguna; konsol Keycloak tetap bisa |
+| ~~Cabut `manage-users` dari `sq-hub-identity-management`~~ | **Bukan rollback, dan kalimat lamanya salah.** Sudah dicabut 2026-10-31, jadi tidak tersedia lagi. Dan ia tidak membuat "Hub kembali tidak bisa mengelola pengguna": pengelolaan akun berjalan lewat FGAP (§1.4). Yang dicabutnya adalah `map-roles` |
 
 Hub tidak menyimpan data peran, jadi tidak ada yang perlu dibersihkan.
 
@@ -347,7 +357,9 @@ Hub tidak menyimpan data peran, jadi tidak ada yang perlu dibersihkan.
 | `DRAFT` | "Peran istimewa modul" di H-10 untuk v1 berarti Admin Platform saja |
 | `DRAFT` | Audience aktor bernama `hcis-role-administration-actor`; client-nya sudah dibuat 2026-10-31 |
 | `TBD` | Apakah aplikasi SQ Core lain memakai kanal berbentuk sama. Rancangan ini tidak memuat apa pun yang khas HCIS selain katalog perannya |
-| **diputuskan 2026-10-31** | K-1: owner memilih cabut `manage-users`; sudah dijalankan (§1.2, §1.5) |
-| `DRAFT` | D-DRIFT-1/D-DRIFT-2: tempat pemeriksaan drift dijalankan dan pemilik checklist onboarding (§1.7) |
+| **diputuskan 2026-10-31** | K-1: owner memilih cabut `manage-users`; sudah dijalankan (§1.2, §1.4) |
+| `DRAFT` | D-DRIFT-1/D-DRIFT-2: tempat pemeriksaan drift dijalankan dan pemilik checklist onboarding (§1.6) |
+| `DRAFT` | "Yang hilang karena pencabutan adalah `map-roles`": probe `role-mappings` belum dijalankan berpasangan (§1.4) |
+| **belum teruji** | AC 9 dan AC 10 belum punya objek uji; rutenya belum ada (§6) |
 | **menunggu owner** | Menjalankan K-4/K-5 pada `sq-hub`, karena saklarnya dipakai bersama Ringkasan Yayasan (§1.3) |
 | `DRAFT` | Scope exchange diparameterkan, bukan dinamai ulang agar muat ke prefix `sq-governance-` |
