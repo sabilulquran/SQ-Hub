@@ -40,6 +40,11 @@ export class JalurPesanStub {
   readonly pendingHistory = new Map<string, unknown[]>();
   /** When false the J-2 routes answer 404, like an engine without them. */
   historyRoutes = true;
+  /**
+   * Holds a `/events` reply open after its page has been read, so a test can arrange what a real
+   * engine does all the time: an event arriving while a pull is already past the point of seeing it.
+   */
+  onEventsRead: (() => Promise<void>) | null = null;
   uploads = 0;
   /** Next responses for POST …/messages, consumed in order; default is 200. */
   sendQueue: Array<{ status: number; body: Record<string, unknown> } | "hang"> = [];
@@ -86,6 +91,7 @@ export class JalurPesanStub {
     this.history.clear();
     this.pendingHistory.clear();
     this.historyRoutes = true;
+    this.onEventsRead = null;
     this.uploads = 0;
     this.sendQueue = [];
     this.provisionResponse = null;
@@ -239,6 +245,8 @@ export class JalurPesanStub {
       const limit = Number(url.searchParams.get("limit") ?? "100");
       const own = this.events.filter((event) => event.deviceId === tenant.engineDeviceId && event.cursor > after);
       const page = own.slice(0, limit);
+      // The page is already decided; anything added from here on belongs to a later pull.
+      if (this.onEventsRead) await this.onEventsRead();
       return { status: 200, body: { events: page, nextCursor: page.at(-1)?.cursor ?? after, hasMore: own.length > limit } };
     }
     return { status: 404, body: {} };

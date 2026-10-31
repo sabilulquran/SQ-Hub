@@ -457,7 +457,14 @@ describe("contacts (§9)", () => {
   it("learns a LID contact's number and profile name", async () => {
     stub.addEvent("spmb", "message.received", receivedPayload({ from: "99887766554433@lid", body: "dari lid" }));
     await pull();
-    stub.contacts.set("spmb", [{ jid: "99887766554433@lid", canonicalJid: "6281277778888@s.whatsapp.net", displayName: "Pak Budi" }]);
+    // The address book is mostly strangers: everyone the number has ever seen, against the one chat
+    // we keep. The page is matched in one go, so the one that counts must still be found among them.
+    const strangers = Array.from({ length: 250 }, (_, index) => ({
+      jid: `628120000${String(index).padStart(4, "0")}@s.whatsapp.net`,
+      canonicalJid: `628120000${String(index).padStart(4, "0")}@s.whatsapp.net`,
+      displayName: `Bukan Siapa-siapa ${index}`,
+    }));
+    stub.contacts.set("spmb", [...strangers.slice(0, 120), { jid: "99887766554433@lid", canonicalJid: "6281277778888@s.whatsapp.net", displayName: "Pak Budi" }, ...strangers.slice(120)]);
     await kirim.ingest!.refreshDirectory("contacts");
     const [item] = (await call("GET", "/devices/spmb/conversations")).json().items;
     expect(item).toMatchObject({ kontak: { nomor: "+6281277778888", jenis: "lid" }, nama_profil: "Pak Budi" });
@@ -467,6 +474,51 @@ describe("contacts (§9)", () => {
     stub.addEvent("spmb", "message.received", receivedPayload({ from: "99887766554433@lid", body: "lagi" }));
     await pull();
     expect((await webhookPayloads("message.received")).at(-1)!.data.from).toBe("+6281277778888");
+  });
+});
+
+describe("pesan masuk tidak menunggu ronde berikutnya", () => {
+  /** Starts a pull and holds it at the point where its page has been read but not yet answered. */
+  async function pullHeldAfterReading() {
+    let release: () => void = () => undefined;
+    const reading = new Promise<void>((seen) => {
+      stub.onEventsRead = () => {
+        stub.onEventsRead = null;
+        seen();
+        return new Promise<void>((done) => {
+          release = done;
+        });
+      };
+    });
+    const pulling = kirim.ingest!.pullDevice(spmbDeviceId);
+    await reading;
+    return { pulling, release: () => release() };
+  }
+
+  it("a push that arrives mid-pull gets a round of its own, not one that has already looked", async () => {
+    const held = await pullHeldAfterReading();
+
+    // The message lands and the engine pushes it. Being handed the pull above would mean being
+    // answered by the page it has already read, leaving the message until the next round.
+    stub.addEvent("spmb", "message.received", receivedPayload({ from: "6281277776666@s.whatsapp.net", body: "Assalamualaikum" }));
+    const pushed = kirim.ingest!.pullDevice(spmbDeviceId);
+    held.release();
+    await Promise.all([held.pulling, pushed]);
+
+    const items = (await call("GET", "/devices/spmb/conversations")).json().items;
+    expect(items).toHaveLength(1);
+    expect(items[0]).toMatchObject({ kontak: { nomor: "+6281277776666" } });
+  });
+
+  it("a burst of pushes during one pull costs one follow-up round, not one each", async () => {
+    const held = await pullHeldAfterReading();
+    const events = () => stub.requests.filter((request) => request.path.endsWith("/events")).length;
+
+    const waiting = [kirim.ingest!.pullDevice(spmbDeviceId), kirim.ingest!.pullDevice(spmbDeviceId), kirim.ingest!.pullDevice(spmbDeviceId)];
+    const before = events();
+    held.release();
+    await Promise.all([held.pulling, ...waiting]);
+    expect(events() - before).toBe(1);
   });
 });
 
