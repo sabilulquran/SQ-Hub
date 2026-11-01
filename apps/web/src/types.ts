@@ -310,11 +310,9 @@ export interface HcisRoleCatalogEntry {
 /** HUB-IMPL-023 H-1b: one person's HCIS account and role assignments, with no identity data from HCIS. */
 export interface HcisAccountLookup {
   staff: { subject: string; displayName: string; username: string };
-  account: { accountId: string; principalType: string; status: string; employeeStatus: string | null };
+  account: { accountId: string; grantable: boolean; notGrantableReason: "account_inactive" | "employee_inactive" | null };
   assignments: {
-    page: number;
-    pageSize: number;
-    total: number;
+    pagination: { page: number; pageSize: number; total: number; pageCount: number };
     items: Array<{
       assignmentId: string;
       roleId: string;

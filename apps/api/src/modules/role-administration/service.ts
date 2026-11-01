@@ -33,19 +33,17 @@ const catalogSchema = z.object({
 
 export type HcisRoleCatalog = z.infer<typeof catalogSchema>;
 
-// H-1b (HCIS lookup contract, decided 2026-11-01). No name, e-mail or NIK comes back: the Hub
+// H-1b (HCIS §2.1b, main 7cb2d35f). No name, e-mail, NIK or employment status comes back: the Hub
 // already knows who it asked about, and the role channel is not a way to read employee data.
+// `grantable` only says whether HCIS would refuse a grant, and why. A non-employee account answers
+// 404 like a missing one, on purpose.
 const lookupSchema = z.object({
   account: z.object({
     accountId: z.string().uuid(),
-    principalType: z.string().max(60),
-    status: z.string().max(60),
-    employeeStatus: z.string().max(60).nullable(),
+    grantable: z.boolean(),
+    notGrantableReason: z.enum(["account_inactive", "employee_inactive"]).nullable(),
   }),
   assignments: z.object({
-    page: z.number().int().min(1),
-    pageSize: z.number().int().min(1).max(100),
-    total: z.number().int().min(0),
     items: z.array(z.object({
       assignmentId: z.string().uuid(),
       roleId: z.string().uuid(),
@@ -59,6 +57,12 @@ const lookupSchema = z.object({
       createdAt: z.string().max(40),
       revocableViaHub: z.boolean(),
     })).max(100),
+    pagination: z.object({
+      page: z.number().int().min(1),
+      pageSize: z.number().int().min(1).max(100),
+      total: z.number().int().min(0),
+      pageCount: z.number().int().min(0),
+    }),
   }),
 });
 
@@ -270,7 +274,7 @@ export class RoleAdministrationService {
       const { assignments } = await this.lookupWith(send, identity, page, 100);
       const found = assignments.items.find((item) => item.assignmentId === assignmentId);
       if (found) return found;
-      if (page * assignments.pageSize >= assignments.total) return null;
+      if (page >= assignments.pagination.pageCount) return null;
     }
     return null;
   }

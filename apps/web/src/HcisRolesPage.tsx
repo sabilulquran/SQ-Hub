@@ -174,8 +174,10 @@ export function HcisRolesPage({ workspace, onLogout, onAuthorizationDenied }: Pr
   });
 
   const account = person.status === "ready" ? person.lookup.account : null;
-  const accountWarning = account && (account.status !== "active" || (account.employeeStatus && account.employeeStatus !== "active"))
-    ? `Akun HCIS orang ini berstatus ${account.status}${account.employeeStatus ? `, kepegawaian ${account.employeeStatus}` : ""}. HCIS kemungkinan menolak pemberian peran.`
+  const accountWarning = account && !account.grantable
+    ? account.notGrantableReason === "employee_inactive"
+      ? "HCIS akan menolak pemberian peran: orang ini bukan pegawai aktif."
+      : "HCIS akan menolak pemberian peran: akun HCIS orang ini tidak aktif."
     : null;
 
   return <AppShell workspace={workspace} space="admin" active="admin-hcis-roles" breadcrumb={["Administrasi", "Peran HCIS"]} onLogout={onLogout}>
@@ -204,7 +206,7 @@ export function HcisRolesPage({ workspace, onLogout, onAuthorizationDenied }: Pr
         {person.status === "ready" ? <>
           <h2 className="font-display text-lg font-bold">{person.staff.displayName}</h2>
           {accountWarning ? <p className="mt-2 rounded-xl bg-warning-soft p-3 text-xs text-warning-ink">{accountWarning}</p> : null}
-          <h3 className="mt-4 text-xs font-bold uppercase tracking-wide text-muted-foreground">Peran saat ini ({person.lookup.assignments.total})</h3>
+          <h3 className="mt-4 text-xs font-bold uppercase tracking-wide text-muted-foreground">Peran saat ini ({person.lookup.assignments.pagination.total})</h3>
           {person.lookup.assignments.items.length === 0 ? <p className="mt-2 text-sm text-muted-foreground">Belum ada peran HCIS.</p> : <ul className="mt-2 divide-y divide-border/60 rounded-xl border border-border/70">
             {person.lookup.assignments.items.map((assignment) => <li key={assignment.assignmentId} className="flex flex-col gap-2 p-3 text-sm sm:flex-row sm:items-center sm:justify-between">
               <span><strong>{assignment.roleName}</strong><span className="block text-xs text-muted-foreground">{scopeLabels[assignment.scopeType] ?? assignment.scopeType}{assignment.organizationalUnitName ? ` · ${assignment.organizationalUnitName}` : ""}{assignment.endsOn ? ` · sampai ${assignment.endsOn}` : ""}</span></span>
@@ -213,7 +215,7 @@ export function HcisRolesPage({ workspace, onLogout, onAuthorizationDenied }: Pr
                 : <span className="text-xs text-muted-foreground">Tidak dapat dicabut lewat SQ Hub</span>}
             </li>)}
           </ul>}
-          {person.lookup.assignments.total > person.lookup.assignments.items.length ? <p className="mt-2 text-xs text-muted-foreground">Menampilkan {person.lookup.assignments.items.length} dari {person.lookup.assignments.total} peran.</p> : null}
+          {person.lookup.assignments.pagination.total > person.lookup.assignments.items.length ? <p className="mt-2 text-xs text-muted-foreground">Menampilkan {person.lookup.assignments.items.length} dari {person.lookup.assignments.pagination.total} peran.</p> : null}
 
           <h3 className="mt-6 flex items-center gap-2 text-xs font-bold uppercase tracking-wide text-muted-foreground"><KeyRound className="h-4 w-4" /> Beri peran</h3>
           <div className="mt-2 grid gap-3 sm:grid-cols-2">
@@ -230,7 +232,7 @@ export function HcisRolesPage({ workspace, onLogout, onAuthorizationDenied }: Pr
             <label className="text-xs font-bold">Berakhir (opsional)<input type="date" className={input} value={endsOn} onChange={(e) => changeGrant(() => setEndsOn(e.target.value))} /></label>
             <label className="text-xs font-bold sm:col-span-2">Mandat / alasan<textarea className={input} value={reason} onChange={(e) => changeGrant(() => setReason(e.target.value))} placeholder="Contoh: SK Ketua Pengurus No. 12/2026" /></label>
           </div>
-          <button className={primary} disabled={busy || !role} onClick={() => void grant()}><KeyRound className="h-4 w-4" /> Berikan peran</button>
+          <button className={primary} disabled={busy || !role || !person.lookup.account.grantable} onClick={() => void grant()}><KeyRound className="h-4 w-4" /> Berikan peran</button>
         </> : null}
       </section>
     </div> : null}

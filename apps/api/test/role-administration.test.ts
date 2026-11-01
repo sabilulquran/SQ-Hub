@@ -138,8 +138,11 @@ function lookupBody(accountId: string) {
     createdAt: "2026-10-30T00:00:00Z", revocableViaHub,
   });
   return {
-    account: { accountId, principalType: "EMPLOYEE", status: "active", employeeStatus: "active" },
-    assignments: { page: 1, pageSize: 25, total: 2, items: [item(ASSIGNMENT_ID, true), item(LOCKED_ASSIGNMENT_ID, false)] },
+    account: { accountId, grantable: true, notGrantableReason: null },
+    assignments: {
+      items: [item(ASSIGNMENT_ID, true), item(LOCKED_ASSIGNMENT_ID, false)],
+      pagination: { page: 1, pageSize: 25, total: 2, pageCount: 1 },
+    },
   };
 }
 
@@ -372,8 +375,8 @@ describe("H-1/H-1b/H-2: the Platform Administrator's command to HCIS", () => {
     expect(response.statusCode).toBe(200);
     expect(response.json()).toMatchObject({
       staff: { subject: "employee-b", displayName: "Synthetic employee-b" },
-      account: { accountId: ACCOUNT_B, status: "active" },
-      assignments: { total: 2 },
+      account: { accountId: ACCOUNT_B, grantable: true },
+      assignments: { pagination: { total: 2 } },
     });
     expect(hcis[0]!.url.searchParams.get("page")).toBe("2");
     await app.close();

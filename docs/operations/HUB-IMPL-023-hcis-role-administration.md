@@ -26,7 +26,7 @@ the Hub host and its database, which is outside the Hub's own threat model; H-9 
 
 ## H-1b — decided 2026-11-01
 
-Decided by the spec owner session: a new HCIS route, not ids copied from the HCIS screen (that screen is scheduled
+Decided by the spec owner session, built in HCIS `main` 7cb2d35f (HCIS PR #252, spec §2.1b revision 10): a new HCIS route, not ids copied from the HCIS screen (that screen is scheduled
 for removal under AUTH-014 §8, and a hand-copied id is a silent wrong-person grant). Contract:
 
 ```
@@ -34,15 +34,20 @@ GET /internal/v1/role-administration/accounts?issuer=<iss>&subject=<sub>&page=1&
 Authorization: Bearer <machine token>
 X-SQ-Actor-Assertion: <assertion>        (not spent, like /catalog)
 
-200 { account: { accountId, principalType, status, employeeStatus },
-      assignments: { page, pageSize, total, items: [ { assignmentId, roleId, roleKey, roleName, scopeType,
-        organizationalUnitId, organizationalUnitName, startsOn, endsOn, createdAt, revocableViaHub } ] } }
-404 ROLE_ADMIN_ACCOUNT_NOT_FOUND   the person has no HCIS account (not a refusal)
+200 { account: { accountId, grantable, notGrantableReason: "account_inactive" | "employee_inactive" | null },
+      assignments: { items: [ { assignmentId, roleId, roleKey, roleName, scopeType, organizationalUnitId,
+        organizationalUnitName, startsOn, endsOn, createdAt, revocableViaHub } ],
+        pagination: { page, pageSize, total, pageCount } } }
+404 ROLE_ADMIN_ACCOUNT_NOT_FOUND   no HCIS employee account for this person; non-employee accounts
+                                   (FOUNDATION_BOARD, SUPER_ADMIN) answer the same on purpose
+403 ROLE_GRANT_ACTOR_INVALID       the actor is not an active employee (HCIS runs assertRoleGrantor on reads too)
 400 INVALID_REQUEST                empty issuer/subject, pageSize outside 1..100
 ```
 
-No name, e-mail or NIK in the answer. The route is built in HCIS by the spec owner session; until it is on HCIS
-`main` and deployed, the Hub screen shows the channel's own state (the channel is switched off anyway).
+No name, e-mail, NIK or employment status in the answer. Every read is audited in HCIS as `role.account.lookup`
+with the assertion's `jti`; the Hub screen reads once per selected person and keeps the result until the operator
+acts. HCIS only checks that the actor is an active employee, so H-0 in the Hub remains the only authority check,
+for reads as well.
 
 ## Configuration
 
