@@ -1,6 +1,6 @@
 # HUB-IMPL-023 — Admin Platform memberi peran HCIS
 
-**Status:** DRAFT, revisi 5: H-1b (pencarian akun) dan keadaan setelah implementasi SQ-Hub#169. Belum diterima Product Owner. Penerimaan memberi wewenang implementasi; penerapan di Mi8VPS tetap menuntut review, CI, dan persetujuan owner tersendiri.
+**Status:** DRAFT, revisi 4 setelah penerapan (D) dan review putaran ketiga. Belum diterima Product Owner. Penerimaan memberi wewenang implementasi; penerapan di Mi8VPS tetap menuntut review, CI, dan persetujuan owner tersendiri.
 **Product:** SQ Hub
 **Area:** Admin Center / identitas dan akses
 **Date:** 2026-11-01
@@ -205,34 +205,6 @@ Layar pemberian peran membaca `GET /internal/v1/role-administration/catalog` dan
 
 **Jangan menyalin daftar peran HCIS ke kode Hub.** Peran HCIS berubah di HCIS; salinan di Hub akan melenceng tanpa ada yang tahu, dan `AGENTS.md` §4 menegaskan ownership data harus eksplisit.
 
-### H-1b — Orangnya dipilih, bukan id HCIS-nya
-
-Diputuskan 2026-11-01; rute HCIS ada di `main` HCIS `7cb2d35f` (spec HCIS §2.1b revisi 10).
-
-Operator memilih orang dari direktori Akun SQ. Hub menanyakan akun dan penugasannya ke HCIS:
-
-```text
-GET {hcis}/internal/v1/role-administration/accounts?issuer=<iss>&subject=<sub>&page=1&pageSize=25
-Authorization: Bearer <token mesin>
-X-SQ-Actor-Assertion: <assertion>          (tidak membelanjakan assertion, seperti /catalog)
-
-200 { "account": { "accountId", "grantable", "notGrantableReason" },
-      "assignments": { "items": [ { "assignmentId", "roleId", "roleKey", "roleName", "scopeType",
-          "organizationalUnitId", "organizationalUnitName", "startsOn", "endsOn", "createdAt",
-          "revocableViaHub" } ],
-        "pagination": { "page", "pageSize", "total", "pageCount" } } }
-404 ROLE_ADMIN_ACCOUNT_NOT_FOUND   tidak ada akun pegawai HCIS untuk orang ini; akun non-pegawai menjawab sama
-```
-
-Aturan yang mengikat Hub:
-
-- **Pemberian dan pencabutan menerima subject, tidak pernah id HCIS dari browser.** Hub menyelesaikan `accountId` dari jawaban HCIS di dalam aksi yang sama, dan hanya mencabut penugasan yang HCIS cantumkan untuk orang itu dengan `revocableViaHub: true`. Id yang ditempel tangan adalah jalur salah-orang yang diam: auditnya terlihat sah sepenuhnya.
-- Tidak ada nama, surel, NIK, atau status kepegawaian di jawaban. `grantable` dan `notGrantableReason` hanya untuk memperingatkan operator sebelum HCIS menolak; keputusannya tetap di HCIS.
-- `404` tidak membedakan "tidak ada akun" dari "akun istimewa". Hub tidak boleh menampilkan bahwa sebuah akun istimewa.
-- HCIS menjalankan `assertRoleGrantor` juga pada pembacaan ini, tetapi itu hanya memastikan aktor pegawai aktif. **H-0 tetap satu-satunya pemeriksaan kewenangan, termasuk untuk membaca.**
-- Akibatnya, **Admin Platform yang tidak punya akun pegawai HCIS dijawab `403 ROLE_GRANT_ACTOR_INVALID` bahkan untuk membaca**, dan tidak dapat memakai layar ini sama sekali. Itu konsekuensi ADR-0006 D-3 yang disengaja, bukan kerusakan; jangan "diperbaiki" dengan melonggarkan pemeriksaan di HCIS atau di Hub.
-- Setiap pembacaan diaudit HCIS sebagai `role.account.lookup`. Layar Hub membaca sekali per orang yang dipilih.
-
 ### H-2 — Setiap panggilan membawa dua bukti
 
 ```text
@@ -357,8 +329,6 @@ Sebagian sudah ada, dan H-11 **memperluas**, bukan menciptakan: `platform_audit_
 1b. **Pengguna Hub yang bukan Admin Platform ditolak, dan ditolak sebelum token exchange dicoba.** Diuji dengan dua akun: satu Admin Platform, satu pegawai biasa yang punya akses aplikasi HCIS. Yang kedua tidak boleh menghasilkan satu pun permintaan exchange ke Keycloak.
 1c. Pencabutan peran berhasil lewat H-2b dan menghasilkan `204`, dengan audit `role.assignment.removed` di HCIS.
 2. Katalog peran yang ditampilkan berasal dari `GET /catalog`; tidak ada `roleKey` HCIS yang tertulis di kode Hub.
-2b. **Tidak ada id HCIS yang pernah diketik manusia.** Perintah Hub menerima subject, dan `accountId` berasal dari `GET /accounts` dalam aksi yang sama. Diuji dengan satu pemberian penuh dari pemilihan orang sampai `201`, tanpa id HCIS di input mana pun, dan dengan penolakan body yang membawa `accountId`.
-2c. Pencabutan hanya ditawarkan untuk assignment dengan `revocableViaHub = true`, dan subject yang tidak punya akun pegawai HCIS menghasilkan pesan "tidak ada akun HCIS", bukan pesan yang membedakan akun istimewa dari ketiadaan akun.
 3. Memberi peran kepada diri sendiri ditolak, dan pesannya mengatakan kenapa.
 4. Assertion yang sama dipakai dua kali ditolak `409`, dan Hub menerbitkan yang baru alih-alih mengulang.
 5. `requestId` yang sama dikirim dua kali tidak menghasilkan dua assignment.
@@ -411,6 +381,5 @@ Hub tidak menyimpan data peran, jadi tidak ada yang perlu dibersihkan. Yang Hub 
 | **belum diuji** | Jalur rollback (D): satu PUT tanpa kelima resource; belum pernah dilatih (§1.6) |
 | `DRAFT` | "Yang hilang karena pencabutan adalah `map-roles`": probe `role-mappings` belum dijalankan berpasangan (§1.4) |
 | **diuji 2026-11-01** | AC 9 dan AC 10 punya objek uji sejak SQ-Hub#169 (§6) |
-| **diputuskan 2026-11-01** | H-1b: rute lookup HCIS, bukan id yang disalin dari layar HCIS |
 | **menunggu owner** | Menjalankan K-4/K-5 pada `sq-hub`, karena saklarnya dipakai bersama Ringkasan Yayasan (§1.3) |
 | `DRAFT` | Scope exchange diparameterkan, bukan dinamai ulang agar muat ke prefix `sq-governance-` |
