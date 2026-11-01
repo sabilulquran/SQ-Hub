@@ -34,7 +34,7 @@ const errors: Record<string, string> = {
   ROLE_ADMIN_INVALID_REQUEST: "HCIS menolak isian ini. Periksa peran, cakupan, unit, dan tanggal.",
   ROLE_DELEGATION_FORBIDDEN: "HCIS menolak pemberian ini.",
   ROLE_IDENTITY_PERMISSION_FORBIDDEN: "Peran ini membawa kewenangan identitas dan tidak pernah dapat diberikan dari HCIS.",
-  ROLE_GRANT_ACTOR_INVALID: "Akun HCIS Anda tidak aktif sebagai pegawai, jadi HCIS menolak Anda sebagai pemberi peran.",
+  ROLE_GRANT_ACTOR_INVALID: "Anda tidak punya akun pegawai HCIS yang aktif, jadi HCIS tidak menerima Anda sebagai pemberi peran, juga untuk membaca. Ini disengaja (ADR-0006 D-3), bukan kerusakan.",
   ROLE_ADMIN_ACTOR_UNRESOLVED: "HCIS belum mengenali akun Anda. Ini masalah konfigurasi penautan Akun SQ, bukan kesalahan Anda.",
   HCIS_ACCESS_DENIED: "Akses aplikasi HCIS Anda sedang dicabut di SQ Hub.",
   ROLE_ADMIN_REQUEST_REPLAYED: "Permintaan ini sudah pernah dikirim. Tidak ada penugasan ganda yang dibuat.",
