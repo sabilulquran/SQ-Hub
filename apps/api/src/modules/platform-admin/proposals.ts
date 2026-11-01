@@ -182,9 +182,12 @@ export class PgPlatformAdminProposalRepository implements PlatformAdminProposalR
       if (sameIdentity(input.confirmer, proposal.proposer)) throw new PlatformAdminProposalError("SAME_ADMIN_FORBIDDEN");
       if (sameIdentity(input.confirmer, proposal.identity)) throw new PlatformAdminProposalError("SELF_CONFIRM_FORBIDDEN");
       // Both people must still hold the role at the moment of activation, not only when they acted.
-      if ((await membershipStatus(client, input.confirmer, true)) !== "active") throw new PlatformAdminProposalError("CONFIRMER_NOT_ACTIVE");
-      if ((await membershipStatus(client, proposal.proposer, true)) !== "active") throw new PlatformAdminProposalError("PROPOSER_NOT_ACTIVE");
-      if ((await membershipStatus(client, proposal.identity, true)) === "active") throw new PlatformAdminProposalError("ALREADY_ACTIVE");
+      // The three rows are locked in one statement in a fixed order, so two crossing confirmations
+      // wait for each other instead of deadlocking.
+      const statuses = await lockMemberships(client, [input.confirmer, proposal.proposer, proposal.identity]);
+      if (statuses.get(identityKey(input.confirmer)) !== "active") throw new PlatformAdminProposalError("CONFIRMER_NOT_ACTIVE");
+      if (statuses.get(identityKey(proposal.proposer)) !== "active") throw new PlatformAdminProposalError("PROPOSER_NOT_ACTIVE");
+      if (statuses.get(identityKey(proposal.identity)) === "active") throw new PlatformAdminProposalError("ALREADY_ACTIVE");
 
       const membership = await activate(client, { identity: proposal.identity, reason: proposal.reason, actor: input.actor });
       const decided = await client.query<ProposalRow>(
@@ -257,14 +260,28 @@ async function lockProposal(client: PoolClient, id: string): Promise<PlatformAdm
   return toProposal(result.rows[0]);
 }
 
-async function membershipStatus(client: PoolClient, identity: IdentityRef, lock = false): Promise<string | null> {
+async function membershipStatus(client: PoolClient, identity: IdentityRef): Promise<string | null> {
   const result = await client.query<{ status: string }>(
-    `SELECT status FROM platform_administrators
-     WHERE identity_issuer = $1 AND identity_subject = $2
-     ${lock ? "FOR UPDATE" : ""}`,
+    `SELECT status FROM platform_administrators WHERE identity_issuer = $1 AND identity_subject = $2`,
     [identity.issuer, identity.subject],
   );
   return result.rows[0]?.status ?? null;
+}
+
+async function lockMemberships(client: PoolClient, identities: IdentityRef[]): Promise<Map<string, string>> {
+  const result = await client.query<{ issuer: string; subject: string; status: string }>(
+    `SELECT identity_issuer AS issuer, identity_subject AS subject, status
+     FROM platform_administrators
+     WHERE (identity_issuer, identity_subject) IN (SELECT * FROM unnest($1::text[], $2::text[]))
+     ORDER BY identity_issuer, identity_subject
+     FOR UPDATE`,
+    [identities.map((identity) => identity.issuer), identities.map((identity) => identity.subject)],
+  );
+  return new Map(result.rows.map((row) => [identityKey({ issuer: row.issuer, subject: row.subject }), row.status]));
+}
+
+function identityKey(identity: IdentityRef): string {
+  return `${identity.issuer}\n${identity.subject}`;
 }
 
 function sameIdentity(a: IdentityRef, b: IdentityRef): boolean {

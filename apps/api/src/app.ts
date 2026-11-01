@@ -179,7 +179,7 @@ export function buildApp(input: {
       ...(input.adminApplicationAccess ? { applicationAccess: input.adminApplicationAccess } : {}),
       ...(input.identityDirectory ? { identityDirectory: input.identityDirectory } : {}),
       capabilities: {
-        hcisRoleAdministration: Boolean(input.roleAdministration?.configured),
+        hcisRoleAdministration: Boolean(input.roleAdministration?.configured && input.identityDirectory),
         platformAdministrators: Boolean(input.platformAdministrators && input.identityDirectory),
       },
     });
@@ -203,11 +203,12 @@ export function buildApp(input: {
     });
   }
 
-  if (input.hubAuth && input.platformAdmin && input.roleAdministration) {
+  if (input.hubAuth && input.platformAdmin && input.roleAdministration && input.identityDirectory) {
     registerRoleAdministrationRoutes(app, {
       hubAuth: input.hubAuth,
       platformAdmin: input.platformAdmin,
       service: input.roleAdministration,
+      identityDirectory: input.identityDirectory,
       ...(input.adminAllowedOrigin ? { allowedOrigin: input.adminAllowedOrigin } : {}),
     });
   }

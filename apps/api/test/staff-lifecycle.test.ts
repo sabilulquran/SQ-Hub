@@ -256,6 +256,31 @@ describe("StaffLifecycleService", () => {
     expect(audits).toEqual(["staff_identity.password_initialization:failed"]);
   });
 
+  it("sends no password e-mail while provisioning an existing Platform Administrator account (H-10)", async () => {
+    const { service, audits, order, setPlatformAdmin } = fixture();
+    setPlatformAdmin(true);
+    const result = await service.provision({
+      staffType: "employee", employeeNumber: "19870001", username: "19870001",
+      firstName: "Synthetic", lastName: "Staff", email: "staff@example.test",
+      enabled: true, reason: "Synthetic onboarding",
+    }, actor);
+    expect(result.credentialInitialization).toBe("required_action_pending");
+    expect(order).not.toContain("identity:send-email");
+    expect(audits).toContain("staff_identity.password_initialization:failed");
+  });
+
+  it("still sends the password e-mail when provisioning someone who is not a Platform Administrator", async () => {
+    const { service, order, setPlatformAdmin } = fixture();
+    setPlatformAdmin(false);
+    const result = await service.provision({
+      staffType: "employee", employeeNumber: "19870001", username: "19870001",
+      firstName: "Synthetic", lastName: "Staff", email: "staff@example.test",
+      enabled: true, reason: "Synthetic onboarding",
+    }, actor);
+    expect(result.credentialInitialization).toBe("sent");
+    expect(order).toContain("identity:send-email");
+  });
+
   it("offboards Application Access, Platform Administrator, and global identity idempotently", async () => {
     const { service, access, currentIdentity } = fixture();
     const request = {

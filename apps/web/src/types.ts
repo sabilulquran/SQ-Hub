@@ -307,6 +307,30 @@ export interface HcisRoleCatalogEntry {
   mandateRequired: boolean;
 }
 
+/** HUB-IMPL-023 H-1b: one person's HCIS account and role assignments, with no identity data from HCIS. */
+export interface HcisAccountLookup {
+  staff: { subject: string; displayName: string; username: string };
+  account: { accountId: string; principalType: string; status: string; employeeStatus: string | null };
+  assignments: {
+    page: number;
+    pageSize: number;
+    total: number;
+    items: Array<{
+      assignmentId: string;
+      roleId: string;
+      roleKey: string;
+      roleName: string;
+      scopeType: string;
+      organizationalUnitId: string | null;
+      organizationalUnitName: string | null;
+      startsOn: string | null;
+      endsOn: string | null;
+      createdAt: string;
+      revocableViaHub: boolean;
+    }>;
+  };
+}
+
 export interface PlatformAdministratorPerson {
   subject: string;
   displayName: string | null;

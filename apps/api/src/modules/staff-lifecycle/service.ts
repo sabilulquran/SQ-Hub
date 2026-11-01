@@ -181,6 +181,16 @@ export class StaffLifecycleService {
     try {
       if (identity.requiredActions && !identity.requiredActions.includes("UPDATE_PASSWORD")) {
         credentialInitialization = "already_complete";
+      } else if ((await this.platformAdmin.show(toRef(identity)))?.status === "active") {
+        // H-10 also on this path: an existing Platform Administrator account gets no password e-mail.
+        credentialInitialization = "required_action_pending";
+        await this.audit.write({
+          actor,
+          action: "staff_identity.password_initialization",
+          identity: toRef(identity),
+          outcome: "failed",
+          payload: { reason: parsed.reason, state: "platform_administrator" },
+        });
       } else {
         await this.identityManagement.sendPasswordInitialization(identity.subject);
       }

@@ -201,8 +201,7 @@ export class PlatformAdminService {
 }
 
 function sessionActor(session: { issuer: string; subject: string }) {
-  const digest = createHash("sha256").update(`${session.issuer}
-${session.subject}`).digest("hex");
+  const digest = createHash("sha256").update(`${session.issuer}\n${session.subject}`).digest("hex");
   return { kind: "human" as const, ref: `staff:${digest}` };
 }
 
