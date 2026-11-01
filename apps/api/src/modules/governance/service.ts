@@ -6,7 +6,7 @@ import { HubAuthError } from "../hub-auth/service.js";
 import type { HubSessionRecord } from "../hub-auth/repository.js";
 import type { Organ } from "../organ-membership/repository.js";
 import { validateGovernanceSummary, type GovernanceSummaryV1 } from "./contract.js";
-import type { TokenExchanger } from "./token-exchange.js";
+import { GOVERNANCE_SCOPE_PREFIX, type TokenExchanger } from "./token-exchange.js";
 
 export interface GovernanceApplication {
   applicationKey: string;
@@ -142,7 +142,11 @@ export class GovernanceService {
       let exchanged: string;
       try {
         subjectToken = await this.raceAbort(userToken(), controller.signal);
-        exchanged = await this.deps.exchanger.exchange(subjectToken, application.audience, controller.signal);
+        exchanged = await this.deps.exchanger.exchange(
+          subjectToken,
+          { audience: application.audience, scope: `${GOVERNANCE_SCOPE_PREFIX}${application.audience}` },
+          controller.signal,
+        );
       } catch (error) {
         if (error instanceof HubAuthError) throw error;
         log(controller.signal.aborted ? "timeout" : "exchange_failed");

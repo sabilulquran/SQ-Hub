@@ -5,7 +5,18 @@
  * one server-side request and never stored, logged or sent to the browser.
  */
 export interface TokenExchanger {
-  exchange(subjectToken: string, audience: string, signal: AbortSignal): Promise<string>;
+  exchange(subjectToken: string, target: ExchangeTarget, signal: AbortSignal): Promise<string>;
+}
+
+/**
+ * Keycloak's `audience` parameter only filters, so the optional client scope that carries the
+ * audience mapper must be named explicitly. Governance scopes follow `GOVERNANCE_SCOPE_PREFIX`;
+ * the HCIS actor assertion uses its own scope (HUB-IMPL-023 §1.1), so the scope is a parameter
+ * rather than derived from the audience.
+ */
+export interface ExchangeTarget {
+  audience: string;
+  scope: string;
 }
 
 /**
@@ -36,7 +47,7 @@ export class KeycloakTokenExchanger implements TokenExchanger {
     this.tokenEndpoint = `${config.issuer.replace(/\/+$/, "")}/protocol/openid-connect/token`;
   }
 
-  async exchange(subjectToken: string, audience: string, signal: AbortSignal): Promise<string> {
+  async exchange(subjectToken: string, target: ExchangeTarget, signal: AbortSignal): Promise<string> {
     const body = new URLSearchParams({
       grant_type: "urn:ietf:params:oauth:grant-type:token-exchange",
       client_id: this.config.clientId,
@@ -44,8 +55,8 @@ export class KeycloakTokenExchanger implements TokenExchanger {
       subject_token: subjectToken,
       subject_token_type: "urn:ietf:params:oauth:token-type:access_token",
       requested_token_type: "urn:ietf:params:oauth:token-type:access_token",
-      audience,
-      scope: `${GOVERNANCE_SCOPE_PREFIX}${audience}`,
+      audience: target.audience,
+      scope: target.scope,
     });
     let response: Response;
     try {

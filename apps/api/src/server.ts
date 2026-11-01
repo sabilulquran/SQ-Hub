@@ -24,6 +24,8 @@ import { PgOrganMembershipRepository } from "./modules/organ-membership/reposito
 import { OrganMembershipService } from "./modules/organ-membership/service.js";
 import { PgPlatformAdminRepository } from "./modules/platform-admin/repository.js";
 import { PlatformAdminService } from "./modules/platform-admin/service.js";
+import { HcisRoleAdministrationChannel } from "./modules/role-administration/channel.js";
+import { PgRoleAdministrationAudit, RoleAdministrationService, type RoleAdministrationLogEntry } from "./modules/role-administration/service.js";
 import { loadDirectoryConfig } from "./modules/organization-directory/config.js";
 import { createDirectoryPull } from "./modules/organization-directory/client.js";
 import { PgOrganizationDirectory } from "./modules/organization-directory/repository.js";
@@ -133,6 +135,31 @@ const governance = new GovernanceService({
   log: (entry) => governanceLog(entry),
 });
 
+// HUB-IMPL-023: H-0 (platformAdmin.authorize) runs before the user token is refreshed or exchanged.
+// The actor assertion is exchanged by `sq-hub`, the client that issued the user's session.
+let roleAdministrationLog: (entry: RoleAdministrationLogEntry) => void = () => undefined;
+const roleAdministration = new RoleAdministrationService({
+  authorize: (session) => platformAdmin.authorize(session),
+  userAccessToken: async (sessionToken) => (await hubAuth.getAccountAccess(sessionToken)).accessToken,
+  exchanger: new KeycloakTokenExchanger({
+    issuer: config.keycloakIssuer,
+    clientId: config.hubOidcClientId,
+    clientSecret: config.hubOidcClientSecret,
+  }),
+  ...(config.hcisRoleAdminClientId && config.hcisRoleAdminClientSecret
+    ? {
+        channel: new HcisRoleAdministrationChannel({
+          issuer: config.keycloakIssuer,
+          hcisBaseUrl: config.hcisCanonicalUrl,
+          clientId: config.hcisRoleAdminClientId,
+          clientSecret: config.hcisRoleAdminClientSecret,
+        }),
+      }
+    : {}),
+  audit: new PgRoleAdministrationAudit(pool),
+  log: (entry) => roleAdministrationLog(entry),
+});
+
 let kirimLog: (entry: Record<string, unknown>, message: string) => void = () => undefined;
 const kirim = kirimConfig
   ? createKirimModule({
@@ -162,6 +189,7 @@ const app = buildApp({
   ...(staffLifecycle ? { staffLifecycle } : {}),
   organMemberships,
   governance,
+  roleAdministration,
   logger: true,
   ...(directoryConfig.read ? { organizationDirectory: {
     read: () => directory.read(),
@@ -171,6 +199,7 @@ const app = buildApp({
 });
 kirimLog = (entry, message) => app.log.info(entry, message);
 
+roleAdministrationLog = (entry) => app.log.info({ ...entry }, "role administration request");
 governanceLog = (entry) => app.log.info({ event: "governance.summary", ...entry }, "governance summary request");
 
 const pullDirectory = directoryConfig.sync ? createDirectoryPull(directoryConfig.sync) : null;
