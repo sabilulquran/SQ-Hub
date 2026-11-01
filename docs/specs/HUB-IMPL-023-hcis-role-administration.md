@@ -173,6 +173,12 @@ Tidak ada yang rusak, tidak ada yang memberi tanda, dan selisihnya hanya terliha
 
 Keduanya `DRAFT` sampai owner menyetujui tempat pemeriksaannya dijalankan; isinya tidak menunggu siapa pun.
 
+**Ditutup 2026-11-01 08:31 UTC.** Resource pada permission bertambah dari **7 menjadi 12**, dan seluruh 12 akun mesin terbukti menjawab `403/403`; kontrol akun staf tetap `200/404`. Badan PUT membawa `resourceType: Users`, 5 scope, dan 1 policy — jadi kekhawatiran representasi daftar (§1.5, aturan 3) tidak terwujud, tetapi baru terbukti sesudah dijalankan, bukan sebelumnya. Rollback cukup satu PUT tanpa kelima resource itu; restore database tidak diperlukan. Backup sebelum penerapan: `backup-keycloak-auth014-d-20261101-153000-an/sqcore_keycloak.dump`.
+
+**Yang ditambahkan ternyata lima, bukan empat.** Selain `karir-sq-api`, `keluarga-sq-api`, `spmb-api`, dan `sq-hub-role-administration`, pemeriksaan menemukan akun mesin milik client **`admin-permissions` sendiri** (`5b8e081c-4f72-44fd-b970-ef3dc11421c5`) — tidak ada di hitungan manual mana pun sebelumnya, karena tidak seorang pun memikirkan bahwa resource server FGAP punya service account.
+
+Itu adalah pembenaran D-DRIFT-1 yang paling langsung: pemeriksaan yang mengambil daftarnya **dari realm** menemukan satu akun yang tidak akan pernah masuk daftar yang ditulis manusia. Kalau pemeriksaan ini dibuat dari daftar nama, ia akan lulus sambil meninggalkan akun mesin yang paling berwenang di realm tetap terbuka.
+
 ### 1.7 Satu temuan yang perlu ditindaklanjuti di luar spesifikasi ini
 
 `docs/operations/HUB-IMPL-021-token-exchange.md` berstatus "PREPARED, NOT APPLIED", tetapi penelusuran realm 2026-10-31 menunjukkan client scope `sq-governance-hcis` dan `sq-governance-aset-sq` **sudah ada**, dan §4 dokumen itu sendiri mencatat koreksi production 2026-10-18. Status di kepalanya tertinggal dari isinya sendiri. Pemiliknya HUB-IMPL-021, bukan dokumen ini.
