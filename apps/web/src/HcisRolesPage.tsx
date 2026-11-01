@@ -28,7 +28,7 @@ const errors: Record<string, string> = {
   INVALID_REQUEST: "Periksa kembali isian.",
   STAFF_NOT_FOUND: "Orang ini tidak ditemukan di Akun SQ.",
   ROLE_ADMIN_SELF_FORBIDDEN: "Anda tidak dapat memberi atau mencabut peran untuk diri sendiri. Minta Admin Platform lain.",
-  ROLE_ADMIN_ACCOUNT_NOT_FOUND: "Orang ini belum punya akun HCIS.",
+  ROLE_ADMIN_ACCOUNT_NOT_FOUND: "SQ Hub tidak menemukan akun pegawai HCIS untuk orang ini.",
   ROLE_ADMIN_ASSIGNMENT_NOT_FOUND: "Penugasan ini sudah tidak ada pada orang tersebut. Muat ulang daftarnya.",
   ROLE_ADMIN_ASSIGNMENT_NOT_REVOCABLE: "Penugasan ini tidak dapat dicabut lewat SQ Hub.",
   ROLE_ADMIN_INVALID_REQUEST: "HCIS menolak isian ini. Periksa peran, cakupan, unit, dan tanggal.",
@@ -37,14 +37,15 @@ const errors: Record<string, string> = {
   ROLE_GRANT_ACTOR_INVALID: "Anda tidak punya akun pegawai HCIS yang aktif, jadi HCIS tidak menerima Anda sebagai pemberi peran, juga untuk membaca. Ini disengaja (ADR-0006 D-3), bukan kerusakan.",
   ROLE_ADMIN_ACTOR_UNRESOLVED: "HCIS belum mengenali akun Anda. Ini masalah konfigurasi penautan Akun SQ, bukan kesalahan Anda.",
   HCIS_ACCESS_DENIED: "Akses aplikasi HCIS Anda sedang dicabut di SQ Hub.",
-  ROLE_ADMIN_REQUEST_REPLAYED: "Permintaan ini sudah pernah dikirim. Tidak ada penugasan ganda yang dibuat.",
+  ROLE_ADMIN_REQUEST_REPLAYED: "Permintaan ini sudah tercatat di HCIS sebelumnya, jadi tidak ada penugasan ganda. Daftar di bawah sudah dimuat ulang.",
   ROLE_ADMIN_ACTOR_ASSERTION_SPENT: "Bukti tindakan sudah terpakai. Kirim ulang untuk mencoba dengan bukti baru.",
+  ROLE_ADMIN_ACTOR_ASSERTION_INVALID: "HCIS menolak bukti tindakan Anda, kemungkinan karena jam server tidak selaras. Coba lagi; bila terus berulang, hubungi pengelola teknis.",
   ROLE_ADMIN_ACTOR_EXCHANGE_FAILED: "Akun SQ tidak menerbitkan bukti tindakan Anda. Tidak ada yang dikirim ke HCIS.",
   ROLE_ADMIN_CHANNEL_DISABLED: "Kanal pemberian peran di HCIS belum diaktifkan.",
   ROLE_ADMIN_CHANNEL_NOT_CONFIGURED: "Kanal pemberian peran HCIS belum dipasang di SQ Hub.",
   APPLICATION_ACCESS_UNAVAILABLE: "HCIS tidak dapat memeriksa akses aplikasi ke SQ Hub. Coba lagi beberapa saat.",
   ROLE_ADMIN_CHANNEL_UNAVAILABLE: "HCIS tidak dapat dihubungi. Tidak ada perubahan yang terjadi.",
-  ROLE_ADMIN_OUTCOME_UNKNOWN: "HCIS tidak menjawab tepat waktu, jadi hasilnya belum pasti. Kirim ulang formulir yang sama: bila sudah tercatat, HCIS menolaknya sebagai permintaan berulang, tanpa penugasan ganda.",
+  ROLE_ADMIN_OUTCOME_UNKNOWN: "HCIS tidak menjawab tepat waktu, jadi hasilnya belum pasti. Tekan tombol yang sama sekali lagi: SQ Hub memakai nomor permintaan yang sama, jadi bila sudah tercatat HCIS menolaknya sebagai permintaan berulang, tanpa penugasan ganda.",
   ROLE_ADMIN_CHANNEL_ERROR: "HCIS menjawab di luar kontrak. Tidak ada perubahan yang dapat dipastikan; hubungi pengelola teknis.",
   IDENTITY_DIRECTORY_UNAVAILABLE: "Direktori Akun SQ sedang tidak tersedia.",
   ACCOUNT_REAUTH_REQUIRED: "Masuk ulang ke SQ Hub diperlukan sebelum memberi peran.",
@@ -69,8 +70,12 @@ export function HcisRolesPage({ workspace, onLogout, onAuthorizationDenied }: Pr
   const [reason, setReason] = useState("");
   const [startsOn, setStartsOn] = useState("");
   const [endsOn, setEndsOn] = useState("");
-  // One requestId per action: kept while the same form is resent, renewed once it changes or succeeds.
+  // One requestId per action. It survives edits to the form and every resend, and is renewed only
+  // when the action is known to be done (success, or HCIS reports it already recorded) or another
+  // person is picked. So a resend after "outcome unknown" can never create a second assignment.
   const [grantRequestId, setGrantRequestId] = useState(() => crypto.randomUUID());
+  const [revokeRequestIds, setRevokeRequestIds] = useState<Record<string, string>>({});
+  const [page, setPage] = useState(1);
   const [message, setMessage] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -109,7 +114,7 @@ export function HcisRolesPage({ workspace, onLogout, onAuthorizationDenied }: Pr
 
   const roles = catalog.status === "ready" ? catalog.roles : [];
   const role = roles.find((entry) => entry.roleId === roleId) ?? null;
-  const changeGrant = (apply: () => void) => { apply(); setGrantRequestId(crypto.randomUUID()); };
+  const changeGrant = (apply: () => void) => { apply(); };
 
   const run = async (task: () => Promise<void>) => {
     setBusy(true); setMessage(null);
@@ -122,12 +127,16 @@ export function HcisRolesPage({ workspace, onLogout, onAuthorizationDenied }: Pr
     } finally { setBusy(false); }
   };
 
-  const loadPerson = async (staff: AdminStaff) => {
+  const loadPerson = async (staff: AdminStaff, nextPage = 1) => {
     // A requestId belongs to one action for one person; another person is another action.
-    if (person.status === "idle" || person.staff.subject !== staff.subject) setGrantRequestId(crypto.randomUUID());
+    if (person.status === "idle" || person.staff.subject !== staff.subject) {
+      setGrantRequestId(crypto.randomUUID());
+      setRevokeRequestIds({});
+    }
     setPerson({ status: "loading", staff });
     try {
-      const lookup = await adminFetch<HcisAccountLookup>(`/api/admin/hcis-roles/staff/${encodeURIComponent(staff.subject)}`);
+      const lookup = await adminFetch<HcisAccountLookup>(`/api/admin/hcis-roles/staff/${encodeURIComponent(staff.subject)}?page=${nextPage}`);
+      setPage(nextPage);
       setPerson({ status: "ready", staff, lookup });
     } catch (error) {
       if (error instanceof RequestError && error.code === "ROLE_ADMIN_ACCOUNT_NOT_FOUND") { setPerson({ status: "no_account", staff }); return; }
@@ -147,33 +156,59 @@ export function HcisRolesPage({ workspace, onLogout, onAuthorizationDenied }: Pr
     if (person.status !== "ready" || !role) return;
     if (role.mandateRequired && !reason.trim()) { setMessage("Peran ini menuntut mandat. Tulis dasar penugasannya, misalnya nomor SK."); return; }
     if (!window.confirm(`Berikan peran ${role.name} kepada ${person.staff.displayName}?`)) return;
-    await adminFetch(`/api/admin/hcis-roles/staff/${encodeURIComponent(person.staff.subject)}/assignments`, {
-      method: "POST",
-      body: JSON.stringify({
-        requestId: grantRequestId,
-        roleId: role.roleId,
-        scopeType,
-        organizationalUnitId: scopeType === "unit" ? unitId.trim() || null : null,
-        reason: reason.trim() || null,
-        startsOn: startsOn || null,
-        endsOn: endsOn || null,
-      }),
-    });
+    try {
+      await adminFetch(`/api/admin/hcis-roles/staff/${encodeURIComponent(person.staff.subject)}/assignments`, {
+        method: "POST",
+        body: JSON.stringify({
+          requestId: grantRequestId,
+          roleId: role.roleId,
+          scopeType,
+          organizationalUnitId: scopeType === "unit" ? unitId.trim() || null : null,
+          reason: reason.trim() || null,
+          startsOn: startsOn || null,
+          endsOn: endsOn || null,
+        }),
+      });
+    } catch (error) {
+      await settleIfRecorded(error, () => setGrantRequestId(crypto.randomUUID()));
+      throw error;
+    }
     setGrantRequestId(crypto.randomUUID());
-    await loadPerson(person.staff);
+    await loadPerson(person.staff, page);
     setMessage(`Peran ${role.name} diberikan kepada ${person.staff.displayName}. HCIS mencatatnya atas nama Anda.`);
   });
 
   const revoke = (assignment: HcisAccountLookup["assignments"]["items"][number]) => run(async () => {
     if (person.status !== "ready") return;
     if (!window.confirm(`Cabut peran ${assignment.roleName} dari ${person.staff.displayName}?`)) return;
-    await adminFetch(`/api/admin/hcis-roles/staff/${encodeURIComponent(person.staff.subject)}/assignments/${encodeURIComponent(assignment.assignmentId)}`, {
-      method: "DELETE",
-      body: JSON.stringify({ requestId: crypto.randomUUID() }),
+    // The same requestId for every resend of this one revocation (see grantRequestId).
+    const requestId = revokeRequestIds[assignment.assignmentId] ?? crypto.randomUUID();
+    setRevokeRequestIds((current) => ({ ...current, [assignment.assignmentId]: requestId }));
+    const forget = () => setRevokeRequestIds((current) => {
+      const next = { ...current };
+      delete next[assignment.assignmentId];
+      return next;
     });
-    await loadPerson(person.staff);
+    try {
+      await adminFetch(`/api/admin/hcis-roles/staff/${encodeURIComponent(person.staff.subject)}/assignments/${encodeURIComponent(assignment.assignmentId)}`, {
+        method: "DELETE",
+        body: JSON.stringify({ requestId }),
+      });
+    } catch (error) {
+      await settleIfRecorded(error, forget);
+      throw error;
+    }
+    forget();
+    await loadPerson(person.staff, page);
     setMessage(`Peran ${assignment.roleName} dicabut dari ${person.staff.displayName}.`);
   });
+
+  /** HCIS saying the request was already recorded means the earlier attempt went through. */
+  const settleIfRecorded = async (error: unknown, done: () => void) => {
+    if (!(error instanceof RequestError) || error.code !== "ROLE_ADMIN_REQUEST_REPLAYED" || person.status !== "ready") return;
+    done();
+    await loadPerson(person.staff, page).catch(() => undefined);
+  };
 
   const account = person.status === "ready" ? person.lookup.account : null;
   const accountWarning = account && !account.grantable
@@ -204,7 +239,7 @@ export function HcisRolesPage({ workspace, onLogout, onAuthorizationDenied }: Pr
       <section className="rounded-2xl border border-border bg-surface-raised p-5 shadow-sm">
         {person.status === "idle" ? <p className="text-sm text-muted-foreground">Pilih pegawai untuk melihat peran HCIS-nya.</p> : null}
         {person.status === "loading" ? <p className="flex items-center gap-2 text-sm text-muted-foreground"><RefreshCw className="h-4 w-4 animate-spin" /> Membaca akun HCIS {person.staff.displayName}...</p> : null}
-        {person.status === "no_account" ? <p className="text-sm"><strong>{person.staff.displayName}</strong> belum punya akun HCIS, jadi belum dapat diberi peran.</p> : null}
+        {person.status === "no_account" ? <p className="text-sm">SQ Hub tidak menemukan akun pegawai HCIS untuk <strong>{person.staff.displayName}</strong>, jadi peran HCIS tidak dapat diberikan dari sini.</p> : null}
         {person.status === "ready" ? <>
           <h2 className="font-display text-lg font-bold">{person.staff.displayName}</h2>
           {accountWarning ? <p className="mt-2 rounded-xl bg-warning-soft p-3 text-xs text-warning-ink">{accountWarning}</p> : null}
@@ -217,7 +252,13 @@ export function HcisRolesPage({ workspace, onLogout, onAuthorizationDenied }: Pr
                 : <span className="text-xs text-muted-foreground">Tidak dapat dicabut lewat SQ Hub</span>}
             </li>)}
           </ul>}
-          {person.lookup.assignments.pagination.total > person.lookup.assignments.items.length ? <p className="mt-2 text-xs text-muted-foreground">Menampilkan {person.lookup.assignments.items.length} dari {person.lookup.assignments.pagination.total} peran.</p> : null}
+          {person.lookup.assignments.pagination.pageCount > 1 ? <div className="mt-2 flex items-center justify-between gap-2 text-xs text-muted-foreground">
+            <span>Halaman {person.lookup.assignments.pagination.page} dari {person.lookup.assignments.pagination.pageCount} · {person.lookup.assignments.pagination.total} peran</span>
+            <span className="flex gap-2">
+              <button className={secondary} disabled={busy || page <= 1} onClick={() => void run(() => loadPerson(person.staff, page - 1))}>Sebelumnya</button>
+              <button className={secondary} disabled={busy || page >= person.lookup.assignments.pagination.pageCount} onClick={() => void run(() => loadPerson(person.staff, page + 1))}>Berikutnya</button>
+            </span>
+          </div> : null}
 
           <h3 className="mt-6 flex items-center gap-2 text-xs font-bold uppercase tracking-wide text-muted-foreground"><KeyRound className="h-4 w-4" /> Beri peran</h3>
           <div className="mt-2 grid gap-3 sm:grid-cols-2">

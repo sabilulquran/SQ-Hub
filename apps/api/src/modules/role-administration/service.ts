@@ -310,9 +310,14 @@ export class RoleAdministrationService {
     try {
       const machineToken = await channel.machineToken(controller.signal);
       const subjectToken = await this.deps.userAccessToken(sessionToken);
+      // Reads do not spend an assertion, so all reads of one action share one; HCIS audits each read
+      // with the assertion's jti, and one action then shows as one jti instead of a burst.
+      let readAssertion: string | null = null;
       const send: Send = async (request) => {
         for (let attempt = 0; ; attempt += 1) {
-          const actorAssertion = await this.exchange(operation, subjectToken, controller.signal);
+          const reuse = request.method === "GET" && attempt === 0 && readAssertion !== null;
+          const actorAssertion = reuse ? readAssertion! : await this.exchange(operation, subjectToken, controller.signal);
+          if (request.method === "GET") readAssertion = actorAssertion;
           let response: ChannelResponse;
           try {
             response = await channel.send(request, { machineToken, actorAssertion }, controller.signal);
@@ -332,7 +337,12 @@ export class RoleAdministrationService {
           if (request.method !== "GET" && response.status >= 500 && !(code && UNAVAILABLE_CODES.has(code))) {
             throw new RoleAdministrationError(504, "ROLE_ADMIN_OUTCOME_UNKNOWN");
           }
-          if (attempt === 0 && request.method !== "GET" && errorCode(response) === "ROLE_ADMIN_ACTOR_ASSERTION_SPENT") continue;
+          // One fresh assertion, once: when a change's assertion was spent, or when HCIS found an
+          // assertion invalid — usually too old (HCIS counts its age from iat), which a new one fixes.
+          if (attempt === 0 && (code === "ROLE_ADMIN_ACTOR_ASSERTION_INVALID" || (request.method !== "GET" && code === "ROLE_ADMIN_ACTOR_ASSERTION_SPENT"))) {
+            readAssertion = null;
+            continue;
+          }
           return response;
         }
       };
@@ -365,8 +375,13 @@ export class RoleAdministrationService {
     if (code && UNAVAILABLE_CODES.has(code)) return new RoleAdministrationError(503, code);
     if (code && CONFLICT_CODES.has(code)) return new RoleAdministrationError(409, code);
     if (response.status === 400 && code === "INVALID_REQUEST") return new RoleAdministrationError(422, "ROLE_ADMIN_INVALID_REQUEST");
+    // Still invalid after one fresh assertion: retryable from the operator's side (clock skew,
+    // slow Keycloak), and distinct from a contract violation.
+    if (code === "ROLE_ADMIN_ACTOR_ASSERTION_INVALID") return new RoleAdministrationError(503, code);
+    // HCIS's own status is kept, so a refusal about the actor (403) stays distinct from one about
+    // the input (HCIS 400, answered as 422 because 400 is the Hub's own malformed-request answer).
     if (code && response.status >= 400 && response.status < 500 && DOMAIN_CODES.has(code)) {
-      return new RoleAdministrationError(422, code, errorMessage(response));
+      return new RoleAdministrationError(response.status === 400 ? 422 : response.status, code, errorMessage(response));
     }
     return new RoleAdministrationError(502, "ROLE_ADMIN_CHANNEL_ERROR");
   }

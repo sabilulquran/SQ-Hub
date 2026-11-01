@@ -412,7 +412,8 @@ describe("H-1/H-1b/H-2: the Platform Administrator's command to HCIS", () => {
         : undefined,
     });
     const response = await app.inject(grantRequest("cookie-admin", "employee-a"));
-    expect(response.statusCode).toBe(422);
+    // HCIS's 403 stays a 403: a refusal about authority, not about the input.
+    expect(response.statusCode).toBe(403);
     expect(response.json()).toEqual({ error: "ROLE_DELEGATION_FORBIDDEN", message: "Peran ini tidak dapat didelegasikan." });
     expect(audit[0]).toMatchObject({ outcome: "failed", payload: expect.objectContaining({ hcisCode: "ROLE_DELEGATION_FORBIDDEN" }) });
     await app.close();
@@ -573,7 +574,7 @@ describe("H-1/H-1b/H-2: the Platform Administrator's command to HCIS", () => {
 
   it("looks beyond the first page of assignments and stops at the last one", async () => {
     const LATE = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
-    const { app, hcis } = harness({
+    const { app, hcis, keycloak } = harness({
       hcis: (request) => {
         if (request.method !== "GET" || !request.url.pathname.endsWith("/accounts")) return undefined;
         const page = Number(request.url.searchParams.get("page"));
@@ -585,6 +586,10 @@ describe("H-1/H-1b/H-2: the Platform Administrator's command to HCIS", () => {
     });
     const found = await app.inject(revokeRequest("cookie-admin", "employee-b", LATE));
     expect(found.statusCode).toBe(204);
+    // Both page reads share one assertion; the DELETE gets its own.
+    const reads = hcis.filter((request) => request.method === "GET").map((request) => request.headers.get("x-sq-actor-assertion"));
+    expect(new Set(reads).size).toBe(1);
+    expect(exchanges(keycloak)).toHaveLength(2);
     const missing = await app.inject(revokeRequest("cookie-admin", "employee-b", "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", "77777777-7777-4777-8777-777777777777"));
     expect(missing.json()).toEqual({ error: "ROLE_ADMIN_ASSIGNMENT_NOT_FOUND" });
     expect(hcis.filter((request) => request.method === "GET")).toHaveLength(4);
@@ -613,9 +618,29 @@ describe("H-1/H-1b/H-2: the Platform Administrator's command to HCIS", () => {
     await onRead.app.close();
   });
 
+  it("retries an assertion HCIS found invalid (usually too old) once, then reports it as retryable", async () => {
+    let posts = 0;
+    const once = harness({
+      hcis: (request) => {
+        if (request.method !== "POST") return undefined;
+        posts += 1;
+        return posts === 1 ? json({ code: "ROLE_ADMIN_ACTOR_ASSERTION_INVALID" }, 401) : undefined;
+      },
+    });
+    expect((await once.app.inject(grantRequest("cookie-admin", "employee-b"))).statusCode).toBe(201);
+    await once.app.close();
+
+    const always = harness({ hcis: () => json({ code: "ROLE_ADMIN_ACTOR_ASSERTION_INVALID" }, 401) });
+    const response = await always.app.inject({ method: "GET", url: "/admin/hcis-roles/catalog", headers: { cookie: "sq_hub_session=cookie-admin" } });
+    expect(response.statusCode).toBe(503);
+    expect(response.json()).toEqual({ error: "ROLE_ADMIN_ACTOR_ASSERTION_INVALID" });
+    expect(always.hcis).toHaveLength(2);
+    await always.app.close();
+  });
+
   it("treats credential failures and unlisted codes as a channel error, not an operator refusal", async () => {
-    for (const code of ["UNAUTHENTICATED", "ROLE_ADMIN_ACTOR_ASSERTION_INVALID", "CROSS_SITE_REQUEST_REJECTED"]) {
-      const { app } = harness({ hcis: () => json({ code, message: "x" }, code === "UNAUTHENTICATED" || code.endsWith("INVALID") ? 401 : 403) });
+    for (const code of ["UNAUTHENTICATED", "FORBIDDEN_CLIENT", "CROSS_SITE_REQUEST_REJECTED"]) {
+      const { app } = harness({ hcis: () => json({ code, message: "x" }, code === "UNAUTHENTICATED" ? 401 : 403) });
       const response = await app.inject({ method: "GET", url: "/admin/hcis-roles/catalog", headers: { cookie: "sq_hub_session=cookie-admin" } });
       expect(response.statusCode).toBe(502);
       expect(response.json()).toEqual({ error: "ROLE_ADMIN_CHANNEL_ERROR" });
