@@ -205,33 +205,6 @@ Layar pemberian peran membaca `GET /internal/v1/role-administration/catalog` dan
 
 **Jangan menyalin daftar peran HCIS ke kode Hub.** Peran HCIS berubah di HCIS; salinan di Hub akan melenceng tanpa ada yang tahu, dan `AGENTS.md` §4 menegaskan ownership data harus eksplisit.
 
-### H-1b — Orangnya dipilih, bukan id HCIS-nya
-
-Diputuskan 2026-11-01; rute HCIS ada di `main` HCIS `7cb2d35f` (spec HCIS §2.1b revisi 10).
-
-Operator memilih orang dari direktori Akun SQ. Hub menanyakan akun dan penugasannya ke HCIS:
-
-```text
-GET {hcis}/internal/v1/role-administration/accounts?issuer=<iss>&subject=<sub>&page=1&pageSize=25
-Authorization: Bearer <token mesin>
-X-SQ-Actor-Assertion: <assertion>          (tidak membelanjakan assertion, seperti /catalog)
-
-200 { "account": { "accountId", "grantable", "notGrantableReason" },
-      "assignments": { "items": [ { "assignmentId", "roleId", "roleKey", "roleName", "scopeType",
-          "organizationalUnitId", "organizationalUnitName", "startsOn", "endsOn", "createdAt",
-          "revocableViaHub" } ],
-        "pagination": { "page", "pageSize", "total", "pageCount" } } }
-404 ROLE_ADMIN_ACCOUNT_NOT_FOUND   tidak ada akun pegawai HCIS untuk orang ini; akun non-pegawai menjawab sama
-```
-
-Aturan yang mengikat Hub:
-
-- **Pemberian dan pencabutan menerima subject, tidak pernah id HCIS dari browser.** Hub menyelesaikan `accountId` dari jawaban HCIS di dalam aksi yang sama, dan hanya mencabut penugasan yang HCIS cantumkan untuk orang itu dengan `revocableViaHub: true`. Id yang ditempel tangan adalah jalur salah-orang yang diam: auditnya terlihat sah sepenuhnya.
-- Tidak ada nama, surel, NIK, atau status kepegawaian di jawaban. `grantable` dan `notGrantableReason` hanya untuk memperingatkan operator sebelum HCIS menolak; keputusannya tetap di HCIS.
-- `404` tidak membedakan "tidak ada akun" dari "akun istimewa". Hub tidak boleh menampilkan bahwa sebuah akun istimewa.
-- HCIS menjalankan `assertRoleGrantor` juga pada pembacaan ini, tetapi itu hanya memastikan aktor pegawai aktif. **H-0 tetap satu-satunya pemeriksaan kewenangan, termasuk untuk membaca.**
-- Setiap pembacaan diaudit HCIS sebagai `role.account.lookup`. Layar Hub membaca sekali per orang yang dipilih.
-
 ### H-2 — Setiap panggilan membawa dua bukti
 
 ```text
@@ -408,6 +381,5 @@ Hub tidak menyimpan data peran, jadi tidak ada yang perlu dibersihkan. Yang Hub 
 | **belum diuji** | Jalur rollback (D): satu PUT tanpa kelima resource; belum pernah dilatih (§1.6) |
 | `DRAFT` | "Yang hilang karena pencabutan adalah `map-roles`": probe `role-mappings` belum dijalankan berpasangan (§1.4) |
 | **diuji 2026-11-01** | AC 9 dan AC 10 punya objek uji sejak SQ-Hub#169 (§6) |
-| **diputuskan 2026-11-01** | H-1b: rute lookup HCIS, bukan id yang disalin dari layar HCIS |
 | **menunggu owner** | Menjalankan K-4/K-5 pada `sq-hub`, karena saklarnya dipakai bersama Ringkasan Yayasan (§1.3) |
 | `DRAFT` | Scope exchange diparameterkan, bukan dinamai ulang agar muat ke prefix `sq-governance-` |
