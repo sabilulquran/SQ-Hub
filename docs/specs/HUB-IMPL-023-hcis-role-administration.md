@@ -1,6 +1,8 @@
 # HUB-IMPL-023 — Admin Platform memberi peran HCIS
 
-**Status:** DRAFT, revisi 5: H-1b (pencarian akun) setelah rutenya ada di main HCIS. Belum diterima Product Owner. Penerimaan memberi wewenang implementasi; penerapan di Mi8VPS tetap menuntut review, CI, dan persetujuan owner tersendiri.
+**Status:** **ACCEPTED**, revisi 6, 2026-11-01. Diterima di bawah keputusan berdiri owner 2026-10-27 ("bypass semua approval, sesuai rencana semua, jangan berhenti sebelum closed sesuai PRD"), bukan di bawah pembacaan dokumen ini satu per satu oleh Product Owner. Perbedaannya perlu dinyatakan: yang owner setujui adalah **rencananya berjalan tanpa menunggu persetujuan per langkah**, bukan bahwa setiap kalimat di sini sudah ia baca. Asumsi yang belum ia putuskan tetap bertanda `DRAFT` di §8 dan tidak ikut diterima.
+
+Penerapan di Mi8VPS tetap menuntut review, CI, dan pengaman teknis rilis yang sudah berlaku.
 **Product:** SQ Hub
 **Area:** Admin Center / identitas dan akses
 **Date:** 2026-11-01
@@ -368,7 +370,11 @@ Sebagian sudah ada, dan H-11 **memperluas**, bukan menciptakan: `platform_audit_
 ## 5. Acceptance criteria
 
 1. Admin Platform memberi satu peran HCIS dari Admin Center memakai akun pegawainya sendiri, dan HCIS mencatatnya dengan `actor_source = "sq_hub"` beserta akun manusia yang benar.
-1b. **Pengguna Hub yang bukan Admin Platform ditolak, dan ditolak sebelum token exchange dicoba.** Diuji dengan dua akun: satu Admin Platform, satu pegawai biasa yang punya akses aplikasi HCIS. Yang kedua tidak boleh menghasilkan satu pun permintaan exchange ke Keycloak.
+1b. **Pengguna Hub yang bukan Admin Platform ditolak, dan ditolak sebelum token exchange dicoba.** Yang kedua tidak boleh menghasilkan satu pun permintaan exchange ke Keycloak.
+
+   **Terpenuhi di production 2026-11-01**, sesudah rilis `hub-6e42f718-20261101`: dua sesi sintetis non-admin mencoba saling memberi peran, membaca katalog, mencari akun, dan mencabut — seluruhnya `403 ADMIN_FORBIDDEN`, kontrol `/workspace` `200`, dan **nol** baris `role_administration.exchange` di log Hub. Sesi uji dihapus sesudahnya.
+
+   **Batasnya dinyatakan, karena ia nyata.** Keduanya sesi sintetis, bukan orang yang login. Login sungguhan oleh pegawai bukan Admin Platform tidak mungkin sekarang: HCIS belum live, akun staf masih berstatus *invited*, dan owner melarang aktivasi sebelum go-live. Yang dibuktikan adalah gerbangnya menolak sesi yang bukan Admin Platform; yang belum dibuktikan adalah bahwa akun staf sungguhan memang jatuh ke kategori itu. Pemeriksaan dengan login sungguhan **wajib dilakukan pada hari go-live**, dan tercatat sebagai syarat go-live, bukan syarat penyalaan kanal.
 1c. Pencabutan peran berhasil lewat H-2b dan menghasilkan `204`, dengan audit `role.assignment.removed` di HCIS.
 2. Katalog peran yang ditampilkan berasal dari `GET /catalog`; tidak ada `roleKey` HCIS yang tertulis di kode Hub.
 2b. **Tidak ada id HCIS yang pernah diketik manusia.** Perintah Hub menerima subject, dan `accountId` berasal dari `GET /accounts` dalam aksi yang sama. Diuji dengan satu pemberian penuh dari pemilihan orang sampai `201`, tanpa id HCIS di input mana pun.
