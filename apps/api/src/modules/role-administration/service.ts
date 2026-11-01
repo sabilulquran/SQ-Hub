@@ -84,15 +84,33 @@ export interface RoleGrantInput {
 }
 
 /**
- * How HCIS answers reach the operator (spec §2 table). HCIS's domain refusals (delegation, missing
- * mandate, scope, unknown role or unit, ...) are passed on by code with HCIS's fixed message;
- * configuration failures and anything without a well-formed code become one channel error, so an
- * unexpected HCIS payload never reaches the browser.
+ * How HCIS answers reach the operator (spec §2 table). HCIS's domain refusals are passed on by code
+ * with HCIS's fixed message, from an allowlist taken from HCIS role-assignment.ts and
+ * org-access-policy.ts; anything else, credential failures included, becomes one channel error,
+ * so an unexpected HCIS payload never reaches the browser.
  */
+const DOMAIN_CODES = new Set([
+  "ROLE_DELEGATION_FORBIDDEN",
+  "ROLE_IDENTITY_PERMISSION_FORBIDDEN",
+  "ROLE_GRANT_ACTOR_INVALID",
+  "ROLE_GRANT_SUPER_ADMIN_ONLY",
+  "ROLE_ADMIN_ACTOR_UNRESOLVED",
+  "HCIS_ACCESS_DENIED",
+  "ADMIN_ORGANIZATION_MANDATE_REQUIRED",
+  "ROLE_REASON_REQUIRED",
+  "ROLE_SCOPE_INVALID",
+  "ROLE_SCOPE_NOT_ALLOWED",
+  "ACCOUNT_NOT_FOUND",
+  "ASSIGNMENT_NOT_FOUND",
+  "ROLE_NOT_FOUND",
+  "UNIT_NOT_FOUND",
+  "INVALID_ASSIGNMENT_PERIOD",
+  "NON_UNIT_SCOPE_FORBIDS_UNIT",
+  "UNIT_SCOPE_REQUIRES_UNIT",
+  "SELF_MANAGER_FORBIDDEN",
+]);
 const CONFLICT_CODES = new Set(["ROLE_ADMIN_REQUEST_REPLAYED", "ROLE_ADMIN_ACTOR_ASSERTION_SPENT"]);
 const UNAVAILABLE_CODES = new Set(["ROLE_ADMIN_CHANNEL_DISABLED", "APPLICATION_ACCESS_UNAVAILABLE"]);
-// The two proofs or the client setup are wrong: a configuration problem, never the operator's.
-const CONFIGURATION_CODES = new Set(["UNAUTHENTICATED", "FORBIDDEN_CLIENT", "ROLE_ADMIN_ACTOR_ASSERTION_INVALID"]);
 const CODE_PATTERN = /^[A-Z][A-Z0-9_]{2,80}$/;
 
 export class RoleAdministrationError extends Error {
@@ -119,7 +137,7 @@ export interface RoleAdministrationAudit {
   record(entry: {
     actor: ActorRef;
     action: "hcis_role.assignment.create" | "hcis_role.assignment.remove";
-    targetType: "hcis_account" | "hcis_role_assignment";
+    targetType: "staff_identity";
     targetRef: string;
     outcome: "succeeded" | "failed";
     payload: Record<string, string | null>;
@@ -130,7 +148,7 @@ type Operation = RoleAdministrationLogEntry["operation"];
 type Send = (request: ChannelRequest) => Promise<ChannelResponse>;
 type AuditTarget = {
   action: "hcis_role.assignment.create" | "hcis_role.assignment.remove";
-  targetType: "hcis_account" | "hcis_role_assignment";
+  targetType: "staff_identity";
   targetRef: string;
 };
 
@@ -195,28 +213,28 @@ export class RoleAdministrationService {
     input: RoleGrantInput,
   ): Promise<{ assignmentId: string; requestId: string }> {
     await this.deps.authorize(session);
-    refuseSelf(session, identity);
-    return this.withChannel("grant", sessionToken, async (send) => {
-      // The account is resolved inside the same action, from the person the operator picked.
-      const { account } = await this.lookupWith(send, identity, 1, 1);
-      const { requestId, ...rest } = input;
-      return this.audited(
-        session,
-        { action: "hcis_role.assignment.create", targetType: "hcis_account", targetRef: `hcis-account:${account.accountId}` },
-        { requestId, roleId: input.roleId, scopeType: input.scopeType },
-        async () => {
-          // The actor never travels in the body (spec §2 H-2); HCIS answers 400 if it does.
-          const response = await send({
-            method: "POST",
-            path: `accounts/${encodeURIComponent(account.accountId)}/role-assignments`,
-            body: { requestId, ...rest },
-          });
-          if (response.status !== 201) throw this.refusal(response);
-          const created = createdSchema.safeParse(response.body);
-          if (!created.success) throw new RoleAdministrationError(502, "ROLE_ADMIN_CHANNEL_ERROR");
-          return created.data;
-        },
-      );
+    const { requestId, ...rest } = input;
+    const payload: Record<string, string | null> = { requestId, roleId: input.roleId, scopeType: input.scopeType };
+    // Audited from the first step, so a refusal before the change call (self, no account, exchange
+    // failure) is recorded too. The target is the person; HCIS's account id joins the payload.
+    return this.audited(session, { action: "hcis_role.assignment.create", ...staffTarget(identity) }, payload, async () => {
+      refuseSelf(session, identity);
+      return this.withChannel("grant", sessionToken, async (send) => {
+        // The account is resolved inside the same action, from the person the operator picked.
+        const { account } = await this.lookupWith(send, identity, 1, 1);
+        payload.accountId = account.accountId;
+        // The actor never travels in the body (spec §2 H-2); HCIS answers 400 if it does.
+        const response = await send({
+          method: "POST",
+          path: `accounts/${encodeURIComponent(account.accountId)}/role-assignments`,
+          body: { requestId, ...rest },
+        });
+        if (response.status !== 201) throw this.refusal(response);
+        const created = createdSchema.safeParse(response.body);
+        // A 201 that cannot be read still means HCIS took the change.
+        if (!created.success) throw new RoleAdministrationError(504, "ROLE_ADMIN_OUTCOME_UNKNOWN");
+        return created.data;
+      });
     });
   }
 
@@ -227,27 +245,24 @@ export class RoleAdministrationService {
     input: { assignmentId: string; requestId: string },
   ): Promise<void> {
     await this.deps.authorize(session);
-    refuseSelf(session, identity);
-    await this.withChannel("revoke", sessionToken, async (send) => {
-      // Only an assignment that belongs to the picked person, and that HCIS says the Hub may
-      // revoke, is sent; the others are shown but never offered.
-      const assignment = await this.findAssignment(send, identity, input.assignmentId);
-      if (!assignment) throw new RoleAdministrationError(404, "ROLE_ADMIN_ASSIGNMENT_NOT_FOUND");
-      if (!assignment.revocableViaHub) throw new RoleAdministrationError(422, "ROLE_ADMIN_ASSIGNMENT_NOT_REVOCABLE");
-      await this.audited(
-        session,
-        { action: "hcis_role.assignment.remove", targetType: "hcis_role_assignment", targetRef: `hcis-role-assignment:${input.assignmentId}` },
-        { requestId: input.requestId, roleId: assignment.roleId },
-        async () => {
-          // H-2b: the requestId travels in the body of a DELETE; success is 204 without a body.
-          const response = await send({
-            method: "DELETE",
-            path: `role-assignments/${encodeURIComponent(input.assignmentId)}`,
-            body: { requestId: input.requestId },
-          });
-          if (response.status !== 204) throw this.refusal(response);
-        },
-      );
+    const payload: Record<string, string | null> = { requestId: input.requestId, assignmentId: input.assignmentId };
+    await this.audited(session, { action: "hcis_role.assignment.remove", ...staffTarget(identity) }, payload, async () => {
+      refuseSelf(session, identity);
+      await this.withChannel("revoke", sessionToken, async (send) => {
+        // Only an assignment that belongs to the picked person, and that HCIS says the Hub may
+        // revoke, is sent; the others are shown but never offered.
+        const assignment = await this.findAssignment(send, identity, input.assignmentId);
+        if (!assignment) throw new RoleAdministrationError(404, "ROLE_ADMIN_ASSIGNMENT_NOT_FOUND");
+        payload.roleId = assignment.roleId;
+        if (!assignment.revocableViaHub) throw new RoleAdministrationError(422, "ROLE_ADMIN_ASSIGNMENT_NOT_REVOCABLE");
+        // H-2b: the requestId travels in the body of a DELETE; success is 204 without a body.
+        const response = await send({
+          method: "DELETE",
+          path: `role-assignments/${encodeURIComponent(input.assignmentId)}`,
+          body: { requestId: input.requestId },
+        });
+        if (response.status !== 204) throw this.refusal(response);
+      });
     });
   }
 
@@ -309,8 +324,14 @@ export class RoleAdministrationService {
             }
             throw error;
           }
-          const hcisCode = errorCode(response);
+          const code = errorCode(response);
+          const hcisCode = code && CODE_PATTERN.test(code) ? code : undefined;
           this.deps.log?.({ event: "role_administration.channel", operation, status: response.status, ...(hcisCode ? { hcisCode } : {}) });
+          // A server error after a change left the Hub may come after HCIS committed it. Only the
+          // switched-off channel is known to have changed nothing.
+          if (request.method !== "GET" && response.status >= 500 && !(code && UNAVAILABLE_CODES.has(code))) {
+            throw new RoleAdministrationError(504, "ROLE_ADMIN_OUTCOME_UNKNOWN");
+          }
           if (attempt === 0 && request.method !== "GET" && errorCode(response) === "ROLE_ADMIN_ACTOR_ASSERTION_SPENT") continue;
           return response;
         }
@@ -344,7 +365,7 @@ export class RoleAdministrationService {
     if (code && UNAVAILABLE_CODES.has(code)) return new RoleAdministrationError(503, code);
     if (code && CONFLICT_CODES.has(code)) return new RoleAdministrationError(409, code);
     if (response.status === 400 && code === "INVALID_REQUEST") return new RoleAdministrationError(422, "ROLE_ADMIN_INVALID_REQUEST");
-    if (code && response.status >= 400 && response.status < 500 && !CONFIGURATION_CODES.has(code) && CODE_PATTERN.test(code)) {
+    if (code && response.status >= 400 && response.status < 500 && DOMAIN_CODES.has(code)) {
       return new RoleAdministrationError(422, code, errorMessage(response));
     }
     return new RoleAdministrationError(502, "ROLE_ADMIN_CHANNEL_ERROR");
@@ -400,6 +421,11 @@ function refuseSelf(session: { issuer: string; subject: string }, identity: Iden
 }
 
 /** Same actor ref the Admin Center routes write for a signed-in staff member. */
+function staffTarget(identity: IdentityRef): { targetType: "staff_identity"; targetRef: string } {
+  // The person a change is about, as the same digest used for actor refs (never the raw subject).
+  return { targetType: "staff_identity", targetRef: actorForSession(identity).ref };
+}
+
 function actorForSession(session: { issuer: string; subject: string }): ActorRef {
   const digest = createHash("sha256").update(`${session.issuer}\n${session.subject}`).digest("hex");
   return { kind: "human", ref: `staff:${digest}` };

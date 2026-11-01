@@ -123,6 +123,8 @@ export function HcisRolesPage({ workspace, onLogout, onAuthorizationDenied }: Pr
   };
 
   const loadPerson = async (staff: AdminStaff) => {
+    // A requestId belongs to one action for one person; another person is another action.
+    if (person.status === "idle" || person.staff.subject !== staff.subject) setGrantRequestId(crypto.randomUUID());
     setPerson({ status: "loading", staff });
     try {
       const lookup = await adminFetch<HcisAccountLookup>(`/api/admin/hcis-roles/staff/${encodeURIComponent(staff.subject)}`);

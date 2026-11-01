@@ -355,10 +355,12 @@ describe("H-1/H-1b/H-2: the Platform Administrator's command to HCIS", () => {
     });
     expect(audit).toEqual([expect.objectContaining({
       action: "hcis_role.assignment.create",
-      targetRef: `hcis-account:${ACCOUNT_B}`,
+      targetType: "staff_identity",
+      targetRef: expect.stringMatching(/^staff:[0-9a-f]{64}$/),
       outcome: "succeeded",
-      payload: { requestId: REQUEST_ID, roleId: ROLE_ID, scopeType: "organization", assignmentId: ASSIGNMENT_ID },
+      payload: { requestId: REQUEST_ID, roleId: ROLE_ID, scopeType: "organization", accountId: ACCOUNT_B, assignmentId: ASSIGNMENT_ID },
     })]);
+    expect(JSON.stringify(audit)).not.toContain("employee-b");
     await app.close();
   });
 
@@ -548,6 +550,77 @@ describe("H-1/H-1b/H-2: the Platform Administrator's command to HCIS", () => {
     await app.inject({ method: "GET", url: "/admin/hcis-roles/catalog", headers: { cookie: "sq_hub_session=cookie-admin" } });
     expect(log).toContainEqual({ event: "role_administration.channel", operation: "catalog", status: 403, hcisCode: "FORBIDDEN_CLIENT" });
     await app.close();
+  });
+
+  it("never revokes another person's assignment through this person's address", async () => {
+    const OTHER = "99999999-9999-4999-8999-999999999999";
+    const { app, hcis } = harness({
+      hcis: (request) => {
+        if (request.method !== "GET" || !request.url.pathname.endsWith("/accounts")) return undefined;
+        const subject = request.url.searchParams.get("subject");
+        const body = lookupBody(accountBySubject[subject ?? ""]!);
+        // employee-a owns OTHER; employee-b owns only the default assignments.
+        if (subject === "employee-a") body.assignments.items[0]!.assignmentId = OTHER;
+        return json(body);
+      },
+    });
+    const response = await app.inject(revokeRequest("cookie-admin", "employee-b", OTHER));
+    expect(response.json()).toEqual({ error: "ROLE_ADMIN_ASSIGNMENT_NOT_FOUND" });
+    expect(hcis.filter((request) => request.method === "GET").map((request) => request.url.searchParams.get("subject"))).toEqual(["employee-b"]);
+    expect(hcis.filter((request) => request.method === "DELETE")).toEqual([]);
+    await app.close();
+  });
+
+  it("looks beyond the first page of assignments and stops at the last one", async () => {
+    const LATE = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+    const { app, hcis } = harness({
+      hcis: (request) => {
+        if (request.method !== "GET" || !request.url.pathname.endsWith("/accounts")) return undefined;
+        const page = Number(request.url.searchParams.get("page"));
+        const body = lookupBody(ACCOUNT_B);
+        body.assignments.pagination = { page, pageSize: 100, total: 102, pageCount: 2 };
+        if (page === 2) body.assignments.items[0]!.assignmentId = LATE;
+        return json(body);
+      },
+    });
+    const found = await app.inject(revokeRequest("cookie-admin", "employee-b", LATE));
+    expect(found.statusCode).toBe(204);
+    const missing = await app.inject(revokeRequest("cookie-admin", "employee-b", "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", "77777777-7777-4777-8777-777777777777"));
+    expect(missing.json()).toEqual({ error: "ROLE_ADMIN_ASSIGNMENT_NOT_FOUND" });
+    expect(hcis.filter((request) => request.method === "GET")).toHaveLength(4);
+    await app.close();
+  });
+
+  it("audits a refusal that happens before the change call", async () => {
+    const { app, audit } = harness({ hcis: (request) => request.method === "GET" ? json({ code: "ROLE_ADMIN_ACCOUNT_NOT_FOUND" }, 404) : undefined });
+    const response = await app.inject(grantRequest("cookie-admin", "employee-b"));
+    expect(response.json()).toEqual({ error: "ROLE_ADMIN_ACCOUNT_NOT_FOUND" });
+    expect(audit).toEqual([expect.objectContaining({ outcome: "failed", payload: expect.objectContaining({ hcisCode: "ROLE_ADMIN_ACCOUNT_NOT_FOUND" }) })]);
+    await app.close();
+  });
+
+  it("treats a server error after a change as outcome unknown, and one on a read as unavailable", async () => {
+    const afterChange = harness({ hcis: (request) => request.method === "POST" ? json({ error: "Internal Server Error" }, 500) : undefined });
+    const change = await afterChange.app.inject(grantRequest("cookie-admin", "employee-b"));
+    expect(change.statusCode).toBe(504);
+    expect(change.json()).toEqual({ error: "ROLE_ADMIN_OUTCOME_UNKNOWN" });
+    await afterChange.app.close();
+
+    const onRead = harness({ hcis: () => { throw new Error("connection refused"); } });
+    const read = await onRead.app.inject({ method: "GET", url: "/admin/hcis-roles/catalog", headers: { cookie: "sq_hub_session=cookie-admin" } });
+    expect(read.statusCode).toBe(503);
+    expect(read.json()).toEqual({ error: "ROLE_ADMIN_CHANNEL_UNAVAILABLE" });
+    await onRead.app.close();
+  });
+
+  it("treats credential failures and unlisted codes as a channel error, not an operator refusal", async () => {
+    for (const code of ["UNAUTHENTICATED", "ROLE_ADMIN_ACTOR_ASSERTION_INVALID", "CROSS_SITE_REQUEST_REJECTED"]) {
+      const { app } = harness({ hcis: () => json({ code, message: "x" }, code === "UNAUTHENTICATED" || code.endsWith("INVALID") ? 401 : 403) });
+      const response = await app.inject({ method: "GET", url: "/admin/hcis-roles/catalog", headers: { cookie: "sq_hub_session=cookie-admin" } });
+      expect(response.statusCode).toBe(502);
+      expect(response.json()).toEqual({ error: "ROLE_ADMIN_CHANNEL_ERROR" });
+      await app.close();
+    }
   });
 
   it("hides unexpected HCIS answers behind one channel error", async () => {

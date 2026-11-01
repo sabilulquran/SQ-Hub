@@ -349,6 +349,7 @@ function toBrowserAudit(record: AuditRecord) {
     "roleId",
     "scopeType",
     "assignmentId",
+    "accountId",
     "hcisCode",
   ]) {
     const value = record.payload[key];
