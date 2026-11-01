@@ -33,6 +33,7 @@ Indeks ini membantu maintainer membedakan specification yang sudah berada di `ma
 | ID | Proposal | Status saat rekonsiliasi 2026-09-15 |
 | --- | --- | --- |
 | HUB-IMPL-013 | [Identity Lifecycle pegawai](HUB-IMPL-013-go5c-staff-provisioning-offboarding.md) | **ACCEPTED** 2026-10-02; controlled production UAT amendment. Repository implementation and production activation evidence are tracked separately. |
+| HUB-IMPL-023 | [Admin Platform memberi peran HCIS](HUB-IMPL-023-hcis-role-administration.md) | **DRAFT** 2026-10-31 (in this PR until merged); kanal pemberian peran HCIS dari Admin Center, konfigurasi Keycloak K-1/K-2/K-4/K-5, dan pengaman keanggotaan Admin Platform. Belum diterima Product Owner. |
 | HUB-IMPL-022 | [Shared app launcher list](HUB-IMPL-022-shared-app-launcher-list.md) | **ACCEPTED** 2026-10-23 (in this PR until merged); internal launcher endpoint, Kirim SQ launcher, key -> icon table. Production activation needs separate owner approval. |
 | HUB-IMPL-021 | [Ringkasan Yayasan](HUB-IMPL-021-ringkasan-yayasan.md) | **ACCEPTED** 2026-10-17 (in this PR until merged); governance landing page for Organ Yayasan with per-app summaries, with ADR-0009. Production activation needs separate owner approval. |
 
