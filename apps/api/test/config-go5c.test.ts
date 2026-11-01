@@ -63,3 +63,29 @@ describe("Go 5C identity-management configuration", () => {
     })).toThrow(/HCIS staff verification contract/);
   });
 });
+
+describe("HUB-IMPL-023 role-administration configuration", () => {
+  const roleAdmin = {
+    HCIS_ROLE_ADMIN_BASE_URL: "https://hcis.example.test/api/",
+    HCIS_ROLE_ADMIN_CLIENT_ID: "sq-hub-role-administration",
+    HCIS_ROLE_ADMIN_CLIENT_SECRET: "role-admin-secret",
+  };
+
+  it("stays unconfigured when absent and loads all three together", () => {
+    expect(loadConfig(baseEnv).hcisRoleAdminClientId).toBeUndefined();
+    expect(loadConfig({ ...baseEnv, ...roleAdmin })).toMatchObject({
+      hcisRoleAdminBaseUrl: "https://hcis.example.test/api/",
+      hcisRoleAdminClientId: "sq-hub-role-administration",
+    });
+  });
+
+  it("refuses a partial set", () => {
+    expect(() => loadConfig({ ...baseEnv, HCIS_ROLE_ADMIN_CLIENT_ID: "sq-hub-role-administration", HCIS_ROLE_ADMIN_CLIENT_SECRET: "x" }))
+      .toThrow(/configured together/);
+  });
+
+  it("refuses reusing the Hub login client or another service principal as the machine proof", () => {
+    expect(() => loadConfig({ ...baseEnv, ...roleAdmin, HCIS_ROLE_ADMIN_CLIENT_ID: "sq-hub" })).toThrow(/its own machine client/);
+    expect(() => loadConfig({ ...baseEnv, ...roleAdmin, HCIS_ROLE_ADMIN_CLIENT_ID: "sq-hub-directory" })).toThrow(/its own machine client/);
+  });
+});

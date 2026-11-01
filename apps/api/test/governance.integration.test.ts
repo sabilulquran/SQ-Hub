@@ -64,7 +64,7 @@ describe("Summary bodies are never persisted (AC 7)", () => {
       memberships,
       applications: new PgGovernanceApplicationSource(pool),
       userAccessToken: async () => "hub-user-token",
-      exchanger: { exchange: async (_subject, audience) => `exchanged-${audience}` },
+      exchanger: { exchange: async (_subject, { audience }) => `exchanged-${audience}` },
       fetch: (async (input: string | URL) => {
         const url = new URL(String(input));
         const key = url.hostname.split(".")[0]!;

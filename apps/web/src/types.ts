@@ -295,3 +295,75 @@ export interface GovernanceSnapshot {
   cards: GovernanceCard[];
   generatedAt: string;
 }
+
+/** HUB-IMPL-023 H-1: one role as HCIS publishes it in its catalog; the Hub never keeps its own list. */
+export interface HcisRoleCatalogEntry {
+  roleId: string;
+  roleKey: string;
+  name: string;
+  description: string | null;
+  permissions: string[];
+  allowedScopes: string[];
+  mandateRequired: boolean;
+}
+
+/** HUB-IMPL-023 H-1b: one person's HCIS account and role assignments, with no identity data from HCIS. */
+export interface HcisAccountLookup {
+  staff: { subject: string; displayName: string; username: string };
+  account: { accountId: string; grantable: boolean; notGrantableReason: "account_inactive" | "employee_inactive" | null };
+  assignments: {
+    pagination: { page: number; pageSize: number; total: number; pageCount: number };
+    items: Array<{
+      assignmentId: string;
+      roleId: string;
+      roleKey: string;
+      roleName: string;
+      scopeType: string;
+      organizationalUnitId: string | null;
+      organizationalUnitName: string | null;
+      startsOn: string | null;
+      endsOn: string | null;
+      createdAt: string;
+      revocableViaHub: boolean;
+    }>;
+  };
+}
+
+export interface PlatformAdministratorPerson {
+  subject: string;
+  displayName: string | null;
+  username: string | null;
+}
+
+export interface PlatformAdministratorOverview {
+  viewer: { subject: string };
+  administrators: Array<{
+    person: PlatformAdministratorPerson;
+    status: "active" | "revoked";
+    reason: string | null;
+    grantedAt: string | null;
+    revokedAt: string | null;
+  }>;
+  proposals: Array<{
+    id: string;
+    person: PlatformAdministratorPerson;
+    proposedBy: PlatformAdministratorPerson;
+    decidedBy: PlatformAdministratorPerson | null;
+    reason: string;
+    status: "pending" | "confirmed" | "cancelled" | "expired";
+    createdAt: string;
+    expiresAt: string;
+    decidedAt: string | null;
+  }>;
+}
+
+export interface PlatformAdministratorAuditEntry {
+  id: string;
+  action: string;
+  outcome: "succeeded" | "failed" | "noop";
+  occurredAt: string;
+  reason: string | null;
+  actor: PlatformAdministratorPerson | { ref: string };
+  target: PlatformAdministratorPerson | null;
+  proposedBy: PlatformAdministratorPerson | null;
+}

@@ -38,6 +38,12 @@ const serverConfigSchema = foundationConfigSchema.extend({
   HCIS_STAFF_VERIFY_BASE_URL: optionalNonempty(z.string().url()),
   HCIS_STAFF_VERIFY_CLIENT_ID: optionalNonempty(z.string().trim().min(1)),
   HCIS_STAFF_VERIFY_CLIENT_SECRET: optionalNonempty(z.string().min(1)),
+  // HUB-IMPL-023: machine client of the HCIS role-administration channel. Unset keeps the
+  // Admin Center screen in its "not configured" state; H-0 still guards every route.
+  // HCIS API base including any reverse-proxy prefix (e.g. https://hcis.example/api/).
+  HCIS_ROLE_ADMIN_BASE_URL: optionalNonempty(z.string().url()),
+  HCIS_ROLE_ADMIN_CLIENT_ID: optionalNonempty(z.string().trim().min(1)),
+  HCIS_ROLE_ADMIN_CLIENT_SECRET: optionalNonempty(z.string().min(1)),
 });
 
 export interface FoundationConfig {
@@ -68,6 +74,9 @@ export interface AppConfig extends FoundationConfig {
   hcisStaffVerifyBaseUrl?: string;
   hcisStaffVerifyClientId?: string;
   hcisStaffVerifyClientSecret?: string;
+  hcisRoleAdminBaseUrl?: string;
+  hcisRoleAdminClientId?: string;
+  hcisRoleAdminClientSecret?: string;
 }
 
 function foundationConfig(parsed: z.infer<typeof foundationConfigSchema>): FoundationConfig {
@@ -119,6 +128,24 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     throw new Error("HCIS verifier must use a distinct service identity");
   }
 
+  const roleAdminSet = [parsed.HCIS_ROLE_ADMIN_BASE_URL, parsed.HCIS_ROLE_ADMIN_CLIENT_ID, parsed.HCIS_ROLE_ADMIN_CLIENT_SECRET];
+  if (roleAdminSet.some(Boolean) && !roleAdminSet.every(Boolean)) {
+    throw new Error("HCIS_ROLE_ADMIN_BASE_URL, CLIENT_ID and CLIENT_SECRET must be configured together");
+  }
+  if (
+    parsed.HCIS_ROLE_ADMIN_CLIENT_ID &&
+    [
+      parsed.SQ_HUB_OIDC_CLIENT_ID,
+      parsed.KEYCLOAK_DIRECTORY_CLIENT_ID,
+      parsed.KEYCLOAK_IDENTITY_MANAGEMENT_CLIENT_ID,
+      parsed.HCIS_STAFF_VERIFY_CLIENT_ID,
+    ].includes(parsed.HCIS_ROLE_ADMIN_CLIENT_ID)
+  ) {
+    // HUB-IMPL-023 §1: the machine proof must come from its own client, never the one that
+    // issues user sessions or one that can manage users.
+    throw new Error("HCIS role administration must use its own machine client");
+  }
+
   return {
     ...foundationConfig(parsed),
     hubOidcClientId: parsed.SQ_HUB_OIDC_CLIENT_ID,
@@ -138,6 +165,13 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
       hcisStaffVerifyClientId: parsed.HCIS_STAFF_VERIFY_CLIENT_ID!,
       hcisStaffVerifyClientSecret: parsed.HCIS_STAFF_VERIFY_CLIENT_SECRET!,
     } : {}),
+    ...(parsed.HCIS_ROLE_ADMIN_BASE_URL && parsed.HCIS_ROLE_ADMIN_CLIENT_ID && parsed.HCIS_ROLE_ADMIN_CLIENT_SECRET
+      ? {
+          hcisRoleAdminBaseUrl: parsed.HCIS_ROLE_ADMIN_BASE_URL,
+          hcisRoleAdminClientId: parsed.HCIS_ROLE_ADMIN_CLIENT_ID,
+          hcisRoleAdminClientSecret: parsed.HCIS_ROLE_ADMIN_CLIENT_SECRET,
+        }
+      : {}),
     ...(managementConfigured
       ? {
           keycloakIdentityManagementClientId: parsed.KEYCLOAK_IDENTITY_MANAGEMENT_CLIENT_ID!,

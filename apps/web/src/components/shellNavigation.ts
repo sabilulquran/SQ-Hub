@@ -1,4 +1,4 @@
-import { AppWindow, Home, KeyRound, Landmark, LayoutGrid, ShieldCheck, UserRound, UsersRound, type LucideIcon } from "lucide-react";
+import { AppWindow, BadgeCheck, Home, KeyRound, Landmark, LayoutGrid, ShieldCheck, UserCog, UserRound, UsersRound, type LucideIcon } from "lucide-react";
 
 import type { HubSpace } from "@/components/SpaceSwitcher";
 
@@ -10,6 +10,8 @@ export type HubNavKey =
   | "admin-applications"
   | "admin-access"
   | "admin-audit"
+  | "admin-platform-administrators"
+  | "admin-hcis-roles"
   | "admin-lifecycle"
   | "admin-organ";
 
@@ -46,6 +48,13 @@ export const navigationBySpace: Record<HubSpace, HubNavGroup[]> = {
         { key: "admin-applications", href: "/admin", label: "Registry aplikasi", shortLabel: "Registry", icon: LayoutGrid },
         { key: "admin-access", href: "/admin/access", label: "Akses aplikasi", shortLabel: "Akses", icon: KeyRound },
         { key: "admin-audit", href: "/admin/audit", label: "Audit platform", shortLabel: "Audit", icon: ShieldCheck },
+        { key: "admin-platform-administrators", href: "/admin/platform-administrators", label: "Admin Platform", shortLabel: "Admin", icon: UserCog },
+      ],
+    },
+    {
+      label: "Peran aplikasi",
+      items: [
+        { key: "admin-hcis-roles", href: "/admin/hcis-roles", label: "Peran HCIS", shortLabel: "Peran", icon: BadgeCheck },
       ],
     },
     {

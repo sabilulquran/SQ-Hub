@@ -25,7 +25,10 @@ import { registerGovernanceRoutes } from "./modules/governance/routes.js";
 import type { GovernanceService } from "./modules/governance/service.js";
 import { registerOrganMembershipRoutes } from "./modules/organ-membership/routes.js";
 import type { OrganMembershipService } from "./modules/organ-membership/service.js";
+import { registerPlatformAdministratorRoutes } from "./modules/platform-admin/administrators-routes.js";
 import { registerPlatformAdminRoutes } from "./modules/platform-admin/routes.js";
+import { registerRoleAdministrationRoutes } from "./modules/role-administration/routes.js";
+import type { RoleAdministrationService } from "./modules/role-administration/service.js";
 import type { PlatformAdminService } from "./modules/platform-admin/service.js";
 import { DIRECTORY_PREFIX, registerOrganizationDirectoryRoutes } from "./modules/organization-directory/routes.js";
 import { registerStaffLifecycleRoutes } from "./modules/staff-lifecycle/routes.js";
@@ -62,6 +65,10 @@ export function buildApp(input: {
   staffLifecycle?: StaffLifecycleService;
   organMemberships?: OrganMembershipService;
   governance?: GovernanceService;
+  /** HUB-IMPL-023 H-9/H-11: Platform Administrator list, four-eyes proposals and their audit. */
+  platformAdministrators?: Parameters<typeof registerPlatformAdministratorRoutes>[1]["service"];
+  /** HUB-IMPL-023: Admin Center grants HCIS roles through the HCIS role-administration channel. */
+  roleAdministration?: RoleAdministrationService;
   logger?: boolean;
   /** Test seam: write request logs to this stream instead of stdout. */
   logStream?: NodeJS.WritableStream;
@@ -171,6 +178,19 @@ export function buildApp(input: {
       ...(input.adminAllowedOrigin ? { allowedOrigin: input.adminAllowedOrigin } : {}),
       ...(input.adminApplicationAccess ? { applicationAccess: input.adminApplicationAccess } : {}),
       ...(input.identityDirectory ? { identityDirectory: input.identityDirectory } : {}),
+      capabilities: {
+        hcisRoleAdministration: Boolean(input.roleAdministration?.configured && input.identityDirectory),
+        platformAdministrators: Boolean(input.platformAdministrators && input.identityDirectory),
+      },
+    });
+  }
+
+  if (input.hubAuth && input.platformAdministrators && input.identityDirectory) {
+    registerPlatformAdministratorRoutes(app, {
+      hubAuth: input.hubAuth,
+      service: input.platformAdministrators,
+      identityDirectory: input.identityDirectory,
+      ...(input.adminAllowedOrigin ? { allowedOrigin: input.adminAllowedOrigin } : {}),
     });
   }
 
@@ -179,6 +199,16 @@ export function buildApp(input: {
       hubAuth: input.hubAuth,
       platformAdmin: input.platformAdmin,
       service: input.staffLifecycle,
+      ...(input.adminAllowedOrigin ? { allowedOrigin: input.adminAllowedOrigin } : {}),
+    });
+  }
+
+  if (input.hubAuth && input.platformAdmin && input.roleAdministration && input.identityDirectory) {
+    registerRoleAdministrationRoutes(app, {
+      hubAuth: input.hubAuth,
+      platformAdmin: input.platformAdmin,
+      service: input.roleAdministration,
+      identityDirectory: input.identityDirectory,
       ...(input.adminAllowedOrigin ? { allowedOrigin: input.adminAllowedOrigin } : {}),
     });
   }

@@ -323,7 +323,7 @@ Maka: **menjadikan seseorang Admin Platform aktif** menuntut **dua Admin Platfor
 
 **Butuh perubahan database.** Bentuk usulan-lalu-konfirmasi menuntut keadaan ketiga, sedangkan `CHECK (status IN ('active','revoked'))` dan pasangan `granted_at`/`revoked_at` melarangnya. Migration beserta rencana pemulihannya adalah bagian dari implementasi ini, bukan sesudahnya (`AGENTS.md` §11).
 
-**Dan hari ini belum ada yang bisa melakukannya.** Tidak ada satu pun rute HTTP yang membuat Admin Platform: `registerPlatformAdminRoutes` hanya memaparkan `/admin/context`, `/admin/applications`, `/admin/staff*`, `/admin/application-access/*`, dan `/admin/audit`; `PlatformAdminService.grant` tidak punya pemanggil di `src/`. Jadi serangan yang H-9 bahas belum dapat dijalankan lewat Hub. Aturannya tetap benar untuk dipasang sebelum rutenya ada — itu justru saat yang tepat — tetapi jangan dibaca seolah menutup lubang yang menganga sekarang.
+**Diterapkan bersama rutenya (SQ-Hub#169).** Sebelum PR itu tidak ada rute HTTP yang membuat Admin Platform. Kini satu-satunya jalur Hub adalah `/admin/platform-administrators/proposals` lalu `/confirm` oleh admin kedua; aturannya diperiksa di transaksi yang mengaktifkan, dengan baris terkunci, dan dijaga CHECK di tabel `platform_admin_proposals` (migration 0012). Mengaktifkan kembali sesudah dicabut menuntut usulan baru dan orang kedua. CLI `platform:admin grant` tetap jalur bootstrap/break-glass yang menuntut akses shell ke host Hub; itu di luar model ancaman Hub.
 
 `DRAFT`: usulan kedaluwarsa setelah 7 hari. Keputusan owner kalau angkanya berbeda.
 
@@ -335,7 +335,7 @@ Maka Hub **menolak** reset kata sandi untuk akun yang merupakan Admin Platform. 
 
 **Dua batas yang harus dinyatakan, karena tanpanya H-10 terbaca lebih kuat daripada yang sebenarnya.**
 
-Pertama, hari ini Hub **tidak punya** operasi reset kata sandi umum untuk ditolak. Satu-satunya jalur adalah `sendPasswordInitialization` (`apps/api/src/modules/identity-management/client.ts`), yang hanya berlaku untuk akun yang belum pernah diaktifkan dan mengirim surel ke alamat akun itu sendiri — bukan menyetel kredensial. Jadi H-10 adalah aturan untuk operasi yang **akan** ada, bukan penjagaan atas yang sudah ada. Tulis begitu, jangan seolah sudah menutup sesuatu.
+Pertama, Hub **tidak punya** operasi reset kata sandi umum. Satu-satunya jalur kredensial adalah `sendPasswordInitialization`, yang hanya berlaku untuk akun yang belum pernah diaktifkan dan mengirim surel ke alamat akun itu sendiri — bukan menyetel kredensial. SQ-Hub#169 memasang penolakan H-10 pada jalur itu (kirim ulang dan provisioning akun yang sudah ada, `PLATFORM_ADMIN_CREDENTIAL_FORBIDDEN`) supaya operasi berikutnya mewarisi tempatnya; jangan dibaca seolah sudah menutup sesuatu yang besar.
 
 Kedua, dan lebih penting: kemampuan yang ditakuti H-10 hidup di **akun mesin Keycloak**, bukan di Hub. Siapa pun yang memegang secret `sq-hub-identity-management` — atau jalur kode Hub mana pun di masa depan — memanggil admin API Keycloak langsung dan melewati pemeriksaan Hub sama sekali.
 
@@ -396,7 +396,7 @@ Catatan jujur sejak sekarang, tiga hal yang **tidak dapat dijalankan dari CI** d
 
 Ketiganya dijalankan owner saat rollout dan dilaporkan di situ.
 
-Dua lagi yang **belum punya objek uji sama sekali**, dan karena itu tidak boleh dihitung lulus mau pun gagal: **AC 9** (H-9) dan **AC 10** (H-10). §3 sendiri mencatat `PlatformAdminService.grant` tidak punya pemanggil di `src/` dan tidak ada rute yang membuat Admin Platform, serta Hub tidak punya operasi reset kata sandi umum untuk ditolak. Keduanya menjadi dapat diuji begitu rutenya ada, tidak sebelum itu.
+**AC 9** dan **AC 10** kini punya objek uji sejak SQ-Hub#169: rute usulan/konfirmasi Admin Platform (`test/platform-admin-proposals.integration.test.ts`) dan penolakan H-10 pada `sendPasswordInitialization` (`test/staff-lifecycle.test.ts`). AC 10 diuji terhadap satu-satunya jalur kredensial yang ada, bukan terhadap reset kata sandi umum (§3).
 
 Satu lagi yang bukan ketidakmampuan CI melainkan keadaan: **keputusan §1.1 bahwa peminta exchange adalah `sq-hub` belum pernah dijalankan satu kali pun**, karena K-4 dan K-5 belum diterapkan. Ia keputusan beralasan, bukan fakta teruji.
 
@@ -409,7 +409,7 @@ Satu lagi yang bukan ketidakmampuan CI melainkan keadaan: **keputusan §1.1 bahw
 | Matikan saklar standard token exchange pada `sq-hub` | **juga mematikan Ringkasan Yayasan** (HUB-IMPL-021). Jangan dipakai sebagai rollback spesifikasi ini |
 | ~~Cabut `manage-users` dari `sq-hub-identity-management`~~ | **Bukan rollback, dan kalimat lamanya salah.** Sudah dicabut 2026-10-31, jadi tidak tersedia lagi. Dan ia tidak membuat "Hub kembali tidak bisa mengelola pengguna": pengelolaan akun berjalan lewat FGAP (§1.4). Yang dicabutnya adalah `map-roles` |
 
-Hub tidak menyimpan data peran, jadi tidak ada yang perlu dibersihkan.
+Hub tidak menyimpan data peran, jadi tidak ada yang perlu dibersihkan. Yang Hub simpan hanyalah jejak aksinya sendiri di `platform_audit_events` (`requestId`, `roleId`, `assignmentId`, kode HCIS), padanan AUTH-014 H-5; itu catatan bahwa perintah dikirim, bukan salinan daftar peran. Rollback migration 0012 (H-9) ada di kepala berkasnya.
 
 ## 8. Asumsi yang belum diputuskan
 
@@ -424,6 +424,6 @@ Hub tidak menyimpan data peran, jadi tidak ada yang perlu dibersihkan.
 | `DRAFT` | D-DRIFT-1/D-DRIFT-2: tempat pemeriksaan drift dijalankan dan pemilik checklist onboarding (§1.6) |
 | **belum diuji** | Jalur rollback (D): satu PUT tanpa kelima resource; belum pernah dilatih (§1.6) |
 | `DRAFT` | "Yang hilang karena pencabutan adalah `map-roles`": probe `role-mappings` belum dijalankan berpasangan (§1.4) |
-| **belum teruji** | AC 9 dan AC 10 belum punya objek uji; rutenya belum ada (§6) |
+| **diuji 2026-11-01** | AC 9 dan AC 10 punya objek uji sejak SQ-Hub#169 (§6) |
 | **menunggu owner** | Menjalankan K-4/K-5 pada `sq-hub`, karena saklarnya dipakai bersama Ringkasan Yayasan (§1.3) |
 | `DRAFT` | Scope exchange diparameterkan, bukan dinamai ulang agar muat ke prefix `sq-governance-` |

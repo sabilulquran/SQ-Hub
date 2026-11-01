@@ -56,7 +56,7 @@ function harness(options: {
   let now = Date.parse("2026-10-17T03:00:00Z");
   let applications = options.applications ?? [app("hcis", 1), app("aset", 2)];
   let member = options.member ?? true;
-  const exchanges: Array<{ subject: string; audience: string }> = [];
+  const exchanges: Array<{ subject: string; audience: string; scope: string }> = [];
   const requests: Array<{ url: string; token: string }> = [];
   const logs: GovernanceLogEntry[] = [];
   const observations: Array<{ key: string; outcome: ObservationOutcome }> = [];
@@ -70,8 +70,8 @@ function harness(options: {
     applications: { listForIdentity: async () => applications },
     userAccessToken: async () => "hub-user-access-token",
     exchanger: options.exchanger ?? {
-      exchange: async (subject, audience) => {
-        exchanges.push({ subject, audience });
+      exchange: async (subject, { audience, scope }) => {
+        exchanges.push({ subject, audience, scope });
         return `exchanged-for-${audience}`;
       },
     },
@@ -115,8 +115,9 @@ describe("Governance fetch layer (HUB-IMPL-021 §4)", () => {
     expect(snapshot.membership).toEqual({ organ: "pengurus", positionLabel: "Ketua Pengurus" });
     expect(snapshot.cards.map((card) => `${card.applicationKey}:${card.state}`)).toEqual(["hcis:ready", "aset:ready"]);
     expect(exchanges).toEqual([
-      { subject: "hub-user-access-token", audience: "hcis-governance" },
-      { subject: "hub-user-access-token", audience: "aset-governance" },
+      // The governance caller still sends the prefixed scope it always sent (HUB-IMPL-023 §1.1).
+      { subject: "hub-user-access-token", audience: "hcis-governance", scope: "sq-governance-hcis-governance" },
+      { subject: "hub-user-access-token", audience: "aset-governance", scope: "sq-governance-aset-governance" },
     ]);
     expect(requests).toEqual([
       { url: "https://hcis.example.test/api/governance/summary", token: "exchanged-for-hcis-governance" },
@@ -221,7 +222,7 @@ describe("Keycloak token exchange request", () => {
         return json({ access_token: "exchanged", token_type: "Bearer" });
       }) as unknown as typeof fetch,
     });
-    await expect(exchanger.exchange("subject-token", "hcis", new AbortController().signal)).resolves.toBe("exchanged");
+    await expect(exchanger.exchange("subject-token", { audience: "hcis", scope: "sq-governance-hcis" }, new AbortController().signal)).resolves.toBe("exchanged");
     expect(calls[0]!.url).toBe(`${issuer}/protocol/openid-connect/token`);
     const body = Object.fromEntries(calls[0]!.body);
     expect(body).toMatchObject({
@@ -238,7 +239,7 @@ describe("Keycloak token exchange request", () => {
       issuer, clientId: "sq-hub", clientSecret: "test-only-client-secret",
       fetch: (async () => json({ error: "invalid_request" }, 400)) as unknown as typeof fetch,
     });
-    await expect(exchanger.exchange("subject-token", "evil", new AbortController().signal)).rejects.toMatchObject({ status: 400 });
+    await expect(exchanger.exchange("subject-token", { audience: "evil", scope: "sq-governance-evil" }, new AbortController().signal)).rejects.toMatchObject({ status: 400 });
   });
 });
 

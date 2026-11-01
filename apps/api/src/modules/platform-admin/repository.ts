@@ -48,7 +48,7 @@ export interface PlatformAdminRepository {
   listAudit(identity: IdentityRef, limit?: number): Promise<PlatformAdminAuditRecord[]>;
 }
 
-interface MembershipRow {
+export interface MembershipRow {
   id: string;
   identityIssuer: string;
   identitySubject: string;
@@ -107,53 +107,7 @@ export class PgPlatformAdminRepository implements PlatformAdminRepository {
     const client = await this.pool.connect();
     try {
       await client.query("BEGIN");
-      const grantedAt = new Date();
-      const result = await client.query<MembershipRow>(
-        `
-          INSERT INTO platform_administrators (
-            id,
-            identity_issuer,
-            identity_subject,
-            status,
-            reason,
-            actor_kind,
-            actor_ref,
-            granted_at,
-            revoked_at,
-            updated_at
-          ) VALUES ($1, $2, $3, 'active', $4, $5, $6, $7, NULL, now())
-          ON CONFLICT (identity_issuer, identity_subject) DO UPDATE SET
-            status = 'active',
-            reason = EXCLUDED.reason,
-            actor_kind = EXCLUDED.actor_kind,
-            actor_ref = EXCLUDED.actor_ref,
-            granted_at = EXCLUDED.granted_at,
-            revoked_at = NULL,
-            updated_at = now()
-          RETURNING
-            id,
-            identity_issuer AS "identityIssuer",
-            identity_subject AS "identitySubject",
-            status,
-            reason,
-            actor_kind AS "actorKind",
-            actor_ref AS "actorRef",
-            granted_at AS "grantedAt",
-            revoked_at AS "revokedAt",
-            updated_at AS "updatedAt"
-        `,
-        [
-          randomUUID(),
-          input.identity.issuer,
-          input.identity.subject,
-          input.reason,
-          input.actor.kind,
-          input.actor.ref,
-          grantedAt,
-        ],
-      );
-      const row = result.rows[0];
-      if (!row) throw new Error("platform admin grant returned no row");
+      const row = await activate(client, input);
 
       await insertAudit(client, {
         actor: input.actor,
@@ -293,6 +247,63 @@ export class PgPlatformAdminRepository implements PlatformAdminRepository {
   }
 }
 
+export const MEMBERSHIP_COLUMNS = `
+  id,
+  identity_issuer AS "identityIssuer",
+  identity_subject AS "identitySubject",
+  status,
+  reason,
+  actor_kind AS "actorKind",
+  actor_ref AS "actorRef",
+  granted_at AS "grantedAt",
+  revoked_at AS "revokedAt",
+  updated_at AS "updatedAt"
+`;
+
+/** The one statement that makes an identity an active Platform Administrator. */
+export async function activate(
+  client: PoolClient,
+  input: { identity: IdentityRef; reason: string; actor: ActorRef },
+): Promise<MembershipRow> {
+  const result = await client.query<MembershipRow>(
+    `
+      INSERT INTO platform_administrators (
+        id,
+        identity_issuer,
+        identity_subject,
+        status,
+        reason,
+        actor_kind,
+        actor_ref,
+        granted_at,
+        revoked_at,
+        updated_at
+      ) VALUES ($1, $2, $3, 'active', $4, $5, $6, $7, NULL, now())
+      ON CONFLICT (identity_issuer, identity_subject) DO UPDATE SET
+        status = 'active',
+        reason = EXCLUDED.reason,
+        actor_kind = EXCLUDED.actor_kind,
+        actor_ref = EXCLUDED.actor_ref,
+        granted_at = EXCLUDED.granted_at,
+        revoked_at = NULL,
+        updated_at = now()
+      RETURNING ${MEMBERSHIP_COLUMNS}
+    `,
+    [
+      randomUUID(),
+      input.identity.issuer,
+      input.identity.subject,
+      input.reason,
+      input.actor.kind,
+      input.actor.ref,
+      new Date(),
+    ],
+  );
+  const row = result.rows[0];
+  if (!row) throw new Error("platform admin grant returned no row");
+  return row;
+}
+
 export function makePlatformAdminTargetRef(identity: IdentityRef): string {
   const digest = createHash("sha256")
     .update(`${identity.issuer}\n${identity.subject}`)
@@ -300,7 +311,7 @@ export function makePlatformAdminTargetRef(identity: IdentityRef): string {
   return `platform-admin:${digest}`;
 }
 
-async function insertAudit(
+export async function insertAudit(
   client: PoolClient,
   input: {
     actor: ActorRef;
@@ -328,7 +339,7 @@ async function insertAudit(
   );
 }
 
-function toMembership(row: MembershipRow): PlatformAdminMembership {
+export function toMembership(row: MembershipRow): PlatformAdminMembership {
   return {
     id: row.id,
     identity: {
