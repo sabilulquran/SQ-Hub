@@ -1,9 +1,9 @@
 # HUB-IMPL-023 — Admin Platform memberi peran HCIS
 
-**Status:** DRAFT, revisi 3 setelah pencabutan K-1 dan temuan drift FGAP 2026-10-31. Belum diterima Product Owner. Penerimaan memberi wewenang implementasi; penerapan di Mi8VPS tetap menuntut review, CI, dan persetujuan owner tersendiri.
+**Status:** DRAFT, revisi 4 setelah penerapan (D) dan review putaran ketiga. Belum diterima Product Owner. Penerimaan memberi wewenang implementasi; penerapan di Mi8VPS tetap menuntut review, CI, dan persetujuan owner tersendiri.
 **Product:** SQ Hub
 **Area:** Admin Center / identitas dan akses
-**Date:** 2026-10-31
+**Date:** 2026-11-01
 **Depends on:** ADR-0003, ADR-0009, HUB-IMPL-002, HUB-IMPL-007, HUB-IMPL-009, HUB-IMPL-021; HCIS ADR-0006 dan AUTH-014
 **Counterpart:** HCIS `docs/domain/sq-core-administrator-layers.md` (AUTH-014), fase F1–F4 sudah di `main` HCIS
 
@@ -159,13 +159,21 @@ Probe yang terbukti sah di realm ini, dan karena itu dipakai seterusnya: `GET us
 
 ### 1.6 Drift: daftar akun mesin yang dilindungi tidak ikut bertambah
 
-Permission `staff lifecycle: deny service accounts` menyebut akun mesin **satu per satu**. Daftarnya dibuat saat HUB-IMPL-013 dipasang dan berisi **7** resource. Realm per 2026-10-31 punya **11** akun mesin. Empat yang tidak terlindungi — `karir-sq-api`, `keluarga-sq-api`, `spmb-api`, dan `sq-hub-role-administration` — terbukti lewat probe menjawab `200/404`, sedangkan `hcis-api` sebagai pembanding menjawab `403/403`.
+Seluruh seksi ini menggambarkan keadaan **sampai 2026-11-01 08:31 UTC**, ketika (D) menutupnya. Ditulis dalam bentuk lampau; penutupannya ada di akhir seksi.
 
-Akibatnya SQ Hub dapat, misalnya, menonaktifkan akun mesin Karir, SPMB, atau Keluarga. Bahwa `sq-hub-role-administration` ikut di dalamnya berarti kanal pemberian peran HCIS sendiri dapat dimatikan dari Hub.
+Permission `staff lifecycle: deny service accounts` menyebut akun mesin **satu per satu**. Daftarnya dibuat saat HUB-IMPL-013 dipasang dan berisi **7** resource. Realm ternyata punya **12** akun mesin, jadi **lima** tidak terlindungi: `karir-sq-api`, `keluarga-sq-api`, `spmb-api`, `sq-hub-role-administration`, dan akun mesin milik client `admin-permissions` sendiri. Kelimanya terbukti lewat probe menjawab `200/404`, sedangkan `hcis-api` sebagai pembanding menjawab `403/403`.
 
-**Tiga di antaranya drift historis; satu adalah kelalaian dokumen ini sendiri.** `karir-sq-api`, `keluarga-sq-api`, dan `spmb-api` dibuat setelah HUB-IMPL-013 dipasang dan tidak pernah didaftarkan. `sq-hub-role-administration` lain: client itu **baru dibuat oleh K-2 pada 2026-10-31** (§1.1), dalam penerapan spesifikasi ini, dan langkah pendaftarannya terlewat pada hari yang sama. Jadi pelanggaran pertama D-DRIFT-2 dilakukan oleh dokumen yang menetapkan D-DRIFT-2. Dicatat begitu, bukan dirapikan menjadi "drift lama", karena justru itu yang membuktikan bahwa langkah wajib di checklist bukan formalitas.
+> **Koreksi.** Revisi 3 seksi ini menulis "11 akun mesin" dan "empat yang tidak terlindungi". Keduanya salah; angka sebenarnya 12 dan lima. Angka lama berasal dari hitungan manual — persis metode yang seksi ini pakai sebagai contoh kegagalan. Dicatat di sini, bukan dihapus, karena kekeliruannya adalah buktinya.
 
-Tidak ada yang rusak, tidak ada yang memberi tanda, dan selisihnya hanya terlihat kalau seseorang sengaja membandingkan. Inilah bentuk "sudah diset lalu terlewat" yang owner minta jangan terulang, jadi penutupannya tidak boleh berhenti pada menambah empat nama.
+Akibatnya, selama itu SQ Hub dapat menonaktifkan akun mesin Karir, SPMB, atau Keluarga. Bahwa `sq-hub-role-administration` termasuk berarti kanal pemberian peran HCIS sendiri dapat dimatikan dari Hub.
+
+**Yang paling berat adalah yang paling tidak terduga.** `admin-permissions` adalah resource server yang **menegakkan permission deny itu sendiri**. Service account-nya tidak terlindungi, sehingga SQ Hub — lewat `staff lifecycle: view and manage users` yang memang sengaja dipasang — dapat menyentuh akun mesin dari kendali yang seharusnya menahannya. Kendali yang dapat mematikan dirinya sendiri bukan kendali. Jendela paparannya membentang dari pemasangan HUB-IMPL-013 sampai 2026-11-01. Tidak ada bukti bahwa itu pernah dipakai, dan tidak ada pula bukti sebaliknya, karena tidak ada yang mengawasinya.
+
+**Lima akun, tiga sebab yang berbeda.** `karir-sq-api`, `keluarga-sq-api`, dan `spmb-api` dibuat setelah HUB-IMPL-013 dipasang dan tidak pernah didaftarkan — drift biasa. `sq-hub-role-administration` lain: client itu **baru dibuat oleh K-2 pada 2026-10-31** (§1.1), dalam penerapan spesifikasi ini, dan langkah pendaftarannya terlewat pada hari yang sama, sehingga pelanggaran pertama D-DRIFT-2 dilakukan oleh dokumen yang menetapkan D-DRIFT-2. Dan `admin-permissions` bukan keduanya: ia sudah ada sejak FGAP dipasang dan **tidak pernah terpikirkan**, karena tidak seorang pun menduga sebuah resource server punya service account.
+
+Ketiga sebab itu menuntut obat yang sama, dan hanya satu obat: daftar yang diambil dari realm. Kelalaian masih bisa diingatkan; yang tidak terpikirkan tidak bisa diingatkan. Ia hanya dapat ditemukan oleh pemeriksaan yang tidak bertanya kepada manusia apa saja isinya.
+
+Tidak ada yang rusak, tidak ada yang memberi tanda, dan selisihnya hanya terlihat kalau seseorang sengaja membandingkan. Inilah bentuk "sudah diset lalu terlewat" yang owner minta jangan terulang.
 
 **D-DRIFT-1 — pemeriksaan drift.** Harus ada langkah yang membandingkan daftar akun mesin realm dengan daftar resource permission tersebut, dan menyatakan **TIDAK LULUS** bila tidak sama. Daftar akun mesin diambil dari realm (client yang `serviceAccountsEnabled`, lalu `clients/{id}/service-account-user`), bukan dari daftar yang ditulis tangan di mana pun — daftar tangan adalah persis penyebab masalah ini. `kc-auth014-d-kecualikan-akun-mesin.sh` tanpa `--apply` sudah menjalankan pembandingan itu dan tidak mengubah apa pun, jadi ia dapat dipakai langsung sebagai pemeriksaannya.
 
@@ -173,11 +181,13 @@ Tidak ada yang rusak, tidak ada yang memberi tanda, dan selisihnya hanya terliha
 
 Keduanya `DRAFT` sampai owner menyetujui tempat pemeriksaannya dijalankan; isinya tidak menunggu siapa pun.
 
-**Ditutup 2026-11-01 08:31 UTC.** Resource pada permission bertambah dari **7 menjadi 12**, dan seluruh 12 akun mesin terbukti menjawab `403/403`; kontrol akun staf tetap `200/404`. Badan PUT membawa `resourceType: Users`, 5 scope, dan 1 policy — jadi kekhawatiran representasi daftar (§1.5, aturan 3) tidak terwujud, tetapi baru terbukti sesudah dijalankan, bukan sebelumnya. Rollback cukup satu PUT tanpa kelima resource itu; restore database tidak diperlukan. Backup sebelum penerapan: `backup-keycloak-auth014-d-20261101-153000-an/sqcore_keycloak.dump`.
+**Ditutup 2026-11-01 08:31 UTC.** Resource pada permission bertambah dari **7 menjadi 12**, dan seluruh 12 akun mesin terbukti menjawab `403/403`; kontrol akun staf tetap `200/404`. Akun mesin `admin-permissions` yang ditambahkan adalah `5b8e081c-4f72-44fd-b970-ef3dc11421c5`.
 
-**Yang ditambahkan ternyata lima, bukan empat.** Selain `karir-sq-api`, `keluarga-sq-api`, `spmb-api`, dan `sq-hub-role-administration`, pemeriksaan menemukan akun mesin milik client **`admin-permissions` sendiri** (`5b8e081c-4f72-44fd-b970-ef3dc11421c5`) — tidak ada di hitungan manual mana pun sebelumnya, karena tidak seorang pun memikirkan bahwa resource server FGAP punya service account.
+Itu pembenaran D-DRIFT-1 yang paling langsung: pemeriksaan yang mengambil daftarnya **dari realm** menemukan satu akun yang tidak akan pernah masuk daftar tulisan tangan. Pemeriksaan yang dibuat dari daftar nama akan lulus sambil meninggalkan akun mesin paling berwenang di realm tetap terbuka.
 
-Itu adalah pembenaran D-DRIFT-1 yang paling langsung: pemeriksaan yang mengambil daftarnya **dari realm** menemukan satu akun yang tidak akan pernah masuk daftar yang ditulis manusia. Kalau pemeriksaan ini dibuat dari daftar nama, ia akan lulus sambil meninggalkan akun mesin yang paling berwenang di realm tetap terbuka.
+Badan PUT terbukti membawa `resourceType: Users`, 5 scope, dan 1 policy. Itu menjawab kekhawatiran nyata pada saat skrip ditulis: PUT bersifat replace, dan representasi **daftar** sebuah permission tidak dijamin membawa `resourceType`, sehingga badan yang disusun darinya dapat mengubah jenis permission itu sendiri. Skrip berangkat dari representasi tunggal dan menolak jalan bila ada field yang hilang dibanding baris daftar. Perlu dinyatakan jujur: itu **terbukti sesudah dijalankan**, bukan sebelumnya. Yang membuat risikonya dapat diterima bukan keyakinan, melainkan penjagaannya.
+
+**Rollback belum pernah dijalankan.** Jalurnya adalah satu PUT tanpa kelima resource itu, dan menurut bentuk perubahannya restore database tidak diperlukan. Itu kesimpulan beralasan, bukan latihan yang pernah lulus — §6 menempatkan latihan rollback di antara hal yang tidak dapat dijalankan dari CI, dan standar itu berlaku untuk kalimat ini juga. Backup sebelum penerapan: `backup-keycloak-auth014-d-20261101-153000-an/sqcore_keycloak.dump`.
 
 ### 1.7 Satu temuan yang perlu ditindaklanjuti di luar spesifikasi ini
 
@@ -277,7 +287,7 @@ Maka: **menjadikan seseorang Admin Platform aktif** menuntut **dua Admin Platfor
 
 ### H-10 — Reset kata sandi sesama Admin Platform dilarang lewat Hub
 
-`manage-users` mencakup pengelolaan credential. Seorang Admin Platform bisa mereset kata sandi Admin Platform lain, masuk sebagai orang itu, lalu memberi dirinya peran apa pun. Reset kata sandi pada dasarnya adalah penyamaran dengan satu baris log tambahan.
+Akun mesin SQ Hub dapat mengelola credential pengguna staf. Kemampuan itu datang dari permission FGAP `staff lifecycle: view and manage users` (§1.4), bukan dari `manage-users` yang sudah dicabut; revisi sebelumnya dokumen ini menyebut sumber yang salah. Seorang Admin Platform karenanya bisa mereset kata sandi Admin Platform lain dan masuk sebagai orang itu. Reset kata sandi pada dasarnya adalah penyamaran dengan satu baris log tambahan.
 
 Maka Hub **menolak** reset kata sandi untuk akun yang merupakan Admin Platform. Akun seperti itu hanya lewat konsol Keycloak, yang memang sengaja dipertahankan sebagai kunci cadangan.
 
@@ -287,7 +297,9 @@ Pertama, hari ini Hub **tidak punya** operasi reset kata sandi umum untuk ditola
 
 Kedua, dan lebih penting: kemampuan yang ditakuti H-10 hidup di **akun mesin Keycloak**, bukan di Hub. Siapa pun yang memegang secret `sq-hub-identity-management` — atau jalur kode Hub mana pun di masa depan — memanggil admin API Keycloak langsung dan melewati pemeriksaan Hub sama sekali.
 
-Pencabutan `manage-users` pada 2026-10-31 **tidak** menutup itu, dan premis pembuka H-10 di atas perlu diperbaiki karenanya: kemampuan mengelola credential tidak datang dari `manage-users`, ia datang dari permission FGAP `staff lifecycle: view and manage users` yang tetap terpasang (§1.4). Jadi H-10 tetap relevan, tetapi alasannya berbeda dari yang tertulis semula. Yang hilang karena pencabutan adalah `map-roles` — langkah "lalu memberi dirinya peran apa pun" di paragraf pembuka kini terhalang di Keycloak, sedangkan langkah "mereset kata sandi, masuk sebagai orang itu" tidak. H-10 menutup sisa itu di sisi Hub, dan hanya di sisi Hub.
+Pencabutan `manage-users` pada 2026-10-31 **tidak** menutup itu, karena sumbernya FGAP. Jadi H-10 tetap relevan sepenuhnya.
+
+Satu langkah rantai itu kemungkinan sudah terputus di Keycloak: `map-roles` ikut tercabut, sehingga "memberi dirinya peran apa pun" tidak lagi dapat dilakukan lewat akun mesin Hub. Ditulis "kemungkinan" dengan sengaja — §1.4 menurunkan temuan itu ke `DRAFT` karena probenya dijalankan tanpa pembanding, dan H-10 tidak boleh bersandar pada bukti yang dokumen ini sendiri belum terima. Langkah "mereset kata sandi, masuk sebagai orang itu" tidak terputus sama sekali. H-10 menutup sisa itu di sisi Hub, dan hanya di sisi Hub.
 
 `DRAFT`: "peran istimewa modul" dikeluarkan dari v1. Hub belum tahu peran mana di tiap modul yang istimewa, dan menanyakannya ke tiap aplikasi adalah pekerjaan tersendiri.
 
@@ -364,7 +376,9 @@ Hub tidak menyimpan data peran, jadi tidak ada yang perlu dibersihkan.
 | `DRAFT` | Audience aktor bernama `hcis-role-administration-actor`; client-nya sudah dibuat 2026-10-31 |
 | `TBD` | Apakah aplikasi SQ Core lain memakai kanal berbentuk sama. Rancangan ini tidak memuat apa pun yang khas HCIS selain katalog perannya |
 | **diputuskan 2026-10-31** | K-1: owner memilih cabut `manage-users`; sudah dijalankan (§1.2, §1.4) |
+| **ditutup 2026-11-01** | Drift akun mesin: 7 → 12 resource, seluruh 12 terbukti `403/403` (§1.6) |
 | `DRAFT` | D-DRIFT-1/D-DRIFT-2: tempat pemeriksaan drift dijalankan dan pemilik checklist onboarding (§1.6) |
+| **belum diuji** | Jalur rollback (D): satu PUT tanpa kelima resource; belum pernah dilatih (§1.6) |
 | `DRAFT` | "Yang hilang karena pencabutan adalah `map-roles`": probe `role-mappings` belum dijalankan berpasangan (§1.4) |
 | **belum teruji** | AC 9 dan AC 10 belum punya objek uji; rutenya belum ada (§6) |
 | **menunggu owner** | Menjalankan K-4/K-5 pada `sq-hub`, karena saklarnya dipakai bersama Ringkasan Yayasan (§1.3) |
