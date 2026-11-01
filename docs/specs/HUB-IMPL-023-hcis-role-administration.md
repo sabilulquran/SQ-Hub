@@ -227,7 +227,7 @@ Hub mengenal orang sebagai **subject Keycloak**; HCIS mengenalnya sebagai **id a
 **Yang Hub lakukan** (diterapkan di PR #169, `3d4702a`):
 
 - operator memilih orang dari direktori Akun SQ; perintah pemberian dan pencabutan di Hub menerima **subject**, bukan id HCIS, sehingga tidak ada id HCIS yang pernah diketik manusia;
-- Hub memanggil `GET /accounts` **di dalam aksi yang sama**, bukan di awal layar, lalu memakai `accountId` yang baru diterima;
+- Hub memanggil `GET /accounts` **di dalam aksi yang sama**, lalu memakai `accountId` yang baru diterima. Itu syaratnya: id yang dipakai harus berasal dari pembacaan pada saat aksi, bukan dari state layar yang bisa sudah basi. Syarat ini **tidak** berarti satu panggilan per operasi — lihat catatan audit di bawah;
 - Hub hanya menawarkan pencabutan untuk assignment yang tercantum bagi orang itu dengan `revocableViaHub = true`;
 - Hub menolak pemberian dan pencabutan terhadap diri sendiri (`ROLE_ADMIN_SELF_FORBIDDEN`) **sebelum** exchange, seperti H-0;
 - Hub menerbitkan **satu exchange baru per panggilan HCIS**, termasuk untuk lookup. Jadi Hub tidak bergantung pada keputusan HCIS bahwa pembacaan tidak membelanjakan assertion; kalau HCIS kelak mengubahnya, Hub tidak ikut rusak.
@@ -241,7 +241,13 @@ Hub mengenal orang sebagai **subject Keycloak**; HCIS mengenalnya sebagai **id a
 
 **Tidak ada identitas di jawaban** — tidak ada surel, nama, nomor identitas, mau pun status kepegawaian. Hub sudah tahu siapa orangnya, karena Hub yang mengirim `subject`. Yang dikembalikan hanya alasan sebuah pemberian akan ditolak (`account_inactive`, `employee_inactive`): cukup untuk memperingatkan operator sebelum mengirim, tidak cukup untuk menjadikan kanal peran sebuah jalur pembacaan data pegawai.
 
-**Setiap pembacaan tercatat di HCIS** sebagai `role.account.lookup` dengan `jti` assertion. Satu operasi karena itu sebaiknya memanggil rute ini sekali dan menyimpan hasilnya di state layar sampai operator menekan simpan; memanggilnya berulang kali akan terbaca sebagai rentetan pembacaan dan mempersulit pembedaan pemakaian biasa dari enumerasi.
+**Setiap pembacaan tercatat di HCIS** sebagai `role.account.lookup` dengan `jti` assertion, dan Hub menerbitkan exchange baru per panggilan, sehingga tiap pembacaan membawa `jti` yang berbeda.
+
+Berapa pembacaan sebenarnya, per 2026-11-01 (SQ-Hub#169): **tiga** untuk satu pemberian — saat orang dipilih, di dalam aksi, dan sekali lagi sesudah berhasil — dan **dua sampai sebelas** untuk satu pencabutan, karena `findAssignment` menelusuri halaman sampai sepuluh. Rancangan awal catatan ini menulis "sekali per operasi"; itu tidak menggambarkan kode, dan dikoreksi di sini alih-alih dibiarkan menjadi dokumentasi yang salah.
+
+`DRAFT`, dan perlu diputuskan: satu pencabutan yang sah dapat muncul di audit HCIS sebagai sebelas pembacaan dengan sebelas `jti` yang tidak tampak berkaitan — persis bentuk yang audit itu dirancang untuk dicurigai. Akibatnya bukan kebocoran, melainkan **deteksi enumerasi yang tumpul**: kalau pemakaian biasa sudah berisik, yang tidak biasa tidak lagi menonjol. Dua jalan yang masuk akal, dan keduanya milik SQ Hub, bukan HCIS: menelusuri halaman dengan satu assertion yang sama, atau menyertakan satu pengenal operasi yang dibagi oleh semua pembacaan dalam satu aksi. Sampai salah satunya diambil, jangan membangun peringatan enumerasi di atas jumlah `role.account.lookup`.
+
+**Pengecualian ENG-LIST-001 yang harus dicatat, bukan dibiarkan.** Layar Hub hari ini hanya meminta halaman pertama penugasan (25 baris) dan tidak punya jalan ke halaman berikutnya, meski rute dan service-nya menerima `page`. Pegawai dengan lebih dari 25 penugasan karena itu punya baris yang tidak terlihat dan tidak dapat dicabut dari layar, walau `findAssignment` di server masih menemukannya. `ENG-LIST-001` menuntut setiap pengecualian ditulis di spesifikasi; ini dia, dan ia harus ditutup, bukan dijadikan permanen.
 
 ### H-2 — Setiap panggilan membawa dua bukti
 
@@ -422,4 +428,6 @@ Hub tidak menyimpan data peran, jadi tidak ada yang perlu dibersihkan.
 | `DRAFT` | "Yang hilang karena pencabutan adalah `map-roles`": probe `role-mappings` belum dijalankan berpasangan (§1.4) |
 | **belum teruji** | AC 9 dan AC 10 belum punya objek uji; rutenya belum ada (§6) |
 | **menunggu owner** | Menjalankan K-4/K-5 pada `sq-hub`, karena saklarnya dipakai bersama Ringkasan Yayasan (§1.3) |
+| `DRAFT` | Satu pencabutan menghasilkan sampai sebelas `role.account.lookup` dengan `jti` berbeda; menumpulkan deteksi enumerasi (§2 H-1b) |
+| `DRAFT` | Layar Hub hanya meminta halaman pertama penugasan; pengecualian ENG-LIST-001 yang harus ditutup (§2 H-1b) |
 | `DRAFT` | Scope exchange diparameterkan, bukan dinamai ulang agar muat ke prefix `sq-governance-` |
