@@ -83,6 +83,17 @@ export interface OrganMembershipLifecyclePort {
   isOrganProvisionedIdentity(identity: IdentityRef & { employeeId?: string }): Promise<boolean>;
 }
 
+/** H-10: refused through the Hub; the message points the operator to the Keycloak console. */
+export class PlatformAdminCredentialError extends Error {
+  readonly statusCode = 409;
+  readonly code = "PLATFORM_ADMIN_CREDENTIAL_FORBIDDEN";
+
+  constructor() {
+    super("Akun Admin Platform hanya dapat diurus kata sandinya lewat konsol Keycloak.");
+    this.name = "PlatformAdminCredentialError";
+  }
+}
+
 export class StaffLifecycleService {
   private organMemberships?: OrganMembershipLifecyclePort;
 
@@ -243,6 +254,18 @@ export class StaffLifecycleService {
     const parsed = credentialActionSchema.parse(input);
     actorSchema.parse(actor);
     const identity = await this.requireIdentity(parsed.subject);
+    // HUB-IMPL-023 H-10: a credential action on a Platform Administrator's account is one step
+    // from acting as that administrator, so it goes through the Keycloak console only.
+    if ((await this.platformAdmin.show(toRef(identity)))?.status === "active") {
+      await this.audit.write({
+        actor,
+        action: "staff_identity.password_initialization",
+        identity: toRef(identity),
+        outcome: "failed",
+        payload: { reason: parsed.reason, state: "platform_administrator" },
+      });
+      throw new PlatformAdminCredentialError();
+    }
     await this.audit.write({
       actor,
       action: "staff_identity.password_initialization.attempt",

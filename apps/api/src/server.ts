@@ -22,6 +22,7 @@ import {
 } from "./modules/governance/service.js";
 import { PgOrganMembershipRepository } from "./modules/organ-membership/repository.js";
 import { OrganMembershipService } from "./modules/organ-membership/service.js";
+import { PgPlatformAdminProposalRepository } from "./modules/platform-admin/proposals.js";
 import { PgPlatformAdminRepository } from "./modules/platform-admin/repository.js";
 import { PlatformAdminService } from "./modules/platform-admin/service.js";
 import { HcisRoleAdministrationChannel } from "./modules/role-administration/channel.js";
@@ -44,7 +45,10 @@ const repository = new PgApplicationAccessRepository(pool);
 const accessService = new ApplicationAccessService(repository);
 const organMembershipStore = new PgOrganMembershipRepository(pool);
 const governanceObservations = new PgGovernanceObservationStore(pool);
-const platformAdmin = new PlatformAdminService(new PgPlatformAdminRepository(pool));
+const platformAdmin = new PlatformAdminService(
+  new PgPlatformAdminRepository(pool),
+  new PgPlatformAdminProposalRepository(pool),
+);
 // HUB-IMPL-022: one workspace source for Hub's own launcher, the internal launcher route and Kirim SQ.
 const workspaceApplications = new PgHubWorkspaceRepository(pool);
 const hubOrigin = new URL(config.hubOidcRedirectUri).origin;
@@ -182,6 +186,7 @@ const app = buildApp({
   adminAllowedOrigin: hubOrigin,
   launcher: { applications: workspaceApplications, hubOrigin },
   platformAdmin,
+  platformAdministrators: platformAdmin,
   adminApplicationRegistry: accessService,
   adminApplicationAccess: accessService,
   identityDirectory,

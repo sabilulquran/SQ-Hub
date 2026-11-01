@@ -203,7 +203,12 @@ describe("SQ Admin Center routes", () => {
     expect(context.json()).toEqual({
       authorized: true,
       displayName: "Synthetic Platform Admin",
-      capabilities: { platformAdministration: true, applicationAccessAdministration: true },
+      capabilities: {
+        platformAdministration: true,
+        applicationAccessAdministration: true,
+        hcisRoleAdministration: false,
+        platformAdministrators: false,
+      },
     });
     expect(context.body).not.toContain("opaque-platform-admin");
 

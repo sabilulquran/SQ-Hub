@@ -67,6 +67,7 @@ export function registerPlatformAdminRoutes(
       "listApplications" | "getAccess" | "grant" | "revoke" | "listAudit"
     >;
     identityDirectory?: IdentityDirectory;
+    capabilities?: { hcisRoleAdministration: boolean; platformAdministrators: boolean };
   },
 ) {
   app.get("/admin/context", async (request, reply) => {
@@ -79,6 +80,8 @@ export function registerPlatformAdminRoutes(
         capabilities: {
           platformAdministration: true,
           applicationAccessAdministration: Boolean(input.applicationAccess && input.identityDirectory),
+          hcisRoleAdministration: input.capabilities?.hcisRoleAdministration ?? false,
+          platformAdministrators: input.capabilities?.platformAdministrators ?? false,
         },
       });
     } catch (error) {

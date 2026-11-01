@@ -19,6 +19,7 @@ import {
 import {
   credentialActionSchema,
   offboardingSchema,
+  PlatformAdminCredentialError,
   provisionStaffSchema,
   statusMutationSchema,
   type StaffLifecycleService,
@@ -124,13 +125,16 @@ function actorForSession(session: { issuer: string; subject: string }): ActorRef
 }
 
 function sendLifecycleError(
-  reply: { status(code: number): { send(payload: { error: string }): unknown } },
+  reply: { status(code: number): { send(payload: { error: string; message?: string }): unknown } },
   error: unknown,
 ) {
   if (error instanceof HubAuthError) return reply.status(error.statusCode).send({ error: error.code });
   if (error instanceof PlatformAdminAuthorizationError) return reply.status(error.statusCode).send({ error: error.code });
   if (error instanceof LifecycleOriginError) return reply.status(error.statusCode).send({ error: error.code });
   if (error instanceof LifecycleSelfMutationError) return reply.status(error.statusCode).send({ error: error.code });
+  if (error instanceof PlatformAdminCredentialError) {
+    return reply.status(error.statusCode).send({ error: error.code, message: error.message });
+  }
   if (error instanceof z.ZodError) return reply.status(400).send({ error: "INVALID_REQUEST" });
   if (error instanceof IdentityManagementError) {
     if (error.code === "DUPLICATE_USERNAME" || error.code === "DUPLICATE_EMAIL") {

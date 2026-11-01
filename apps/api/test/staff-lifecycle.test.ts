@@ -161,6 +161,8 @@ function fixture(options: { failApplication?: string; failEmail?: boolean; order
     operation: () => operation,
     clearFailure: () => { failingApplication = undefined; },
     clearEmailFailure: () => { failingEmail = false; },
+    setPlatformAdmin: (active: boolean) => { platformAdminActive = active; },
+    order,
   };
 }
 
@@ -227,7 +229,8 @@ describe("StaffLifecycleService", () => {
   });
 
   it("keeps provisioning recoverable after email failure and audits a later resend", async () => {
-    const { service, currentIdentity, audits, clearEmailFailure } = fixture({ failEmail: true });
+    const { service, currentIdentity, audits, clearEmailFailure, setPlatformAdmin } = fixture({ failEmail: true });
+    setPlatformAdmin(false);
     const request = {
       staffType: "employee", employeeNumber: "19870001", username: "19870001",
       firstName: "Synthetic", lastName: "Staff", email: "staff@example.test",
@@ -243,6 +246,14 @@ describe("StaffLifecycleService", () => {
     }, actor);
     expect(retry.outcome).toBe("succeeded");
     expect(audits).toContain("staff_identity.password_initialization:succeeded");
+  });
+
+  it("refuses a password e-mail for a Platform Administrator and points to the Keycloak console (H-10)", async () => {
+    const { service, audits, order } = fixture();
+    await expect(service.sendPasswordInitialization({ subject: "subject-001", reason: "Reset", confirm: true }, actor))
+      .rejects.toMatchObject({ code: "PLATFORM_ADMIN_CREDENTIAL_FORBIDDEN", message: expect.stringContaining("konsol Keycloak") });
+    expect(order).not.toContain("identity:send-email");
+    expect(audits).toEqual(["staff_identity.password_initialization:failed"]);
   });
 
   it("offboards Application Access, Platform Administrator, and global identity idempotently", async () => {
