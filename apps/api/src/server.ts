@@ -150,11 +150,11 @@ const roleAdministration = new RoleAdministrationService({
     clientId: config.hubOidcClientId,
     clientSecret: config.hubOidcClientSecret,
   }),
-  ...(config.hcisRoleAdminClientId && config.hcisRoleAdminClientSecret
+  ...(config.hcisRoleAdminBaseUrl && config.hcisRoleAdminClientId && config.hcisRoleAdminClientSecret
     ? {
         channel: new HcisRoleAdministrationChannel({
           issuer: config.keycloakIssuer,
-          hcisBaseUrl: config.hcisCanonicalUrl,
+          hcisBaseUrl: config.hcisRoleAdminBaseUrl,
           clientId: config.hcisRoleAdminClientId,
           clientSecret: config.hcisRoleAdminClientSecret,
         }),

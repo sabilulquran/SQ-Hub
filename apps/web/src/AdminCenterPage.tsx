@@ -1,5 +1,7 @@
 import { AdminCenterPage as ExistingAdminCenterPage } from "@/AdminCenterPageView";
+import { HcisRolesPage } from "@/HcisRolesPage";
 import { OrganMembershipPage } from "@/OrganMembershipPage";
+import { PlatformAdministratorsPage } from "@/PlatformAdministratorsPage";
 import { StaffLifecyclePage } from "@/StaffLifecyclePage";
 import type { AdminApplication, OrganMembershipOverview, WorkspaceSnapshot } from "@/types";
 
@@ -22,7 +24,16 @@ export function AdminCenterPage(props: AdminCenterPageProps) {
     );
   }
 
-  if (window.location.pathname.replace(/\/+$/, "") === "/admin/organ") {
+  const path = window.location.pathname.replace(/\/+$/, "");
+  const shared = {
+    workspace: props.workspace,
+    ...(props.onLogout ? { onLogout: props.onLogout } : {}),
+    ...(props.onAuthorizationDenied ? { onAuthorizationDenied: props.onAuthorizationDenied } : {}),
+  };
+  if (path === "/admin/hcis-roles") return <HcisRolesPage {...shared} />;
+  if (path === "/admin/platform-administrators") return <PlatformAdministratorsPage {...shared} />;
+
+  if (path === "/admin/organ") {
     return (
       <OrganMembershipPage
         workspace={props.workspace}

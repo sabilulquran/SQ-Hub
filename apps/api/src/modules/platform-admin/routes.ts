@@ -344,6 +344,12 @@ function toBrowserAudit(record: AuditRecord) {
     "termStart",
     "termEnd",
     "provisioningPath",
+    // HUB-IMPL-023: HCIS role changes carried by the Hub. Ids only; never a token.
+    "requestId",
+    "roleId",
+    "scopeType",
+    "assignmentId",
+    "hcisCode",
   ]) {
     const value = record.payload[key];
     if (typeof value === "string" || value === null) safePayload[key] = value;

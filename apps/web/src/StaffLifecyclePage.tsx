@@ -38,6 +38,7 @@ const errors: Record<string, string> = {
   LIFECYCLE_OPERATION_BUSY: "Operasi sedang berjalan. Coba lagi setelah selesai.",
   EMPLOYEE_IDENTITY_CONFLICT: "Akun yang ada tidak cocok dengan referensi pegawai HCIS. Eskalasi untuk penelusuran identitas.",
   IDENTITY_ACTION_NOT_PENDING: "Akun ini tidak menunggu tindakan pembuatan password.",
+  PLATFORM_ADMIN_CREDENTIAL_FORBIDDEN: "Akun ini milik Admin Platform. Kata sandinya hanya dapat diurus lewat konsol Keycloak, bukan lewat SQ Hub.",
 };
 
 export function StaffLifecyclePage({ workspace, onLogout, onAuthorizationDenied }: Props) {

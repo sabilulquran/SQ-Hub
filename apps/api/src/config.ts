@@ -40,6 +40,8 @@ const serverConfigSchema = foundationConfigSchema.extend({
   HCIS_STAFF_VERIFY_CLIENT_SECRET: optionalNonempty(z.string().min(1)),
   // HUB-IMPL-023: machine client of the HCIS role-administration channel. Unset keeps the
   // Admin Center screen in its "not configured" state; H-0 still guards every route.
+  // HCIS API base including any reverse-proxy prefix (e.g. https://hcis.example/api/).
+  HCIS_ROLE_ADMIN_BASE_URL: optionalNonempty(z.string().url()),
   HCIS_ROLE_ADMIN_CLIENT_ID: optionalNonempty(z.string().trim().min(1)),
   HCIS_ROLE_ADMIN_CLIENT_SECRET: optionalNonempty(z.string().min(1)),
 });
@@ -72,6 +74,7 @@ export interface AppConfig extends FoundationConfig {
   hcisStaffVerifyBaseUrl?: string;
   hcisStaffVerifyClientId?: string;
   hcisStaffVerifyClientSecret?: string;
+  hcisRoleAdminBaseUrl?: string;
   hcisRoleAdminClientId?: string;
   hcisRoleAdminClientSecret?: string;
 }
@@ -125,8 +128,9 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     throw new Error("HCIS verifier must use a distinct service identity");
   }
 
-  if (Boolean(parsed.HCIS_ROLE_ADMIN_CLIENT_ID) !== Boolean(parsed.HCIS_ROLE_ADMIN_CLIENT_SECRET)) {
-    throw new Error("HCIS_ROLE_ADMIN_CLIENT_ID and secret must be configured together");
+  const roleAdminSet = [parsed.HCIS_ROLE_ADMIN_BASE_URL, parsed.HCIS_ROLE_ADMIN_CLIENT_ID, parsed.HCIS_ROLE_ADMIN_CLIENT_SECRET];
+  if (roleAdminSet.some(Boolean) && !roleAdminSet.every(Boolean)) {
+    throw new Error("HCIS_ROLE_ADMIN_BASE_URL, CLIENT_ID and CLIENT_SECRET must be configured together");
   }
   if (
     parsed.HCIS_ROLE_ADMIN_CLIENT_ID &&
@@ -161,8 +165,9 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
       hcisStaffVerifyClientId: parsed.HCIS_STAFF_VERIFY_CLIENT_ID!,
       hcisStaffVerifyClientSecret: parsed.HCIS_STAFF_VERIFY_CLIENT_SECRET!,
     } : {}),
-    ...(parsed.HCIS_ROLE_ADMIN_CLIENT_ID && parsed.HCIS_ROLE_ADMIN_CLIENT_SECRET
+    ...(parsed.HCIS_ROLE_ADMIN_BASE_URL && parsed.HCIS_ROLE_ADMIN_CLIENT_ID && parsed.HCIS_ROLE_ADMIN_CLIENT_SECRET
       ? {
+          hcisRoleAdminBaseUrl: parsed.HCIS_ROLE_ADMIN_BASE_URL,
           hcisRoleAdminClientId: parsed.HCIS_ROLE_ADMIN_CLIENT_ID,
           hcisRoleAdminClientSecret: parsed.HCIS_ROLE_ADMIN_CLIENT_SECRET,
         }
