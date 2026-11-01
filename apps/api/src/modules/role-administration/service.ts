@@ -85,9 +85,10 @@ export interface RoleGrantInput {
 
 /**
  * How HCIS answers reach the operator (spec §2 table). HCIS's domain refusals are passed on by code
- * with HCIS's fixed message, from an allowlist taken from HCIS role-assignment.ts and
- * org-access-policy.ts; anything else, credential failures included, becomes one channel error,
- * so an unexpected HCIS payload never reaches the browser.
+ * with HCIS's fixed message, from an allowlist taken from HCIS role-assignment.ts plus the three
+ * org-access-policy codes the channel names one by one (HCIS d7b2e58); anything else, credential
+ * failures included, becomes one channel error, so an unexpected HCIS payload never reaches the
+ * browser.
  */
 const DOMAIN_CODES = new Set([
   "ROLE_DELEGATION_FORBIDDEN",
@@ -107,7 +108,6 @@ const DOMAIN_CODES = new Set([
   "INVALID_ASSIGNMENT_PERIOD",
   "NON_UNIT_SCOPE_FORBIDS_UNIT",
   "UNIT_SCOPE_REQUIRES_UNIT",
-  "SELF_MANAGER_FORBIDDEN",
 ]);
 const CONFLICT_CODES = new Set(["ROLE_ADMIN_REQUEST_REPLAYED", "ROLE_ADMIN_ACTOR_ASSERTION_SPENT"]);
 const UNAVAILABLE_CODES = new Set(["ROLE_ADMIN_CHANNEL_DISABLED", "APPLICATION_ACCESS_UNAVAILABLE"]);
