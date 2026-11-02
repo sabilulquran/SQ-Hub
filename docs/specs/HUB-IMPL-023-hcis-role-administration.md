@@ -1,6 +1,6 @@
 # HUB-IMPL-023 — Admin Platform memberi peran HCIS
 
-**Status:** **ACCEPTED**, revisi 6, 2026-11-01. Diterima di bawah keputusan berdiri owner 2026-10-27 ("bypass semua approval, sesuai rencana semua, jangan berhenti sebelum closed sesuai PRD"), bukan di bawah pembacaan dokumen ini satu per satu oleh Product Owner. Perbedaannya perlu dinyatakan: yang owner setujui adalah **rencananya berjalan tanpa menunggu persetujuan per langkah**, bukan bahwa setiap kalimat di sini sudah ia baca. Asumsi yang belum ia putuskan tetap bertanda `DRAFT` di §8 dan tidak ikut diterima.
+**Status:** **ACCEPTED**, revisi 7, 2026-11-02: kanal menyala, alamatnya dibetulkan, Admin Platform kedua ada. Diterima di bawah keputusan berdiri owner 2026-10-27 ("bypass semua approval, sesuai rencana semua, jangan berhenti sebelum closed sesuai PRD"), bukan di bawah pembacaan dokumen ini satu per satu oleh Product Owner. Perbedaannya perlu dinyatakan: yang owner setujui adalah **rencananya berjalan tanpa menunggu persetujuan per langkah**, bukan bahwa setiap kalimat di sini sudah ia baca. Asumsi yang belum ia putuskan tetap bertanda `DRAFT` di §8 dan tidak ikut diterima.
 
 Penerapan di Mi8VPS tetap menuntut review, CI, dan pengaman teknis rilis yang sudah berlaku.
 **Product:** SQ Hub
@@ -156,6 +156,7 @@ Aturan untuk siapa pun yang menulis skrip verifikasi berikutnya:
 2. Jangan menyimpulkan dari satu kode status saja. `403` berbeda dari `404` berbeda dari `400`, dan tiap-tiapnya bisa datang dari pemeriksaan yang sama sekali lain.
 3. Di realm ber-FGAP, mencabut peran `realm-management` tidak otomatis menutup apa pun: periksa permission FGAP juga.
 4. `000`, badan kosong, dan `5xx` berarti **tidak terbukti**, bukan tertutup.
+5. **Penolakan yang terjadi sebelum kredensial diperiksa tidak membuktikan apa pun tentang apa yang ada di belakangnya.** Ditambahkan 2026-11-02, setelah aturan 1–4 di atas dilanggar oleh penulisnya sendiri: alamat kanal dipilih karena menjawab `401` tanpa kredensial, dan `401` itu datang dari auth global atas `/api/*` yang berjalan sebelum routing — rutenya tidak ada di sana sama sekali. Satu-satunya probe yang sah untuk "rute ini ada" adalah probe yang membawa kredensial yang sah. Lihat H-1b.
 
 Probe yang terbukti sah di realm ini, dan karena itu dipakai seterusnya: `GET users/{id}` berpasangan dengan `DELETE users/{id}/consents/<client yang tidak ada>` — `403/403` untuk subjek yang terlindungi, `200/404` untuk yang tidak.
 
@@ -240,6 +241,10 @@ Hub mengenal orang sebagai **subject Keycloak**; HCIS mengenalnya sebagai **id a
 
    Pemeriksaan itu **bukan** gerbang kewenangan. Ia hanya memastikan aktornya pegawai aktif. **H-0 tetap satu-satunya pemeriksaan kewenangan, termasuk untuk membaca** — jangan membaca `assertRoleGrantor` di sisi HCIS sebagai penggantinya.
 2. **`404 ROLE_ADMIN_ACCOUNT_NOT_FOUND` menutupi dua keadaan.** Subject tanpa akun HCIS, dan subject yang akunnya bukan akun pegawai (`FOUNDATION_BOARD`, `SUPER_ADMIN`), dijawab sama. Itu disengaja: `403` akan menjadikan rute ini cara mengetahui subject mana yang memegang akun istimewa. Hub karena itu **tidak boleh** menampilkan "akun ini istimewa" berdasarkan rute ini — informasinya memang tidak tersedia, dan menebaknya dari ketiadaan akan salah untuk orang yang sekadar belum punya akun HCIS.
+
+**Alamatnya loopback, bukan URL publik.** `HCIS_ROLE_ADMIN_BASE_URL = http://127.0.0.1:3301`, sejalan dengan arah sebaliknya yang sudah memakai `SQ_HUB_APPLICATION_ACCESS_URL = http://127.0.0.1:3302`.
+
+> **Koreksi 2026-11-02.** Nilai pertama yang dipasang adalah `https://hcis.sabilulquran.or.id/api`, mengikuti konvensi dua integrasi HCIS lain, dan "dibuktikan" dengan satu probe tanpa kredensial yang menjawab `401`. Itu bukan bukti: rute kanal terdaftar di `/internal/v1/...` tanpa prefiks dan edge publik tidak meneruskannya, sehingga `401` datang dari auth global atas `/api/*` sebelum routing. Dengan kredensial yang benar HCIS menjawab `Route GET:/api/internal/v1/role-administration/catalog not found`, Hub menerjemahkannya `502`, dan operator melihat halaman galat Cloudflare. Dicatat, bukan dihapus, karena kekeliruannya adalah contoh terbaik untuk aturan 5 di §1.5.
 
 **Tidak ada identitas di jawaban** — tidak ada surel, nama, nomor identitas, mau pun status kepegawaian. Hub sudah tahu siapa orangnya, karena Hub yang mengirim `subject`. Yang dikembalikan hanya alasan sebuah pemberian akan ditolak (`account_inactive`, `employee_inactive`): cukup untuk memperingatkan operator sebelum mengirim, tidak cukup untuk menjadikan kanal peran sebuah jalur pembacaan data pegawai.
 
@@ -327,6 +332,10 @@ Maka: **menjadikan seseorang Admin Platform aktif** menuntut **dua Admin Platfor
 
 **Diterapkan bersama rutenya (SQ-Hub#169).** Sebelum PR itu tidak ada rute HTTP yang membuat Admin Platform. Kini satu-satunya jalur Hub adalah `/admin/platform-administrators/proposals` lalu `/confirm` oleh admin kedua; aturannya diperiksa di transaksi yang mengaktifkan, dengan baris terkunci, dan dijaga CHECK di tabel `platform_admin_proposals` (migration 0012). Mengaktifkan kembali sesudah dicabut menuntut usulan baru dan orang kedua. CLI `platform:admin grant` tetap jalur bootstrap/break-glass yang menuntut akses shell ke host Hub; itu di luar model ancaman Hub.
 
+**Admin Platform kedua ada sejak 2026-11-02 06:40 UTC** (`DRAFT` sampai owner menetapkannya tertulis): akun `sysadmin`, diberi lewat CLI bootstrap, sesuai keinginan owner memisahkan peran administrator dari akun pegawai. Dengan dua admin, empat mata H-9 berhenti menjadi aturan yang menunggu orangnya.
+
+Satu akibat yang harus dinyatakan supaya tidak mengejutkan: **`sysadmin` tidak dapat menjadi aktor pemberi peran HCIS.** Ia tidak punya akun pegawai HCIS, dan HCIS menolak aktor yang bukan pegawai aktif, pada pembacaan mau pun penulisan (H-1b). Jadi pemisahan itu berlaku untuk tata kelola Admin Platform, bukan untuk kanal peran: aktor kanal tetap akun pegawai. Dua peran, dua akun, dan hanya salah satunya yang dapat memakai layar Peran HCIS.
+
 `DRAFT`: usulan kedaluwarsa setelah 7 hari. Keputusan owner kalau angkanya berbeda.
 
 ### H-10 — Reset kata sandi sesama Admin Platform dilarang lewat Hub
@@ -375,6 +384,13 @@ Sebagian sudah ada, dan H-11 **memperluas**, bukan menciptakan: `platform_audit_
    **Terpenuhi di production 2026-11-01**, sesudah rilis `hub-6e42f718-20261101`: dua sesi sintetis non-admin mencoba saling memberi peran, membaca katalog, mencari akun, dan mencabut — seluruhnya `403 ADMIN_FORBIDDEN`, kontrol `/workspace` `200`, dan **nol** baris `role_administration.exchange` di log Hub. Sesi uji dihapus sesudahnya.
 
    **Batasnya dinyatakan, karena ia nyata.** Keduanya sesi sintetis, bukan orang yang login. Login sungguhan oleh pegawai bukan Admin Platform tidak mungkin sekarang: HCIS belum live, akun staf masih berstatus *invited*, dan owner melarang aktivasi sebelum go-live. Yang dibuktikan adalah gerbangnya menolak sesi yang bukan Admin Platform; yang belum dibuktikan adalah bahwa akun staf sungguhan memang jatuh ke kategori itu. Pemeriksaan dengan login sungguhan **wajib dilakukan pada hari go-live**, dan tercatat sebagai syarat go-live, bukan syarat penyalaan kanal.
+
+   **Checklist hari go-live** (ditetapkan 2026-11-02, setelah F5 menyala):
+
+   a. Admin Platform **memberi lalu mencabut** satu peran rendah-risiko kepada pegawai yang sudah aktif, dan audit HCIS mencatat `actor_source = "sq_hub"` dengan nama owner — bukan nama akun mesin.
+   b. Satu pegawai yang **bukan** Admin Platform login dan ditolak di `/admin/hcis-roles`.
+
+   Keduanya belum dapat dijalankan sebelum go-live. Akun SQ hari ini hanya berisi tiga manusia (dua akun owner dan `sysadmin`), tidak ada pegawai lain yang punya akun login, dan pemberian kepada diri sendiri ditolak Hub (`ROLE_ADMIN_SELF_FORBIDDEN`) sebelum HCIS sempat menjawab. Jadi POST pemberian dan DELETE pencabutan **belum pernah teruji di production** — yang sudah terbukti hanya jalur bacanya.
 1c. Pencabutan peran berhasil lewat H-2b dan menghasilkan `204`, dengan audit `role.assignment.removed` di HCIS.
 2. Katalog peran yang ditampilkan berasal dari `GET /catalog`; tidak ada `roleKey` HCIS yang tertulis di kode Hub.
 2b. **Tidak ada id HCIS yang pernah diketik manusia.** Perintah Hub menerima subject, dan `accountId` berasal dari `GET /accounts` dalam aksi yang sama. Diuji dengan satu pemberian penuh dari pemilihan orang sampai `201`, tanpa id HCIS di input mana pun.
