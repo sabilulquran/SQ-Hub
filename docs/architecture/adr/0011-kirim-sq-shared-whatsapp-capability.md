@@ -116,4 +116,3 @@ On 2026-10-19 the Product Owner decided that the admissions committee's WhatsApp
 - **Consumer contract change:** the consumer token may carry audience `sq-hub-kirim` **or** the SQ Hub machine audience `sq-hub-api`. Which client may send through which number is decided by Kirim SQ (registry `machine_client_id` plus the card), not by a per-client Keycloak audience mapper. A module uses the client credentials it already holds for SQ Hub; no Kirim secret is copied into its environment.
 - `device` in `POST /internal/kirim/messages` becomes optional (the card's number), and a module reads its number and webhook secret from `GET /internal/kirim/sambungan`. Webhook secrets may be kept encrypted by Kirim SQ instead of in the Hub environment.
 - An owner cannot disconnect or deactivate a number other modules still use; pausing the queue remains the emergency stop.
-
