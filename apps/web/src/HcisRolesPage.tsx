@@ -28,7 +28,13 @@ const errors: Record<string, string> = {
   INVALID_REQUEST: "Periksa kembali isian.",
   STAFF_NOT_FOUND: "Orang ini tidak ditemukan di Akun SQ.",
   ROLE_ADMIN_SELF_FORBIDDEN: "Anda tidak dapat memberi atau mencabut peran untuk diri sendiri. Minta Admin Platform lain.",
-  ROLE_ADMIN_ACCOUNT_NOT_FOUND: "SQ Hub tidak menemukan akun pegawai HCIS untuk orang ini.",
+  ROLE_ADMIN_ACCOUNT_NOT_FOUND: "SQ Hub tidak menemukan akun HCIS untuk orang ini.",
+  // HCIS ORG-013-2 refusals for organ accounts.
+  ROLE_TARGET_INVALID: "HCIS menolak: peran ini tidak untuk jenis akun orang ini.",
+  ROLE_END_DATE_REQUIRED: "HCIS menolak: peran ini wajib punya tanggal berakhir, yaitu akhir masa jabatan.",
+  ROLE_REASON_REQUIRED: "HCIS menolak: tulis dasar penugasannya, misalnya nomor SK.",
+  ORGAN_ACCOUNT_EMAIL_REQUIRED: "HCIS menolak: akun Organ Yayasan ini belum punya email.",
+  ORGAN_ACCOUNT_IS_EMPLOYEE: "HCIS menolak: email akun organ ini milik pegawai aktif. Pakai akun pegawainya.",
   ROLE_ADMIN_ASSIGNMENT_NOT_FOUND: "Penugasan ini sudah tidak ada pada orang tersebut. Muat ulang daftarnya.",
   ROLE_ADMIN_ASSIGNMENT_NOT_REVOCABLE: "Penugasan ini tidak dapat dicabut lewat SQ Hub.",
   ROLE_ADMIN_INVALID_REQUEST: "HCIS menolak isian ini. Periksa peran, cakupan, unit, dan tanggal.",
@@ -137,6 +143,9 @@ export function HcisRolesPage({ workspace, onLogout, onAuthorizationDenied }: Pr
     if (person.status === "idle" || person.staff.subject !== staff.subject) {
       setGrantRequestId(crypto.randomUUID());
       setRevokeRequestIds({});
+      // The form belongs to one person too: an SK number or a term end must not follow the
+      // operator to the next person, and a role picked for one account type may not exist for the next.
+      setRoleId(""); setScopeType("organization"); setUnitId(""); setReason(""); setStartsOn(""); setEndsOn("");
     }
     setPerson({ status: "loading", staff });
     try {
@@ -245,7 +254,7 @@ export function HcisRolesPage({ workspace, onLogout, onAuthorizationDenied }: Pr
       <section className="rounded-2xl border border-border bg-surface-raised p-5 shadow-sm">
         {person.status === "idle" ? <p className="text-sm text-muted-foreground">Pilih pegawai untuk melihat peran HCIS-nya.</p> : null}
         {person.status === "loading" ? <p className="flex items-center gap-2 text-sm text-muted-foreground"><RefreshCw className="h-4 w-4 animate-spin" /> Membaca akun HCIS {person.staff.displayName}...</p> : null}
-        {person.status === "no_account" ? <p className="text-sm">SQ Hub tidak menemukan akun pegawai HCIS untuk <strong>{person.staff.displayName}</strong>, jadi peran HCIS tidak dapat diberikan dari sini.</p> : null}
+        {person.status === "no_account" ? <p className="text-sm">SQ Hub tidak menemukan akun HCIS untuk <strong>{person.staff.displayName}</strong>, jadi peran HCIS tidak dapat diberikan dari sini.</p> : null}
         {person.status === "ready" ? <>
           <h2 className="font-display text-lg font-bold">{person.staff.displayName}</h2>
           {accountWarning ? <p className="mt-2 rounded-xl bg-warning-soft p-3 text-xs text-warning-ink">{accountWarning}</p> : null}
@@ -273,6 +282,7 @@ export function HcisRolesPage({ workspace, onLogout, onAuthorizationDenied }: Pr
               <option value="">Pilih peran</option>
               {roles.map((entry) => <option key={entry.roleId} value={entry.roleId}>{entry.name}</option>)}
             </select></label>
+            {roles.length === 0 ? <p className="text-xs text-muted-foreground sm:col-span-2">HCIS tidak menerbitkan peran untuk jenis akun ini.</p> : null}
             {role ? <p className="text-xs leading-5 text-muted-foreground sm:col-span-2">{role.description ?? "HCIS tidak menyertakan keterangan."} {role.permissions.length} izin.{role.mandateRequired ? " Menuntut mandat." : ""}</p> : null}
             <label className="text-xs font-bold">Cakupan<select className={input} value={scopeType} onChange={(e) => changeGrant(() => setScopeType(e.target.value))} disabled={!role}>
               {(role?.allowedScopes ?? ["organization"]).map((scope) => <option key={scope} value={scope}>{scopeLabels[scope] ?? scope}</option>)}

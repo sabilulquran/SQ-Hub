@@ -306,7 +306,7 @@ export interface HcisRoleCatalogEntry {
   allowedScopes: string[];
   mandateRequired: boolean;
   /** HCIS ORG-013-2. Absent from older HCIS releases, which only grant to employee accounts. */
-  targetPrincipalTypes?: Array<"EMPLOYEE" | "FOUNDATION_BOARD">;
+  targetPrincipalTypes?: string[];
   endDateRequired?: boolean;
 }
 

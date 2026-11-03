@@ -458,14 +458,14 @@ describe("H-1/H-1b/H-2: the Platform Administrator's command to HCIS", () => {
     await app.close();
   });
 
-  it("refuses an HCIS answer with an unknown target type", async () => {
+  it("keeps the catalog usable when HCIS names a target type the Hub does not know", async () => {
+    const future = { roles: [{ ...catalogBody.roles[0]!, targetPrincipalTypes: ["SOME_FUTURE_TYPE"] }] };
     const { app } = harness({
-      hcis: (request) => request.method === "GET" && request.url.pathname.endsWith("catalog")
-        ? json({ roles: [{ ...catalogBody.roles[0]!, targetPrincipalTypes: ["SUPER_ADMIN"] }] })
-        : undefined,
+      hcis: (request) => request.method === "GET" && request.url.pathname.endsWith("catalog") ? json(future) : undefined,
     });
     const catalog = await app.inject({ method: "GET", url: "/admin/hcis-roles/catalog", headers: { cookie: "sq_hub_session=cookie-admin" } });
-    expect(catalog.statusCode).toBeGreaterThanOrEqual(500);
+    expect(catalog.statusCode).toBe(200);
+    expect(catalog.json()).toEqual(future);
     await app.close();
   });
 

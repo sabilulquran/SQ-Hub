@@ -29,7 +29,9 @@ const catalogSchema = z.object({
       mandateRequired: z.boolean(),
       // HCIS ORG-013-2: which account type a role is for, and whether it must end. Optional so a
       // HCIS release without them still parses; absent means an employee role with no end date.
-      targetPrincipalTypes: z.array(z.enum(["EMPLOYEE", "FOUNDATION_BOARD"])).min(1).max(2).optional(),
+      // Unknown types are kept as text so a new HCIS principal type cannot take the whole catalog
+      // down; the screen offers a role only for a type it knows.
+      targetPrincipalTypes: z.array(z.string().min(1).max(40)).min(1).max(10).optional(),
       endDateRequired: z.boolean().optional(),
     }),
   ).max(500),
