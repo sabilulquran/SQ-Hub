@@ -11,6 +11,7 @@ import { ProviderOperationError, type KirimProvider, type ProviderName } from ".
 import {
   conversationContact,
   dbNow,
+  deviceSharers,
   findConsumerByName,
   findDevice,
   listConsumers,
@@ -20,6 +21,7 @@ import {
   withTransaction,
   writeAudit,
   type DeviceRow,
+  type Queryable,
 } from "./repository.js";
 import { KirimApiError, type KirimService } from "./service.js";
 
@@ -206,6 +208,17 @@ export class KirimAdminService {
       if (providerChanged && device.status !== "nonaktif") {
         await setDeviceStatus(client, this.crypto, device.id, provider === "log" ? "tersambung" : "belum_dipasang");
       }
+      if (ownerId !== device.pemilikConsumerId) {
+        // KIRIM-IMPL-003: the card follows the owner. The new owner's card shows this number;
+        // the previous owner's card is emptied unless it keeps a route on it.
+        await client.query("UPDATE kirim_consumers SET nomor_device_id = $2, updated_at = now() WHERE id = $1 AND nomor_device_id IS NULL", [ownerId, device.id]);
+        await client.query(
+          `UPDATE kirim_consumers c SET nomor_device_id = NULL, updated_at = now()
+            WHERE c.id = $1 AND c.nomor_device_id = $2
+              AND NOT EXISTS (SELECT 1 FROM kirim_routes r WHERE r.consumer_id = c.id AND r.device_id = $2)`,
+          [device.pemilikConsumerId, device.id],
+        );
+      }
       const changed = Object.keys(input).filter((key) => key !== "alasan");
       await writeAudit(client, {
         actorKind: "human",
@@ -273,8 +286,21 @@ export class KirimAdminService {
     return { status: device.status, nomor_tersamar: device.nomorTersamar, qr: null };
   }
 
+  /**
+   * KIRIM-IMPL-003 K-3: the owner cannot cut a number other modules still send through.
+   * Pausing the queue stays available for emergencies.
+   */
+  async assertNotShared(device: DeviceRow, db: Queryable = this.pool) {
+    const sharers = await deviceSharers(db, device);
+    if (sharers.length > 0) {
+      throw new KirimApiError(409, "nomor_dipakai_modul_lain", `Nomor ini masih dipakai ${sharers.join(", ")}. Putuskan modul itu dulu dari kartunya, atau pindahkan pemilik nomor lewat Ubah.`);
+    }
+  }
+
   async disconnect(actor: AdminActor, kode: string, alasan: string) {
     const device = await this.requireDevice(kode);
+    // Checked again inside the status transaction below, under the device row lock.
+    await this.assertNotShared(device);
     if (device.provider === "jalurpesan") {
       try {
         await this.provider(device).disconnect(device);
@@ -284,6 +310,7 @@ export class KirimAdminService {
       }
     }
     return withTransaction(this.pool, async (client) => {
+      await this.assertNotShared((await findDevice(client, kode, true))!, client);
       if (device.provider === "jalurpesan") await setDeviceStatus(client, this.crypto, device.id, "terputus");
       await writeAudit(client, { actorKind: "human", actorRef: actor.ref, aksi: "nomor.putus", objekJenis: "device", objekRef: kode, metadata: { alasan } });
       return toBrowserDevice((await findDevice(client, kode))!);
@@ -312,7 +339,10 @@ export class KirimAdminService {
     return withTransaction(this.pool, async (client) => {
       const device = await findDevice(client, kode, true);
       if (!device) throw new KirimApiError(404, "not_found", "Nomor tidak ditemukan.");
+      await this.assertNotShared(device, client);
       await setDeviceStatus(client, this.crypto, device.id, "nonaktif");
+      // KIRIM-IMPL-003: the owner's card is emptied, so "+ Tambah WhatsApp" is offered again.
+      await client.query("UPDATE kirim_consumers SET nomor_device_id = NULL, updated_at = now() WHERE nomor_device_id = $1", [device.id]);
       await writeAudit(client, { actorKind: "human", actorRef: actor.ref, aksi: "nomor.nonaktif", objekJenis: "device", objekRef: kode, metadata: { alasan } });
       return toBrowserDevice((await findDevice(client, kode))!);
     });
@@ -681,7 +711,7 @@ function providerError(error: unknown): KirimApiError {
   return new KirimApiError(503, "engine_unavailable", "Mesin sedang tidak tersedia.");
 }
 
-function toBrowserDevice(device: DeviceRow) {
+export function toBrowserDevice(device: DeviceRow) {
   return {
     kode: device.kode,
     label: device.label,

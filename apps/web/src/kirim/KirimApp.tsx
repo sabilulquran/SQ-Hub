@@ -116,7 +116,7 @@ export function KirimAppView({
       {state.status === "ready" && route === "jangan-hubungi" ? <JanganHubungiPage {...(preview?.janganHubungi ? { preview: preview.janganHubungi } : {})} /> : null}
       {state.status === "ready" && route === "aktivitas" ? <AktivitasPage {...(preview?.aktivitas ? { preview: preview.aktivitas } : {})} /> : null}
       {state.status === "ready" && route === "impor" ? <ImporPage {...(preview?.impor ? { preview: preview.impor } : {})} /> : null}
-      {state.status === "ready" && route === "not-found" ? <StateCard kind="empty" title="Halaman tidak ditemukan" action={<a className={secondaryButton} href="/nomor">Ke Nomor</a>} /> : null}
+      {state.status === "ready" && route === "not-found" ? <StateCard kind="empty" title="Halaman tidak ditemukan" action={<a className={secondaryButton} href="/nomor">Ke Modul</a>} /> : null}
     </KirimShell>
   );
 }

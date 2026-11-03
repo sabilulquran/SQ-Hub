@@ -1,6 +1,8 @@
 import { randomUUID } from "node:crypto";
 
 import { createPool } from "../db/pool.js";
+import { loadKirimConfig } from "../modules/kirim/config.js";
+import { columnAad, KirimCrypto } from "../modules/kirim/crypto.js";
 import { findConsumerByName, findDevice, listConsumers, listDevices, withTransaction, writeAudit } from "../modules/kirim/repository.js";
 import { isAllowedWebhookUrl } from "../modules/kirim/webhooks.js";
 
@@ -119,6 +121,68 @@ async function main() {
     return;
   }
 
+  // KIRIM-IMPL-003 §7: the R1 env secret is copied by this process into the database, never printed,
+  // so `GET /internal/kirim/sambungan` hands the module the secret it already holds.
+  if (area === "consumer" && action === "import-secret") {
+    const nama = value("--nama")!;
+    const config = loadKirimConfig();
+    if (!config) throw new Error("KIRIM_ENABLED=true and the Kirim keys are required");
+    const crypto = new KirimCrypto(config.dataKeys, config.lookupKey);
+    await withTransaction(pool, async (client) => {
+      const consumer = await findConsumerByName(client, nama);
+      if (!consumer?.webhookSecretRef) throw new Error(`Consumer ${nama} has no webhook secret reference`);
+      const secret = process.env[consumer.webhookSecretRef];
+      if (!secret) throw new Error(`${consumer.webhookSecretRef} is not set in this environment`);
+      await client.query("UPDATE kirim_consumers SET webhook_secret_enc = $2, updated_at = now() WHERE id = $1", [
+        consumer.id,
+        crypto.seal(secret, columnAad("kirim_consumers", "webhook_secret_enc", consumer.id)),
+      ]);
+      await writeAudit(client, {
+        actorKind: "human", actorRef: operator(), aksi: "pemakai.impor_rahasia", objekJenis: "consumer", objekRef: nama,
+        metadata: { alasan: value("--reason")!, dari: consumer.webhookSecretRef },
+      });
+    });
+    console.log(`imported webhook secret for consumer ${nama}`);
+    return;
+  }
+
+  // KIRIM-IMPL-003 K-2: which registry applications get a card, and the machine client they send with.
+  if (area === "module" && action === "set") {
+    const applicationKey = value("--app")!;
+    const machineClient = value("--machine-client", false);
+    const whatsapp = value("--whatsapp")!;
+    if (whatsapp !== "true" && whatsapp !== "false") throw new Error("--whatsapp must be true or false");
+    if (machineClient !== undefined && !/^[A-Za-z0-9._:-]{1,255}$/.test(machineClient)) throw new Error("--machine-client is not a client id");
+    await withTransaction(pool, async (client) => {
+      const updated = await client.query(
+        `UPDATE applications SET machine_client_id = coalesce($2, machine_client_id), whatsapp_capable = $3, updated_at = now()
+          WHERE application_key = $1`,
+        [applicationKey, machineClient ?? null, whatsapp === "true"],
+      );
+      if ((updated.rowCount ?? 0) === 0) throw new Error(`Unknown application ${applicationKey}`);
+      // The card's consumer follows the registry: the old client stops sending as this module.
+      if (machineClient) {
+        await client.query("UPDATE kirim_consumers SET client_id = $2, updated_at = now() WHERE application_key = $1", [applicationKey, machineClient]);
+      }
+      await writeAudit(client, {
+        actorKind: "human", actorRef: operator(), aksi: "modul.atur", objekJenis: "modul", objekRef: applicationKey,
+        metadata: { alasan: value("--reason")!, whatsapp: whatsapp === "true", ...(machineClient ? { machine_client: machineClient } : {}) },
+      });
+    });
+    console.log(`module ${applicationKey}: whatsapp=${whatsapp}`);
+    return;
+  }
+
+  if (area === "module" && action === "list") {
+    const result = await pool.query(
+      `SELECT a.application_key AS app, a.name, a.machine_client_id, a.whatsapp_capable, c.nama AS consumer, d.kode AS nomor
+         FROM applications a LEFT JOIN kirim_consumers c ON c.application_key = a.application_key
+         LEFT JOIN kirim_devices d ON d.id = c.nomor_device_id ORDER BY a.application_key`,
+    );
+    console.log(JSON.stringify(result.rows, null, 2));
+    return;
+  }
+
   if (area === "route" && (action === "add" || action === "remove")) {
     const consumerName = value("--consumer")!;
     const deviceKode = value("--device")!;
@@ -182,6 +246,9 @@ async function main() {
       "  consumer list",
       "  consumer add --nama <nama> --client-id <id> [--webhook-url <url> --secret-ref KIRIM_CONSUMER_SECRET_<NAMA>] [--kuota 500] --reason <text>",
       "  consumer set --nama <nama> [--webhook-url <url>] [--secret-ref <env>] [--kuota <n>] [--aktif true|false] --reason <text>",
+      "  consumer import-secret --nama <nama> --reason <text>",
+      "  module list",
+      "  module set --app <application_key> --whatsapp true|false [--machine-client <client id>] --reason <text>",
       "  route add|remove --consumer <nama> --device <kode> --jenis notifikasi|kode --reason <text>",
       "  route list",
       "  device list",

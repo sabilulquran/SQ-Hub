@@ -67,6 +67,8 @@ export class KirimWebhookSender {
       attempts: number;
       webhookUrl: string | null;
       webhookSecretRef: string | null;
+      webhookSecretEnc: string | null;
+      consumerId: string;
       consumer: string;
     }>(
       `UPDATE kirim_webhook_deliveries d
@@ -80,7 +82,8 @@ export class KirimWebhookSender {
          FOR UPDATE SKIP LOCKED
        )
        RETURNING d.id, d.event_type AS "eventType", d.payload_enc AS "payloadEnc", d.attempts,
-                 c.webhook_url AS "webhookUrl", c.webhook_secret_ref AS "webhookSecretRef", c.nama AS consumer`,
+                 c.webhook_url AS "webhookUrl", c.webhook_secret_ref AS "webhookSecretRef",
+                 c.webhook_secret_enc AS "webhookSecretEnc", c.id AS "consumerId", c.nama AS consumer`,
       [LEASE_MS],
     );
     let delivered = 0;
@@ -114,8 +117,14 @@ export class KirimWebhookSender {
     return { delivered, failed };
   }
 
-  private async deliver(row: { id: string; payloadEnc: string; webhookUrl: string | null; webhookSecretRef: string | null }): Promise<number | null> {
-    const secret = row.webhookSecretRef ? (this.options.secrets ?? process.env)[row.webhookSecretRef] : undefined;
+  private async deliver(row: {
+    id: string; payloadEnc: string; webhookUrl: string | null; webhookSecretRef: string | null; webhookSecretEnc: string | null; consumerId: string;
+  }): Promise<number | null> {
+    const secret = resolveWebhookSecret(
+      this.crypto,
+      { id: row.consumerId, webhookSecretEnc: row.webhookSecretEnc, webhookSecretRef: row.webhookSecretRef },
+      this.options.secrets,
+    );
     if (!row.webhookUrl || !secret || !isAllowedWebhookUrl(row.webhookUrl)) return null;
     const body = this.crypto.open(row.payloadEnc, columnAad("kirim_webhook_deliveries", "payload_enc", row.id));
     const timestamp = this.options.nowSeconds?.() ?? Math.floor(Date.now() / 1000);
@@ -136,4 +145,14 @@ export class KirimWebhookSender {
       return null;
     }
   }
+}
+
+/** KIRIM-IMPL-003 §5: the encrypted secret Kirim SQ made, else the R1 env reference. */
+export function resolveWebhookSecret(
+  crypto: KirimCrypto,
+  row: { id: string; webhookSecretEnc: string | null; webhookSecretRef: string | null },
+  env: NodeJS.ProcessEnv = process.env,
+): string | null {
+  if (row.webhookSecretEnc) return crypto.open(row.webhookSecretEnc, columnAad("kirim_consumers", "webhook_secret_enc", row.id));
+  return (row.webhookSecretRef ? env[row.webhookSecretRef] : undefined) || null;
 }

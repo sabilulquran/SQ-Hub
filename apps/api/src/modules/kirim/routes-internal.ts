@@ -14,6 +14,7 @@ import {
   replySchema,
   type KirimConversations,
 } from "./conversations.js";
+import { webhookRegistrationSchema, type KirimModuleCards } from "./cards.js";
 import { verifyJalurPesanSignature } from "./crypto.js";
 import type { KirimIngest } from "./ingest.js";
 import { KirimApiError, MEDIA_MAX_BYTES, optoutSchema, sendMessageSchema, type KirimService } from "./service.js";
@@ -56,6 +57,7 @@ export function registerKirimInternalRoutes(
   app: FastifyInstance,
   input: {
     service: KirimService;
+    cards?: KirimModuleCards;
     conversations?: KirimConversations;
     verifyMachineToken: VerifyMachineToken;
     ingest?: KirimIngest;
@@ -145,6 +147,27 @@ export function registerKirimInternalRoutes(
       }
     });
 
+    // KIRIM-IMPL-003 §5: the module reads its number and webhook secret with its own token.
+    const cards = input.cards;
+    if (cards) {
+      scope.get("/sambungan", async (request, reply) => {
+        const consumer = await authenticate(request, reply);
+        if (!consumer) return reply;
+        return reply.send(await cards.connection(consumer));
+      });
+      scope.put("/sambungan/webhook", async (request, reply) => {
+        const consumer = await authenticate(request, reply);
+        if (!consumer) return reply;
+        const parsed = webhookRegistrationSchema.safeParse(request.body);
+        if (!parsed.success) return sendInvalidBody(request, reply, parsed.error);
+        try {
+          return reply.send(await cards.registerWebhook(consumer, parsed.data.url));
+        } catch (error) {
+          return handleKirimError(reply, error);
+        }
+      });
+    }
+
     const conversations = input.conversations;
     if (conversations) registerConversationRoutes(scope, conversations, authenticate);
 
@@ -167,7 +190,8 @@ export function registerKirimInternalRoutes(
       } catch {
         return sendKirimError(reply, 422, "media_invalid", "Hanya PDF, JPEG, atau PNG sampai 5 MiB yang diterima.");
       }
-      if (!device || !file) return sendKirimError(reply, 400, "invalid_request", "Field device dan satu berkas wajib.");
+      if (!file) return sendKirimError(reply, 400, "invalid_request", "Satu berkas wajib.");
+      if (device !== undefined && !/^[a-z][a-z0-9-]{1,30}$/.test(device)) return sendKirimError(reply, 400, "invalid_request", "Field device tidak sah.");
       try {
         return reply.status(201).send(await input.service.storeOutboundMedia(consumer, { deviceKode: device, ...file }));
       } catch (error) {

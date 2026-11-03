@@ -2,7 +2,8 @@ import { z } from "zod";
 
 /** KIRIM-IMPL-001 §11 and KIRIM-IMPL-002 §13. Secrets live only in the production env, never in the repository or database. */
 export interface KirimConfig {
-  tokenAudience: string;
+  /** KIRIM-IMPL-003 K-1: one audience, or several accepted alike (`sq-hub-kirim,sq-hub-api`). */
+  tokenAudience: string | string[];
   dataKeys: Array<{ kid: string; key: Buffer }>;
   lookupKey: Buffer;
   mediaRoot: string;
@@ -62,7 +63,7 @@ export function loadKirimConfig(env: NodeJS.ProcessEnv = process.env): KirimConf
   if (lookupKey.length < 32) throw new Error("KIRIM_LOOKUP_KEY must be base64 of at least 32 bytes");
 
   return {
-    tokenAudience: parsed.KIRIM_TOKEN_AUDIENCE,
+    tokenAudience: parseAudiences(parsed.KIRIM_TOKEN_AUDIENCE),
     dataKeys: parseDataKeys(parsed.KIRIM_DATA_KEYS),
     lookupKey,
     mediaRoot: parsed.KIRIM_MEDIA_ROOT,
@@ -88,6 +89,12 @@ export function loadKirimConfig(env: NodeJS.ProcessEnv = process.env): KirimConf
         }
       : null,
   };
+}
+
+function parseAudiences(value: string): string | string[] {
+  const audiences = [...new Set(value.split(",").map((part) => part.trim()).filter(Boolean))];
+  if (audiences.length === 0) throw new Error("KIRIM_TOKEN_AUDIENCE must name at least one audience");
+  return audiences.length === 1 ? audiences[0]! : audiences;
 }
 
 /** `kid:base64(32 bytes)` entries, comma separated; the first key writes, all keys read (§4.1). */

@@ -49,7 +49,7 @@ const accessService = new ApplicationAccessService(new PgApplicationAccessReposi
 let spmbDeviceId: string;
 
 async function token(azp: string) {
-  return new SignJWT({ azp })
+  return new SignJWT({ azp, client_id: azp })
     .setProtectedHeader({ alg: "RS256", kid: "kirim-test" })
     .setIssuer(issuer)
     .setAudience(AUDIENCE)

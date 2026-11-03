@@ -65,7 +65,7 @@ function renderKirimPreview() {
   const route = resolveKirimRoute(window.location.pathname.replace(/^\/kirim/, "") || "/");
   if (state === "forbidden") return <KirimAppView state={{ status: "forbidden", code: "kirim_admin_required" }} route={route} launcherApplications={kirimLauncherPreview} />;
   const pageState = state === "loading" ? { status: "loading" as const } : state === "error" ? { status: "error" as const } : null;
-  const nomor = pageState ?? (state === "empty" ? { ...kirimNomorFixture, list: { devices: [], peringatan: { terputus: [], webhook_habis: 0 } } } as typeof kirimNomorFixture : kirimNomorFixture);
+  const nomor = pageState ?? (state === "empty" ? { ...kirimNomorFixture, list: { modules: [], devices: [], peringatan: { terputus: [], webhook_habis: 0 } } } as typeof kirimNomorFixture : kirimNomorFixture);
   const antrean = pageState ?? (state === "empty" && kirimAntreanFixture.status === "ready" ? { ...kirimAntreanFixture, queue: { ...kirimAntreanFixture.queue, items: [] } } : kirimAntreanFixture);
   return (
     <KirimAppView

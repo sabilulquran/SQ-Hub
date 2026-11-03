@@ -30,6 +30,22 @@ export interface KirimDeviceList {
   peringatan: { terputus: string[]; webhook_habis: number };
 }
 
+/** KIRIM-IMPL-003 §4: one card per WhatsApp-capable registry application. */
+export interface KirimModuleCard {
+  application_key: string;
+  nama: string;
+  peran: "kosong" | "pemilik" | "pemakai";
+  nomor: KirimDevice | null;
+  jenis: Array<"notifikasi" | "kode">;
+  antrean: { antre: number; gagal_hari_ini: number };
+  dipakai_juga_oleh: string[];
+  pemilik_nomor: string | null;
+}
+
+export interface KirimModuleList extends KirimDeviceList {
+  modules: KirimModuleCard[];
+}
+
 export interface KirimConsumer {
   nama: string;
   client_id: string;

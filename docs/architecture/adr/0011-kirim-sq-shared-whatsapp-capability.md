@@ -108,3 +108,11 @@ On 2026-10-19 the Product Owner decided that the admissions committee's WhatsApp
 - KIRIM-IMPL-001 (R1) is unchanged. R2 needs a new implementation specification (proposed KIRIM-IMPL-002), including the R2 migration and the open questions in KIRIM-001 §13.
 - An owning module's inbox depends on Kirim SQ being up to show chat history; the module's own work data stays available when it is not.
 - This amendment does not authorize implementation or production changes.
+
+## Amendment 2026-11-03: module cards and access without copied credentials
+**Status:** ACCEPTED with KIRIM-IMPL-003 (Product Owner request of 2026-11-03).
+
+- Kirim SQ's home screen shows one card per registry application marked `whatsapp_capable`. A card owns a number, uses another module's number, or is empty; connecting needs no typed number code, client id or secret.
+- **Consumer contract change:** the consumer token may carry audience `sq-hub-kirim` **or** the SQ Hub machine audience `sq-hub-api`. Which client may send through which number is decided by Kirim SQ (registry `machine_client_id` plus the card), not by a per-client Keycloak audience mapper. A module uses the client credentials it already holds for SQ Hub; no Kirim secret is copied into its environment.
+- `device` in `POST /internal/kirim/messages` becomes optional (the card's number), and a module reads its number and webhook secret from `GET /internal/kirim/sambungan`. Webhook secrets may be kept encrypted by Kirim SQ instead of in the Hub environment.
+- An owner cannot disconnect or deactivate a number other modules still use; pausing the queue remains the emergency stop.

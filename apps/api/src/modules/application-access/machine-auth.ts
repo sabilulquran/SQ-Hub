@@ -26,10 +26,18 @@ export class MachineAuthError extends Error {
 
 export function createKeycloakMachineTokenVerifier(input: {
   issuer: string;
-  audience: string;
+  /** Several audiences are accepted alike (Kirim SQ, KIRIM-IMPL-003 K-1). */
+  audience: string | string[];
   /** "any" leaves the client check to the caller (Kirim SQ maps clients to kirim_consumers). */
   allowedClients: ReadonlySet<string> | "any";
   requiredScope?: string;
+  /**
+   * Only client-credentials (service account) tokens: Keycloak's `service_account` scope puts
+   * `client_id` equal to `azp` in those, never in a user's access token (Kirim SQ, KIRIM-IMPL-003
+   * K-1). `exceptAudience`: a token that carries this audience is exempt, because that audience is
+   * only ever mapped onto service-account clients one by one (older clients lack the claim).
+   */
+  requireServiceAccount?: boolean | { exceptAudience: string };
 }): VerifyMachineToken {
   const issuer = input.issuer.replace(/\/$/, "");
   const jwksUrl = new URL(`${issuer}/protocol/openid-connect/certs`);
@@ -93,6 +101,12 @@ export function createKeycloakMachineTokenVerifier(input: {
 
       if (!clientId || (input.allowedClients !== "any" && !input.allowedClients.has(clientId))) {
         throw new MachineAuthError("FORBIDDEN_CLIENT", "machine client is not allowed");
+      }
+
+      const audiences = Array.isArray(payload.aud) ? payload.aud : [payload.aud];
+      const exempt = typeof input.requireServiceAccount === "object" && audiences.includes(input.requireServiceAccount.exceptAudience);
+      if (input.requireServiceAccount && !exempt && payload.client_id !== clientId) {
+        throw new MachineAuthError("FORBIDDEN_CLIENT", "machine token is not a service account token");
       }
 
       if (input.requiredScope && (

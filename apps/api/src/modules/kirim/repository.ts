@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import type { Pool, PoolClient } from "pg";
 
 import { columnAad, type KirimCrypto } from "./crypto.js";
+import { KirimApiError } from "./errors.js";
 import type { DeviceStatus, KirimErrorCode, ProviderName } from "./providers/types.js";
 
 /** SQL for the kirim_* tables (KIRIM-IMPL-001 §4). Nothing here logs or returns plaintext to callers by accident. */
@@ -17,6 +18,10 @@ export interface ConsumerRow {
   webhookSecretRef: string | null;
   kuotaHarian: number;
   aktif: boolean;
+  /** KIRIM-IMPL-003 §3: the registry application whose card this is. */
+  applicationKey: string | null;
+  /** The card's number: used when a send names no `device`. */
+  nomorDeviceId: string | null;
 }
 
 export interface DeviceRow {
@@ -39,7 +44,8 @@ export interface DeviceRow {
 
 const CONSUMER_COLUMNS = `
   id, client_id AS "clientId", nama, webhook_url AS "webhookUrl",
-  webhook_secret_ref AS "webhookSecretRef", kuota_harian AS "kuotaHarian", aktif
+  webhook_secret_ref AS "webhookSecretRef", kuota_harian AS "kuotaHarian", aktif,
+  application_key AS "applicationKey", nomor_device_id AS "nomorDeviceId"
 `;
 
 const DEVICE_COLUMNS = `
@@ -74,6 +80,88 @@ export async function dbNow(db: Queryable): Promise<Date> {
 export async function findConsumerByClientId(db: Queryable, clientId: string): Promise<ConsumerRow | null> {
   const result = await db.query<ConsumerRow>(`SELECT ${CONSUMER_COLUMNS} FROM kirim_consumers WHERE client_id = $1`, [clientId]);
   return result.rows[0] ?? null;
+}
+
+export async function findConsumerById(db: Queryable, id: string): Promise<ConsumerRow | null> {
+  const result = await db.query<ConsumerRow>(`SELECT ${CONSUMER_COLUMNS} FROM kirim_consumers WHERE id = $1`, [id]);
+  return result.rows[0] ?? null;
+}
+
+export interface RegistryApplication {
+  applicationKey: string;
+  name: string;
+  machineClientId: string;
+  status: string;
+}
+
+/** KIRIM-IMPL-003 K-2: registry applications that get a card, i.e. may use WhatsApp. */
+export async function listWhatsAppApplications(db: Queryable): Promise<RegistryApplication[]> {
+  const result = await db.query<RegistryApplication>(
+    `SELECT application_key AS "applicationKey", name, machine_client_id AS "machineClientId", status
+       FROM applications WHERE whatsapp_capable ORDER BY name, application_key`,
+  );
+  return result.rows;
+}
+
+export async function findWhatsAppApplication(db: Queryable, key: { applicationKey: string } | { machineClientId: string }): Promise<RegistryApplication | null> {
+  const byKey = "applicationKey" in key;
+  const result = await db.query<RegistryApplication>(
+    `SELECT application_key AS "applicationKey", name, machine_client_id AS "machineClientId", status
+       FROM applications WHERE whatsapp_capable AND ${byKey ? "application_key" : "machine_client_id"} = $1`,
+    [byKey ? key.applicationKey : key.machineClientId],
+  );
+  return result.rows[0] ?? null;
+}
+
+/**
+ * A short identifier from an application key: `karir-sq` -> `karir`, made unique among existing
+ * values with `-2`, `-3`, … Used for new consumer names and new number codes, so nobody types one.
+ */
+export async function freeIdentifier(db: Queryable, table: "kirim_consumers" | "kirim_devices", applicationKey: string): Promise<string> {
+  const column = table === "kirim_consumers" ? "nama" : "kode";
+  let base = applicationKey.replace(/-sq$/, "").replace(/[^a-z0-9-]/g, "-");
+  if (!/^[a-z]/.test(base)) base = `m${base}`;
+  base = base.slice(0, 27).replace(/-+$/, "");
+  if (base.length < 2) base = `${base}x`;
+  const taken = new Set(
+    (await db.query<{ value: string }>(`SELECT ${column} AS value FROM ${table} WHERE ${column} = $1 OR ${column} LIKE $2`, [base, `${base}-%`])).rows.map((row) => row.value),
+  );
+  if (!taken.has(base)) return base;
+  for (let n = 2; ; n += 1) if (!taken.has(`${base}-${n}`)) return `${base}-${n}`;
+}
+
+/**
+ * The consumer behind a registry application, created on first use with the application's own
+ * machine client (KIRIM-IMPL-003 §6). An R1 consumer with that client id is linked, not duplicated.
+ */
+export async function ensureApplicationConsumer(db: Queryable, application: RegistryApplication): Promise<ConsumerRow> {
+  const linked = await db.query<ConsumerRow>(`SELECT ${CONSUMER_COLUMNS} FROM kirim_consumers WHERE application_key = $1`, [application.applicationKey]);
+  if (linked.rows[0]) return linked.rows[0];
+  const byClient = await findConsumerByClientId(db, application.machineClientId);
+  if (byClient) {
+    if (byClient.applicationKey) throw new KirimApiError(409, "client_dipakai_kartu_lain", "Client mesin ini sudah dipakai kartu modul lain.");
+    await db.query("UPDATE kirim_consumers SET application_key = $2, updated_at = now() WHERE id = $1", [byClient.id, application.applicationKey]);
+    return { ...byClient, applicationKey: application.applicationKey };
+  }
+  const id = randomUUID();
+  await db.query(
+    `INSERT INTO kirim_consumers (id, client_id, nama, application_key) VALUES ($1, $2, $3, $4)`,
+    [id, application.machineClientId, await freeIdentifier(db, "kirim_consumers", application.applicationKey), application.applicationKey],
+  );
+  return (await findConsumerById(db, id))!;
+}
+
+/** Consumers other than the owner that use a number: by route or as their card's number. */
+export async function deviceSharers(db: Queryable, device: Pick<DeviceRow, "id" | "pemilikConsumerId">): Promise<string[]> {
+  const result = await db.query<{ nama: string }>(
+    `SELECT DISTINCT coalesce(a.name, c.nama) AS nama
+       FROM kirim_consumers c LEFT JOIN applications a ON a.application_key = c.application_key OR (c.application_key IS NULL AND a.machine_client_id = c.client_id)
+      WHERE c.id <> $2 AND c.aktif
+        AND (c.nomor_device_id = $1 OR EXISTS (SELECT 1 FROM kirim_routes r WHERE r.consumer_id = c.id AND r.device_id = $1))
+      ORDER BY 1`,
+    [device.id, device.pemilikConsumerId],
+  );
+  return result.rows.map((row) => row.nama);
 }
 
 export async function findConsumerByName(db: Queryable, nama: string): Promise<ConsumerRow | null> {

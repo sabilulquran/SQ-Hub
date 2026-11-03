@@ -1,7 +1,24 @@
 import type { AntreanState } from "@/kirim/AntreanPage";
+import type { KirimDevice } from "@/kirim/api";
 import type { NomorState } from "@/kirim/NomorPage";
 
 /** Synthetic Kirim SQ data for previews and tests; numbers are masked, no message bodies exist here. */
+const hcisDevice: KirimDevice = {
+  kode: "hcis", label: "HCIS", pemilik: "hcis", provider: "log", provider_ref: null, status: "tersambung",
+  nomor_tersamar: null, antrean_dijeda: false, rate_per_menit: 10, jam_kirim_mulai: "06:00", jam_kirim_selesai: "21:00",
+  status_berubah_at: "2026-10-17T02:00:00.000Z", antrean: { antre: 3, gagal_hari_ini: 0 },
+};
+const spmbDevice: KirimDevice = {
+  kode: "spmb", label: "SPMB resmi", pemilik: "spmb", provider: "jalurpesan", provider_ref: "spmb", status: "terputus",
+  nomor_tersamar: "+62 812-••••-7890", antrean_dijeda: false, rate_per_menit: 10, jam_kirim_mulai: "06:00", jam_kirim_selesai: "21:00",
+  status_berubah_at: "2026-10-17T05:30:00.000Z", antrean: { antre: 12, gagal_hari_ini: 1 },
+};
+const ujiDevice: KirimDevice = {
+  kode: "uji", label: "Nomor uji", pemilik: "hcis", provider: "log", provider_ref: null, status: "tersambung",
+  nomor_tersamar: null, antrean_dijeda: false, rate_per_menit: 10, jam_kirim_mulai: "06:00", jam_kirim_selesai: "21:00",
+  status_berubah_at: "2026-10-17T02:00:00.000Z", antrean: { antre: 0, gagal_hari_ini: 0 },
+};
+
 export const kirimNomorFixture: NomorState = {
   status: "ready",
   consumers: [
@@ -10,18 +27,14 @@ export const kirimNomorFixture: NomorState = {
   ],
   list: {
     peringatan: { terputus: ["spmb"], webhook_habis: 2 },
-    devices: [
-      {
-        kode: "hcis", label: "HCIS", pemilik: "hcis", provider: "log", provider_ref: null, status: "tersambung",
-        nomor_tersamar: null, antrean_dijeda: false, rate_per_menit: 10, jam_kirim_mulai: "06:00", jam_kirim_selesai: "21:00",
-        status_berubah_at: "2026-10-17T02:00:00.000Z", antrean: { antre: 3, gagal_hari_ini: 0 },
-      },
-      {
-        kode: "spmb", label: "SPMB resmi", pemilik: "spmb", provider: "jalurpesan", provider_ref: "spmb", status: "terputus",
-        nomor_tersamar: "+62 812-••••-7890", antrean_dijeda: false, rate_per_menit: 10, jam_kirim_mulai: "06:00", jam_kirim_selesai: "21:00",
-        status_berubah_at: "2026-10-17T05:30:00.000Z", antrean: { antre: 12, gagal_hari_ini: 1 },
-      },
+    // KIRIM-IMPL-003: HCIS owns `hcis` and shares it with Karir SQ; SPMB owns `spmb`; Keuangan is empty.
+    modules: [
+      { application_key: "hcis", nama: "HCIS", peran: "pemilik", nomor: hcisDevice, jenis: ["notifikasi"], antrean: { antre: 2, gagal_hari_ini: 0 }, dipakai_juga_oleh: ["Karir SQ"], pemilik_nomor: null },
+      { application_key: "karir-sq", nama: "Karir SQ", peran: "pemakai", nomor: hcisDevice, jenis: ["notifikasi", "kode"], antrean: { antre: 1, gagal_hari_ini: 0 }, dipakai_juga_oleh: [], pemilik_nomor: "HCIS" },
+      { application_key: "keuangan", nama: "Keuangan", peran: "kosong", nomor: null, jenis: [], antrean: { antre: 0, gagal_hari_ini: 0 }, dipakai_juga_oleh: [], pemilik_nomor: null },
+      { application_key: "spmb-sq", nama: "SPMB SQ", peran: "pemilik", nomor: spmbDevice, jenis: ["notifikasi", "kode"], antrean: { antre: 12, gagal_hari_ini: 1 }, dipakai_juga_oleh: ["Keluarga"], pemilik_nomor: null },
     ],
+    devices: [hcisDevice, spmbDevice, ujiDevice],
   },
 };
 
