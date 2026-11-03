@@ -33,7 +33,7 @@ R1 berisi:
 
 Di luar R1 (KERJA-001 §9):
 
-- pengumuman per ruang, apresiasi, penanda terbaca, kartu berulang, pencarian lintas ruang, pengingat lewat Kirim SQ — **R2**;
+- pengumuman per ruang, apresiasi, penanda terbaca, kartu berulang, pencarian lintas ruang, pengingat lewat Kirim SQ, permintaan ke ruang lain, tampilan kalender — **R2**;
 - check-in harian, tautan ke Rapat SQ dan Aset SQ, kartu ringkasan untuk Ringkasan Yayasan — **R3**;
 - chat, penyuntingan dokumen bersama, absensi, master unit organisasi, hierarki tugas lebih dari dua lapis — **tidak dibangun** (KERJA-001 §3).
 

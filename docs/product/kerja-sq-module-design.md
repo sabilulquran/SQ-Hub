@@ -2,9 +2,9 @@
 
 **Status:** DRAFT / DISCOVERY. Dokumen ini tidak mengizinkan implementasi, pembelian, atau perubahan production.
 **Spesifikasi:** KERJA-001 (usulan). Spesifikasi implementasi belum ada.
-**Tanggal:** 2026-10-20 (revisi 4 — **discovery selesai**: §1.3 lengkap dengan 26 pengguna dan 13 ruang, dan tidak ada lagi keputusan yang menghalangi spesifikasi)
+**Tanggal:** 2026-11-03 (revisi 5 — permintaan ke ruang lain dan tampilan kalender masuk R2, §6.10–6.11)
 
-**Riwayat revisi:** r0 rancangan awal · r1 menambah §4.4 bangun-atau-adopsi, §6.6–6.9, §7, §8, Lampiran B · r2 keputusan peluncuran dan `kerja_admin` · r3 struktur nyata dan penyimpanan lampiran pindah ke pola Karir SQ, mengoreksi r2 yang menolaknya atas dasar skala yang keliru · r4 angka akhir
+**Riwayat revisi:** r0 rancangan awal · r1 menambah §4.4 bangun-atau-adopsi, §6.6–6.9, §7, §8, Lampiran B · r2 keputusan peluncuran dan `kerja_admin` · r3 struktur nyata dan penyimpanan lampiran pindah ke pola Karir SQ, mengoreksi r2 yang menolaknya atas dasar skala yang keliru · r4 angka akhir · r5 permintaan ke ruang lain dan tampilan kalender (R2), dari kebutuhan ruang Marketing, Komunikasi & Media
 **Terkait:** ADR-0001 (batas platform), ADR-0006 (stack), ADR-0007 (Organization Directory), ADR-0011 + `kirim-sq-module-design.md` (pola modul di dalam Hub), `rapat-sq-module-design.md` (batas dengan register keputusan)
 **Referensi luar:** bedah aplikasi Cicle 3.22.5 (Lampiran A); penelusuran enam alat kanban sumber terbuka (Lampiran B)
 
@@ -106,6 +106,13 @@ Keputusan tambahan 2026-10-20:
 | 9 | **Lampiran memakai pola Karir SQ**: berkas di disk Mi8, salinan terenkripsi ke Drive sebagai cadangan. Tidak menambah penyimpanan pihak ketiga. Drive tetap tidak melayani berkas langsung ke pengguna — alasannya di §7.4. |
 | 10 | **Struktur dan jangkauan peluncuran** diberikan dan dicatat di §1.3: direktur sampai setara wakil kepala sekolah, empat unit sekolah, lima unit operasional, Biro Qur'an, dengan Mudir Pesantren sebagai lapisan tambahan untuk SMPIT dan PKBM. |
 | 11 | **Unit operasional tahap pertama hanya kepala unit**, meski jabatan setara wakil kepala ada. |
+
+Keputusan tambahan 2026-11-03:
+
+| # | Keputusan |
+| --- | --- |
+| 12 | **Permintaan konten, kalender konten, dan persetujuan tayang divisi Marketing, Komunikasi & Media dikerjakan di Kerja SQ**, bukan di modul sendiri. Modul media yang menyusul hanya memegang bank media, tautan kampanye, dan siaran. |
+| 13 | Kerja SQ R2 menambah **permintaan ke ruang lain** (§6.10) dan **tampilan kalender** (§6.11). |
 
 ## 3. Batas tanggung jawab
 
@@ -365,6 +372,36 @@ Batasnya tiga, supaya tidak menjadi beban:
 2. **Riwayat tidak ikut hilang** ketika kartu diarsipkan.
 3. **Ini bukan audit log platform.** Jejak akses, pemberian izin, dan tindakan admin tetap milik SQ Hub. Riwayat di sini hanya tentang isi kartu.
 
+### 6.10 Permintaan ke ruang lain (R2)
+
+Sebagian ruang terutama melayani unit lain: Marketing, Komunikasi & Media menerima permintaan desain, liputan, dan publikasi; General Affair menerima permintaan perbaikan; HCM menerima permintaan surat. Di R1, orang yang bukan anggota ruang tidak bisa melihat ruang itu sama sekali (404), jadi permintaan tetap lewat WhatsApp dan diketik ulang oleh anggota ruang.
+
+R2 menambah **pintu permintaan**:
+
+1. **Pintu dibuka oleh penanggung jawab ruang, bukan bawaan.** Satu pintu menunjuk satu papan dan satu kolom masuk, dengan uraian baku yang menjadi isian awal (misalnya *tujuan, kanal, tanggal tayang, bahan*). Satu ruang boleh punya beberapa pintu, misalnya "Desain" dan "Liputan".
+2. **Pengaju adalah siapa pun yang punya Application Access `kerja-sq`.** Ia memilih pintu dari daftar "Ajukan permintaan", mengisi judul, uraian, tanggal yang diminta, dan lampiran. Hasilnya kartu biasa di kolom masuk, dengan `pengaju` tercatat.
+3. **Pengaju hanya melihat kartunya sendiri**: judul, uraian dan lampiran yang ia kirim, kolom tempat kartu berada, penanggung jawab, tenggat yang disepakati, status selesai, dan komentar yang ditujukan kepadanya. Ceklis, label, kartu lain, dan isi ruang tetap tertutup. Aturan 404 untuk bukan anggota tetap berlaku untuk semua itu.
+4. **Komentar punya dua jalur**: *internal ruang* (bawaan) dan *dengan pengaju*. Anggota memilih secara sadar ketika membalas pengaju, supaya diskusi internal tidak bocor.
+5. **Menolak berarti menutup dengan `jenis: batal` dan alasan wajib** yang terlihat oleh pengaju. Tidak ada `jenis` baru.
+6. **Pengaju mengikuti permintaannya dari "Tugas Saya"**, di bagian "Permintaan saya", dan diberi tahu ketika kartu pindah kolom atau ditutup.
+7. Lampiran pengaju masuk kuota ruang tujuan dan tunduk pada batas 25 MB yang sama.
+
+Yang sengaja tidak dibangun: formulir bebas dengan isian bertipe, SLA otomatis, dan permintaan dari luar Kerja SQ (orang tua, calon pendaftar, publik). Untuk yang terakhir sudah ada SPMB dan Kirim SQ.
+
+Ini bukan "kartu publik untuk non-anggota" yang ditunda di Lampiran A: tidak ada kartu yang terbuka untuk semua orang. Yang terbuka hanya kartu itu, dan hanya untuk pengajunya.
+
+### 6.11 Tampilan kalender (R2)
+
+Papan yang sama bisa dilihat sebagai **kalender**. Ini tampilan, bukan entitas baru.
+
+- Kartu ditempatkan menurut tenggat. Kartu yang punya mulai dan tenggat tampil sebagai rentang.
+- Penyaring label dan penanggung jawab sama dengan papan. Untuk kalender konten, label menjadi kanal (Instagram, TikTok, YouTube, website) dan tenggat menjadi tanggal tayang.
+- Menggeser kartu ke tanggal lain mengubah tenggatnya dan tercatat di riwayat kartu (§6.9).
+- Kartu tanpa tenggat tampil di daftar samping "Belum bertanggal".
+- Di layar lebar tampil bulan dan minggu. Di ponsel tampil agenda per hari, karena kisi bulan tidak terbaca pada lebar ponsel.
+- Waktu mengikuti §13: disimpan UTC, ditampilkan `Asia/Jakarta`, format 24 jam.
+- Tidak ada sinkronisasi ke Google Calendar, sejalan dengan Rapat SQ yang juga tidak memakai API Calendar.
+
 ## 7. Data
 
 Tabel berawalan `kerja_`, seluruhnya di basis data SQ Hub (§4.1).
@@ -397,6 +434,9 @@ Tabel berawalan `kerja_`, seluruhnya di basis data SQ Hub (§4.1).
 | `kerja_apresiasi` | R2 | objek `{jenis, id}`, pemberi, penerima, jenis fitur, isi (§12.1) |
 | `kerja_pengumuman` | R2 | ruang, penulis, isi, dibuat |
 | `kerja_cetakan` | R2 | ruang, isi kartu baku, jadwal, H−n, aktif (§6.8) |
+| `kerja_pintu` | R2 | ruang, papan, kolom masuk, nama, uraian baku, aktif (§6.10) |
+| `kerja_kartu.pengaju` | R2 | kolom baru, nullable: orang yang mengajukan lewat pintu |
+| `kerja_komentar.untuk_pengaju` | R2 | kolom baru, bawaan `false`: komentar terlihat oleh pengaju |
 | `kerja_checkin` | R3 | ruang, orang, tanggal, isi |
 
 ### 7.3 Aturan lintas tabel
@@ -471,6 +511,9 @@ Rancangan menjaga agar peninjauan itu murah: modul hanya menyimpan **kunci penyi
 | **Berkas ruang** | Lampiran yang tidak menempel kartu | anggota |
 | **Arsip ruang** | Kartu terarsip dan ruang panitia yang sudah berakhir | anggota |
 | **Pengaturan ruang** | Anggota dan usulan dari Directory, label, papan, cetakan | penanggung jawab ruang |
+| **Kalender** (R2) | Tampilan kedua dari papan (§6.11) | anggota, peninjau (baca) |
+| **Ajukan permintaan** (R2) | Daftar pintu yang terbuka, lalu formulir kartu (§6.10) | semua |
+| **Permintaan saya** (R2) | Bagian di Tugas Saya: kartu yang diajukan, statusnya, komentar untuk pengaju | pengaju |
 | **Pengumuman** (R2) | Siaran ruang | anggota |
 | **Check-in** (R3) | Laporan harian ruang | anggota |
 | **Admin Kerja SQ** | Jenis ruang, label standar, retensi | `kerja_admin` |
@@ -507,7 +550,15 @@ Acceptance criteria usulan:
 
 ### R2 — Pengumuman, apresiasi, kartu berulang, dan WhatsApp
 
-Pengumuman per ruang; apresiasi (§12.1); cetakan kartu berulang (§6.8); penanda terbaca; pencarian lintas ruang; dan pengingat lewat Kirim SQ.
+Pengumuman per ruang; apresiasi (§12.1); cetakan kartu berulang (§6.8); penanda terbaca; pencarian lintas ruang; pengingat lewat Kirim SQ; **permintaan ke ruang lain** (§6.10); dan **tampilan kalender** (§6.11).
+
+Acceptance criteria usulan untuk dua tambahan r5:
+
+1. Pengaju melihat kartunya sendiri dan tidak bisa membuka kartu lain, ceklis, label, atau berkas ruang tujuan; semuanya menjawab 404.
+2. Komentar internal tidak pernah tampil ke pengaju, dibuktikan dengan uji akses di API, bukan hanya dengan tampilan.
+3. Penolakan permintaan tanpa alasan ditolak sistem.
+4. Menggeser kartu di kalender mengubah tenggat dan tercatat di riwayat.
+5. Kalender dan agenda ponsel menampilkan tanggal yang sama untuk kartu yang tenggatnya dekat tengah malam WIB.
 
 Prasyarat: Kirim SQ sudah lewat masa trial dan gate memorinya aman.
 
@@ -593,6 +644,7 @@ Tiga catatan:
 1. **Tidak meniru enam tingkat peran Cicle.** Yayasan sudah punya hierarki di Directory; menambah hierarki kedua di dalam modul hanya menciptakan dua sumber kebenaran yang bisa berselisih.
 2. **Anggota tidak dibuat baca-saja secara bawaan.** Cicle memilih itu, dan akibatnya setiap penugasan harus lewat admin. Untuk yayasan dengan sedikit admin, itu akan macet.
 3. **Peran ruang tidak diturunkan dari jabatan.** Kepala unit *diusulkan* sebagai penanggung jawab ruang tetap, tetapi pencatatannya tetap eksplisit — alasan yang sama dengan §5.3.
+4. **Pengaju (R2) bukan peran ruang.** Haknya melekat pada kartu yang ia ajukan, bukan pada ruangnya (§6.10). Pemeriksaan aksesnya tetap di sisi server, per kartu.
 
 ## 12. Dua keputusan rancangan yang perlu dijelaskan
 
@@ -665,6 +717,8 @@ Keempat pengaman di atas tetap berlaku, tetapi sebagai kebiasaan kerja, bukan se
 | 8 | ~~Berapa wakil kepala di tiap unit sekolah~~ | **Terjawab 2026-10-20**: total 26 pengguna tahap pertama (§1.3). Tidak ada lagi yang menghalangi `KERJA-IMPL-001` |
 | 9 | Kapan wakil kepala ikut memakai | **Setelah kepala unitnya paham**, bukan bersamaan. Mengikuti urutan sosialisasi yang sudah ditetapkan (§13.1) |
 | 10 | Batas ukuran lampiran per berkas | **25 MB.** Alasannya kapasitas Mi8 sebagai server, bukan perangkat pengguna (§7.4) |
+| 11 | Siapa boleh mengajukan permintaan (§6.10) | **DRAFT: semua pemegang Application Access `kerja-sq`.** Memperluas ke staf di luar 26 pengguna tahap pertama adalah keputusan peluncuran tersendiri |
+| 12 | Apakah pengaju bisa membatalkan permintaannya sendiri | **DRAFT: ya, selama kartu masih di kolom masuk.** Setelah dipindah, pembatalan lewat komentar ke ruang |
 
 ## 15. Langkah berikutnya
 
@@ -703,7 +757,7 @@ Tidak ada yang disalin utuh. Yang diambil polanya.
 
 Keluhan nyata pengguna Cicle yang menjadi risiko di §13: geser kartu lambat, kesalahan AM/PM pada agenda, berkas harus diunduh berulang.
 
-Yang **tidak** ada di Cicle dan tetap kita butuhkan: pencarian yang memadai, kartu berulang, dan riwayat perubahan kartu. Ketiganya tidak muncul di dokumentasi API publiknya. Itu sebagian alasan mengapa penelusuran Lampiran B tetap dikerjakan.
+Yang **tidak** ada di Cicle dan tetap kita butuhkan: pencarian yang memadai, kartu berulang, riwayat perubahan kartu, dan (sejak r5) pintu permintaan dari ruang lain. Ketiganya tidak muncul di dokumentasi API publiknya. Itu sebagian alasan mengapa penelusuran Lampiran B tetap dikerjakan.
 
 ## Lampiran B — Penelusuran alternatif sumber terbuka (2026-10-19)
 
