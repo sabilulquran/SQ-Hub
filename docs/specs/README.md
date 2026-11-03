@@ -36,6 +36,7 @@ Indeks ini membantu maintainer membedakan specification yang sudah berada di `ma
 | HUB-IMPL-023 | [Admin Platform memberi peran HCIS](HUB-IMPL-023-hcis-role-administration.md) | **DRAFT** 2026-10-31 (in this PR until merged); kanal pemberian peran HCIS dari Admin Center, konfigurasi Keycloak K-1/K-2/K-4/K-5, dan pengaman keanggotaan Admin Platform. Belum diterima Product Owner. |
 | HUB-IMPL-022 | [Shared app launcher list](HUB-IMPL-022-shared-app-launcher-list.md) | **ACCEPTED** 2026-10-23 (in this PR until merged); internal launcher endpoint, Kirim SQ launcher, key -> icon table. Production activation needs separate owner approval. |
 | HUB-IMPL-021 | [Ringkasan Yayasan](HUB-IMPL-021-ringkasan-yayasan.md) | **ACCEPTED** 2026-10-17 (in this PR until merged); governance landing page for Organ Yayasan with per-app summaries, with ADR-0009. Production activation needs separate owner approval. |
+| KERJA-IMPL-001 | [Kerja SQ R1: papan kerja](KERJA-IMPL-001-r1-papan-kerja.md) | **DRAFT** 2026-10-20 (in this PR until merged); rooms per unit and per committee, boards and cards, checklists, comments, attachments, cross-room "my tasks", in-room search, card history, in-app reminders. Follows the ADR-0011 module pattern; no new process on Mi8. Seven decisions in §16 are open, and implementation is not authorized until the PO accepts. |
 
 ## Proposal yang disupersede
 
