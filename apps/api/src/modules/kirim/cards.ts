@@ -155,8 +155,8 @@ export class KirimModuleCards {
 
   /** `PUT /internal/kirim/sambungan/webhook`: the module names its own URL; Kirim SQ keeps the secret. */
   async registerWebhook(consumerRef: Pick<ConsumerRow, "id" | "clientId">, url: string) {
-    if (!isAllowedWebhookUrl(url)) {
-      throw new KirimApiError(422, "webhook_url_invalid", "Alamat webhook harus http://127.0.0.1:<port>/… atau https://<host>.sabilulquran.or.id/….");
+    if (!isSelfRegisteredWebhookUrl(url)) {
+      throw new KirimApiError(422, "webhook_url_invalid", "Alamat webhook harus http://127.0.0.1:<port>/internal/kirim/webhook atau https://<host>.sabilulquran.or.id/api/internal/kirim/webhook.");
     }
     await withTransaction(this.pool, async (client) => {
       const row = await client.query<{ webhookUrl: string | null; hasSecret: boolean }>(
@@ -246,6 +246,14 @@ export class KirimModuleCards {
       pemilik_nomor: owner ? null : names.rows.find((row) => row.id === device.pemilikConsumerId)?.nama ?? device.pemilik,
     };
   }
+}
+
+/**
+ * A module may name its own webhook (§5) only on the fixed Kirim webhook path, so a leaked machine
+ * secret cannot point signed posts at another loopback service. Operators keep the wider D-4 rule.
+ */
+export function isSelfRegisteredWebhookUrl(url: string): boolean {
+  return isAllowedWebhookUrl(url) && /^(\/api)?\/internal\/kirim\/webhook$/.test(new URL(url).pathname) && !new URL(url).search;
 }
 
 /** The consumer already linked to this application (by key, or by its machine client); never creates one. */

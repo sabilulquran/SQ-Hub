@@ -160,6 +160,10 @@ async function main() {
         [applicationKey, machineClient ?? null, whatsapp === "true"],
       );
       if ((updated.rowCount ?? 0) === 0) throw new Error(`Unknown application ${applicationKey}`);
+      // The card's consumer follows the registry: the old client stops sending as this module.
+      if (machineClient) {
+        await client.query("UPDATE kirim_consumers SET client_id = $2, updated_at = now() WHERE application_key = $1", [applicationKey, machineClient]);
+      }
       await writeAudit(client, {
         actorKind: "human", actorRef: operator(), aksi: "modul.atur", objekJenis: "modul", objekRef: applicationKey,
         metadata: { alasan: value("--reason")!, whatsapp: whatsapp === "true", ...(machineClient ? { machine_client: machineClient } : {}) },

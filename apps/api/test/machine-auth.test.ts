@@ -39,8 +39,8 @@ afterAll(async () => {
   );
 });
 
-async function token(input: { aud?: string; azp?: string; iss?: string } = {}) {
-  return new SignJWT({ azp: input.azp ?? "hcis-api-staging" })
+async function token(input: { aud?: string | string[]; azp?: string; iss?: string; clientId?: string } = {}) {
+  return new SignJWT({ azp: input.azp ?? "hcis-api-staging", ...(input.clientId ? { client_id: input.clientId } : {}) })
     .setProtectedHeader({ alg: "RS256", kid })
     .setIssuer(input.iss ?? issuer)
     .setAudience(input.aud ?? audience)
@@ -65,6 +65,16 @@ describe("Keycloak machine token verifier", () => {
 
     await expect(verify(await token({ azp: "spmb-api" }))).resolves.toEqual({ clientId: "spmb-api" });
     await expect(verify(await token({ azp: "spmb-api", aud: "other-api" }))).rejects.toMatchObject({ code: "INVALID_TOKEN" });
+  });
+
+  it("KIRIM-IMPL-003 K-1: accepts any listed audience and, when asked, only service account tokens", async () => {
+    const verify = createKeycloakMachineTokenVerifier({ issuer, audience: ["sq-hub-kirim", "sq-hub-api"], allowedClients: "any", requireServiceAccount: true });
+    await expect(verify(await token({ azp: "hcis-api", clientId: "hcis-api", aud: "sq-hub-api" }))).resolves.toEqual({ clientId: "hcis-api" });
+    await expect(verify(await token({ azp: "karir-api", clientId: "karir-api", aud: ["sq-hub-kirim", "account"] }))).resolves.toEqual({ clientId: "karir-api" });
+    // A user's access token carries azp but no client_id claim.
+    await expect(verify(await token({ azp: "hcis", aud: "sq-hub-api" }))).rejects.toMatchObject({ code: "FORBIDDEN_CLIENT" });
+    await expect(verify(await token({ azp: "hcis-api", clientId: "other", aud: "sq-hub-api" }))).rejects.toMatchObject({ code: "FORBIDDEN_CLIENT" });
+    await expect(verify(await token({ azp: "hcis-api", clientId: "hcis-api", aud: "other-api" }))).rejects.toMatchObject({ code: "INVALID_TOKEN" });
   });
 
   it("rejects the wrong audience as an invalid token", async () => {

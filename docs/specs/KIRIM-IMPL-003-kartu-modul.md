@@ -60,19 +60,20 @@ Constraint lama `kirim_consumers_check` (`webhook_url` dan `webhook_secret_ref` 
 
 Tidak ada baris yang dihapus dan tidak ada rute yang diubah, jadi pengiriman Karir, SPMB, dan Keluarga berjalan seperti sebelumnya.
 
-**Recovery plan:** dump database Hub sebelum migrasi (runbook rilis Hub). Migration berjalan dalam satu transaksi. Rollback aplikasi ke rilis sebelumnya aman: kolom baru diabaikan kode lama, dan constraint baru lebih longgar daripada yang lama hanya untuk baris yang memakai `webhook_secret_enc`. Kode lama yang membaca konsumen dengan `webhook_url` dan tanpa `webhook_secret_ref` menganggap rahasia kosong dan menunda webhook (retry), bukan mengirim tanpa tanda tangan; karena itu jangan memakai `PUT /sambungan/webhook` sebelum rilis ini dinyatakan stabil.
+**Recovery plan:** dump database Hub sebelum migrasi (runbook rilis Hub). Migration berjalan dalam satu transaksi. Rollback aplikasi ke rilis sebelumnya aman: kolom baru diabaikan kode lama, dan constraint baru lebih longgar daripada yang lama hanya untuk baris yang memakai `webhook_secret_enc`. Kode lama yang membaca konsumen dengan `webhook_url` dan tanpa `webhook_secret_ref` menganggap rahasia kosong: webhook tidak dikirim tanpa tanda tangan, tetapi diulang lalu berakhir `habis` (event hilang bagi modul itu). Karena itu jangan memakai `PUT /sambungan/webhook` sebelum rilis ini dinyatakan stabil.
 
 ## 4. API admin baru (`/api/admin/kirim`, sesi `kirim-sq`, `kirim_admin`)
 
 | Method + path | Fungsi |
 | --- | --- |
-| `GET /modules` | Kartu: `application_key`, `nama`, `siap` (punya `machine_client_id`), `peran` (`kosong`, `pemilik`, `pemakai`), `nomor` (bentuk `GET /devices`) bila tersambung, `jenis` yang diizinkan, `antrean` modul ini, `dipakai_juga_oleh[]`, `pemilik_nomor`. Juga `nomor_aktif[]` untuk pilihan "Pakai nomor yang sudah aktif" dan `nomor_lain[]` (nomor yang tidak dipegang kartu mana pun) |
+| `GET /modules` | `modules[]`: `application_key`, `nama`, `peran` (`kosong`, `pemilik`, `pemakai`), `nomor` (bentuk `GET /devices`) bila tersambung, `jenis` yang diizinkan, `antrean` modul ini, `dipakai_juga_oleh[]`, `pemilik_nomor`. Ditambah `devices` dan `peringatan` seperti `GET /devices`; layar memakainya untuk pilihan "Pakai nomor yang sudah aktif" dan daftar "Nomor tanpa kartu modul" |
 | `POST /modules/:app/nomor-baru` | Hanya untuk kartu kosong. Membuat/menautkan pemakai, membuat nomor dengan kode otomatis (`application_key` tanpa `-sq`; bila terpakai `-2`, `-3`, …), label "Nomor <nama aplikasi>", provider `jalurpesan` bila mesin terkonfigurasi (tenant = kode) atau `log` bila tidak. Mengisi `nomor_device_id`. Jawaban: kartu |
 | `POST /modules/:app/pakai-nomor` | `{ device, kode_verifikasi }`. Nomor harus aktif dan bukan milik modul ini. Membuat rute `notifikasi` (dan `kode` bila dicentang; dicabut bila tidak), mengisi `nomor_device_id`. Dipakai juga oleh Ubah pada kartu pemakai |
 | `POST /modules/:app/putuskan` | `{ alasan }`. **Pemakai:** rute modul ini ke nomor itu dihapus dan `nomor_device_id` dikosongkan; nomor tetap tersambung untuk pemiliknya. **Pemilik:** ditolak `409 nomor_dipakai_modul_lain` bila modul lain masih memakai nomor itu; bila tidak, sesi WhatsApp dilepas seperti `POST /devices/:kode/disconnect` dan kartu menampilkan "Pasang" lagi |
 
 Perubahan perilaku endpoint lama:
 
+- Menonaktifkan nomor mengosongkan kartu pemiliknya, sehingga "+ Tambah WhatsApp" muncul lagi.
 - `POST /devices/:kode/disconnect` dan `/deactivate` ditolak `409 nomor_dipakai_modul_lain` bila nomor dipakai modul selain pemiliknya (rute atau `nomor_device_id`). Menghentikan semua pengiriman darurat tetap bisa lewat **Jeda antrean**, yang berlaku untuk semua modul di nomor itu dan bisa dibatalkan.
 - `POST /devices` tetap ada untuk uji dan pemulihan, tetapi layar tidak lagi menampilkan form "Tambah nomor". Nomor yang tidak dipegang kartu mana pun tetap tampil di bawah kartu sebagai "Nomor tanpa kartu modul".
 - Mengganti pemilik nomor lewat Ubah memindahkan kartu: kartu pemilik baru menampilkan nomor itu, kartu pemilik lama dikosongkan kecuali ia masih punya rute ke nomor itu.
@@ -83,7 +84,7 @@ Setiap perubahan menulis `kirim_audit` (`kartu.nomor_baru`, `kartu.pakai_nomor`,
 
 - `POST /messages` dan `POST /media`: `device` **opsional**. Tanpa `device`, Kirim SQ memakai `nomor_device_id` modul itu; bila kosong → `422 device_not_connected` ("Modul ini belum tersambung ke WhatsApp. Sambungkan di kartu modul di Kirim SQ."). Dengan `device`, perilaku lama berlaku (aturan rute tidak berubah).
 - `GET /sambungan` → `{ modul, nomor: { kode, status, nomor_tersamar, peran } | null, jenis: [...], webhook: { url, secret } | null }`. Modul tahu nomor dan rahasia webhooknya tanpa membaca final.env.
-- `PUT /sambungan/webhook` `{ url }` → modul mendaftarkan alamat webhooknya sendiri (aturan alamat D-4 tetap: `http://127.0.0.1:<port>/…` atau `https://*.sabilulquran.or.id/…`). Bila belum ada rahasia, Kirim SQ membuat 32 byte acak dan menyimpannya terenkripsi. Jawaban sama dengan `GET`.
+- `PUT /sambungan/webhook` `{ url }` → modul mendaftarkan alamat webhooknya sendiri, hanya pada path tetap `/internal/kirim/webhook` (atau `/api/internal/kirim/webhook`) di `http://127.0.0.1:<port>` atau `https://*.sabilulquran.or.id`, tanpa query. Batas path ini mencegah secret mesin yang bocor dipakai mengarahkan POST bertanda tangan ke layanan loopback lain. Operator tetap memakai aturan D-4 lewat CLI. Bila belum ada rahasia, Kirim SQ membuat 32 byte acak dan menyimpannya terenkripsi. Jawaban sama dengan `GET`.
 - Penanda tangan webhook memakai `webhook_secret_enc` bila ada, lalu `webhook_secret_ref` (env) bila tidak.
 - Token dari client yang terdaftar sebagai `machine_client_id` aplikasi `whatsapp_capable` yang aktif tetapi belum punya baris pemakai: baris pemakai dibuat otomatis (nama dari kunci aplikasi), lalu `GET /sambungan` menjawab `nomor: null` dan `POST /messages` tanpa `device` menjawab `422 device_not_connected` sampai kartunya disambungkan. Client lain tetap `403 consumer_unknown`.
 
@@ -93,7 +94,7 @@ Setiap perubahan menulis `kirim_audit` (`kartu.nomor_baru`, `kartu.pakai_nomor`,
 | --- | --- |
 | Identitas modul | Client credentials **milik modul sendiri** yang sudah ada di final.env-nya untuk memanggil SQ Hub (`SQ_HUB_MACHINE_CLIENT_ID/SECRET` atau padanannya). Tidak ada client atau secret baru |
 | Audience token | Kirim SQ menerima audience `sq-hub-kirim` **atau** audience mesin SQ Hub `sq-hub-api` (`KIRIM_TOKEN_AUDIENCE=sq-hub-kirim,sq-hub-api`). Client `<app>-api` sudah memegang `sq-hub-api`, jadi modul baru tidak butuh mapper Keycloak dan tidak butuh kata sandi admin Keycloak (keputusan K-1, §10) |
-| Izin kirim | Diputuskan di Kirim SQ, bukan di Keycloak: client harus `machine_client_id` aplikasi di registry, pemakai `aktif`, dan kartunya tersambung (`nomor_device_id` atau rute) |
+| Izin kirim | Diputuskan di Kirim SQ, bukan di Keycloak: token harus token service account (klaim `client_id` = `azp`; token pengguna ditolak), client harus `machine_client_id` aplikasi di registry **saat ini** (aplikasi `active` dan `whatsapp_capable`; mengganti client di registry langsung memutus client lama), pemakai `aktif`, dan kartunya tersambung (`nomor_device_id` atau rute) |
 | Nomor | Dari kartu (`nomor_device_id`); modul tidak lagi mengirim `device` |
 | Rahasia webhook | Dibuat dan disimpan Kirim SQ; modul membacanya lewat `GET /sambungan` dengan tokennya sendiri |
 
@@ -144,3 +145,4 @@ Aplikasi HCIS dipindah dari adapter `log` ke `kirim` dengan mekanisme §6 (perub
 | Tanggal | Perubahan |
 | --- | --- |
 | 2026-11-03 | Versi pertama atas permintaan owner; mockup dibagikan ke owner |
+| 2026-11-03 | Review independen: token service account wajib, client mengikuti registry, kartu kosong saat nomor nonaktif, path webhook mandiri dibatasi |

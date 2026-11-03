@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import type { Pool, PoolClient } from "pg";
 
 import { columnAad, type KirimCrypto } from "./crypto.js";
+import { KirimApiError } from "./errors.js";
 import type { DeviceStatus, KirimErrorCode, ProviderName } from "./providers/types.js";
 
 /** SQL for the kirim_* tables (KIRIM-IMPL-001 §4). Nothing here logs or returns plaintext to callers by accident. */
@@ -21,7 +22,6 @@ export interface ConsumerRow {
   applicationKey: string | null;
   /** The card's number: used when a send names no `device`. */
   nomorDeviceId: string | null;
-  hasWebhookSecret: boolean;
 }
 
 export interface DeviceRow {
@@ -45,8 +45,7 @@ export interface DeviceRow {
 const CONSUMER_COLUMNS = `
   id, client_id AS "clientId", nama, webhook_url AS "webhookUrl",
   webhook_secret_ref AS "webhookSecretRef", kuota_harian AS "kuotaHarian", aktif,
-  application_key AS "applicationKey", nomor_device_id AS "nomorDeviceId",
-  (webhook_secret_enc IS NOT NULL OR webhook_secret_ref IS NOT NULL) AS "hasWebhookSecret"
+  application_key AS "applicationKey", nomor_device_id AS "nomorDeviceId"
 `;
 
 const DEVICE_COLUMNS = `
@@ -140,7 +139,7 @@ export async function ensureApplicationConsumer(db: Queryable, application: Regi
   if (linked.rows[0]) return linked.rows[0];
   const byClient = await findConsumerByClientId(db, application.machineClientId);
   if (byClient) {
-    if (byClient.applicationKey) throw new Error("machine client already belongs to another card");
+    if (byClient.applicationKey) throw new KirimApiError(409, "client_dipakai_kartu_lain", "Client mesin ini sudah dipakai kartu modul lain.");
     await db.query("UPDATE kirim_consumers SET application_key = $2, updated_at = now() WHERE id = $1", [byClient.id, application.applicationKey]);
     return { ...byClient, applicationKey: application.applicationKey };
   }

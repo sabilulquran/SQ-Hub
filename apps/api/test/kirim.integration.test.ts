@@ -66,8 +66,8 @@ const adminAuth: HubAuthRuntime = {
   clearTransactionCookie: () => "",
 };
 
-async function token(input: { azp: string; aud?: string }) {
-  return new SignJWT({ azp: input.azp })
+async function token(input: { azp: string; aud?: string; serviceAccount?: boolean }) {
+  return new SignJWT({ azp: input.azp, ...(input.serviceAccount === false ? {} : { client_id: input.azp }) })
     .setProtectedHeader({ alg: "RS256", kid: "kirim-test" })
     .setIssuer(issuer)
     .setAudience(input.aud ?? AUDIENCE)
@@ -239,6 +239,16 @@ describe("POST /internal/kirim/messages (§5.1)", () => {
     });
     expect(response.statusCode).toBe(401);
     expect(response.json()).toEqual({ error: { code: "unauthenticated", message: expect.any(String) } });
+  });
+
+  it("KIRIM-IMPL-003 K-1: refuses a token that is not a service account token", async () => {
+    const response = await app.inject({
+      method: "POST",
+      url: "/internal/kirim/messages",
+      headers: { authorization: `Bearer ${await token({ azp: "spmb-api", serviceAccount: false })}`, "idempotency-key": "k" },
+      payload: { device: "spmb", jenis: "notifikasi", to: PHONE, text: "x" },
+    });
+    expect(response.statusCode).toBe(403);
   });
 
   it("rejects a client that is not a registered consumer with 403 consumer_unknown", async () => {
@@ -1031,21 +1041,43 @@ describe("Module cards (KIRIM-IMPL-003)", () => {
       webhook: { url: "http://127.0.0.1:3303/kirim/webhook", secret: "spmb-webhook-secret" },
     });
 
-    expect((await machine("keuangan-api", "PUT", "/sambungan/webhook", { url: "https://evil.example.com/hook" })).json().error.code).toBe("webhook_url_invalid");
-    const registered = await machine("keuangan-api", "PUT", "/sambungan/webhook", { url: "http://127.0.0.1:3310/kirim/webhook" });
+    for (const url of ["https://evil.example.com/hook", "http://127.0.0.1:8080/realms/sq-staff", "http://127.0.0.1:3310/internal/kirim/webhook?x=1"]) {
+      expect((await machine("keuangan-api", "PUT", "/sambungan/webhook", { url })).json().error.code).toBe("webhook_url_invalid");
+    }
+    const registered = await machine("keuangan-api", "PUT", "/sambungan/webhook", { url: "http://127.0.0.1:3310/internal/kirim/webhook" });
     expect(registered.statusCode).toBe(200);
     const secret = registered.json().webhook.secret as string;
     expect(secret).toMatch(/^[A-Za-z0-9_-]{43}$/);
-    const again = await machine("keuangan-api", "PUT", "/sambungan/webhook", { url: "http://127.0.0.1:3311/kirim/webhook" });
-    expect(again.json().webhook).toEqual({ url: "http://127.0.0.1:3311/kirim/webhook", secret });
+    const again = await machine("keuangan-api", "PUT", "/sambungan/webhook", { url: "http://127.0.0.1:3311/internal/kirim/webhook" });
+    expect(again.json().webhook).toEqual({ url: "http://127.0.0.1:3311/internal/kirim/webhook", secret });
     const stored = await pool.query<{ enc: string }>("SELECT webhook_secret_enc AS enc FROM kirim_consumers WHERE nama = 'keuangan'");
     expect(stored.rows[0]!.enc).not.toContain(secret);
 
     const consumerId = (await pool.query<{ id: string }>("SELECT id FROM kirim_consumers WHERE nama = 'keuangan'")).rows[0]!.id;
     await enqueueWebhook(pool, kirim.crypto, consumerId, "device.status", { device: "keuangan", status: "tersambung" });
     await kirim.webhooks.runOnce();
-    const call = webhookCalls.find((item) => item.url === "http://127.0.0.1:3311/kirim/webhook")!;
+    const call = webhookCalls.find((item) => item.url === "http://127.0.0.1:3311/internal/kirim/webhook")!;
     expect(call.headers["x-kirim-signature"]).toBe(signKirimWebhook(secret, Number(call.headers["x-kirim-timestamp"]), call.body));
     expect(JSON.stringify(logLines)).not.toContain(secret);
+  });
+
+  it("follows the registry: a replaced machine client or a module without WhatsApp can no longer send", async () => {
+    await registry();
+    await adminAs("admin-session");
+    await admin("POST", "/modules/karir-sq/pakai-nomor", { payload: { device: "hcis" } });
+    expect((await send("karir-api", { jenis: "notifikasi", to: PHONE, text: "x" })).statusCode).toBe(202);
+    await pool.query("UPDATE applications SET machine_client_id = 'karir-api-2' WHERE application_key = 'karir-sq'");
+    expect((await send("karir-api", { jenis: "notifikasi", to: PHONE, text: "y" })).json().error.code).toBe("consumer_unknown");
+    await pool.query("UPDATE applications SET machine_client_id = 'karir-api', whatsapp_capable = false WHERE application_key = 'karir-sq'");
+    expect((await send("karir-api", { jenis: "notifikasi", to: PHONE, text: "z" })).json().error.code).toBe("consumer_unknown");
+  });
+
+  it("empties the owner's card when its number is deactivated, so it can be connected again", async () => {
+    await registry();
+    await adminAs("admin-session");
+    expect((await admin("POST", "/devices/hcis/deactivate", { payload: { alasan: "nomor diblokir" } })).statusCode).toBe(200);
+    const card = (await admin("GET", "/modules")).json().modules.find((item: { application_key: string }) => item.application_key === "hcis");
+    expect(card).toMatchObject({ peran: "kosong", nomor: null });
+    expect((await admin("POST", "/modules/hcis/nomor-baru", { payload: {} })).json().nomor.kode).toBe("hcis-2");
   });
 });

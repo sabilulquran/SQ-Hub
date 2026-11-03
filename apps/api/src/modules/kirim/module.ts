@@ -118,6 +118,7 @@ export function createKirimModule(input: {
     issuer: input.keycloakIssuer,
     audience: config.tokenAudience,
     allowedClients: "any",
+    requireServiceAccount: true,
   });
 
   const adminAuth = input.adminAuth ?? (config.admin

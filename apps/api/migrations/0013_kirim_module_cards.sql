@@ -38,6 +38,7 @@ UPDATE kirim_consumers c
  WHERE c.application_key IS NULL
    AND c.nama IN (a.application_key, regexp_replace(a.application_key, '-sq$', ''))
    AND (SELECT count(*) FROM applications b WHERE c.nama IN (b.application_key, regexp_replace(b.application_key, '-sq$', ''))) = 1
+   AND (SELECT count(*) FROM kirim_consumers y WHERE y.nama IN (a.application_key, regexp_replace(a.application_key, '-sq$', ''))) = 1
    AND NOT EXISTS (SELECT 1 FROM kirim_consumers x WHERE x.application_key = a.application_key);
 
 -- Those applications use WhatsApp, with the machine client they already send with.

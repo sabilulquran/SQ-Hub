@@ -21,6 +21,7 @@ import {
   withTransaction,
   writeAudit,
   type DeviceRow,
+  type Queryable,
 } from "./repository.js";
 import { KirimApiError, type KirimService } from "./service.js";
 
@@ -289,8 +290,8 @@ export class KirimAdminService {
    * KIRIM-IMPL-003 K-3: the owner cannot cut a number other modules still send through.
    * Pausing the queue stays available for emergencies.
    */
-  async assertNotShared(device: DeviceRow) {
-    const sharers = await deviceSharers(this.pool, device);
+  async assertNotShared(device: DeviceRow, db: Queryable = this.pool) {
+    const sharers = await deviceSharers(db, device);
     if (sharers.length > 0) {
       throw new KirimApiError(409, "nomor_dipakai_modul_lain", `Nomor ini masih dipakai ${sharers.join(", ")}. Putuskan modul itu dulu dari kartunya, atau pindahkan pemilik nomor lewat Ubah.`);
     }
@@ -298,6 +299,7 @@ export class KirimAdminService {
 
   async disconnect(actor: AdminActor, kode: string, alasan: string) {
     const device = await this.requireDevice(kode);
+    // Checked again inside the status transaction below, under the device row lock.
     await this.assertNotShared(device);
     if (device.provider === "jalurpesan") {
       try {
@@ -308,6 +310,7 @@ export class KirimAdminService {
       }
     }
     return withTransaction(this.pool, async (client) => {
+      await this.assertNotShared((await findDevice(client, kode, true))!, client);
       if (device.provider === "jalurpesan") await setDeviceStatus(client, this.crypto, device.id, "terputus");
       await writeAudit(client, { actorKind: "human", actorRef: actor.ref, aksi: "nomor.putus", objekJenis: "device", objekRef: kode, metadata: { alasan } });
       return toBrowserDevice((await findDevice(client, kode))!);
@@ -336,8 +339,10 @@ export class KirimAdminService {
     return withTransaction(this.pool, async (client) => {
       const device = await findDevice(client, kode, true);
       if (!device) throw new KirimApiError(404, "not_found", "Nomor tidak ditemukan.");
-      await this.assertNotShared(device);
+      await this.assertNotShared(device, client);
       await setDeviceStatus(client, this.crypto, device.id, "nonaktif");
+      // KIRIM-IMPL-003: the owner's card is emptied, so "+ Tambah WhatsApp" is offered again.
+      await client.query("UPDATE kirim_consumers SET nomor_device_id = NULL, updated_at = now() WHERE nomor_device_id = $1", [device.id]);
       await writeAudit(client, { actorKind: "human", actorRef: actor.ref, aksi: "nomor.nonaktif", objekJenis: "device", objekRef: kode, metadata: { alasan } });
       return toBrowserDevice((await findDevice(client, kode))!);
     });

@@ -31,6 +31,11 @@ export function createKeycloakMachineTokenVerifier(input: {
   /** "any" leaves the client check to the caller (Kirim SQ maps clients to kirim_consumers). */
   allowedClients: ReadonlySet<string> | "any";
   requiredScope?: string;
+  /**
+   * Only client-credentials (service account) tokens: Keycloak puts `client_id` equal to `azp`
+   * in those, never in a user's access token (Kirim SQ, KIRIM-IMPL-003 K-1).
+   */
+  requireServiceAccount?: boolean;
 }): VerifyMachineToken {
   const issuer = input.issuer.replace(/\/$/, "");
   const jwksUrl = new URL(`${issuer}/protocol/openid-connect/certs`);
@@ -94,6 +99,10 @@ export function createKeycloakMachineTokenVerifier(input: {
 
       if (!clientId || (input.allowedClients !== "any" && !input.allowedClients.has(clientId))) {
         throw new MachineAuthError("FORBIDDEN_CLIENT", "machine client is not allowed");
+      }
+
+      if (input.requireServiceAccount && payload.client_id !== clientId) {
+        throw new MachineAuthError("FORBIDDEN_CLIENT", "machine token is not a service account token");
       }
 
       if (input.requiredScope && (

@@ -6,6 +6,7 @@ import type { Pool } from "pg";
 import { z } from "zod";
 
 import { columnAad, InvalidNumberError, KirimCryptoError, maskPhone, normalizePhone, phoneCanonical, type KirimCrypto } from "./crypto.js";
+import { KirimApiError } from "./errors.js";
 import { wibDayStart } from "./policy.js";
 import {
   dbNow,
@@ -26,16 +27,7 @@ import {
 
 /** KIRIM-IMPL-001 §5.1 and §6.1: accepting messages, media and opt-outs from consumer modules. */
 
-export class KirimApiError extends Error {
-  constructor(
-    public readonly statusCode: number,
-    public readonly code: string,
-    message: string,
-  ) {
-    super(message);
-    this.name = "KirimApiError";
-  }
-}
+export { KirimApiError };
 
 export const sendMessageSchema = z
   .object({
@@ -107,6 +99,14 @@ export class KirimService {
       }
     }
     if (!consumer || !consumer.aktif) throw new KirimApiError(403, "consumer_unknown", "Pemakai tidak terdaftar.");
+    if (consumer.applicationKey) {
+      // A card's consumer sends only with the client the registry names for it today, and only
+      // while its application is active and may use WhatsApp.
+      const application = await findWhatsAppApplication(this.pool, { applicationKey: consumer.applicationKey });
+      if (!application || application.status !== "active" || application.machineClientId !== clientId) {
+        throw new KirimApiError(403, "consumer_unknown", "Pemakai tidak terdaftar.");
+      }
+    }
     return consumer;
   }
 
