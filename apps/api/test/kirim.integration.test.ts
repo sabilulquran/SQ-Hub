@@ -241,16 +241,6 @@ describe("POST /internal/kirim/messages (§5.1)", () => {
     expect(response.json()).toEqual({ error: { code: "unauthenticated", message: expect.any(String) } });
   });
 
-  it("KIRIM-IMPL-003 K-1: refuses a token that is not a service account token", async () => {
-    const response = await app.inject({
-      method: "POST",
-      url: "/internal/kirim/messages",
-      headers: { authorization: `Bearer ${await token({ azp: "spmb-api", serviceAccount: false })}`, "idempotency-key": "k" },
-      payload: { device: "spmb", jenis: "notifikasi", to: PHONE, text: "x" },
-    });
-    expect(response.statusCode).toBe(403);
-  });
-
   it("rejects a client that is not a registered consumer with 403 consumer_unknown", async () => {
     const response = await send("karir-api", { device: "spmb", jenis: "notifikasi", to: PHONE, text: "x" });
     expect(response.statusCode).toBe(403);

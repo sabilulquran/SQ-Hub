@@ -118,7 +118,9 @@ export function createKirimModule(input: {
     issuer: input.keycloakIssuer,
     audience: config.tokenAudience,
     allowedClients: "any",
-    requireServiceAccount: true,
+    // K-1: tokens that reach Kirim only through the wider SQ Hub audience must be service-account
+    // tokens; `sq-hub-kirim` is mapped per client by the owner, as before.
+    requireServiceAccount: { exceptAudience: "sq-hub-kirim" },
   });
 
   const adminAuth = input.adminAuth ?? (config.admin

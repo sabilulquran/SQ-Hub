@@ -75,6 +75,12 @@ describe("Keycloak machine token verifier", () => {
     await expect(verify(await token({ azp: "hcis", aud: "sq-hub-api" }))).rejects.toMatchObject({ code: "FORBIDDEN_CLIENT" });
     await expect(verify(await token({ azp: "hcis-api", clientId: "other", aud: "sq-hub-api" }))).rejects.toMatchObject({ code: "FORBIDDEN_CLIENT" });
     await expect(verify(await token({ azp: "hcis-api", clientId: "hcis-api", aud: "other-api" }))).rejects.toMatchObject({ code: "INVALID_TOKEN" });
+    // Older clients (spmb-api, keluarga-sq-api) carry no client_id claim but have the dedicated audience.
+    const kirim = createKeycloakMachineTokenVerifier({
+      issuer, audience: ["sq-hub-kirim", "sq-hub-api"], allowedClients: "any", requireServiceAccount: { exceptAudience: "sq-hub-kirim" },
+    });
+    await expect(kirim(await token({ azp: "spmb-api", aud: ["sq-hub-api", "sq-hub-kirim"] }))).resolves.toEqual({ clientId: "spmb-api" });
+    await expect(kirim(await token({ azp: "hcis", aud: "sq-hub-api" }))).rejects.toMatchObject({ code: "FORBIDDEN_CLIENT" });
   });
 
   it("rejects the wrong audience as an invalid token", async () => {
