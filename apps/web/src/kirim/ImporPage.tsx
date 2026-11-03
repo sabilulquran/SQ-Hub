@@ -110,7 +110,7 @@ export function ImporView({
           Memindahkan chat lama nomor ini ke Kirim SQ. Pesan hasil impor ditandai &ldquo;impor&rdquo; dan tidak memicu pemberitahuan atau balasan otomatis.
         </p>
       </div>
-      {state.status === "missing" ? <StateCard kind="empty" title="Pilih nomor dari halaman Nomor" action={<a className={secondaryButton} href="/nomor">Ke Nomor</a>} /> : null}
+      {state.status === "missing" ? <StateCard kind="empty" title="Pilih nomor dari halaman Modul" action={<a className={secondaryButton} href="/nomor">Ke Modul</a>} /> : null}
       {state.status === "loading" ? <StateCard kind="loading" title="Memuat riwayat impor" /> : null}
       {state.status === "forbidden" ? <StateCard kind="forbidden" title="Anda belum ditetapkan sebagai pengelola Kirim SQ" /> : null}
       {state.status === "error" ? (

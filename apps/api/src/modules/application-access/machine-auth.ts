@@ -26,7 +26,8 @@ export class MachineAuthError extends Error {
 
 export function createKeycloakMachineTokenVerifier(input: {
   issuer: string;
-  audience: string;
+  /** Several audiences are accepted alike (Kirim SQ, KIRIM-IMPL-003 K-1). */
+  audience: string | string[];
   /** "any" leaves the client check to the caller (Kirim SQ maps clients to kirim_consumers). */
   allowedClients: ReadonlySet<string> | "any";
   requiredScope?: string;

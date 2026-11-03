@@ -14,7 +14,8 @@ import { PgApplicationAccessRepository } from "../src/modules/application-access
 import { ApplicationAccessService } from "../src/modules/application-access/service.js";
 import { HubAuthError, type HubAuthRuntime } from "../src/modules/hub-auth/service.js";
 import type { KirimConfig } from "../src/modules/kirim/config.js";
-import { columnAad, KirimCrypto } from "../src/modules/kirim/crypto.js";
+import { columnAad, KirimCrypto, signKirimWebhook } from "../src/modules/kirim/crypto.js";
+import { enqueueWebhook } from "../src/modules/kirim/repository.js";
 import { createKirimModule, pgEngineMediaRefs, type KirimModule } from "../src/modules/kirim/module.js";
 import { JalurPesanProvider } from "../src/modules/kirim/providers/jalurpesan.js";
 import { LogProvider } from "../src/modules/kirim/providers/log.js";
@@ -915,5 +916,136 @@ describe("Admin R2: Jangan hubungi, Aktivitas, Impor riwayat (KIRIM-IMPL-002 §1
     expect((await webhookPayloads()).length).toBe(before);
     const request = stub.requests.find((entry) => entry.path.endsWith("/history-imports") && entry.method === "POST");
     expect(JSON.parse(request!.body)).toEqual({ chatJid: "6281234567890@s.whatsapp.net", maxMessages: 100 });
+  });
+});
+
+describe("Module cards (KIRIM-IMPL-003)", () => {
+  async function registry() {
+    const register = (key: string, name: string, client: string) =>
+      pool.query(
+        `INSERT INTO applications (id, application_key, name, canonical_url, status, machine_client_id, whatsapp_capable)
+         VALUES ($1, $2, $3, $4, 'active', $5, true)`,
+        [randomUUID(), key, name, `https://${key}.sabilulquran.or.id`, client],
+      );
+    await register("hcis", "HCIS", "hcis-api");
+    await register("karir-sq", "Karir SQ", "karir-api");
+    await register("spmb-sq", "SPMB SQ", "spmb-api");
+    await register("keuangan", "Keuangan", "keuangan-api");
+    await pool.query(
+      `INSERT INTO applications (id, application_key, name, canonical_url, status) VALUES ($1, 'aset-sq', 'Aset SQ', 'https://aset.sabilulquran.or.id', 'active')`,
+      [randomUUID()],
+    );
+    // The state migration 0013 leaves behind: each consumer's card shows the number it sends through.
+    await pool.query(`UPDATE kirim_consumers c SET nomor_device_id = d.id FROM kirim_devices d WHERE d.pemilik_consumer_id = c.id`);
+    await pool.query(`UPDATE kirim_consumers SET nomor_device_id = (SELECT id FROM kirim_devices WHERE kode = 'spmb') WHERE nama = 'keluarga'`);
+  }
+
+  async function machine(clientId: string, method: "GET" | "PUT", url: string, payload?: Record<string, unknown>) {
+    return app.inject({
+      method,
+      url: `/internal/kirim${url}`,
+      headers: { authorization: `Bearer ${await token({ azp: clientId })}` },
+      ...(payload ? { payload } : {}),
+    });
+  }
+
+  it("shows one card per WhatsApp-capable application, shares a number, and lets a user go without cutting the owner", async () => {
+    await registry();
+    await adminAs("admin-session");
+    const list = await admin("GET", "/modules");
+    expect(list.statusCode).toBe(200);
+    const cards = list.json().modules as Array<{ application_key: string; peran: string; dipakai_juga_oleh: string[] }>;
+    expect(cards.map((card) => [card.application_key, card.peran])).toEqual([["hcis", "pemilik"], ["karir-sq", "kosong"], ["keuangan", "kosong"], ["spmb-sq", "pemilik"]]);
+    expect(cards.find((card) => card.application_key === "spmb-sq")!.dipakai_juga_oleh).toEqual(["keluarga"]);
+    expect(list.json().devices.map((device: { kode: string }) => device.kode)).toEqual(["hcis", "spmb"]);
+
+    const own = await admin("POST", "/modules/hcis/pakai-nomor", { payload: { device: "hcis" } });
+    expect(own.json().error.code).toBe("nomor_milik_sendiri");
+    const used = await admin("POST", "/modules/karir-sq/pakai-nomor", { payload: { device: "hcis", kode_verifikasi: true } });
+    expect(used.statusCode).toBe(200);
+    expect(used.json()).toMatchObject({ peran: "pemakai", jenis: ["notifikasi", "kode"], pemilik_nomor: "HCIS", nomor: { kode: "hcis" } });
+    const hcisCard = (await admin("GET", "/modules")).json().modules.find((card: { application_key: string }) => card.application_key === "hcis");
+    expect(hcisCard.dipakai_juga_oleh).toEqual(["Karir SQ"]);
+
+    // Karir sends with no device: the card's number is used.
+    const sent = await send("karir-api", { jenis: "notifikasi", to: PHONE, text: "Undangan tes" });
+    expect(sent.statusCode).toBe(202);
+    const outbox = await pool.query<{ kode: string }>(`SELECT d.kode FROM kirim_outbox o JOIN kirim_devices d ON d.id = o.device_id`);
+    expect(outbox.rows).toEqual([{ kode: "hcis" }]);
+
+    // The owner cannot cut a shared number; pausing stays possible.
+    for (const url of ["/devices/hcis/deactivate", "/devices/hcis/disconnect", "/modules/hcis/putuskan"]) {
+      const refused = await admin("POST", url, { payload: { alasan: "uji" } });
+      expect({ url, status: refused.statusCode, code: refused.json().error.code }).toEqual({ url, status: 409, code: "nomor_dipakai_modul_lain" });
+    }
+    expect((await admin("POST", "/devices/hcis/pause", { payload: {} })).statusCode).toBe(200);
+
+    const released = await admin("POST", "/modules/karir-sq/putuskan", { payload: { alasan: "uji lepas" } });
+    expect(released.json()).toMatchObject({ peran: "kosong", nomor: null });
+    const routes = await pool.query(`SELECT 1 FROM kirim_routes r JOIN kirim_consumers c ON c.id = r.consumer_id WHERE c.nama = 'karir'`);
+    expect(routes.rowCount).toBe(0);
+    const hcisDevice = await pool.query<{ status: string }>("SELECT status FROM kirim_devices WHERE kode = 'hcis'");
+    expect(hcisDevice.rows[0]!.status).toBe("tersambung");
+    expect((await send("karir-api", { jenis: "notifikasi", to: PHONE, text: "x" })).json().error.code).toBe("device_not_connected");
+
+    const audit = await pool.query<{ aksi: string }>("SELECT aksi FROM kirim_audit WHERE aksi LIKE 'kartu.%' ORDER BY occurred_at");
+    expect(audit.rows.map((row) => row.aksi)).toEqual(["kartu.pakai_nomor", "kartu.putuskan"]);
+  });
+
+  it("connects a new number with a code, label and tenant chosen by Kirim SQ", async () => {
+    await registry();
+    await adminAs("admin-session");
+    const created = await admin("POST", "/modules/keuangan/nomor-baru", { payload: {} });
+    expect(created.statusCode).toBe(200);
+    expect(created.json()).toMatchObject({
+      peran: "pemilik",
+      nomor: { kode: "keuangan", label: "Nomor Keuangan", provider: "jalurpesan", provider_ref: "keuangan", status: "belum_dipasang" },
+    });
+    expect((await admin("POST", "/modules/keuangan/nomor-baru", { payload: {} })).json().error.code).toBe("kartu_sudah_tersambung");
+    // A second application whose short name is taken gets the next free code.
+    await pool.query(
+      `INSERT INTO applications (id, application_key, name, canonical_url, status, machine_client_id, whatsapp_capable)
+       VALUES ($1, 'keuangan-sq', 'Keuangan SQ', 'https://k.sabilulquran.or.id', 'active', 'keuangan-sq-api', true)`,
+      [randomUUID()],
+    );
+    expect((await admin("POST", "/modules/keuangan-sq/nomor-baru", { payload: {} })).json().nomor.kode).toBe("keuangan-2");
+    expect((await admin("POST", "/modules/aset-sq/nomor-baru", { payload: {} })).statusCode).toBe(404);
+    const consumers = await pool.query<{ nama: string; client_id: string }>(
+      "SELECT nama, client_id FROM kirim_consumers WHERE application_key LIKE 'keuangan%' ORDER BY nama",
+    );
+    expect(consumers.rows).toEqual([{ nama: "keuangan", client_id: "keuangan-api" }, { nama: "keuangan-2", client_id: "keuangan-sq-api" }]);
+  });
+
+  it("lets a module read its connection and register its webhook with its own token", async () => {
+    await registry();
+    expect((await machine("lain-api", "GET", "/sambungan")).statusCode).toBe(403);
+    const before = await machine("keuangan-api", "GET", "/sambungan");
+    expect(before.json()).toEqual({ modul: "keuangan", nomor: null, jenis: [], webhook: null });
+    expect((await send("keuangan-api", { jenis: "notifikasi", to: PHONE, text: "x" })).json().error.code).toBe("device_not_connected");
+
+    const legacy = await machine("spmb-api", "GET", "/sambungan");
+    expect(legacy.json()).toEqual({
+      modul: "spmb",
+      nomor: { kode: "spmb", status: "tersambung", nomor_tersamar: null, peran: "pemilik" },
+      jenis: ["notifikasi"],
+      webhook: { url: "http://127.0.0.1:3303/kirim/webhook", secret: "spmb-webhook-secret" },
+    });
+
+    expect((await machine("keuangan-api", "PUT", "/sambungan/webhook", { url: "https://evil.example.com/hook" })).json().error.code).toBe("webhook_url_invalid");
+    const registered = await machine("keuangan-api", "PUT", "/sambungan/webhook", { url: "http://127.0.0.1:3310/kirim/webhook" });
+    expect(registered.statusCode).toBe(200);
+    const secret = registered.json().webhook.secret as string;
+    expect(secret).toMatch(/^[A-Za-z0-9_-]{43}$/);
+    const again = await machine("keuangan-api", "PUT", "/sambungan/webhook", { url: "http://127.0.0.1:3311/kirim/webhook" });
+    expect(again.json().webhook).toEqual({ url: "http://127.0.0.1:3311/kirim/webhook", secret });
+    const stored = await pool.query<{ enc: string }>("SELECT webhook_secret_enc AS enc FROM kirim_consumers WHERE nama = 'keuangan'");
+    expect(stored.rows[0]!.enc).not.toContain(secret);
+
+    const consumerId = (await pool.query<{ id: string }>("SELECT id FROM kirim_consumers WHERE nama = 'keuangan'")).rows[0]!.id;
+    await enqueueWebhook(pool, kirim.crypto, consumerId, "device.status", { device: "keuangan", status: "tersambung" });
+    await kirim.webhooks.runOnce();
+    const call = webhookCalls.find((item) => item.url === "http://127.0.0.1:3311/kirim/webhook")!;
+    expect(call.headers["x-kirim-signature"]).toBe(signKirimWebhook(secret, Number(call.headers["x-kirim-timestamp"]), call.body));
+    expect(JSON.stringify(logLines)).not.toContain(secret);
   });
 });

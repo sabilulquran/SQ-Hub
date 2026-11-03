@@ -11,12 +11,16 @@ import {
   dbNow,
   enqueueWebhook,
   ensureConversation,
+  ensureApplicationConsumer,
   findConsumerByClientId,
   findDevice,
+  findDeviceById,
+  findWhatsAppApplication,
   routeAllows,
   withTransaction,
   writeAudit,
   type ConsumerRow,
+  type DeviceRow,
   type Queryable,
 } from "./repository.js";
 
@@ -35,7 +39,8 @@ export class KirimApiError extends Error {
 
 export const sendMessageSchema = z
   .object({
-    device: z.string().trim().regex(/^[a-z][a-z0-9-]{1,30}$/),
+    /** KIRIM-IMPL-003 §5: omitted = the number on the consumer's card. */
+    device: z.string().trim().regex(/^[a-z][a-z0-9-]{1,30}$/).optional(),
     jenis: z.enum(["notifikasi", "kode"]),
     to: z.string().trim().min(1).max(40),
     text: z.string().min(1).max(4096).optional(),
@@ -85,11 +90,34 @@ export class KirimService {
     private readonly mediaRoot: string,
   ) {}
 
-  /** Step 2 of §5.1: the token's client must be a registered, active consumer. */
+  /**
+   * Step 2 of §5.1: the token's client must be a registered, active consumer. KIRIM-IMPL-003 §6:
+   * the machine client of a WhatsApp-capable registry application becomes one on first use; it
+   * still cannot send until its card has a number.
+   */
   async requireConsumer(clientId: string): Promise<ConsumerRow> {
-    const consumer = await findConsumerByClientId(this.pool, clientId);
+    let consumer = await findConsumerByClientId(this.pool, clientId);
+    if (!consumer) {
+      const application = await findWhatsAppApplication(this.pool, { machineClientId: clientId });
+      if (application?.status === "active") {
+        consumer = await withTransaction(this.pool, async (client) => {
+          await client.query("SELECT pg_advisory_xact_lock(hashtext('kirim_consumers'))");
+          return ensureApplicationConsumer(client, application);
+        });
+      }
+    }
     if (!consumer || !consumer.aktif) throw new KirimApiError(403, "consumer_unknown", "Pemakai tidak terdaftar.");
     return consumer;
+  }
+
+  /** KIRIM-IMPL-003 §5: the named number, or the number on the consumer's card. */
+  async resolveDevice(consumer: ConsumerRow, kode: string | undefined): Promise<DeviceRow> {
+    if (kode === undefined && !consumer.nomorDeviceId) {
+      throw new KirimApiError(422, "device_not_connected", "Modul ini belum tersambung ke WhatsApp. Sambungkan di kartu modul di Kirim SQ.");
+    }
+    const device = kode !== undefined ? await findDevice(this.pool, kode) : await findDeviceById(this.pool, consumer.nomorDeviceId!);
+    if (!device || device.status === "nonaktif") throw new KirimApiError(422, "device_inactive", "Nomor tidak aktif.");
+    return device;
   }
 
   /**
@@ -105,8 +133,7 @@ export class KirimService {
     const replay = await this.findIdempotent(this.pool, consumer.id, idempotencyKey, requestHash);
     if (replay) return replay;
 
-    const device = await findDevice(this.pool, input.device);
-    if (!device || device.status === "nonaktif") throw new KirimApiError(422, "device_inactive", "Nomor tidak aktif.");
+    const device = await this.resolveDevice(consumer, input.device);
     if (!(await routeAllows(this.pool, consumer.id, device, input.jenis))) {
       throw new KirimApiError(422, "route_denied", "Pemakai tidak boleh mengirim jenis ini lewat nomor ini.");
     }
@@ -320,10 +347,9 @@ export class KirimService {
    */
   async storeOutboundMedia(
     consumer: ConsumerRow,
-    input: { deviceKode: string; mime: string; data: Buffer; truncated: boolean },
+    input: { deviceKode: string | undefined; mime: string; data: Buffer; truncated: boolean },
   ): Promise<{ media_id: string; sha256: string; ukuran: number }> {
-    const device = await findDevice(this.pool, input.deviceKode);
-    if (!device || device.status === "nonaktif") throw new KirimApiError(422, "device_inactive", "Nomor tidak aktif.");
+    const device = await this.resolveDevice(consumer, input.deviceKode);
     const owns = device.pemilikConsumerId === consumer.id;
     const routed = await this.pool.query("SELECT 1 FROM kirim_routes WHERE consumer_id = $1 AND device_id = $2", [consumer.id, device.id]);
     if (!owns && (routed.rowCount ?? 0) === 0) throw new KirimApiError(422, "route_denied", "Pemakai tidak boleh memakai nomor ini.");

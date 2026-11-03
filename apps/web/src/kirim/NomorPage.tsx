@@ -1,12 +1,15 @@
-import { AlertTriangle, History, Pause, Play, Plus, PlugZap, Power, QrCode, RefreshCw, Settings2, Unplug } from "lucide-react";
+import { AlertTriangle, History, Link2, Pause, Play, Plus, PlugZap, Power, QrCode, RefreshCw, Settings2, Unplug } from "lucide-react";
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 
+import { applicationAppearance } from "@/components/applicationAppearance";
 import {
   kirimFetch,
   KirimRequestError,
   type KirimConsumer,
   type KirimDevice,
   type KirimDeviceList,
+  type KirimModuleCard,
+  type KirimModuleList,
   type LiveStatus,
   type PairingResult,
 } from "@/kirim/api";
@@ -17,13 +20,15 @@ export type NomorState =
   | { status: "loading" }
   | { status: "error" }
   | { status: "forbidden" }
-  | { status: "ready"; list: KirimDeviceList; consumers: KirimConsumer[] };
+  | { status: "ready"; list: KirimModuleList; consumers: KirimConsumer[] };
 
 type Dialog =
   | { kind: "disconnect" | "deactivate" | "pause" | "resume"; device: KirimDevice }
   | { kind: "edit"; device: KirimDevice }
   | { kind: "pair"; device: KirimDevice }
-  | { kind: "add" };
+  | { kind: "tambah"; card: KirimModuleCard }
+  | { kind: "ubah-pemakai"; card: KirimModuleCard }
+  | { kind: "putuskan-modul"; card: KirimModuleCard };
 
 const POLL_MS = 3_000;
 const POLL_LIMIT_MS = 2 * 60_000;
@@ -33,6 +38,7 @@ function messageFor(error: unknown): string {
   return "Kirim SQ sedang tidak dapat dihubungi. Coba lagi.";
 }
 
+/** KIRIM-IMPL-003: the Kirim SQ home page, one card per module that may use WhatsApp. */
 export function NomorPage({ preview }: { preview?: NomorState }) {
   const [state, setState] = useState<NomorState>(preview ?? { status: "loading" });
   const [dialog, setDialog] = useState<Dialog | null>(null);
@@ -43,7 +49,7 @@ export function NomorPage({ preview }: { preview?: NomorState }) {
     if (preview) return;
     try {
       const [list, consumers] = await Promise.all([
-        kirimFetch<KirimDeviceList>("/devices"),
+        kirimFetch<KirimModuleList>("/modules"),
         kirimFetch<{ consumers: KirimConsumer[] }>("/consumers"),
       ]);
       setState({ status: "ready", list, consumers: consumers.consumers });
@@ -56,12 +62,12 @@ export function NomorPage({ preview }: { preview?: NomorState }) {
     void load();
   }, [load]);
 
-  const run = async (task: () => Promise<unknown>) => {
+  const run = async <T,>(task: () => Promise<T>, next?: (result: T) => Dialog | null) => {
     setBusy(true);
     setError(null);
     try {
-      await task();
-      setDialog(null);
+      const result = await task();
+      setDialog(next ? next(result) : null);
       await load();
     } catch (failure) {
       setError(messageFor(failure));
@@ -75,21 +81,26 @@ export function NomorPage({ preview }: { preview?: NomorState }) {
     setError(null);
   };
 
+  const shared = (device: KirimDevice) =>
+    state.status === "ready" ? state.list.modules.find((card) => card.peran === "pemilik" && card.nomor?.kode === device.kode)?.dipakai_juga_oleh ?? [] : [];
+
   return (
     <>
       <NomorView state={state} onOpen={(next) => { setError(null); setDialog(next); }} onRetry={() => { setState({ status: "loading" }); void load(); }} />
       {dialog?.kind === "disconnect" ? (
-        <ReasonDialog title={`Putuskan ${dialog.device.label}?`} body="Sesi WhatsApp di mesin dilepas. Nomor perlu dipasang ulang sebelum bisa mengirim lagi." confirmLabel="Putuskan" danger busy={busy} error={error} onClose={close}
+        <ReasonDialog title={`Putuskan ${dialog.device.label}?`} body={sharedBody(shared(dialog.device), "Sesi WhatsApp di mesin dilepas. Nomor perlu dipasang ulang sebelum bisa mengirim lagi.")} confirmLabel="Putuskan" danger busy={busy} error={error} onClose={close}
           onConfirm={(alasan) => void run(() => kirimFetch(`/devices/${dialog.device.kode}/disconnect`, { method: "POST", body: { alasan } }))} />
       ) : null}
       {dialog?.kind === "deactivate" ? (
-        <ReasonDialog title={`Nonaktifkan ${dialog.device.label}?`} body="Permintaan kirim baru untuk nomor ini ditolak. Antrean yang ada tidak dihapus." confirmLabel="Nonaktifkan" danger busy={busy} error={error} onClose={close}
+        <ReasonDialog title={`Nonaktifkan ${dialog.device.label}?`} body={sharedBody(shared(dialog.device), "Permintaan kirim baru untuk nomor ini ditolak. Antrean yang ada tidak dihapus.")} confirmLabel="Nonaktifkan" danger busy={busy} error={error} onClose={close}
           onConfirm={(alasan) => void run(() => kirimFetch(`/devices/${dialog.device.kode}/deactivate`, { method: "POST", body: { alasan } }))} />
       ) : null}
       {dialog?.kind === "pause" || dialog?.kind === "resume" ? (
         <ReasonDialog
           title={dialog.kind === "pause" ? `Jeda antrean ${dialog.device.label}?` : `Lanjutkan antrean ${dialog.device.label}?`}
-          body={dialog.kind === "pause" ? "Pesan tetap diterima dan menunggu di antrean sampai dilanjutkan." : "Pesan yang menunggu akan dikirim lagi sesuai jam kirim dan batas laju."}
+          body={dialog.kind === "pause"
+            ? `Pesan tetap diterima dan menunggu di antrean sampai dilanjutkan.${shared(dialog.device).length > 0 ? ` Antrean ${shared(dialog.device).join(", ")} ikut berhenti.` : ""}`
+            : "Pesan yang menunggu akan dikirim lagi sesuai jam kirim dan batas laju."}
           confirmLabel={dialog.kind === "pause" ? "Jeda antrean" : "Lanjutkan antrean"}
           busy={busy}
           error={error}
@@ -98,52 +109,90 @@ export function NomorPage({ preview }: { preview?: NomorState }) {
           onConfirm={(alasan) => void run(() => kirimFetch(`/devices/${dialog.device.kode}/${dialog.kind}`, { method: "POST", body: alasan ? { alasan } : {} }))}
         />
       ) : null}
+      {dialog?.kind === "putuskan-modul" && dialog.card.nomor ? (
+        <ReasonDialog
+          title={`Putuskan ${dialog.card.nama} dari ${dialog.card.nomor.label}?`}
+          body={`${dialog.card.nama} berhenti mengirim lewat nomor ini. Nomor tetap tersambung dan ${dialog.card.pemilik_nomor ?? "pemiliknya"} tetap mengirim seperti biasa.`}
+          confirmLabel={`Putuskan dari ${dialog.card.nama}`}
+          danger
+          busy={busy}
+          error={error}
+          onClose={close}
+          onConfirm={(alasan) => void run(() => kirimFetch(`/modules/${dialog.card.application_key}/putuskan`, { method: "POST", body: { alasan } }))}
+        />
+      ) : null}
       {dialog?.kind === "edit" && state.status === "ready" ? (
         <EditDeviceDialog device={dialog.device} consumers={state.consumers} busy={busy} error={error} onClose={close}
           onSave={(body) => void run(() => kirimFetch(`/devices/${dialog.device.kode}`, { method: "PATCH", body }))} />
       ) : null}
-      {dialog?.kind === "add" && state.status === "ready" ? (
-        <AddDeviceDialog consumers={state.consumers} busy={busy} error={error} onClose={close}
-          onSave={(body) => void run(() => kirimFetch("/devices", { method: "POST", body }))} />
+      {(dialog?.kind === "tambah" || dialog?.kind === "ubah-pemakai") && state.status === "ready" ? (
+        <TambahDialog
+          card={dialog.card}
+          numbers={state.list.devices.filter((device) => device.status !== "nonaktif" && device.kode !== dialog.card.nomor?.kode)}
+          owners={Object.fromEntries(state.list.modules.filter((card) => card.peran === "pemilik" && card.nomor).map((card) => [card.nomor!.kode, card.nama]))}
+          editing={dialog.kind === "ubah-pemakai"}
+          busy={busy}
+          error={error}
+          onClose={close}
+          onNewNumber={() => void run(
+            () => kirimFetch<KirimModuleCard>(`/modules/${dialog.card.application_key}/nomor-baru`, { method: "POST", body: {} }),
+            // Pairing opens right away; a `log` number needs none.
+            (created) => (created.nomor?.provider === "jalurpesan" ? { kind: "pair", device: created.nomor } : null),
+          )}
+          onUseNumber={(device, kodeVerifikasi) => void run(() => kirimFetch(`/modules/${dialog.card.application_key}/pakai-nomor`, { method: "POST", body: { device, kode_verifikasi: kodeVerifikasi } }))}
+        />
       ) : null}
       {dialog?.kind === "pair" ? <PairingDialog device={dialog.device} onClose={() => { close(); void load(); }} /> : null}
     </>
   );
 }
 
+function sharedBody(sharers: string[], body: string): string {
+  return sharers.length > 0
+    ? `Nomor ini masih dipakai ${sharers.join(", ")}. Putuskan modul itu dulu dari kartunya, atau pindahkan pemilik nomor lewat Ubah. Untuk menghentikan semua pengiriman sementara, pakai Jeda antrean.`
+    : body;
+}
+
 export function NomorView({ state, onOpen, onRetry }: { state: NomorState; onOpen: (dialog: Dialog) => void; onRetry: () => void }) {
+  const cardNumbers = state.status === "ready"
+    ? new Set(state.list.modules.filter((card) => card.peran === "pemilik").map((card) => card.nomor?.kode))
+    : new Set<string | undefined>();
+  const others = state.status === "ready" ? state.list.devices.filter((device) => !cardNumbers.has(device.kode)) : [];
   return (
     <>
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <h1 className="font-display text-2xl font-bold tracking-[-0.025em] text-brand-heading">Nomor WhatsApp</h1>
-          <p className="mt-1 text-sm text-muted-foreground">Nomor milik modul, status sambungan, dan antrean otomatis.</p>
-        </div>
-        {state.status === "ready" ? (
-          <button type="button" className={primaryButton} onClick={() => onOpen({ kind: "add" })}>
-            <Plus className="h-4 w-4" aria-hidden="true" /> Tambah nomor
-          </button>
-        ) : null}
+      <div>
+        <h1 className="font-display text-2xl font-bold tracking-[-0.025em] text-brand-heading">WhatsApp modul</h1>
+        <p className="mt-1 text-sm text-muted-foreground">Satu kartu untuk setiap modul SQ Core yang bisa memakai WhatsApp.</p>
       </div>
 
       <div className="mt-5 space-y-4">
-        {state.status === "loading" ? <StateCard kind="loading" title="Memuat nomor" /> : null}
+        {state.status === "loading" ? <StateCard kind="loading" title="Memuat modul" /> : null}
         {state.status === "error" ? (
-          <StateCard kind="error" title="Nomor belum dapat dimuat" body="Kirim SQ sedang tidak dapat dihubungi." action={<button type="button" className={secondaryButton} onClick={onRetry}><RefreshCw className="h-4 w-4" aria-hidden="true" /> Coba lagi</button>} />
+          <StateCard kind="error" title="Modul belum dapat dimuat" body="Kirim SQ sedang tidak dapat dihubungi." action={<button type="button" className={secondaryButton} onClick={onRetry}><RefreshCw className="h-4 w-4" aria-hidden="true" /> Coba lagi</button>} />
         ) : null}
         {state.status === "forbidden" ? <StateCard kind="forbidden" title="Anda belum ditetapkan sebagai pengelola Kirim SQ" /> : null}
         {state.status === "ready" ? (
           <>
             <Warnings list={state.list} />
-            {state.list.devices.length === 0 ? (
-              <StateCard kind="empty" title="Belum ada nomor" body="Tambahkan nomor pertama, mulai dengan provider log supaya modul bisa menguji tanpa mengirim." />
+            {state.list.modules.length === 0 ? (
+              <StateCard kind="empty" title="Belum ada modul yang memakai WhatsApp" body="Modul muncul di sini begitu ditandai bisa memakai WhatsApp di registry aplikasi SQ Hub." />
             ) : (
-              <ul className="grid gap-4 lg:grid-cols-2">
-                {state.list.devices.map((device) => (
-                  <li key={device.kode}><DeviceCard device={device} onOpen={onOpen} /></li>
+              <ul className="grid gap-4 lg:grid-cols-2 xl:grid-cols-3">
+                {state.list.modules.map((card) => (
+                  <li key={card.application_key}><ModuleCard card={card} onOpen={onOpen} /></li>
                 ))}
               </ul>
             )}
+            {others.length > 0 ? (
+              <section aria-labelledby="nomor-lain" className="pt-2">
+                <h2 id="nomor-lain" className="font-display text-lg font-bold text-brand-heading">Nomor tanpa kartu modul</h2>
+                <ul className="mt-3 grid gap-4 lg:grid-cols-2">
+                  {others.map((device) => (
+                    <li key={device.kode}><DeviceCard device={device} onOpen={onOpen} /></li>
+                  ))}
+                </ul>
+              </section>
+            ) : null}
           </>
         ) : null}
       </div>
@@ -151,7 +200,173 @@ export function NomorView({ state, onOpen, onRetry }: { state: NomorState; onOpe
   );
 }
 
+function ModuleIcon({ applicationKey, large = false }: { applicationKey: string; large?: boolean }) {
+  const { icon: Icon, tile } = applicationAppearance(applicationKey);
+  return (
+    <span className={`grid shrink-0 place-items-center rounded-xl ${tile} ${large ? "h-12 w-12" : "h-10 w-10"}`}>
+      <Icon className={large ? "h-6 w-6" : "h-5 w-5"} aria-hidden="true" />
+    </span>
+  );
+}
+
+export function ModuleCard({ card, onOpen }: { card: KirimModuleCard; onOpen: (dialog: Dialog) => void }) {
+  const device = card.nomor;
+  if (card.peran === "kosong" || !device) {
+    return (
+      <div className="flex h-full min-h-56 flex-col items-center justify-center gap-3 rounded-2xl border-2 border-dashed border-border bg-surface p-5 text-center">
+        <ModuleIcon applicationKey={card.application_key} large />
+        <div>
+          <h2 className="font-display text-lg font-bold text-brand-heading">{card.nama}</h2>
+          <p className="mt-0.5 text-sm text-muted-foreground">Belum memakai WhatsApp</p>
+        </div>
+        <button type="button" className={primaryButton} onClick={() => onOpen({ kind: "tambah", card })}>
+          <Plus className="h-4 w-4" aria-hidden="true" /> Tambah WhatsApp
+        </button>
+      </div>
+    );
+  }
+  const owner = card.peran === "pemilik";
+  const inactive = device.status === "nonaktif";
+  return (
+    <Panel className="h-full">
+      <div className="flex items-start gap-3">
+        <ModuleIcon applicationKey={card.application_key} />
+        <div className="min-w-0 flex-1">
+          <h2 className="truncate font-display text-lg font-bold text-brand-heading">{card.nama}</h2>
+          <p className="mt-0.5 text-xs text-muted-foreground">{owner ? `Pemilik ${device.label}` : `Memakai nomor milik ${card.pemilik_nomor ?? device.pemilik}`}</p>
+        </div>
+        <span className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-bold ${deviceStatusTone[device.status]}`}>{deviceStatusLabel[device.status]}</span>
+      </div>
+      {owner && card.dipakai_juga_oleh.length > 0 ? (
+        <p className="mt-3 rounded-xl bg-info-soft px-3 py-2 text-sm text-info-ink">Dipakai juga oleh <strong>{card.dipakai_juga_oleh.join(", ")}</strong></p>
+      ) : null}
+      {!owner ? (
+        <p className="mt-3 rounded-xl bg-info-soft px-3 py-2 text-sm text-info-ink">Nomor bersama. Jam kirim, laju, dan jeda diatur dari kartu <strong>{card.pemilik_nomor ?? device.pemilik}</strong>.</p>
+      ) : null}
+      <dl className="mt-3 grid grid-cols-2 gap-x-3 gap-y-2 text-sm">
+        <div><dt className="text-xs text-muted-foreground">Nomor</dt><dd className="font-semibold">{device.nomor_tersamar ?? "—"}</dd></div>
+        {owner ? (
+          <div>
+            <dt className="text-xs text-muted-foreground">Provider</dt>
+            <dd className="flex flex-wrap items-center gap-1.5 font-semibold">
+              {device.provider}
+              {device.provider === "log" ? <span className="rounded-full bg-warning-soft px-2 py-0.5 text-[11px] font-bold text-warning-ink">Uji — tidak mengirim</span> : null}
+            </dd>
+          </div>
+        ) : (
+          <div><dt className="text-xs text-muted-foreground">Boleh mengirim</dt><dd className="font-semibold">{card.jenis.map((jenis) => (jenis === "kode" ? "kode verifikasi" : "notifikasi")).join(", ") || "—"}</dd></div>
+        )}
+        <div><dt className="text-xs text-muted-foreground">Antrean {card.nama}</dt><dd className="font-semibold">{card.antrean.antre} antre · {card.antrean.gagal_hari_ini} gagal hari ini{device.antrean_dijeda ? " · dijeda" : ""}</dd></div>
+        <div><dt className="text-xs text-muted-foreground">Jam kirim · laju</dt><dd className="font-semibold">{device.jam_kirim_mulai}–{device.jam_kirim_selesai} WIB · {device.rate_per_menit}/menit</dd></div>
+      </dl>
+      <div className="mt-4 flex flex-wrap gap-2">
+        {owner ? (
+          <OwnerActions device={device} inactive={inactive} onOpen={onOpen} />
+        ) : (
+          <>
+            <button type="button" className={secondaryButton} onClick={() => onOpen({ kind: "ubah-pemakai", card })}><Settings2 className="h-4 w-4" aria-hidden="true" /> Ubah</button>
+            <button type="button" className={dangerButton} onClick={() => onOpen({ kind: "putuskan-modul", card })}><Unplug className="h-4 w-4" aria-hidden="true" /> Putuskan dari {card.nama}</button>
+          </>
+        )}
+      </div>
+    </Panel>
+  );
+}
+
+function OwnerActions({ device, inactive, onOpen }: { device: KirimDevice; inactive: boolean; onOpen: (dialog: Dialog) => void }) {
+  return (
+    <>
+      {device.provider === "jalurpesan" && !inactive && device.status !== "tersambung" ? (
+        <button type="button" className={secondaryButton} onClick={() => onOpen({ kind: "pair", device })}><QrCode className="h-4 w-4" aria-hidden="true" /> Pasang</button>
+      ) : null}
+      <button type="button" className={secondaryButton} onClick={() => onOpen({ kind: "edit", device })}><Settings2 className="h-4 w-4" aria-hidden="true" /> Ubah</button>
+      {!inactive ? (
+        <a className={secondaryButton} href={`/impor?nomor=${encodeURIComponent(device.kode)}`}><History className="h-4 w-4" aria-hidden="true" /> Impor riwayat</a>
+      ) : null}
+      {!inactive ? (
+        <button type="button" className={secondaryButton} onClick={() => onOpen({ kind: device.antrean_dijeda ? "resume" : "pause", device })}>
+          {device.antrean_dijeda ? <Play className="h-4 w-4" aria-hidden="true" /> : <Pause className="h-4 w-4" aria-hidden="true" />}
+          {device.antrean_dijeda ? "Lanjutkan antrean" : "Jeda antrean"}
+        </button>
+      ) : null}
+      {device.provider === "jalurpesan" && !inactive && device.status !== "belum_dipasang" ? (
+        <button type="button" className={dangerButton} onClick={() => onOpen({ kind: "disconnect", device })}><Unplug className="h-4 w-4" aria-hidden="true" /> Putuskan</button>
+      ) : null}
+      {!inactive ? (
+        <button type="button" className={dangerButton} onClick={() => onOpen({ kind: "deactivate", device })}><Power className="h-4 w-4" aria-hidden="true" /> Nonaktifkan</button>
+      ) : null}
+    </>
+  );
+}
+
+/**
+ * "+ Tambah WhatsApp": a new number (Kirim SQ picks its code, label and tenant, then pairing
+ * opens on the card) or an active number of another module. Nothing technical is typed.
+ */
+export function TambahDialog({ card, numbers, owners = {}, editing, busy, error, onClose, onNewNumber, onUseNumber }: {
+  card: KirimModuleCard;
+  numbers: KirimDevice[];
+  /** Number code → the owning module's name, so the list says "milik HCIS", not a consumer id. */
+  owners?: Record<string, string>;
+  editing: boolean;
+  busy: boolean;
+  error: string | null;
+  onClose: () => void;
+  onNewNumber: () => void;
+  onUseNumber: (device: string, kodeVerifikasi: boolean) => void;
+}) {
+  const [mode, setMode] = useState<"baru" | "pakai">(editing ? "pakai" : "baru");
+  const [device, setDevice] = useState(editing ? card.nomor?.kode ?? "" : numbers[0]?.kode ?? "");
+  const [kode, setKode] = useState(editing ? card.jenis.includes("kode") : false);
+  const choices = editing && card.nomor ? [card.nomor] : numbers;
+  const option = "flex gap-3 rounded-xl border p-3 text-sm";
+  return (
+    <DialogFrame title={editing ? `Ubah ${card.nama}` : `Tambah WhatsApp untuk ${card.nama}`}>
+      {!editing ? <p className="mt-1.5 text-sm text-muted-foreground">Pilih salah satu. Kode nomor, identitas modul, dan kunci webhook disiapkan otomatis.</p> : null}
+      <div className="mt-3 space-y-3">
+        {!editing ? (
+          <label className={`${option} ${mode === "baru" ? "border-brand-primary bg-brand-primary-pale/40" : "border-border"}`}>
+            <input type="radio" name="cara" className="mt-1" checked={mode === "baru"} onChange={() => setMode("baru")} />
+            <span><strong>Sambungkan nomor baru</strong><br /><span className="text-muted-foreground">Nomor ini menjadi milik {card.nama}; balasan masuk ke {card.nama}. Setelah dibuat, pindai QR langsung terbuka.</span></span>
+          </label>
+        ) : null}
+        {!editing ? (
+          <label className={`${option} ${mode === "pakai" ? "border-brand-primary bg-brand-primary-pale/40" : "border-border"}`}>
+            <input type="radio" name="cara" className="mt-1" checked={mode === "pakai"} disabled={numbers.length === 0} onChange={() => setMode("pakai")} />
+            <span><strong>Pakai nomor yang sudah aktif</strong><br /><span className="text-muted-foreground">{numbers.length === 0 ? "Belum ada nomor aktif." : `${card.nama} ikut mengirim lewat nomor modul lain. Balasan tetap masuk ke pemilik nomor.`}</span></span>
+          </label>
+        ) : null}
+        {mode === "pakai" && choices.length > 0 ? (
+          <fieldset className="space-y-2 rounded-xl border border-border p-3 text-sm">
+            <legend className="px-1 text-xs font-bold text-brand-heading">Nomor aktif</legend>
+            {choices.map((item) => (
+              <label key={item.kode} className="flex items-center gap-2">
+                <input type="radio" name="nomor" checked={device === item.kode} disabled={editing} onChange={() => setDevice(item.kode)} />
+                <span>{item.label} · {item.nomor_tersamar ?? deviceStatusLabel[item.status]} · milik {owners[item.kode] ?? item.pemilik}</span>
+              </label>
+            ))}
+            <label className="flex items-center gap-2 pt-1">
+              <input type="checkbox" checked={kode} onChange={(event) => setKode(event.target.checked)} />
+              <span>Boleh juga mengirim kode verifikasi (tanpa batas jam kirim)</span>
+            </label>
+          </fieldset>
+        ) : null}
+      </div>
+      {error ? <p role="alert" className="mt-3 rounded-xl bg-danger-soft px-3 py-2 text-sm text-danger-ink">{error}</p> : null}
+      <div className="mt-4 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+        <button type="button" className={secondaryButton} onClick={onClose} disabled={busy}>Batal</button>
+        {mode === "baru" ? (
+          <button type="button" className={primaryButton} disabled={busy} onClick={onNewNumber}><Plus className="h-4 w-4" aria-hidden="true" /> Buat nomor {card.nama}</button>
+        ) : (
+          <button type="button" className={primaryButton} disabled={busy || !device} onClick={() => onUseNumber(device, kode)}><Link2 className="h-4 w-4" aria-hidden="true" /> {editing ? "Simpan" : "Sambungkan"}</button>
+        )}
+      </div>
+    </DialogFrame>
+  );
+}
+
 function Warnings({ list }: { list: KirimDeviceList }) {
+
   if (list.peringatan.terputus.length === 0 && list.peringatan.webhook_habis === 0) return null;
   return (
     <div role="status" className="flex gap-3 rounded-2xl border border-warning-ink/20 bg-warning-soft p-4 text-sm text-warning-ink">
@@ -223,39 +438,6 @@ function DialogFrame({ title, children }: { title: string; children: ReactNode }
         {children}
       </div>
     </div>
-  );
-}
-
-function AddDeviceDialog({ consumers, busy, error, onClose, onSave }: { consumers: KirimConsumer[]; busy: boolean; error: string | null; onClose: () => void; onSave: (body: Record<string, unknown>) => void }) {
-  const [form, setForm] = useState({ kode: "", label: "", pemilik: consumers[0]?.nama ?? "", provider: "log", provider_ref: "" });
-  const valid = /^[a-z][a-z0-9-]{1,30}$/.test(form.kode) && form.label.trim() && form.pemilik && (form.provider === "log" || form.provider_ref.trim());
-  return (
-    <DialogFrame title="Tambah nomor">
-      <div className="mt-3 space-y-3">
-        <Field label="Kode" helper="Huruf kecil, angka, atau tanda hubung. Contoh: hcis, spmb."><input className="sq-admin-input" value={form.kode} onChange={(event) => setForm({ ...form, kode: event.target.value.trim() })} /></Field>
-        <Field label="Label"><input className="sq-admin-input" value={form.label} onChange={(event) => setForm({ ...form, label: event.target.value })} /></Field>
-        <Field label="Modul pemilik">
-          <select className="sq-admin-input" value={form.pemilik} onChange={(event) => setForm({ ...form, pemilik: event.target.value })}>
-            {consumers.map((consumer) => <option key={consumer.nama} value={consumer.nama}>{consumer.nama}</option>)}
-          </select>
-        </Field>
-        <Field label="Provider" helper="Mulai dengan log: tidak mengirim apa pun, aman untuk uji modul.">
-          <select className="sq-admin-input" value={form.provider} onChange={(event) => setForm({ ...form, provider: event.target.value })}>
-            <option value="log">log (uji, tidak mengirim)</option>
-            <option value="jalurpesan">jalurpesan</option>
-          </select>
-        </Field>
-        {form.provider === "jalurpesan" ? <Field label="Tenant JalurPesan"><input className="sq-admin-input" value={form.provider_ref} onChange={(event) => setForm({ ...form, provider_ref: event.target.value.trim() })} /></Field> : null}
-      </div>
-      {error ? <p role="alert" className="mt-3 rounded-xl bg-danger-soft px-3 py-2 text-sm text-danger-ink">{error}</p> : null}
-      <div className="mt-4 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-        <button type="button" className={secondaryButton} onClick={onClose} disabled={busy}>Batal</button>
-        <button type="button" className={primaryButton} disabled={busy || !valid} onClick={() => onSave({
-          kode: form.kode, label: form.label.trim(), pemilik: form.pemilik, provider: form.provider,
-          ...(form.provider === "jalurpesan" ? { provider_ref: form.provider_ref } : {}),
-        })}>Simpan</button>
-      </div>
-    </DialogFrame>
   );
 }
 

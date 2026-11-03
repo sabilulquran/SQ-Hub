@@ -225,6 +225,12 @@ describe("KIRIM-IMPL-001 configuration and boundaries", () => {
     expect(config).toMatchObject({ tokenAudience: "sq-hub-kirim", workerIntervalMs: 2000, eventPullIntervalMs: 60000, inboundMediaMaxBytes: 16 * 1024 * 1024, jalurpesan: null, admin: null });
   });
 
+  it("KIRIM-IMPL-003 K-1: accepts several token audiences from one comma-separated value", () => {
+    const base = { KIRIM_ENABLED: "true", KIRIM_DATA_KEYS: dataKey, KIRIM_LOOKUP_KEY: lookup, KIRIM_MEDIA_ROOT: "/tmp/kirim" };
+    expect(loadKirimConfig({ ...base, KIRIM_TOKEN_AUDIENCE: "sq-hub-kirim, sq-hub-api,sq-hub-kirim" })?.tokenAudience).toEqual(["sq-hub-kirim", "sq-hub-api"]);
+    expect(() => loadKirimConfig({ ...base, KIRIM_TOKEN_AUDIENCE: " , " })).toThrow(/at least one audience/);
+  });
+
   it("validates data key entries", () => {
     expect(() => parseDataKeys("k1:short")).toThrow(/32 bytes/);
     expect(() => parseDataKeys(`${dataKey},${dataKey}`)).toThrow(/duplicated/);

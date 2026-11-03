@@ -9,6 +9,7 @@ import { HubAuthService, type HubAuthRuntime } from "../hub-auth/service.js";
 import { HubTokenVault } from "../hub-auth/token-vault.js";
 import { PgHubWorkspaceRepository, type HubWorkspaceApplicationSource } from "../hub-auth/workspace-repository.js";
 import { KirimAdminService } from "./admin.js";
+import { KirimModuleCards } from "./cards.js";
 import type { KirimConfig } from "./config.js";
 import { KirimConversations } from "./conversations.js";
 import { KirimHistoryImport } from "./history-import.js";
@@ -39,6 +40,7 @@ export interface KirimModule {
   conversations: KirimConversations;
   history: KirimHistoryImport;
   admin: KirimAdminService;
+  cards: KirimModuleCards;
   worker: KirimSendWorker;
   webhooks: KirimWebhookSender;
   ingest?: KirimIngest;
@@ -97,6 +99,7 @@ export function createKirimModule(input: {
     ? new KirimIngest(pool, crypto, service, providers.jalurpesan, { inboundMediaMaxBytes: config.inboundMediaMaxBytes, log })
     : undefined;
   const admin = new KirimAdminService(pool, crypto, service, providers, ingest);
+  const cards = new KirimModuleCards(pool, crypto, admin, providers);
   const history = new KirimHistoryImport(pool, crypto, service, providers, {
     enabled: config.historyImportEnabled ?? false,
     inboundMediaMaxBytes: config.inboundMediaMaxBytes,
@@ -145,12 +148,14 @@ export function createKirimModule(input: {
     conversations,
     history,
     admin,
+    cards,
     worker,
     webhooks,
     ...(ingest ? { ingest } : {}),
     register(app) {
       registerKirimInternalRoutes(app, {
         service,
+        cards,
         conversations,
         verifyMachineToken,
         ...(ingest ? { ingest } : {}),
@@ -163,6 +168,7 @@ export function createKirimModule(input: {
           auth: adminAuth,
           access: input.access,
           admin,
+          cards,
           history,
           publicOrigin: config.admin.publicOrigin,
           launcher: { applications: workspaceApplications, ...(input.hubOrigin ? { hubOrigin: input.hubOrigin } : {}) },
