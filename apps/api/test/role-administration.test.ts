@@ -436,6 +436,39 @@ describe("H-1/H-1b/H-2: the Platform Administrator's command to HCIS", () => {
     await app.close();
   });
 
+  it("passes the HCIS ORG-013 target type and end-date rule through to the browser", async () => {
+    const organCatalog = {
+      roles: [{ ...catalogBody.roles[0]!, targetPrincipalTypes: ["FOUNDATION_BOARD"], endDateRequired: true }],
+    };
+    const { app } = harness({
+      hcis: (request) => {
+        const path = request.url.pathname.replace(new URL(channelPrefix).pathname, "");
+        if (request.method === "GET" && path === "catalog") return json(organCatalog);
+        if (request.method === "GET" && path === "accounts") {
+          const body = lookupBody(ACCOUNT_B);
+          return json({ ...body, account: { ...body.account, principalType: "FOUNDATION_BOARD" } });
+        }
+        return undefined;
+      },
+    });
+    const catalog = await app.inject({ method: "GET", url: "/admin/hcis-roles/catalog", headers: { cookie: "sq_hub_session=cookie-admin" } });
+    expect(catalog.json()).toEqual(organCatalog);
+    const lookup = await app.inject({ method: "GET", url: "/admin/hcis-roles/staff/employee-b", headers: { cookie: "sq_hub_session=cookie-admin" } });
+    expect(lookup.json()).toMatchObject({ account: { accountId: ACCOUNT_B, principalType: "FOUNDATION_BOARD" } });
+    await app.close();
+  });
+
+  it("refuses an HCIS answer with an unknown target type", async () => {
+    const { app } = harness({
+      hcis: (request) => request.method === "GET" && request.url.pathname.endsWith("catalog")
+        ? json({ roles: [{ ...catalogBody.roles[0]!, targetPrincipalTypes: ["SUPER_ADMIN"] }] })
+        : undefined,
+    });
+    const catalog = await app.inject({ method: "GET", url: "/admin/hcis-roles/catalog", headers: { cookie: "sq_hub_session=cookie-admin" } });
+    expect(catalog.statusCode).toBeGreaterThanOrEqual(500);
+    await app.close();
+  });
+
   it("reads the catalog from HCIS as it comes (H-1, AC 2)", async () => {
     const { app, keycloak, hcis } = harness();
     const response = await app.inject({ method: "GET", url: "/admin/hcis-roles/catalog", headers: { cookie: "sq_hub_session=cookie-admin" } });

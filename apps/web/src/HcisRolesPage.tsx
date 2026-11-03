@@ -112,7 +112,12 @@ export function HcisRolesPage({ workspace, onLogout, onAuthorizationDenied }: Pr
 
   useEffect(() => { void loadCatalog(); }, [loadCatalog]);
 
-  const roles = catalog.status === "ready" ? catalog.roles : [];
+  // HCIS ORG-013-2: an organ account holds only the roles HCIS marks for it, and an employee none
+  // of those. HCIS refuses the wrong pair anyway; filtering here keeps the form from offering it.
+  const targetType = person.status === "ready" ? person.lookup.account.principalType ?? "EMPLOYEE" : "EMPLOYEE";
+  const roles = catalog.status === "ready"
+    ? catalog.roles.filter((entry) => (entry.targetPrincipalTypes ?? ["EMPLOYEE"]).includes(targetType))
+    : [];
   const role = roles.find((entry) => entry.roleId === roleId) ?? null;
   const changeGrant = (apply: () => void) => { apply(); };
 
@@ -155,6 +160,7 @@ export function HcisRolesPage({ workspace, onLogout, onAuthorizationDenied }: Pr
   const grant = () => run(async () => {
     if (person.status !== "ready" || !role) return;
     if (role.mandateRequired && !reason.trim()) { setMessage("Peran ini menuntut mandat. Tulis dasar penugasannya, misalnya nomor SK."); return; }
+    if (role.endDateRequired && !endsOn) { setMessage("Peran ini menuntut tanggal berakhir, yaitu akhir masa jabatan."); return; }
     if (!window.confirm(`Berikan peran ${role.name} kepada ${person.staff.displayName}?`)) return;
     try {
       await adminFetch(`/api/admin/hcis-roles/staff/${encodeURIComponent(person.staff.subject)}/assignments`, {
@@ -243,6 +249,7 @@ export function HcisRolesPage({ workspace, onLogout, onAuthorizationDenied }: Pr
         {person.status === "ready" ? <>
           <h2 className="font-display text-lg font-bold">{person.staff.displayName}</h2>
           {accountWarning ? <p className="mt-2 rounded-xl bg-warning-soft p-3 text-xs text-warning-ink">{accountWarning}</p> : null}
+          {account?.principalType === "FOUNDATION_BOARD" ? <p className="mt-2 rounded-xl bg-brand-primary-pale/50 p-3 text-xs text-brand-primary-deep">Akun Organ Yayasan. HCIS hanya mengizinkan peran yang ditandai untuk organ, dengan nomor SK dan tanggal akhir masa jabatan.</p> : null}
           <h3 className="mt-4 text-xs font-bold uppercase tracking-wide text-muted-foreground">Peran saat ini ({person.lookup.assignments.pagination.total})</h3>
           {person.lookup.assignments.items.length === 0 ? <p className="mt-2 text-sm text-muted-foreground">Belum ada peran HCIS.</p> : <ul className="mt-2 divide-y divide-border/60 rounded-xl border border-border/70">
             {person.lookup.assignments.items.map((assignment) => <li key={assignment.assignmentId} className="flex flex-col gap-2 p-3 text-sm sm:flex-row sm:items-center sm:justify-between">
@@ -272,7 +279,7 @@ export function HcisRolesPage({ workspace, onLogout, onAuthorizationDenied }: Pr
             </select></label>
             {scopeType === "unit" ? <label className="text-xs font-bold">ID unit organisasi<input className={input} value={unitId} onChange={(e) => changeGrant(() => setUnitId(e.target.value))} /></label> : null}
             <label className="text-xs font-bold">Mulai (opsional)<input type="date" className={input} value={startsOn} onChange={(e) => changeGrant(() => setStartsOn(e.target.value))} /></label>
-            <label className="text-xs font-bold">Berakhir (opsional)<input type="date" className={input} value={endsOn} onChange={(e) => changeGrant(() => setEndsOn(e.target.value))} /></label>
+            <label className="text-xs font-bold">{role?.endDateRequired ? "Berakhir (wajib, akhir masa jabatan)" : "Berakhir (opsional)"}<input type="date" className={input} value={endsOn} onChange={(e) => changeGrant(() => setEndsOn(e.target.value))} /></label>
             <label className="text-xs font-bold sm:col-span-2">Mandat / alasan<textarea className={input} value={reason} onChange={(e) => changeGrant(() => setReason(e.target.value))} placeholder="Contoh: SK Ketua Pengurus No. 12/2026" /></label>
           </div>
           <button className={primary} disabled={busy || !role || !person.lookup.account.grantable} onClick={() => void grant()}><KeyRound className="h-4 w-4" /> Berikan peran</button>
