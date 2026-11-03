@@ -325,7 +325,7 @@ Papan yang tumbuh tanpa pencarian akan ditinggalkan dalam enam bulan. Ini bukan 
 | | |
 | --- | --- |
 | **Dicari** | Judul kartu, uraian, isi komentar, nama lampiran, nama butir ceklis |
-| **Batas** | Hanya ruang yang diikuti pengguna. Hasil tidak boleh membocorkan keberadaan kartu di ruang yang tidak diikuti |
+| **Batas** | Hanya ruang yang diikuti pengguna. Hasil tidak boleh membocorkan keberadaan kartu di ruang yang tidak diikuti. Untuk kartu yang diajukan lewat pintu (R2), pengaju hanya mencari judul dan uraiannya sendiri (§6.10 nomor 15) |
 | **Penyaring** | Ruang, papan, label, penanggung jawab, status selesai dan `jenis`-nya, rentang tenggat, termasuk arsip atau tidak |
 | **Mesin** | Pencarian teks penuh PostgreSQL. **Bukan** mesin pencari terpisah — tidak ada proses baru di Mi8 (§4.1) |
 
@@ -376,15 +376,48 @@ Batasnya tiga, supaya tidak menjadi beban:
 
 Sebagian ruang terutama melayani unit lain: Marketing, Komunikasi & Media menerima permintaan desain, liputan, dan publikasi; General Affair menerima permintaan perbaikan; HCM menerima permintaan surat. Di R1, orang yang bukan anggota ruang tidak bisa melihat ruang itu sama sekali (404), jadi permintaan tetap lewat WhatsApp dan diketik ulang oleh anggota ruang.
 
-R2 menambah **pintu permintaan**:
+R2 menambah **pintu permintaan**.
 
-1. **Pintu dibuka oleh penanggung jawab ruang, bukan bawaan.** Satu pintu menunjuk satu papan dan satu kolom masuk, dengan uraian baku yang menjadi isian awal (misalnya *tujuan, kanal, tanggal tayang, bahan*). Satu ruang boleh punya beberapa pintu, misalnya "Desain" dan "Liputan".
-2. **Pengaju adalah siapa pun yang punya Application Access `kerja-sq`.** Ia memilih pintu dari daftar "Ajukan permintaan", mengisi judul, uraian, tanggal yang diminta, dan lampiran. Hasilnya kartu biasa di kolom masuk, dengan `pengaju` tercatat.
-3. **Pengaju hanya melihat kartunya sendiri**: judul, uraian dan lampiran yang ia kirim, kolom tempat kartu berada, penanggung jawab, tenggat yang disepakati, status selesai, dan komentar yang ditujukan kepadanya. Ceklis, label, kartu lain, dan isi ruang tetap tertutup. Aturan 404 untuk bukan anggota tetap berlaku untuk semua itu.
-4. **Komentar punya dua jalur**: *internal ruang* (bawaan) dan *dengan pengaju*. Anggota memilih secara sadar ketika membalas pengaju, supaya diskusi internal tidak bocor.
-5. **Menolak berarti menutup dengan `jenis: batal` dan alasan wajib** yang terlihat oleh pengaju. Tidak ada `jenis` baru.
-6. **Pengaju mengikuti permintaannya dari "Tugas Saya"**, di bagian "Permintaan saya", dan diberi tahu ketika kartu pindah kolom atau ditutup.
-7. Lampiran pengaju masuk kuota ruang tujuan dan tunduk pada batas 25 MB yang sama.
+**Membuka dan mengajukan**
+
+1. **Pintu dibuka oleh penanggung jawab ruang, bukan bawaan.** Satu pintu menunjuk satu papan dan satu kolom masuk, dengan uraian baku yang menjadi isian awal (misalnya *tujuan, kanal, tanggal tayang, bahan*). Satu ruang boleh punya beberapa pintu, misalnya "Desain" dan "Liputan". Nama ruang dan nama pintu yang terbuka memang terlihat oleh semua pemegang akses; itulah tujuannya.
+2. **Pengaju adalah siapa pun yang punya Application Access `kerja-sq`.** Ia memilih pintu dari daftar "Ajukan permintaan", lalu mengisi judul, uraian, tanggal yang diminta, dan lampiran. Hasilnya kartu biasa di kolom masuk, dengan `pengaju` tercatat.
+3. **Server hanya menerima empat isian itu dari pengaju.** Papan dan kolom diambil dari pintu; penanggung jawab, label, `tenggat`, dan posisi diabaikan bila dikirim. Tanggal yang diminta disimpan di `diminta_pada`, bukan di `tenggat`: tenggat, kalender, dan pengingat H−1 tetap ditentukan anggota ruang. Pintu yang nonaktif atau tidak ada menjawab 404.
+4. Pengajuan dan unggahan lampiran oleh pengaju dibatasi jumlahnya per pengaju per pintu, supaya kuota ruang tujuan tidak habis oleh satu orang. Batas 25 MB per berkas tetap berlaku.
+
+**Yang dilihat pengaju**
+
+5. **Daftar izin, bukan daftar larangan.** Pengaju menerima satu bentuk respons khusus berisi: judul, uraian dan `diminta_pada` yang ia kirim, status untuk pengaju, penanggung jawab, tenggat yang disepakati, status selesai beserta alasannya, komentar jalur pengaju, dan lampiran yang ditandai untuknya. Selain itu tidak dikirim, termasuk ceklis dan kemajuannya, label, riwayat kartu (§6.9), penanda terbaca, apresiasi (§12.1), `asal`, dan komentar internal.
+6. **Status untuk pengaju bukan nama kolom mentah.** Setiap kolom papan tujuan dipetakan ke salah satu dari *diajukan, diterima, dikerjakan, selesai*, supaya nama kolom internal tidak bocor lewat layar atau notifikasi.
+7. **Uraian pengaju dibekukan setelah diajukan.** Catatan anggota masuk ke komentar internal, tidak menyunting uraian.
+8. **Lampiran** punya tanda `untuk_pengaju`: otomatis `true` untuk unggahan pengaju, dan dipilih sadar oleh anggota ketika menyerahkan hasil kerja. Lampiran butir ceklis tidak pernah terlihat oleh pengaju. Unduh oleh pengaju diizinkan hanya untuk lampiran bertanda itu pada kartunya sendiri; selain itu 404.
+
+**Komentar**
+
+9. **Jalur ditentukan oleh komentar tingkat atas**: *internal ruang* (bawaan) atau *dengan pengaju*. Balasan mewarisi jalur induknya, dan jalur tidak bisa diubah setelah terkirim.
+10. **Pengaju boleh berkomentar, hanya di jalur pengaju**; server memaksa `untuk_pengaju = true` untuk komentarnya. `@sebut` dari pengaju dibatasi ke penanggung jawab kartu, dan pengaju hanya bisa disebut dari komentar jalur pengaju.
+11. Notifikasi untuk pengaju tidak pernah memuat isi komentar internal atau nama kolom internal.
+
+**Penutupan dan keadaan tepi**
+
+12. **Menolak berarti menutup dengan `jenis: batal` dan alasan wajib** yang terlihat oleh pengaju. Tidak ada `jenis` baru. Pengaju boleh membatalkan sendiri selama kartu masih di kolom masuk (§14 nomor 12).
+13. **Pengaju mengikuti permintaannya dari "Tugas Saya"**, di bagian "Permintaan saya", dan diberi tahu ketika status untuk pengaju berubah, kartu ditutup, atau tenggat yang disepakati berubah.
+
+| Keadaan | Aturan |
+| --- | --- |
+| Pengaju kehilangan Application Access | Ditolak di lapisan platform. Kartu tetap ada dan ditandai "pengaju tidak aktif" di layar anggota; notifikasi berhenti |
+| Pintu ditutup | Kartu lama tetap terlihat oleh pengajunya; pengajuan baru 404 |
+| Kartu diarsipkan atau ruang panitia berakhir | Pengaju hanya bisa membaca, dengan status "diarsipkan" |
+| Kartu dipindah ke papan lain di ruang yang sama | Hak pengaju ikut kartu |
+| Kartu dipindah ke ruang lain | Ditolak selama kartu punya pengaju |
+| Kartu disalin (§6.1) | `pengaju` tidak pernah ikut tersalin |
+| Pengaju juga anggota ruang tujuan | Haknya mengikuti keanggotaan |
+| Pengaju juga peninjau ruang tujuan | Tetap hanya baca untuk isi ruang; boleh berkomentar di jalur pengaju pada kartunya sendiri |
+
+**Pencarian dan query**
+
+14. "Permintaan saya" adalah **satu-satunya pengecualian §7.3 nomor 2**: penyaringnya `pengaju = subjek`, bukan ruang, dan diuji tersendiri.
+15. Kartu yang diajukan **tidak ikut pencarian pengaju** kecuali judul dan uraiannya sendiri, sehingga kata yang hanya ada di komentar internal tidak bisa dipakai untuk menebak isinya.
 
 Yang sengaja tidak dibangun: formulir bebas dengan isian bertipe, SLA otomatis, dan permintaan dari luar Kerja SQ (orang tua, calon pendaftar, publik). Untuk yang terakhir sudah ada SPMB dan Kirim SQ.
 
@@ -436,13 +469,16 @@ Tabel berawalan `kerja_`, seluruhnya di basis data SQ Hub (§4.1).
 | `kerja_cetakan` | R2 | ruang, isi kartu baku, jadwal, H−n, aktif (§6.8) |
 | `kerja_pintu` | R2 | ruang, papan, kolom masuk, nama, uraian baku, aktif (§6.10) |
 | `kerja_kartu.pengaju` | R2 | kolom baru, nullable: orang yang mengajukan lewat pintu |
-| `kerja_komentar.untuk_pengaju` | R2 | kolom baru, bawaan `false`: komentar terlihat oleh pengaju |
+| `kerja_kartu.diminta_pada` | R2 | kolom baru, nullable: tanggal yang diminta pengaju, terpisah dari `tenggat` |
+| `kerja_kolom.status_pengaju` | R2 | kolom baru: `diajukan`/`diterima`/`dikerjakan`/`selesai`, untuk papan yang punya pintu |
+| `kerja_lampiran.untuk_pengaju` | R2 | kolom baru, bawaan `false`: lampiran boleh diunduh pengaju |
+| `kerja_komentar.untuk_pengaju` | R2 | kolom baru, bawaan `false`, diwarisi balasan, tidak bisa diubah: komentar jalur pengaju |
 | `kerja_checkin` | R3 | ruang, orang, tanggal, isi |
 
 ### 7.3 Aturan lintas tabel
 
 1. **Tidak ada tabel pengguna.** Identitas selalu subject Akun SQ. Modul ini tidak pernah menyimpan nama, e-mail, atau jabatan sebagai sumber — hanya cache tampilan yang boleh basi dan harus ditandai sebagai cache. Ini yang membedakan modul dari alat adopsi mana pun (§4.4).
-2. **Setiap tabel membawa rujukan ruang**, langsung atau lewat induknya. Query tanpa penyaring ruang tidak boleh ada, karena itulah batas kerahasiaan modul ini.
+2. **Setiap tabel membawa rujukan ruang**, langsung atau lewat induknya. Query tanpa penyaring ruang tidak boleh ada, karena itulah batas kerahasiaan modul ini. Satu-satunya pengecualian adalah "Permintaan saya" di R2, yang menyaring `pengaju = subjek` (§6.10 nomor 14).
 3. **Tidak ada hapus keras** untuk kartu dan komentar. Kartu diarsipkan; komentar ditandai dihapus dan isinya dikosongkan, strukturnya tetap supaya balasannya tidak yatim.
 4. **Lampiran menyimpan kunci penyimpanan, bukan berkasnya.** Tujuan penyimpanannya diputuskan sebelum R1 (§4.3, §14 nomor 4).
 5. **`asal` tidak pernah menyimpan isi milik modul lain**, hanya rujukan dan judul untuk ditampilkan (§10.2).
@@ -552,13 +588,17 @@ Acceptance criteria usulan:
 
 Pengumuman per ruang; apresiasi (§12.1); cetakan kartu berulang (§6.8); penanda terbaca; pencarian lintas ruang; pengingat lewat Kirim SQ; **permintaan ke ruang lain** (§6.10); dan **tampilan kalender** (§6.11).
 
-Acceptance criteria usulan untuk dua tambahan r5:
+Acceptance criteria usulan untuk dua tambahan r5, semuanya dibuktikan dengan uji akses di API, bukan hanya dengan tampilan:
 
-1. Pengaju melihat kartunya sendiri dan tidak bisa membuka kartu lain, ceklis, label, atau berkas ruang tujuan; semuanya menjawab 404.
-2. Komentar internal tidak pernah tampil ke pengaju, dibuktikan dengan uji akses di API, bukan hanya dengan tampilan.
-3. Penolakan permintaan tanpa alasan ditolak sistem.
-4. Menggeser kartu di kalender mengubah tenggat dan tercatat di riwayat.
-5. Kalender dan agenda ponsel menampilkan tanggal yang sama untuk kartu yang tenggatnya dekat tengah malam WIB.
+1. Pengaju melihat kartunya sendiri dan tidak bisa membuka kartu lain, ceklis, label, riwayat, atau berkas ruang tujuan; semuanya 404.
+2. Respons untuk pengaju tidak memuat riwayat, penanda terbaca, apresiasi, `asal`, kemajuan ceklis, atau nama kolom internal.
+3. Komentar internal tidak pernah tampil ke pengaju, juga tidak lewat notifikasi atau pencarian.
+4. Pengaju bisa mengunduh lampiran bertanda `untuk_pengaju` pada kartunya; lampiran lain 404.
+5. Isian selain judul, uraian, `diminta_pada`, dan lampiran yang dikirim pengaju diabaikan; pintu nonaktif 404; akses yang dicabut ditolak di lapisan platform.
+6. Kartu yang dipindah papan di ruang yang sama tetap terlihat oleh pengajunya; pindah ruang ditolak.
+7. Penolakan permintaan tanpa alasan ditolak sistem.
+8. Menggeser kartu di kalender mengubah tenggat, tercatat di riwayat, dan memberi tahu pengaju bila kartu itu punya pengaju. Peninjau tidak bisa menggeser.
+9. Kalender dan agenda ponsel menampilkan tanggal yang sama untuk kartu yang tenggatnya dekat tengah malam WIB.
 
 Prasyarat: Kirim SQ sudah lewat masa trial dan gate memorinya aman.
 
@@ -639,12 +679,12 @@ Dua lapis, dan jangan dicampur.
 | Anggota | Membuat dan mengerjakan kartu, berkomentar |
 | Peninjau | Hanya membaca. Untuk organ dan pengawas |
 
-Tiga catatan:
+Empat catatan:
 
 1. **Tidak meniru enam tingkat peran Cicle.** Yayasan sudah punya hierarki di Directory; menambah hierarki kedua di dalam modul hanya menciptakan dua sumber kebenaran yang bisa berselisih.
 2. **Anggota tidak dibuat baca-saja secara bawaan.** Cicle memilih itu, dan akibatnya setiap penugasan harus lewat admin. Untuk yayasan dengan sedikit admin, itu akan macet.
 3. **Peran ruang tidak diturunkan dari jabatan.** Kepala unit *diusulkan* sebagai penanggung jawab ruang tetap, tetapi pencatatannya tetap eksplisit — alasan yang sama dengan §5.3.
-4. **Pengaju (R2) bukan peran ruang.** Haknya melekat pada kartu yang ia ajukan, bukan pada ruangnya (§6.10). Pemeriksaan aksesnya tetap di sisi server, per kartu.
+4. **Pengaju (R2) bukan peran ruang.** Haknya melekat pada kartu yang ia ajukan, bukan pada ruangnya, dan dibatasi daftar izin di §6.10 nomor 5. Pemeriksaan aksesnya di sisi server, per kartu. Spesifikasi R2 yang menurunkannya wajib melewati satu putaran review keamanan independen.
 
 ## 12. Dua keputusan rancangan yang perlu dijelaskan
 
@@ -749,7 +789,7 @@ Tidak ada yang disalin utuh. Yang diambil polanya.
 | "Tugas Saya" lintas ruang | **Ya** | Wajib bila ruang dibuat sebagai silo |
 | Berbagi dari OS sebagai jalur masuk berkas | **Ditunda** | Baru relevan kalau ada aplikasi ponsel (§14 nomor 7) |
 | Beban kerja dengan satuan bebas | **Ditunda** | Belum ada yang memintanya |
-| Kartu publik untuk non-anggota | **Ditunda** | Tambah permukaan privasi tanpa kebutuhan nyata |
+| Kartu publik untuk non-anggota | **Ditunda** | Tambah permukaan privasi tanpa kebutuhan nyata. Pintu permintaan R2 (§6.10) bukan ini: hanya pengaju yang melihat kartunya |
 | Komentar suara | **Tidak** | Menambah beban penyimpanan dan tidak bisa dicari |
 | Chat grup dan pribadi | **Tidak** | §12.2 |
 | Enam tingkat peran | **Tidak** | Hierarki sudah ada di Directory |
@@ -757,7 +797,7 @@ Tidak ada yang disalin utuh. Yang diambil polanya.
 
 Keluhan nyata pengguna Cicle yang menjadi risiko di §13: geser kartu lambat, kesalahan AM/PM pada agenda, berkas harus diunduh berulang.
 
-Yang **tidak** ada di Cicle dan tetap kita butuhkan: pencarian yang memadai, kartu berulang, riwayat perubahan kartu, dan (sejak r5) pintu permintaan dari ruang lain. Ketiganya tidak muncul di dokumentasi API publiknya. Itu sebagian alasan mengapa penelusuran Lampiran B tetap dikerjakan.
+Yang **tidak** ada di Cicle dan tetap kita butuhkan: pencarian yang memadai, kartu berulang, riwayat perubahan kartu, dan (sejak r5) pintu permintaan dari ruang lain. Keempatnya tidak muncul di dokumentasi API publiknya. Itu sebagian alasan mengapa penelusuran Lampiran B tetap dikerjakan.
 
 ## Lampiran B — Penelusuran alternatif sumber terbuka (2026-10-19)
 
