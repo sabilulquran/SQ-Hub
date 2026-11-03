@@ -305,12 +305,21 @@ export interface HcisRoleCatalogEntry {
   permissions: string[];
   allowedScopes: string[];
   mandateRequired: boolean;
+  /** HCIS ORG-013-2. Absent from older HCIS releases, which only grant to employee accounts. */
+  targetPrincipalTypes?: string[];
+  endDateRequired?: boolean;
 }
 
 /** HUB-IMPL-023 H-1b: one person's HCIS account and role assignments, with no identity data from HCIS. */
 export interface HcisAccountLookup {
   staff: { subject: string; displayName: string; username: string };
-  account: { accountId: string; grantable: boolean; notGrantableReason: "account_inactive" | "employee_inactive" | null };
+  account: {
+    accountId: string;
+    /** HCIS ORG-013-2: an organ account can hold only roles whose targetPrincipalTypes name it. */
+    principalType?: "EMPLOYEE" | "FOUNDATION_BOARD";
+    grantable: boolean;
+    notGrantableReason: "account_inactive" | "employee_inactive" | null;
+  };
   assignments: {
     pagination: { page: number; pageSize: number; total: number; pageCount: number };
     items: Array<{

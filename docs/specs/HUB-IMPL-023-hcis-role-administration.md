@@ -206,6 +206,8 @@ Badan PUT terbukti membawa `resourceType: Users`, 5 scope, dan 1 policy. Itu men
 
 Layar pemberian peran membaca `GET /internal/v1/role-administration/catalog` dan menampilkan apa adanya. Rute itu mengembalikan `roleId`, `roleKey`, `name`, `description`, `permissions[]`, `allowedScopes`, dan `mandateRequired`. **`roleId` yang dikirim kembali pada POST**, bukan `roleKey`.
 
+Sejak HCIS ORG-013-2 (2026-11-03), setiap role juga membawa `targetPrincipalTypes` (`["EMPLOYEE"]`, atau `["FOUNDATION_BOARD"]` khusus `governance_leave_approver`) dan `endDateRequired`. Layar hanya menawarkan role yang `targetPrincipalTypes`-nya memuat `principalType` akun orang yang dipilih, dan menolak mengirim tanpa tanggal berakhir bila `endDateRequired`. Keduanya opsional dalam skema Hub. Bila tidak ada (rilis HCIS lama), role dianggap untuk akun pegawai tanpa kewajiban tanggal berakhir. HCIS tetap menolak kombinasi yang salah dengan `ROLE_TARGET_INVALID`.
+
 **Jangan menyalin daftar peran HCIS ke kode Hub.** Peran HCIS berubah di HCIS; salinan di Hub akan melenceng tanpa ada yang tahu, dan `AGENTS.md` §4 menegaskan ownership data harus eksplisit.
 
 ### H-1b — Orang diterjemahkan menjadi akun HCIS oleh HCIS
@@ -240,7 +242,7 @@ Hub mengenal orang sebagai **subject Keycloak**; HCIS mengenalnya sebagai **id a
 1. **Pembacaan menuntut aktor yang sah memberi peran.** HCIS menjalankan `assertRoleGrantor` juga pada rute ini, jadi aktor yang bukan akun pegawai aktif dijawab `403 ROLE_GRANT_ACTOR_INVALID` **untuk membaca**, bukan hanya untuk menulis. Admin Platform yang tidak punya akun pegawai HCIS tidak dapat memakai layar ini sama sekali; itu konsekuensi ADR-0006 D-3 yang memang disengaja, bukan kerusakan, dan perlu tertulis supaya orang pertama yang menemuinya tidak melaporkannya sebagai bug lalu "memperbaikinya" dengan melonggarkan sesuatu.
 
    Pemeriksaan itu **bukan** gerbang kewenangan. Ia hanya memastikan aktornya pegawai aktif. **H-0 tetap satu-satunya pemeriksaan kewenangan, termasuk untuk membaca** — jangan membaca `assertRoleGrantor` di sisi HCIS sebagai penggantinya.
-2. **`404 ROLE_ADMIN_ACCOUNT_NOT_FOUND` menutupi dua keadaan.** Subject tanpa akun HCIS, dan subject yang akunnya bukan akun pegawai (`FOUNDATION_BOARD`, `SUPER_ADMIN`), dijawab sama. Itu disengaja: `403` akan menjadikan rute ini cara mengetahui subject mana yang memegang akun istimewa. Hub karena itu **tidak boleh** menampilkan "akun ini istimewa" berdasarkan rute ini — informasinya memang tidak tersedia, dan menebaknya dari ketiadaan akan salah untuk orang yang sekadar belum punya akun HCIS.
+2. **`404 ROLE_ADMIN_ACCOUNT_NOT_FOUND` menutupi dua keadaan.** Subject tanpa akun HCIS, dan subject yang akunnya `SUPER_ADMIN`, dijawab sama. (Sejak HCIS ORG-013-2, akun `FOUNDATION_BOARD` dijawab `200` dengan `account.principalType: "FOUNDATION_BOARD"`, agar anggota organ bisa diberi peran penyetuju cuti governance.) Itu disengaja: `403` akan menjadikan rute ini cara mengetahui subject mana yang memegang akun istimewa. Hub karena itu **tidak boleh** menampilkan "akun ini istimewa" berdasarkan rute ini — informasinya memang tidak tersedia, dan menebaknya dari ketiadaan akan salah untuk orang yang sekadar belum punya akun HCIS.
 
 **Alamatnya loopback, bukan URL publik.** `HCIS_ROLE_ADMIN_BASE_URL = http://127.0.0.1:3301`, sejalan dengan arah sebaliknya yang sudah memakai `SQ_HUB_APPLICATION_ACCESS_URL = http://127.0.0.1:3302`.
 

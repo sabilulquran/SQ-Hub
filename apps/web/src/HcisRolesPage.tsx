@@ -28,7 +28,13 @@ const errors: Record<string, string> = {
   INVALID_REQUEST: "Periksa kembali isian.",
   STAFF_NOT_FOUND: "Orang ini tidak ditemukan di Akun SQ.",
   ROLE_ADMIN_SELF_FORBIDDEN: "Anda tidak dapat memberi atau mencabut peran untuk diri sendiri. Minta Admin Platform lain.",
-  ROLE_ADMIN_ACCOUNT_NOT_FOUND: "SQ Hub tidak menemukan akun pegawai HCIS untuk orang ini.",
+  ROLE_ADMIN_ACCOUNT_NOT_FOUND: "SQ Hub tidak menemukan akun HCIS untuk orang ini.",
+  // HCIS ORG-013-2 refusals for organ accounts.
+  ROLE_TARGET_INVALID: "HCIS menolak: peran ini tidak untuk jenis akun orang ini.",
+  ROLE_END_DATE_REQUIRED: "HCIS menolak: peran ini wajib punya tanggal berakhir, yaitu akhir masa jabatan.",
+  ROLE_REASON_REQUIRED: "HCIS menolak: tulis dasar penugasannya, misalnya nomor SK.",
+  ORGAN_ACCOUNT_EMAIL_REQUIRED: "HCIS menolak: akun Organ Yayasan ini belum punya email.",
+  ORGAN_ACCOUNT_IS_EMPLOYEE: "HCIS menolak: email akun organ ini milik pegawai aktif. Pakai akun pegawainya.",
   ROLE_ADMIN_ASSIGNMENT_NOT_FOUND: "Penugasan ini sudah tidak ada pada orang tersebut. Muat ulang daftarnya.",
   ROLE_ADMIN_ASSIGNMENT_NOT_REVOCABLE: "Penugasan ini tidak dapat dicabut lewat SQ Hub.",
   ROLE_ADMIN_INVALID_REQUEST: "HCIS menolak isian ini. Periksa peran, cakupan, unit, dan tanggal.",
@@ -112,7 +118,12 @@ export function HcisRolesPage({ workspace, onLogout, onAuthorizationDenied }: Pr
 
   useEffect(() => { void loadCatalog(); }, [loadCatalog]);
 
-  const roles = catalog.status === "ready" ? catalog.roles : [];
+  // HCIS ORG-013-2: an organ account holds only the roles HCIS marks for it, and an employee none
+  // of those. HCIS refuses the wrong pair anyway; filtering here keeps the form from offering it.
+  const targetType = person.status === "ready" ? person.lookup.account.principalType ?? "EMPLOYEE" : "EMPLOYEE";
+  const roles = catalog.status === "ready"
+    ? catalog.roles.filter((entry) => (entry.targetPrincipalTypes ?? ["EMPLOYEE"]).includes(targetType))
+    : [];
   const role = roles.find((entry) => entry.roleId === roleId) ?? null;
   const changeGrant = (apply: () => void) => { apply(); };
 
@@ -132,6 +143,9 @@ export function HcisRolesPage({ workspace, onLogout, onAuthorizationDenied }: Pr
     if (person.status === "idle" || person.staff.subject !== staff.subject) {
       setGrantRequestId(crypto.randomUUID());
       setRevokeRequestIds({});
+      // The form belongs to one person too: an SK number or a term end must not follow the
+      // operator to the next person, and a role picked for one account type may not exist for the next.
+      setRoleId(""); setScopeType("organization"); setUnitId(""); setReason(""); setStartsOn(""); setEndsOn("");
     }
     setPerson({ status: "loading", staff });
     try {
@@ -155,6 +169,7 @@ export function HcisRolesPage({ workspace, onLogout, onAuthorizationDenied }: Pr
   const grant = () => run(async () => {
     if (person.status !== "ready" || !role) return;
     if (role.mandateRequired && !reason.trim()) { setMessage("Peran ini menuntut mandat. Tulis dasar penugasannya, misalnya nomor SK."); return; }
+    if (role.endDateRequired && !endsOn) { setMessage("Peran ini menuntut tanggal berakhir, yaitu akhir masa jabatan."); return; }
     if (!window.confirm(`Berikan peran ${role.name} kepada ${person.staff.displayName}?`)) return;
     try {
       await adminFetch(`/api/admin/hcis-roles/staff/${encodeURIComponent(person.staff.subject)}/assignments`, {
@@ -239,10 +254,11 @@ export function HcisRolesPage({ workspace, onLogout, onAuthorizationDenied }: Pr
       <section className="rounded-2xl border border-border bg-surface-raised p-5 shadow-sm">
         {person.status === "idle" ? <p className="text-sm text-muted-foreground">Pilih pegawai untuk melihat peran HCIS-nya.</p> : null}
         {person.status === "loading" ? <p className="flex items-center gap-2 text-sm text-muted-foreground"><RefreshCw className="h-4 w-4 animate-spin" /> Membaca akun HCIS {person.staff.displayName}...</p> : null}
-        {person.status === "no_account" ? <p className="text-sm">SQ Hub tidak menemukan akun pegawai HCIS untuk <strong>{person.staff.displayName}</strong>, jadi peran HCIS tidak dapat diberikan dari sini.</p> : null}
+        {person.status === "no_account" ? <p className="text-sm">SQ Hub tidak menemukan akun HCIS untuk <strong>{person.staff.displayName}</strong>, jadi peran HCIS tidak dapat diberikan dari sini.</p> : null}
         {person.status === "ready" ? <>
           <h2 className="font-display text-lg font-bold">{person.staff.displayName}</h2>
           {accountWarning ? <p className="mt-2 rounded-xl bg-warning-soft p-3 text-xs text-warning-ink">{accountWarning}</p> : null}
+          {account?.principalType === "FOUNDATION_BOARD" ? <p className="mt-2 rounded-xl bg-brand-primary-pale/50 p-3 text-xs text-brand-primary-deep">Akun Organ Yayasan. HCIS hanya mengizinkan peran yang ditandai untuk organ, dengan nomor SK dan tanggal akhir masa jabatan.</p> : null}
           <h3 className="mt-4 text-xs font-bold uppercase tracking-wide text-muted-foreground">Peran saat ini ({person.lookup.assignments.pagination.total})</h3>
           {person.lookup.assignments.items.length === 0 ? <p className="mt-2 text-sm text-muted-foreground">Belum ada peran HCIS.</p> : <ul className="mt-2 divide-y divide-border/60 rounded-xl border border-border/70">
             {person.lookup.assignments.items.map((assignment) => <li key={assignment.assignmentId} className="flex flex-col gap-2 p-3 text-sm sm:flex-row sm:items-center sm:justify-between">
@@ -266,13 +282,14 @@ export function HcisRolesPage({ workspace, onLogout, onAuthorizationDenied }: Pr
               <option value="">Pilih peran</option>
               {roles.map((entry) => <option key={entry.roleId} value={entry.roleId}>{entry.name}</option>)}
             </select></label>
+            {roles.length === 0 ? <p className="text-xs text-muted-foreground sm:col-span-2">HCIS tidak menerbitkan peran untuk jenis akun ini.</p> : null}
             {role ? <p className="text-xs leading-5 text-muted-foreground sm:col-span-2">{role.description ?? "HCIS tidak menyertakan keterangan."} {role.permissions.length} izin.{role.mandateRequired ? " Menuntut mandat." : ""}</p> : null}
             <label className="text-xs font-bold">Cakupan<select className={input} value={scopeType} onChange={(e) => changeGrant(() => setScopeType(e.target.value))} disabled={!role}>
               {(role?.allowedScopes ?? ["organization"]).map((scope) => <option key={scope} value={scope}>{scopeLabels[scope] ?? scope}</option>)}
             </select></label>
             {scopeType === "unit" ? <label className="text-xs font-bold">ID unit organisasi<input className={input} value={unitId} onChange={(e) => changeGrant(() => setUnitId(e.target.value))} /></label> : null}
             <label className="text-xs font-bold">Mulai (opsional)<input type="date" className={input} value={startsOn} onChange={(e) => changeGrant(() => setStartsOn(e.target.value))} /></label>
-            <label className="text-xs font-bold">Berakhir (opsional)<input type="date" className={input} value={endsOn} onChange={(e) => changeGrant(() => setEndsOn(e.target.value))} /></label>
+            <label className="text-xs font-bold">{role?.endDateRequired ? "Berakhir (wajib, akhir masa jabatan)" : "Berakhir (opsional)"}<input type="date" className={input} value={endsOn} onChange={(e) => changeGrant(() => setEndsOn(e.target.value))} /></label>
             <label className="text-xs font-bold sm:col-span-2">Mandat / alasan<textarea className={input} value={reason} onChange={(e) => changeGrant(() => setReason(e.target.value))} placeholder="Contoh: SK Ketua Pengurus No. 12/2026" /></label>
           </div>
           <button className={primary} disabled={busy || !role || !person.lookup.account.grantable} onClick={() => void grant()}><KeyRound className="h-4 w-4" /> Berikan peran</button>

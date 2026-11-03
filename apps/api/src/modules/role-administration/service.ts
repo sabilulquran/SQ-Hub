@@ -27,6 +27,12 @@ const catalogSchema = z.object({
       permissions: z.array(z.string().min(1).max(200)).max(500),
       allowedScopes: z.array(z.string().min(1).max(40)).max(10),
       mandateRequired: z.boolean(),
+      // HCIS ORG-013-2: which account type a role is for, and whether it must end. Optional so a
+      // HCIS release without them still parses; absent means an employee role with no end date.
+      // Unknown types are kept as text so a new HCIS principal type cannot take the whole catalog
+      // down; the screen offers a role only for a type it knows.
+      targetPrincipalTypes: z.array(z.string().min(1).max(40)).min(1).max(10).optional(),
+      endDateRequired: z.boolean().optional(),
     }),
   ).max(500),
 });
@@ -35,11 +41,13 @@ export type HcisRoleCatalog = z.infer<typeof catalogSchema>;
 
 // H-1b (HCIS §2.1b, main 7cb2d35f). No name, e-mail, NIK or employment status comes back: the Hub
 // already knows who it asked about, and the role channel is not a way to read employee data.
-// `grantable` only says whether HCIS would refuse a grant, and why. A non-employee account answers
-// 404 like a missing one, on purpose.
+// `grantable` only says whether HCIS would refuse a grant, and why. A SUPER_ADMIN account answers
+// 404 like a missing one, on purpose; an organ (FOUNDATION_BOARD) account answers since HCIS
+// ORG-013-2, so it can receive the governance Leave approver role.
 const lookupSchema = z.object({
   account: z.object({
     accountId: z.string().uuid(),
+    principalType: z.enum(["EMPLOYEE", "FOUNDATION_BOARD"]).optional(),
     grantable: z.boolean(),
     notGrantableReason: z.enum(["account_inactive", "employee_inactive"]).nullable(),
   }),
