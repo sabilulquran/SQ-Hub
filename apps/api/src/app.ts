@@ -31,6 +31,7 @@ import { registerRoleAdministrationRoutes } from "./modules/role-administration/
 import type { RoleAdministrationService } from "./modules/role-administration/service.js";
 import type { PlatformAdminService } from "./modules/platform-admin/service.js";
 import { DIRECTORY_PREFIX, registerOrganizationDirectoryRoutes } from "./modules/organization-directory/routes.js";
+import { registerHcisInviteRoute } from "./modules/staff-lifecycle/hcis-invite-routes.js";
 import { registerStaffLifecycleRoutes } from "./modules/staff-lifecycle/routes.js";
 import type { StaffLifecycleService } from "./modules/staff-lifecycle/service.js";
 
@@ -63,6 +64,8 @@ export function buildApp(input: {
   identityDirectory?: IdentityDirectory;
   accountSelfService?: KeycloakAccountSelfService;
   staffLifecycle?: StaffLifecycleService;
+  /** HUB-IMPL-024: present only when STAFF_ACTIVATION_ALLOWED_CLIENTS is set and lifecycle is configured. */
+  staffActivationInvite?: Parameters<typeof registerHcisInviteRoute>[1];
   organMemberships?: OrganMembershipService;
   governance?: GovernanceService;
   /** HUB-IMPL-023 H-9/H-11: Platform Administrator list, four-eyes proposals and their audit. */
@@ -91,6 +94,8 @@ export function buildApp(input: {
   if (input.kirim) input.kirim.register(app);
 
   app.get("/health", async () => ({ status: "ok" }));
+
+  if (input.staffActivationInvite) registerHcisInviteRoute(app, input.staffActivationInvite);
 
   /** One machine-token check for every Application Access internal route; false means already answered. */
   async function machineAuthorized(request: FastifyRequest, reply: FastifyReply): Promise<boolean> {

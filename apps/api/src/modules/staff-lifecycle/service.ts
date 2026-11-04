@@ -5,7 +5,7 @@ import type { ActorRef, IdentityRef } from "../application-access/types.js";
 import type { IdentityManagement, ManagedStaffIdentity } from "../identity-management/client.js";
 import type { PlatformAdminService } from "../platform-admin/service.js";
 import type { LifecycleAuditWriter } from "./audit.js";
-import type { VerifyEmployee } from "./hcis-client.js";
+import type { VerifiedEmployee, VerifyEmployee } from "./hcis-client.js";
 import { EmployeeVerificationError } from "./hcis-client.js";
 import type { LifecycleOperationStore } from "./operation-store.js";
 
@@ -42,6 +42,29 @@ export const provisionStaffSchema = z.object({
     }
   }
 });
+
+/** HUB-IMPL-024: the only fields HCIS sends; name and contacts are read from HCIS itself. */
+export const hcisInviteSchema = z.object({
+  employeeNumber: z.string().trim().min(1).max(80),
+  requestedBy: z.object({ accountId: z.string().uuid() }).strict(),
+}).strict();
+
+export const HCIS_APPLICATION_KEY = "hcis";
+const HCIS_INVITE_REASON = "HCIS aktivasi akun (HUB-IMPL-024)";
+
+export type CredentialInitialization = "sent" | "required_action_pending" | "already_complete";
+
+/**
+ * Stable operational split of an HCIS display name into the two Keycloak name fields
+ * (staff-identity-provisioning.md): first word, then the rest. A one-word name fills both
+ * fields with that word (HUB-IMPL-024, DRAFT) instead of inventing a family name.
+ */
+export function splitDisplayName(displayName: string): { firstName: string; lastName: string } {
+  const words = displayName.trim().split(/\s+/).filter(Boolean);
+  const firstName = (words[0] ?? displayName.trim()).slice(0, 255);
+  const rest = words.slice(1).join(" ").slice(0, 255);
+  return { firstName, lastName: rest || firstName };
+}
 
 export const statusMutationSchema = z.object({
   subject: subjectSchema,
@@ -101,7 +124,7 @@ export class StaffLifecycleService {
     private readonly identityManagement: IdentityManagement,
     private readonly applicationAccess: Pick<
       ApplicationAccessService,
-      "listApplications" | "getAccess" | "revoke"
+      "listApplications" | "getAccess" | "revoke" | "grant"
     >,
     private readonly platformAdmin: Pick<PlatformAdminService, "show" | "revoke">,
     private readonly audit: LifecycleAuditWriter,
@@ -124,7 +147,7 @@ export class StaffLifecycleService {
       outcome: "succeeded",
       payload: { staffType: parsed.staffType, enabled: parsed.enabled, reason: parsed.reason },
     });
-    let employee;
+    let employee: VerifiedEmployee;
     try {
       employee = await this.verifyEmployee(parsed.employeeNumber!);
       if (employee.email?.toLowerCase() !== email) throw new EmployeeVerificationError("INVALID_CONTACT");
@@ -136,14 +159,122 @@ export class StaffLifecycleService {
       throw error;
     }
 
+    const result = await this.provisionVerified(parsed, employee, actor, { refuseDisabled: false });
+    return { identity: toSafeIdentity(result.identity), credentialInitialization: result.credentialInitialization };
+  }
+
+  /**
+   * HUB-IMPL-024: HCIS asks for an employee's Akun SQ by NIP only. Name and e-mail come from the
+   * HCIS verification answer, never from the caller. Grants `hcis` Application Access only when
+   * there is no record; a revoked grant stays revoked.
+   */
+  async inviteFromHcis(input: unknown, clientId: string): Promise<{
+    identity: IdentityRef;
+    employeeId: string;
+    credentialInitialization: CredentialInitialization;
+    applicationAccess: "granted" | "already_active" | "revoked";
+  }> {
+    const parsed = hcisInviteSchema.parse(input);
+    const actor: ActorRef = {
+      kind: "service",
+      ref: `${clientId}:hcis-account:${parsed.requestedBy.accountId}`,
+    };
+    actorSchema.parse(actor);
+
+    let employee: VerifiedEmployee;
+    let email: string;
+    try {
+      employee = await this.verifyEmployee(parsed.employeeNumber);
+      if (!employee.email) throw new EmployeeVerificationError("INVALID_CONTACT");
+      email = employee.email.toLowerCase();
+    } catch (error) {
+      await this.audit.write({
+        actor, action: "staff_identity.hcis_invite", targetHint: parsed.employeeNumber,
+        outcome: "failed", payload: { stage: "hcis_verify" },
+      });
+      throw error;
+    }
+
+    const names = splitDisplayName(employee.displayName);
+    const provisionInput = provisionStaffSchema.parse({
+      staffType: "employee",
+      employeeNumber: parsed.employeeNumber,
+      username: parsed.employeeNumber,
+      firstName: names.firstName,
+      lastName: names.lastName,
+      email,
+      enabled: true,
+      reason: HCIS_INVITE_REASON,
+    });
+    await this.audit.write({
+      actor,
+      action: "staff_identity.provision.attempt",
+      targetHint: provisionInput.username,
+      outcome: "succeeded",
+      payload: { staffType: provisionInput.staffType, enabled: provisionInput.enabled, reason: provisionInput.reason },
+    });
+    const result = await this.provisionVerified(provisionInput, employee, actor, { refuseDisabled: true });
+    const identityRef = toRef(result.identity);
+
+    let applicationAccess: "granted" | "already_active" | "revoked";
+    try {
+      const current = await this.applicationAccess.getAccess(identityRef, HCIS_APPLICATION_KEY);
+      if (current?.status === "active") {
+        applicationAccess = "already_active";
+      } else if (current?.status === "revoked") {
+        applicationAccess = "revoked";
+      } else {
+        await this.applicationAccess.grant({
+          identity: identityRef,
+          applicationKey: HCIS_APPLICATION_KEY,
+          reason: HCIS_INVITE_REASON,
+          actor,
+        });
+        applicationAccess = "granted";
+      }
+    } catch (error) {
+      await this.audit.write({
+        actor, action: "staff_identity.hcis_invite", identity: identityRef,
+        outcome: "failed",
+        payload: { stage: "application_access", credentialInitialization: result.credentialInitialization },
+      });
+      throw error;
+    }
+
+    await this.audit.write({
+      actor,
+      action: "staff_identity.hcis_invite",
+      identity: identityRef,
+      outcome: "succeeded",
+      payload: { credentialInitialization: result.credentialInitialization, applicationAccess },
+    });
+    return {
+      identity: identityRef,
+      employeeId: employee.employeeId,
+      credentialInitialization: result.credentialInitialization,
+      applicationAccess,
+    };
+  }
+
+  private async provisionVerified(
+    parsed: z.infer<typeof provisionStaffSchema>,
+    employee: VerifiedEmployee,
+    actor: ActorRef,
+    options: { refuseDisabled: boolean },
+  ): Promise<{ identity: ManagedStaffIdentity; credentialInitialization: CredentialInitialization }> {
+    const email = parsed.email.toLowerCase();
     let identity: ManagedStaffIdentity;
     try {
       const existing = await this.identityManagement.findByUsername(parsed.username);
       const organIdentity = existing ? null : await this.findOrganIdentity(email);
+      if (existing && (existing.employeeId !== employee.employeeId || existing.email.toLowerCase() !== email)) {
+        throw new Error("EMPLOYEE_IDENTITY_CONFLICT");
+      }
+      // HUB-IMPL-024: a disabled Akun SQ is re-enabled only by an explicit Admin Center action.
+      if (options.refuseDisabled && ((existing && !existing.enabled) || (organIdentity && !organIdentity.enabled))) {
+        throw new Error("STAFF_IDENTITY_DISABLED");
+      }
       if (existing) {
-        if (existing.employeeId !== employee.employeeId || existing.email.toLowerCase() !== email) {
-          throw new Error("EMPLOYEE_IDENTITY_CONFLICT");
-        }
         identity = existing;
       } else if (organIdentity) {
         // HUB-IMPL-021 §1: an organ member who becomes an Employee keeps the same Akun SQ.
@@ -177,7 +308,7 @@ export class StaffLifecycleService {
       throw error;
     }
 
-    let credentialInitialization: "sent" | "required_action_pending" | "already_complete" = "sent";
+    let credentialInitialization: CredentialInitialization = "sent";
     try {
       if (identity.requiredActions && !identity.requiredActions.includes("UPDATE_PASSWORD")) {
         credentialInitialization = "already_complete";
@@ -219,7 +350,7 @@ export class StaffLifecycleService {
       },
     });
 
-    return { identity: toSafeIdentity(identity), credentialInitialization };
+    return { identity, credentialInitialization };
   }
 
   async setEnabled(input: unknown, actor: ActorRef) {
