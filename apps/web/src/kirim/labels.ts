@@ -93,6 +93,18 @@ export const activityLabel: Record<string, string> = {
   "media.unduh": "Unduh media",
   "riwayat.impor_perangkat": "Impor riwayat dari WhatsApp",
   "riwayat.impor_ekspor": "Impor berkas ekspor chat",
+  // KIRIM-IMPL-004
+  "pesan.teruskan": "Teruskan pesan",
+  "pesan.edit": "Edit pesan",
+  "pesan.hapus": "Hapus pesan untuk semua",
+  "pesan.reaksi": "Reaksi pesan",
+  "pesan.riwayat_edit": "Membuka isi lama pesan",
+  "grup.buat": "Buat grup",
+  "grup.anggota_tambah": "Tambah anggota grup",
+  "grup.anggota_keluarkan": "Keluarkan anggota grup",
+  "grup.undangan_lihat": "Lihat tautan undangan grup",
+  "grup.undangan_tarik": "Tarik tautan undangan grup",
+  "grup.ubah": "Ubah nama atau deskripsi grup",
 };
 
 /** Jangan hubungi scope in words (KIRIM-IMPL-002 §8). */

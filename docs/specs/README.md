@@ -28,6 +28,7 @@ Indeks ini membantu maintainer membedakan specification yang sudah berada di `ma
 | KIRIM-IMPL-001 | [Kirim SQ R1: nomor dan kirim](KIRIM-IMPL-001-r1-nomor-dan-kirim.md) | **ACCEPTED** (PO, 2026-10-17); R1 diimplementasikan di repository (bawaan `KIRIM_ENABLED=false`). Langkah production §15 butuh persetujuan owner. |
 | KIRIM-IMPL-002 | [Kirim SQ R2: API percakapan, grup, dan impor riwayat](KIRIM-IMPL-002-r2-api-percakapan.md) | **ACCEPTED** (PO, 2026-10-19); T-1…T-6 disetujui. Langkah production §15 butuh persetujuan owner; J-1 di JalurPesan adalah gate kerja harian SPMB. |
 | KIRIM-IMPL-003 | [Kirim SQ: kartu WhatsApp per modul dan akses otomatis](KIRIM-IMPL-003-kartu-modul.md) | **ACCEPTED** (permintaan PO 2026-11-03). Kartu per aplikasi registry, nomor bersama, akses modul tanpa salin kredensial; HCIS konsumen pertama. |
+| KIRIM-IMPL-004 | [Kirim SQ K3.2: aksi pesan, panggilan, foto profil, grup bersama, dan API grup R3](KIRIM-IMPL-004-k3-2-aksi-pesan-panggilan-grup.md) | **Dibangun** di repository (2026-11-05) untuk SPMB-IMPL-005 K3.2/K3.4; batas edit/hapus/tambah anggota `DRAFT` sampai diukur. |
 
 ## ID proposal aktif yang belum berada di `main`
 
