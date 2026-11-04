@@ -208,6 +208,8 @@ export class JalurPesanProvider implements KirimProvider {
         }
         if (response.status === 404 && body.code === "profile_picture_unavailable") return null;
         if (response.status === 503) throw new ProviderOperationError("not_connected", "WhatsApp is not connected");
+        // K3.2 §D: 120 photo requests per hour per number; wait for the next round instead of recording "no photo".
+        if (response.status === 429) throw new ProviderOperationError("engine_unavailable", "profile picture rate limited");
         throw this.lifecycleError({ status: response.status, body });
       }
       const chunks: Buffer[] = [];

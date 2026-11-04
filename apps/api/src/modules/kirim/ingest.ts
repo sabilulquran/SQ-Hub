@@ -14,6 +14,7 @@ import {
   recordDelete,
   recordEdit,
   saveReactions,
+  type TargetMessage,
 } from "./message-state.js";
 import type { KirimLog } from "./providers/log.js";
 import {
@@ -592,6 +593,9 @@ export class KirimIngest {
   private async applyEngineEdit(client: Queryable, device: EngineDevice, change: EngineChange): Promise<void> {
     const target = await messageByWaId(client, device.id, change.whatsappMessageId);
     if (!target) return;
+    // WhatsApp does not authenticate who sent an edit: only the message's own author may change it.
+    const author = await this.authorOf(client, device, target, change);
+    if (author !== "author") return this.refuseChange(device, "edit");
     const by = change.fromMe ? BY_PHONE : BY_SENDER;
     if (!(await recordEdit(client, this.crypto, target, { body: change.body, at: change.at, by }))) return;
     await enqueueWebhook(client, this.crypto, device.pemilikConsumerId, "message.edited", {
@@ -609,13 +613,10 @@ export class KirimIngest {
   private async applyEngineDelete(client: Queryable, device: EngineDevice, change: EngineChange): Promise<void> {
     const target = await messageByWaId(client, device.id, change.whatsappMessageId);
     if (!target) return;
-    let by: string = BY_SENDER;
-    if (change.fromMe) by = BY_PHONE;
-    else if (target.groupId) {
-      const deleter = change.senderJid ? contactFromJid(change.senderJid) : null;
-      // In a group an admin may delete a member's message; only the writer counts as "pengirim".
-      if (!deleter || !target.pengirimHmac || this.crypto.lookup(deleter.canonical) !== target.pengirimHmac) by = BY_GROUP_ADMIN;
-    }
+    // WhatsApp does not authenticate a revoke: the author may delete, and in a group also an admin.
+    const author = await this.authorOf(client, device, target, change);
+    if (author === "other") return this.refuseChange(device, "delete");
+    const by = change.fromMe ? BY_PHONE : author === "group_admin" ? BY_GROUP_ADMIN : BY_SENDER;
     if (!(await recordDelete(client, target, { at: change.at, by }))) return;
     await enqueueWebhook(client, this.crypto, device.pemilikConsumerId, "message.deleted", {
       device: device.kode,
@@ -625,6 +626,46 @@ export class KirimIngest {
       dihapus_at: change.at,
       dihapus_oleh: by,
     });
+  }
+
+  /**
+   * Who an edit or delete came from, relative to the target message (KIRIM-IMPL-004 §6.2):
+   * `author` — this number for its own message (`fromMe`), or the contact / group member who wrote it,
+   * by either of their identities; `group_admin` — another admin of the group (deletes only, also this
+   * number when it is admin); `other` — anyone else, whose change is ignored.
+   */
+  private async authorOf(client: Queryable, device: EngineDevice, target: TargetMessage, change: EngineChange): Promise<"author" | "group_admin" | "other"> {
+    if (change.fromMe) {
+      if (target.arah === "keluar") return "author";
+      if (!target.groupId) return "other";
+      const group = await client.query<{ admin: boolean }>("SELECT nomor_ini_admin AS admin FROM kirim_groups WHERE id = $1", [target.groupId]);
+      return group.rows[0]?.admin ? "group_admin" : "other";
+    }
+    if (target.arah !== "masuk") return "other";
+    const identities = [change.senderJid, change.peerJidAlt]
+      .flatMap((jid) => (jid ? [contactFromJid(jid)] : []))
+      .flatMap((contact) => (contact ? [this.crypto.lookup(contact.canonical)] : []));
+    if (identities.length === 0) return "other";
+    if (!target.groupId) {
+      const own = await client.query(
+        "SELECT 1 FROM kirim_conversations WHERE id = $1 AND (kontak_hmac = ANY($2::text[]) OR kontak_alt_hmac = ANY($2::text[]))",
+        [target.conversationId, identities],
+      );
+      return (own.rowCount ?? 0) > 0 ? "author" : "other";
+    }
+    if (target.pengirimHmac && identities.includes(target.pengirimHmac)) return "author";
+    // The member may write under one identity and act under the other; the group's member list knows both.
+    const member = await client.query<{ admin: boolean; same: boolean }>(
+      `SELECT admin, ($3::text IS NOT NULL AND $3 IN (member_hmac, member_alt_hmac)) AS same FROM kirim_group_members
+        WHERE group_id = $1 AND (member_hmac = ANY($2::text[]) OR member_alt_hmac = ANY($2::text[]))`,
+      [target.groupId, identities, target.pengirimHmac],
+    );
+    if (member.rows.some((row) => row.same)) return "author";
+    return member.rows.some((row) => row.admin) ? "group_admin" : "other";
+  }
+
+  private refuseChange(device: EngineDevice, aksi: "edit" | "delete"): void {
+    this.options.log?.({ event: "kirim.ingest.change_refused", device: device.kode, aksi }, "engine change not from the message's author; ignored");
   }
 
   /** `message.reaction`: one current reaction per reactor; `""` removes it. */
@@ -662,12 +703,13 @@ export class KirimIngest {
    */
   private async storeCall(client: Queryable, device: EngineDevice, call: EngineCall): Promise<void> {
     if (call.isGroup) return;
-    const contact = contactFromJid(call.chatJid) ?? contactFromJid(call.fromJid) ?? (call.callerPnJid ? contactFromJid(call.callerPnJid) : null);
+    // A call from this number's own phone is addressed to the callee; `callerPnJid` is then this number.
+    const contact = call.fromMe
+      ? contactFromJid(call.chatJid)
+      : contactFromJid(call.chatJid) ?? contactFromJid(call.fromJid) ?? (call.callerPnJid ? contactFromJid(call.callerPnJid) : null);
     if (!contact) return;
-    const identity = { pushName: null, peerJidAlt: contact.jenis === "lid" ? call.callerPnJid : null };
-    const resolved = await this.conversationFor(client, device.id, contact, identity);
-    await this.learnContact(client, resolved, contact, identity);
-    const messageId = randomUUID();
+    const identity = { pushName: null, peerJidAlt: contact.jenis === "lid" && !call.fromMe ? call.callerPnJid : null };
+    const arah: "masuk" | "keluar" = call.fromMe ? "keluar" : "masuk";
     const hasil = HASIL_BY_OUTCOME[call.outcome];
     const panggilan = {
       hasil,
@@ -676,29 +718,59 @@ export class KirimIngest {
       diangkat_at: call.answeredAt,
       selesai: call.endedAt,
       durasi_detik: call.durationSeconds,
+      revisi: call.revision,
     };
-    const inserted = await client.query(
-      `INSERT INTO kirim_messages (id, conversation_id, device_id, arah, tipe, provider, status, provider_at, panggilan, call_id)
-       VALUES ($1, $2, $3, 'masuk', 'panggilan', 'jalurpesan', 'diterima', $4, $5::jsonb, $6)
-       ON CONFLICT (device_id, call_id) WHERE call_id IS NOT NULL DO NOTHING`,
-      [messageId, resolved.id, device.id, call.startedAt, JSON.stringify(panggilan), call.callId],
+    // One message per call: a later revision (a `missed` corrected by a late accept/reject) replaces it.
+    const existing = await client.query<{ id: string; conversationId: string; panggilan: { hasil?: string; revisi?: number }; at: Date }>(
+      `SELECT id, conversation_id AS "conversationId", panggilan, provider_at AS at FROM kirim_messages
+        WHERE device_id = $1 AND call_id = $2 FOR UPDATE`,
+      [device.id, call.callId],
     );
-    if ((inserted.rowCount ?? 0) === 0) return;
-    const unanswered = hasil !== "diangkat";
-    await client.query(
-      `UPDATE kirim_conversations SET
-         pesan_terakhir_at = greatest(coalesce(pesan_terakhir_at, $2), $2),
-         belum_dibaca = belum_dibaca + CASE WHEN $3 THEN 1 ELSE 0 END,
-         pesan_masuk_terakhir_at = CASE WHEN $3 THEN greatest(coalesce(pesan_masuk_terakhir_at, $2), $2) ELSE pesan_masuk_terakhir_at END
-       WHERE id = $1`,
-      [resolved.id, call.startedAt, unanswered],
-    );
+    const previous = existing.rows[0];
+    let messageId: string;
+    let conversationId: string;
+    if (previous) {
+      if ((previous.panggilan.revisi ?? 1) >= call.revision) return;
+      messageId = previous.id;
+      conversationId = previous.conversationId;
+      await client.query("UPDATE kirim_messages SET panggilan = $2::jsonb, updated_at = now() WHERE id = $1", [messageId, JSON.stringify(panggilan)]);
+      // A missed call that was answered after all no longer waits for a reply, if nobody has read it yet.
+      if (arah === "masuk" && previous.panggilan.hasil !== "diangkat" && hasil === "diangkat") {
+        await client.query(
+          `UPDATE kirim_conversations SET belum_dibaca = greatest(belum_dibaca - 1, 0)
+            WHERE id = $1 AND (dibaca_sampai_at IS NULL OR dibaca_sampai_at < $2)`,
+          [conversationId, previous.at],
+        );
+      }
+    } else {
+      const resolved = await this.conversationFor(client, device.id, contact, identity);
+      await this.learnContact(client, resolved, contact, identity);
+      messageId = randomUUID();
+      conversationId = resolved.id;
+      await client.query(
+        `INSERT INTO kirim_messages (id, conversation_id, device_id, arah, asal, tipe, provider, status, provider_at, panggilan, call_id)
+         VALUES ($1, $2, $3, $4, $5, 'panggilan', 'jalurpesan', $6, $7, $8::jsonb, $9)`,
+        [messageId, conversationId, device.id, arah, arah === "keluar" ? "hp" : null, arah === "keluar" ? "diserahkan" : "diterima", call.startedAt, JSON.stringify(panggilan), call.callId],
+      );
+      const unanswered = arah === "masuk" && hasil !== "diangkat";
+      await client.query(
+        `UPDATE kirim_conversations SET
+           pesan_terakhir_at = greatest(coalesce(pesan_terakhir_at, $2), $2),
+           belum_dibaca = belum_dibaca + CASE WHEN $3 THEN 1 ELSE 0 END,
+           pesan_masuk_terakhir_at = CASE WHEN $3 THEN greatest(coalesce(pesan_masuk_terakhir_at, $2), $2) ELSE pesan_masuk_terakhir_at END
+         WHERE id = $1`,
+        [conversationId, call.startedAt, unanswered],
+      );
+    }
     await enqueueWebhook(client, this.crypto, device.pemilikConsumerId, "call.logged", {
       device: device.kode,
-      conversation_id: resolved.id,
+      conversation_id: conversationId,
       message_id: messageId,
-      from: await this.phoneOf(client, resolved.id, contact),
+      arah,
+      // The contact's number, whichever way the call went; null for a LID whose number is unknown.
+      from: await this.phoneOf(client, conversationId, contact),
       ...panggilan,
+      dikoreksi: previous !== undefined,
     });
   }
 
@@ -906,6 +978,8 @@ interface EngineMessage {
 interface EngineChange {
   whatsappMessageId: string;
   senderJid: string | null;
+  /** The sender's other identity (phone JID for a LID sender) when the engine knows it. */
+  peerJidAlt: string | null;
   fromMe: boolean;
   group: boolean;
   /** New text of an edit; null when the engine could not read it. */
@@ -920,6 +994,10 @@ interface EngineCall {
   callerPnJid: string | null;
   isVideo: boolean;
   isGroup: boolean;
+  /** Placed from this number's own phone. */
+  fromMe: boolean;
+  /** 1, or 2 when a call first logged missed is corrected by a late accept/reject/terminate. */
+  revision: number;
   outcome: "answered_elsewhere" | "rejected" | "missed";
   startedAt: string;
   answeredAt: string | null;
@@ -951,6 +1029,7 @@ export function readChange(payload: unknown, key: "change" | "reaction"): (Engin
   const base: EngineChange = {
     whatsappMessageId: value.whatsappMessageId,
     senderJid: typeof value.senderJid === "string" ? value.senderJid : null,
+    peerJidAlt: typeof value.peerJidAlt === "string" && value.peerJidAlt ? value.peerJidAlt : null,
     fromMe: value.fromMe === true,
     group: value.recipientType === "group" || chatJid.endsWith("@g.us"),
     body: typeof value.body === "string" && value.body.length > 0 ? value.body : null,
@@ -980,6 +1059,8 @@ export function readCall(payload: unknown): EngineCall | null {
     callerPnJid: typeof value.callerPnJid === "string" && value.callerPnJid ? value.callerPnJid : null,
     isVideo: value.isVideo === true,
     isGroup: value.isGroup === true || (typeof value.groupJid === "string" && value.groupJid.length > 0),
+    fromMe: value.fromMe === true,
+    revision: typeof value.revision === "number" && Number.isInteger(value.revision) && value.revision >= 1 && value.revision <= 100 ? value.revision : 1,
     outcome: value.outcome,
     startedAt,
     answeredAt: typeof value.answeredAt === "string" && !Number.isNaN(Date.parse(value.answeredAt)) ? value.answeredAt : null,
