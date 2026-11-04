@@ -175,6 +175,10 @@ export class JalurPesanProvider implements KirimProvider {
     const response = await this.lifecycle("POST", device, "/history-imports", { chatJid, maxMessages });
     const record = (response.body.historyImport ?? {}) as Record<string, unknown>;
     if (response.status === 202 && typeof record.id === "string") return { importId: record.id };
+    // The engine still holds this number's previous request (it lets go after 15 minutes): wait, do not fail.
+    if (response.status === 409 && response.body.code === "import_active") {
+      throw new ProviderOperationError("engine_unavailable", "JalurPesan history import still active for this number");
+    }
     throw this.lifecycleError(response);
   }
 

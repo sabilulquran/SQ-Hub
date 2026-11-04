@@ -40,6 +40,8 @@ export class JalurPesanStub {
   readonly pendingHistory = new Map<string, unknown[]>();
   /** When false the J-2 routes answer 404, like an engine without them. */
   historyRoutes = true;
+  /** POSTs to `/history-imports` answered `409 import_active` before the engine accepts again. */
+  historyBusy = 0;
   /**
    * Holds a `/events` reply open after its page has been read, so a test can arrange what a real
    * engine does all the time: an event arriving while a pull is already past the point of seeing it.
@@ -91,6 +93,7 @@ export class JalurPesanStub {
     this.history.clear();
     this.pendingHistory.clear();
     this.historyRoutes = true;
+    this.historyBusy = 0;
     this.onEventsRead = null;
     this.uploads = 0;
     this.sendQueue = [];
@@ -217,6 +220,10 @@ export class JalurPesanStub {
     if (path.startsWith("/history-imports")) {
       if (!this.historyRoutes) return { status: 404, body: {} };
       if (request.method === "POST" && path === "/history-imports") {
+        if (this.historyBusy > 0) {
+          this.historyBusy -= 1;
+          return { status: 409, body: { success: false, code: "import_active", error: "A history import is already awaiting this device's provider sync" } };
+        }
         const body = JSON.parse(raw.toString("utf8")) as { chatJid: string };
         const id = randomUUID();
         this.history.set(id, { status: "completed", chatJid: body.chatJid, messages: [] });

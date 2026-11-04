@@ -917,6 +917,23 @@ describe("Admin R2: Jangan hubungi, Aktivitas, Impor riwayat (KIRIM-IMPL-002 §1
     const request = stub.requests.find((entry) => entry.path.endsWith("/history-imports") && entry.method === "POST");
     expect(JSON.parse(request!.body)).toEqual({ chatJid: "6281234567890@s.whatsapp.net", maxMessages: 100 });
   });
+
+  it("waits while the engine still holds the previous history request instead of failing (409 import_active)", async () => {
+    stub.addEvent("spmb", "message.received", receivedPayload({ body: "Halo lagi", whatsappMessageId: "WA-NEW" }));
+    await kirim.ingest!.runOnce();
+    stub.pendingHistory.set("6281234567890@s.whatsapp.net", [
+      { whatsappMessageId: "WA-OLD-1", direction: "inbound", chatJid: "6281234567890@s.whatsapp.net", messageType: "text", body: "Pesan lama", occurredAt: "2026-09-01T03:00:00.000Z" },
+    ]);
+    stub.historyBusy = 2;
+    const history = new KirimHistoryImport(pool, kirim.crypto, kirim.service, providers, { enabled: true, inboundMediaMaxBytes: 64 * 1024, now: () => Date.now() + 60_000 });
+    await history.startDeviceImport({ ref: "staff:test" }, "spmb", { jumlah_per_percakapan: 100 });
+    await history.runOnce(); // 409 import_active
+    await history.runOnce(); // 409 import_active
+    expect((await history.list("spmb")).impor[0]).toMatchObject({ status: "antre", galat: null });
+    await history.runOnce(); // accepted
+    await history.runOnce(); // completed → insert
+    expect((await history.list("spmb")).impor[0]).toMatchObject({ status: "selesai", dimasukkan: 1 });
+  });
 });
 
 describe("Module cards (KIRIM-IMPL-003)", () => {
