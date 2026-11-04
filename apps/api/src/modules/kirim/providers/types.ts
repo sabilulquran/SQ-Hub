@@ -39,11 +39,57 @@ export interface MediaFile {
 
 export type GroupContent = { text: string } | { file: MediaFile; caption: string | null };
 
+/** KIRIM-IMPL-004 §3 / JalurPesan K3.2 §A: the message a send quotes. */
+export interface QuotedMessage {
+  /** WhatsApp message id of the quoted message. */
+  id: string;
+  /** The quoted message was sent by this number. */
+  fromMe: boolean;
+  /** JID of the quoted message's sender; required in groups when `fromMe` is false. */
+  participant?: string;
+  /** Text or caption of the quoted message, for the preview on the recipient's phone. */
+  text?: string;
+  messageType?: "text" | "image" | "video" | "audio" | "document" | "sticker";
+}
+
+/** JalurPesan K3.2 §A: optional extras on a send; both are part of the engine's idempotency fingerprint. */
+export interface SendOptions {
+  quoted?: QuotedMessage;
+  forwarded?: boolean;
+}
+
+export interface ProviderGroupParticipant {
+  jid: string;
+  admin: boolean;
+  /** JalurPesan K3.2 §E: the member's phone-number JID and LID when the engine knows them. */
+  phoneJid?: string | null;
+  lidJid?: string | null;
+}
+
 export interface ProviderGroup {
   jid: string;
   name: string;
   size: number | null;
-  participants: Array<{ jid: string; admin: boolean }>;
+  participants: ProviderGroupParticipant[];
+}
+
+/** The chat an action on an existing message is addressed to (JalurPesan K3.2 §B: exactly one of to, toJid, groupJid). */
+export type ActionChat = Recipient | { groupJid: string };
+
+export interface ActionTarget {
+  chat: ActionChat;
+  whatsappMessageId: string;
+}
+
+export type ActionResult =
+  | { ok: true; dryRun: boolean }
+  | { ok: false; code: "engine_unavailable" | "engine_rejected" | "engine_conflict" | "device_disconnected" }
+  | { ok: false; code: "rate_limited"; reason: string | null };
+
+/** JalurPesan K3.2 §E participant update: `status` is WhatsApp's code ("200", "403", "409", "408", …). */
+export interface ParticipantUpdate {
+  jid: string;
+  status: string;
 }
 
 export interface ProviderContact {
@@ -118,7 +164,14 @@ export interface ProviderEventPage {
 
 export class ProviderOperationError extends Error {
   constructor(
-    public readonly code: "engine_unavailable" | "engine_rejected" | "engine_capacity" | "device_not_found" | "session_reset_required",
+    public readonly code:
+      | "engine_unavailable"
+      | "engine_rejected"
+      | "engine_capacity"
+      | "device_not_found"
+      | "session_reset_required"
+      | "group_not_found"
+      | "not_connected",
     message: string,
   ) {
     super(message);
@@ -128,8 +181,8 @@ export class ProviderOperationError extends Error {
 
 export interface KirimProvider {
   readonly name: ProviderName;
-  sendText(device: DeviceRef, to: Recipient, text: string, idempotencyKey: string): Promise<SendResult>;
-  sendDocument(device: DeviceRef, to: Recipient, file: MediaFile, caption: string | null, idempotencyKey: string): Promise<SendResult>;
+  sendText(device: DeviceRef, to: Recipient, text: string, idempotencyKey: string, options?: SendOptions): Promise<SendResult>;
+  sendDocument(device: DeviceRef, to: Recipient, file: MediaFile, caption: string | null, idempotencyKey: string, options?: SendOptions): Promise<SendResult>;
   deviceStatus(device: DeviceRef): Promise<ProviderDeviceStatus>;
   provision(device: DeviceRef, label: string): Promise<void>;
   startPairing(device: DeviceRef, mode: "qr" | { phone: string }): Promise<PairingResult>;
@@ -137,7 +190,25 @@ export interface KirimProvider {
   pullEvents(device: DeviceRef, cursor: number, limit: number): Promise<ProviderEventPage>;
   /** Copies an inbound engine media file; `null` when it is larger than `maxBytes`. */
   downloadMedia(device: DeviceRef, providerMediaId: string, maxBytes: number): Promise<Buffer | null>;
-  sendGroup(device: DeviceRef, groupJid: string, content: GroupContent, idempotencyKey: string): Promise<SendResult>;
+  sendGroup(device: DeviceRef, groupJid: string, content: GroupContent, idempotencyKey: string, options?: SendOptions): Promise<SendResult>;
+  /** JalurPesan K3.2 §B: reaction (`""` removes it), edit and delete-for-everyone. The Idempotency-Key is required. */
+  react(device: DeviceRef, target: ActionTarget & { fromMe: boolean; participant?: string }, emoji: string, idempotencyKey: string): Promise<ActionResult>;
+  editMessage(device: DeviceRef, target: ActionTarget, text: string, idempotencyKey: string): Promise<ActionResult>;
+  deleteMessage(device: DeviceRef, target: ActionTarget, idempotencyKey: string): Promise<ActionResult>;
+  /** JalurPesan K3.2 §D: the WhatsApp preview photo, or null when there is none or privacy hides it. */
+  profilePicture(device: DeviceRef, jid: string): Promise<Buffer | null>;
+  /** JalurPesan K3.2 §E group management; participants are international digits or JIDs. */
+  createGroup(device: DeviceRef, subject: string, participants: string[]): Promise<ProviderGroup>;
+  updateParticipants(
+    device: DeviceRef,
+    groupJid: string,
+    action: "add" | "remove",
+    participants: string[],
+  ): Promise<{ updates: ParticipantUpdate[]; group: ProviderGroup | null }>;
+  setGroupSubject(device: DeviceRef, groupJid: string, subject: string): Promise<void>;
+  setGroupDescription(device: DeviceRef, groupJid: string, description: string): Promise<void>;
+  groupInviteCode(device: DeviceRef, groupJid: string): Promise<string>;
+  revokeGroupInvite(device: DeviceRef, groupJid: string): Promise<string>;
   /** Private chats only; the engine has no group read receipts. At most 100 keys per call. */
   markRead(device: DeviceRef, messages: ReadReceiptKey[]): Promise<void>;
   listGroups(device: DeviceRef): Promise<ProviderGroup[]>;
