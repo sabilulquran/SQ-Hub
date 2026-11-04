@@ -498,7 +498,7 @@ export class KirimIngest {
   }
 
   /** Digits of the number itself, from the stored encrypted device number. */
-  private async ownPhone(client: Queryable, deviceId: string): Promise<string | null> {
+  async ownPhone(client: Queryable, deviceId: string): Promise<string | null> {
     const row = await client.query<{ nomorEnc: string | null }>(`SELECT nomor_enc AS "nomorEnc" FROM kirim_devices WHERE id = $1`, [deviceId]);
     const enc = row.rows[0]?.nomorEnc;
     if (!enc) return null;

@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
-import { chmod, mkdir, readFile, statfs, writeFile } from "node:fs/promises";
+import { chmod, mkdir, readFile, rm, statfs, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
 import type { Pool } from "pg";
@@ -386,6 +386,26 @@ export class KirimService {
 
   async readMediaFile(id: string, relativePath: string): Promise<Buffer> {
     return this.crypto.openFile(await readFile(join(this.mediaRoot, relativePath)), columnAad("kirim_media", "file", id));
+  }
+
+  /** KIRIM-IMPL-004 §8: a profile photo, encrypted like media and bound to its own file id. */
+  async writeProfilePhoto(fileId: string, data: Buffer): Promise<string> {
+    const relative = join("foto", fileId);
+    const absolute = join(this.mediaRoot, relative);
+    await mkdir(join(absolute, ".."), { recursive: true, mode: 0o700 });
+    await writeFile(absolute, this.crypto.sealFile(data, columnAad("kirim_profile_photos", "file", fileId)), { mode: 0o600, flag: "wx" });
+    await chmod(absolute, 0o600);
+    return relative;
+  }
+
+  async readProfilePhoto(fileId: string, relativePath: string): Promise<Buffer> {
+    return this.crypto.openFile(await readFile(join(this.mediaRoot, relativePath)), columnAad("kirim_profile_photos", "file", fileId));
+  }
+
+  /** A replaced or withdrawn profile photo leaves no file behind (SPMB-IMPL-005 §17.2). */
+  async removeProfilePhoto(relativePath: string): Promise<void> {
+    if (!relativePath.startsWith("foto")) return;
+    await rm(join(this.mediaRoot, relativePath), { force: true });
   }
 
   /** Free bytes on the media volume, or null when it cannot be measured. */
