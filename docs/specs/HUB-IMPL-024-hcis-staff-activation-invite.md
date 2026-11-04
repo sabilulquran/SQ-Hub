@@ -29,7 +29,7 @@ HCIS production signs staff in with Akun SQ. Until now an employee became able t
 ## Behaviour
 
 1. Verify the employee with HCIS (HCIS-ID-001): must exist, be `active`, and have an e-mail.
-2. Provision as HUB-IMPL-013 does, with username = NIP, e-mail = HCIS e-mail, and the first/last name split of the HCIS display name (first word / remaining words; a one-word name uses the same word for both, `DRAFT`). An existing identity with this username must carry the same `hcisEmployeeId` and e-mail, otherwise `409 EMPLOYEE_IDENTITY_CONFLICT`. A Path B organ identity is linked as in HUB-IMPL-021. A **disabled** existing identity is refused with `409 STAFF_IDENTITY_DISABLED` (re-enable is an explicit Admin Center action), and no e-mail is sent.
+2. Provision as HUB-IMPL-013 does, with username = NIP, e-mail = HCIS e-mail, and the first/last name split of the HCIS display name (first word / remaining words; a one-word name uses the same word for both, `DRAFT`). An existing identity with this username must carry the same `hcisEmployeeId` and e-mail, otherwise `409 EMPLOYEE_IDENTITY_CONFLICT`. A Path B organ identity is **not** linked on this path: the match is by e-mail and HCIS administrators can edit employee e-mails, so it answers `409 ORGAN_IDENTITY_LINK_REQUIRES_ADMIN` and the link stays a Platform Administrator action in the Admin Center (HUB-IMPL-021). A **disabled** existing identity is refused with `409 STAFF_IDENTITY_DISABLED` (re-enable is an explicit Admin Center action), and no e-mail is sent.
 3. Password initialization as HUB-IMPL-013: when `UPDATE_PASSWORD` is still pending, Keycloak e-mails `VERIFY_EMAIL` + `UPDATE_PASSWORD` with a 12-hour lifespan (`sent`). A Platform Administrator never gets this e-mail (H-10, `required_action_pending`). A send failure leaves the action pending (`required_action_pending`). An identity that already has a password gets no e-mail (`already_complete`).
 4. HCIS Application Access (`hcis` only; the key is fixed by the route, not the caller): no record → grant (`granted`); active → unchanged (`already_active`); revoked → **not** re-granted (`revoked`), because a revocation is a Platform Administrator decision.
 
@@ -40,8 +40,13 @@ HCIS production signs staff in with Akun SQ. Until now an employee became able t
 | 400 | `INVALID_REQUEST` | Body fails the strict schema (field paths only, no values) |
 | 401 / 403 | `UNAUTHENTICATED` / `INVALID_TOKEN` / `FORBIDDEN_CLIENT` | Missing or invalid token, client not in `STAFF_ACTIVATION_ALLOWED_CLIENTS`, not a service-account token |
 | 404 | `HCIS_EMPLOYEE_NOT_FOUND` | HCIS has no such employee |
-| 409 | `HCIS_EMPLOYEE_NOT_ACTIVE`, `HCIS_EMPLOYEE_INVALID_CONTACT`, `EMPLOYEE_IDENTITY_CONFLICT`, `DUPLICATE_USERNAME`, `DUPLICATE_EMAIL`, `STAFF_IDENTITY_DISABLED` | See behaviour |
+| 409 | `HCIS_EMPLOYEE_NOT_ACTIVE`, `HCIS_EMPLOYEE_INVALID_CONTACT`, `EMPLOYEE_IDENTITY_CONFLICT`, `DUPLICATE_USERNAME`, `DUPLICATE_EMAIL`, `STAFF_IDENTITY_DISABLED`, `ORGAN_IDENTITY_LINK_REQUIRES_ADMIN` | See behaviour |
 | 503 | `HCIS_VERIFY_UNAVAILABLE`, `IDENTITY_MANAGEMENT_UNAVAILABLE`, `STAFF_LIFECYCLE_UNAVAILABLE` | Dependency unavailable; safe to retry |
+
+## Known limits
+
+- The e-mail is the one HCIS holds. An HCIS administrator who can edit employee contacts and send the invite can therefore direct the Keycloak password e-mail. Accepted (`DRAFT`): the same administrators already own employee master data, the WhatsApp notice names the masked address, and every send is audited on both sides.
+- SQ Hub does not rate-limit this route; HCIS limits sends per account (10 minutes apart, 5 per 24 hours, attempts that reached SQ Hub included).
 
 ## Audit and privacy
 
@@ -51,5 +56,5 @@ HCIS production signs staff in with Akun SQ. Until now an employee became able t
 
 ## Configuration and rollout
 
-- `STAFF_ACTIVATION_ALLOWED_CLIENTS`: comma-separated client ids. Production value: the HCIS machine client already used for `/internal/v1/application-access/check`. It must not name the Hub OIDC client, the directory client, the identity-management client or the HCIS verifier client (config refuses to start).
+- `STAFF_ACTIVATION_ALLOWED_CLIENTS`: exactly one client id, the HCIS machine client already used for `/internal/v1/application-access/check`. It must not name the Hub OIDC client, the directory client, the identity-management client or the HCIS verifier client (config refuses to start).
 - Rollback: remove the variable and restart the Hub API; the route disappears. Identities, grants and audit stay.

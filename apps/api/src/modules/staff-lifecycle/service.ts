@@ -159,7 +159,7 @@ export class StaffLifecycleService {
       throw error;
     }
 
-    const result = await this.provisionVerified(parsed, employee, actor, { refuseDisabled: false });
+    const result = await this.provisionVerified(parsed, employee, actor, { refuseDisabled: false, allowOrganLink: true });
     return { identity: toSafeIdentity(result.identity), credentialInitialization: result.credentialInitialization };
   }
 
@@ -213,7 +213,7 @@ export class StaffLifecycleService {
       outcome: "succeeded",
       payload: { staffType: provisionInput.staffType, enabled: provisionInput.enabled, reason: provisionInput.reason },
     });
-    const result = await this.provisionVerified(provisionInput, employee, actor, { refuseDisabled: true });
+    const result = await this.provisionVerified(provisionInput, employee, actor, { refuseDisabled: true, allowOrganLink: false });
     const identityRef = toRef(result.identity);
 
     let applicationAccess: "granted" | "already_active" | "revoked";
@@ -260,7 +260,7 @@ export class StaffLifecycleService {
     parsed: z.infer<typeof provisionStaffSchema>,
     employee: VerifiedEmployee,
     actor: ActorRef,
-    options: { refuseDisabled: boolean },
+    options: { refuseDisabled: boolean; allowOrganLink: boolean },
   ): Promise<{ identity: ManagedStaffIdentity; credentialInitialization: CredentialInitialization }> {
     const email = parsed.email.toLowerCase();
     let identity: ManagedStaffIdentity;
@@ -270,6 +270,9 @@ export class StaffLifecycleService {
       if (existing && (existing.employeeId !== employee.employeeId || existing.email.toLowerCase() !== email)) {
         throw new Error("EMPLOYEE_IDENTITY_CONFLICT");
       }
+      // HUB-IMPL-024: turning an Organ Yayasan identity into staff is matched by e-mail, and HCIS
+      // admins can edit employee e-mails, so that link stays an Admin Center (Platform Admin) action.
+      if (!options.allowOrganLink && organIdentity) throw new Error("ORGAN_IDENTITY_LINK_REQUIRES_ADMIN");
       // HUB-IMPL-024: a disabled Akun SQ is re-enabled only by an explicit Admin Center action.
       if (options.refuseDisabled && ((existing && !existing.enabled) || (organIdentity && !organIdentity.enabled))) {
         throw new Error("STAFF_IDENTITY_DISABLED");

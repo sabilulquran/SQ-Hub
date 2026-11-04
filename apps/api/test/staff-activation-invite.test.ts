@@ -27,6 +27,7 @@ interface FixtureOptions {
   employee?: Partial<VerifiedEmployee> | Error;
   platformAdmin?: boolean;
   failEmail?: boolean;
+  organIdentity?: boolean;
 }
 
 function fixture(options: FixtureOptions = {}) {
@@ -73,11 +74,14 @@ function fixture(options: FixtureOptions = {}) {
       calls.push("send-email");
       if (options.failEmail) throw new IdentityManagementError("IDENTITY_MANAGEMENT_UNAVAILABLE", "synthetic");
     },
-    findByUsernameOrEmail: async () => [],
+    findByUsernameOrEmail: async () => options.organIdentity ? [{
+      issuer, subject: "organ-subject", username: "board@example.test", email: "staff@example.test",
+      emailVerified: true, firstName: "Organ", lastName: "Member", enabled: true, requiredActions: [],
+    }] : [],
     createOrganMember: async () => { throw new Error("not used"); },
     sendOrganActivation: async () => undefined,
     requireTotpSetup: async () => "already_required" as const,
-    linkEmployee: async () => { throw new Error("not used"); },
+    linkEmployee: async () => { calls.push("link-organ"); throw new Error("must not link"); },
   };
   const applicationAccess = {
     listApplications: async () => [],
@@ -118,6 +122,14 @@ function fixture(options: FixtureOptions = {}) {
     },
     { withIdentityLock: async () => { throw new Error("not used"); } },
   );
+  if (options.organIdentity) {
+    service.attachOrganMemberships({
+      endForOffboarding: async () => "noop",
+      hasActiveMembership: async () => true,
+      markExistingStaff: async () => "noop",
+      isOrganProvisionedIdentity: async () => true,
+    });
+  }
   return { service, calls, audits, access: () => access };
 }
 
@@ -185,6 +197,12 @@ describe("HUB-IMPL-024 inviteFromHcis", () => {
     const changed = fixture({ existing: { email: "old@example.test" } });
     await expect(changed.service.inviteFromHcis(body, "hcis-api")).rejects.toThrow("EMPLOYEE_IDENTITY_CONFLICT");
     expect([...other.calls, ...unlinked.calls, ...changed.calls].some((call) => call === "send-email" || call.startsWith("grant:"))).toBe(false);
+  });
+
+  it("leaves linking an Organ Yayasan identity to the Admin Center", async () => {
+    const { service, calls } = fixture({ organIdentity: true });
+    await expect(service.inviteFromHcis(body, "hcis-api")).rejects.toThrow("ORGAN_IDENTITY_LINK_REQUIRES_ADMIN");
+    expect(calls).toEqual(["verify:19870001"]);
   });
 
   it("stops at HCIS verification failures", async () => {
@@ -291,6 +309,7 @@ describe("HUB-IMPL-024 route", () => {
       [new IdentityManagementError("IDENTITY_MANAGEMENT_UNAVAILABLE", "x"), 503, "IDENTITY_MANAGEMENT_UNAVAILABLE"],
       [new Error("EMPLOYEE_IDENTITY_CONFLICT"), 409, "EMPLOYEE_IDENTITY_CONFLICT"],
       [new Error("STAFF_IDENTITY_DISABLED"), 409, "STAFF_IDENTITY_DISABLED"],
+      [new Error("ORGAN_IDENTITY_LINK_REQUIRES_ADMIN"), 409, "ORGAN_IDENTITY_LINK_REQUIRES_ADMIN"],
       [new Error("anything else"), 503, "STAFF_LIFECYCLE_UNAVAILABLE"],
     ];
     for (const [error, status, code] of cases) {
@@ -332,13 +351,18 @@ describe("HUB-IMPL-024 configuration", () => {
     expect([...config.staffActivationAllowedClients]).toEqual(["hcis-api"]);
   });
 
+  it("accepts exactly one client", () => {
+    expect(() => loadConfig({ ...baseEnv, ...lifecycle, STAFF_ACTIVATION_ALLOWED_CLIENTS: "hcis-api,spmb-api" }))
+      .toThrow(/exactly one client/);
+  });
+
   it("needs the lifecycle configuration", () => {
     expect(() => loadConfig({ ...baseEnv, STAFF_ACTIVATION_ALLOWED_CLIENTS: "hcis-api" })).toThrow(/requires the identity management/);
   });
 
   it("refuses a client SQ Hub itself uses", () => {
     for (const client of ["sq-hub", "sq-hub-directory", "sq-hub-identity-management", "sq-hub-staff-lifecycle"]) {
-      expect(() => loadConfig({ ...baseEnv, ...lifecycle, STAFF_ACTIVATION_ALLOWED_CLIENTS: `hcis-api,${client}` }))
+      expect(() => loadConfig({ ...baseEnv, ...lifecycle, STAFF_ACTIVATION_ALLOWED_CLIENTS: client }))
         .toThrow(/must not name a client/);
     }
   });

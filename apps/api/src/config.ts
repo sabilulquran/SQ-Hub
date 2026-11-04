@@ -155,6 +155,10 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     (parsed.STAFF_ACTIVATION_ALLOWED_CLIENTS ?? "").split(",").map((value) => value.trim()).filter(Boolean),
   );
   if (staffActivationAllowedClients.size > 0) {
+    // HUB-IMPL-024: exactly the HCIS machine client; a list would invite misconfiguration.
+    if (staffActivationAllowedClients.size !== 1) {
+      throw new Error("STAFF_ACTIVATION_ALLOWED_CLIENTS must name exactly one client (the HCIS machine client)");
+    }
     if (!managementConfigured) {
       throw new Error("STAFF_ACTIVATION_ALLOWED_CLIENTS requires the identity management and HCIS verification configuration");
     }

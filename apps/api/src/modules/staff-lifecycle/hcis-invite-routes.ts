@@ -70,7 +70,9 @@ function mapInviteError(error: unknown): { status: number; error: string } {
     if (error.code === "DUPLICATE_USERNAME" || error.code === "DUPLICATE_EMAIL") return { status: 409, error: error.code };
     return { status: 503, error: "IDENTITY_MANAGEMENT_UNAVAILABLE" };
   }
-  if (error instanceof Error && (error.message === "EMPLOYEE_IDENTITY_CONFLICT" || error.message === "STAFF_IDENTITY_DISABLED")) {
+  if (error instanceof Error && [
+    "EMPLOYEE_IDENTITY_CONFLICT", "STAFF_IDENTITY_DISABLED", "ORGAN_IDENTITY_LINK_REQUIRES_ADMIN",
+  ].includes(error.message)) {
     return { status: 409, error: error.message };
   }
   return { status: 503, error: "STAFF_LIFECYCLE_UNAVAILABLE" };
