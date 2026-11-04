@@ -3,7 +3,8 @@ import type { Pool } from "pg";
 import { columnAad, type KirimCrypto } from "./crypto.js";
 import { MAX_SEND_ATTEMPTS, rateAllows, retryDelayMs, sendGapMs, windowDecision } from "./policy.js";
 import type { KirimLog } from "./providers/log.js";
-import type { DeviceRef, KirimProvider, MediaFile, ProviderName, Recipient, SendResult } from "./providers/types.js";
+import { quotedFor } from "./message-refs.js";
+import type { DeviceRef, KirimProvider, MediaFile, ProviderName, Recipient, SendOptions, SendResult } from "./providers/types.js";
 import {
   conversationContact,
   dbNow,
@@ -28,6 +29,9 @@ interface ClaimedRow {
   bodyEnc: string | null;
   mediaId: string | null;
   attempts: number;
+  /** KIRIM-IMPL-004 §5: reply with a quote, and the "Diteruskan" label. */
+  quotedMessageId: string | null;
+  forwarded: boolean;
 }
 
 /**
@@ -102,7 +106,8 @@ export class KirimSendWorker {
       const now = await dbNow(client);
       const candidates = await client.query<ClaimedRow & { expiresAt: Date }>(
         `SELECT o.id AS "outboxId", o.message_id AS "messageId", m.conversation_id AS "conversationId", m.group_id AS "groupId", o.jenis, m.tipe,
-                m.body_enc AS "bodyEnc", m.media_id AS "mediaId", o.attempts, o.expires_at AS "expiresAt"
+                m.body_enc AS "bodyEnc", m.media_id AS "mediaId", o.attempts, o.expires_at AS "expiresAt",
+                m.quoted_message_id AS "quotedMessageId", m.forwarded
          FROM kirim_outbox o JOIN kirim_messages m ON m.id = o.message_id
          WHERE o.device_id = $1 AND o.status = 'antre' AND o.next_attempt_at <= now()
          ORDER BY CASE o.prioritas WHEN 'kode' THEN 0 WHEN 'petugas' THEN 1 WHEN 'tinggi' THEN 2 ELSE 3 END, o.created_at
@@ -147,17 +152,25 @@ export class KirimSendWorker {
       }
       file = mediaFile(row.mediaId, stored.mime, () => this.service.readMediaFile(row.mediaId!, stored.path!));
     }
+    const options: SendOptions = {};
+    if (row.quotedMessageId) {
+      const quoted = await quotedFor(this.pool, this.crypto, row.quotedMessageId);
+      if (quoted) options.quoted = quoted;
+      // Checked when the reply was accepted; only a message that lost its WhatsApp id since then ends up here.
+      else this.options.log?.({ event: "kirim.send.quote_dropped", device: device.kode }, "quoted message has no WhatsApp id; sent without the quote");
+    }
+    if (row.forwarded) options.forwarded = true;
     let result: SendResult;
     if (row.groupId) {
       const jid = await groupJid(this.pool, this.crypto, row.groupId);
-      result = await provider.sendGroup(device, jid, file ? { file, caption: body } : { text: body ?? "" }, idempotencyKey);
+      result = await provider.sendGroup(device, jid, file ? { file, caption: body } : { text: body ?? "" }, idempotencyKey, options);
     } else {
       const to = recipientFromContact(await conversationContact(this.pool, this.crypto, row.conversationId!));
       result = !to
         ? { ok: false, kind: "rejected", code: "invalid_number" }
         : file
-          ? await provider.sendDocument(device, to, file, body, idempotencyKey)
-          : await provider.sendText(device, to, body ?? "", idempotencyKey);
+          ? await provider.sendDocument(device, to, file, body, idempotencyKey, options)
+          : await provider.sendText(device, to, body ?? "", idempotencyKey, options);
     }
     await this.applyResult(device, provider.name, row, result);
   }

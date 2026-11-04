@@ -4,6 +4,17 @@ import type { Pool } from "pg";
 
 import { columnAad, maskPhone, type KirimCrypto } from "./crypto.js";
 import { advanceStatus, type OutboundStatus } from "./policy.js";
+import {
+  BY_GROUP_ADMIN,
+  BY_PHONE,
+  BY_SENDER,
+  messageByWaId,
+  nextReactions,
+  reactionAad,
+  recordDelete,
+  recordEdit,
+  saveReactions,
+} from "./message-state.js";
 import type { KirimLog } from "./providers/log.js";
 import {
   ProviderOperationError,
@@ -11,6 +22,7 @@ import {
   type KirimProvider,
   type ProviderDeviceStatus,
   type ProviderEvent,
+  type ProviderGroup,
 } from "./providers/types.js";
 import {
   dbNow,
@@ -192,6 +204,16 @@ export class KirimIngest {
     const seen = await this.pool.query("SELECT 1 FROM kirim_events WHERE provider = 'jalurpesan' AND provider_event_id = $1", [event.eventId]);
     if ((seen.rowCount ?? 0) > 0) return;
     const message = readMessage(event.payload);
+    // KIRIM-IMPL-004 §6: actions on existing messages and calls carry their own payload shapes.
+    const change = event.type === "message.edited" || event.type === "message.deleted" ? readChange(event.payload, "change") : null;
+    const reaction = event.type === "message.reaction" ? readChange(event.payload, "reaction") : null;
+    const call = event.type === "call.logged" ? readCall(event.payload) : null;
+    // Only ids and kinds: never a JID, number or body.
+    const summary = call
+      ? { call: true, grup: call.isGroup, hasil: call.outcome }
+      : change ?? reaction
+        ? { target: (change ?? reaction)!.whatsappMessageId, grup: (change ?? reaction)!.group }
+        : { provider_message_id: message?.id ?? null, tipe: message?.messageType ?? null, grup: message?.group ?? false };
 
     // Media is copied before the transaction so no network call holds database locks.
     let media: MediaCopy | null = null;
@@ -204,16 +226,14 @@ export class KirimIngest {
         `INSERT INTO kirim_events (id, device_id, provider, provider_event_id, provider_cursor, jenis, payload_ringkas)
          VALUES ($1, $2, 'jalurpesan', $3, $4, $5, $6::jsonb)
          ON CONFLICT (provider, provider_event_id) DO NOTHING`,
-        [
-          randomUUID(),
-          device.id,
-          event.eventId,
-          event.cursor,
-          event.type.slice(0, 100),
-          JSON.stringify({ provider_message_id: message?.id ?? null, tipe: message?.messageType ?? null, grup: message?.group ?? false }),
-        ],
+        [randomUUID(), device.id, event.eventId, event.cursor, event.type.slice(0, 100), JSON.stringify(summary)],
       );
-      if ((recorded.rowCount ?? 0) === 0 || !message) return;
+      if ((recorded.rowCount ?? 0) === 0) return;
+      if (change && event.type === "message.edited") return this.applyEngineEdit(client, device, change);
+      if (change && event.type === "message.deleted") return this.applyEngineDelete(client, device, change);
+      if (reaction) return this.applyEngineReaction(client, device, reaction);
+      if (call) return this.storeCall(client, device, call);
+      if (!message) return;
 
       if (event.type === "message.received") {
         if (message.direction !== "inbound") return;
@@ -228,9 +248,11 @@ export class KirimIngest {
         await this.learnContact(client, resolved, contact, message);
         const messageId = randomUUID();
         const mediaId = await this.storeMedia(client, device, media, "masuk");
+        const quotedId = await this.quotedMessageId(client, device.id, message);
         const inserted = await client.query(
-          `INSERT INTO kirim_messages (id, conversation_id, device_id, arah, tipe, body_enc, media_id, provider, provider_message_id, wa_message_id, status, provider_at)
-           VALUES ($1, $2, $3, 'masuk', $4, $5, $6, 'jalurpesan', $7, $8, 'diterima', $9)
+          `INSERT INTO kirim_messages (id, conversation_id, device_id, arah, tipe, body_enc, media_id, provider, provider_message_id, wa_message_id, status, provider_at,
+                                       quoted_message_id, quoted_wa_message_id, forwarded)
+           VALUES ($1, $2, $3, 'masuk', $4, $5, $6, 'jalurpesan', $7, $8, 'diterima', $9, $10, $11, $12)
            ON CONFLICT (provider, device_id, provider_message_id) WHERE provider_message_id IS NOT NULL DO NOTHING`,
           [
             messageId,
@@ -242,6 +264,9 @@ export class KirimIngest {
             message.id,
             message.whatsappMessageId,
             message.receivedAt,
+            quotedId,
+            message.quotedWaId,
+            message.forwarded,
           ],
         );
         if ((inserted.rowCount ?? 0) === 0) return;
@@ -262,6 +287,8 @@ export class KirimIngest {
           tipe: TIPE_BY_ENGINE[message.messageType] ?? "lainnya",
           cuplikan: message.body ? message.body.slice(0, 200) : null,
           received_at: message.receivedAt,
+          kutipan_message_id: quotedId,
+          diteruskan: message.forwarded,
         });
         return;
       }
@@ -319,7 +346,7 @@ export class KirimIngest {
     client: Queryable,
     deviceId: string,
     contact: { canonical: string; jenis: "pn" | "lid" },
-    message: EngineMessage,
+    message: Pick<EngineMessage, "peerJidAlt">,
   ): Promise<ResolvedConversation> {
     const ownHmac = this.crypto.lookup(contact.canonical);
     const alt = contact.jenis === "lid" && message.peerJidAlt ? contactFromJid(message.peerJidAlt) : null;
@@ -358,7 +385,7 @@ export class KirimIngest {
     client: Queryable,
     conversation: ResolvedConversation,
     contact: { canonical: string; jenis: "pn" | "lid" },
-    message: EngineMessage,
+    message: Pick<EngineMessage, "pushName" | "peerJidAlt">,
   ) {
     if (message.pushName) {
       await client.query("UPDATE kirim_conversations SET nama_profil_enc = $2 WHERE id = $1", [
@@ -426,10 +453,11 @@ export class KirimIngest {
     const messageId = randomUUID();
     const mediaId = await this.storeMedia(client, device, media, "masuk");
     const tipe = TIPE_BY_ENGINE[message.messageType] ?? "lainnya";
+    const quotedId = await this.quotedMessageId(client, device.id, message);
     const inserted = await client.query(
       `INSERT INTO kirim_messages (id, group_id, device_id, arah, tipe, body_enc, media_id, provider, provider_message_id, wa_message_id,
-                                   pengirim_hmac, pengirim_enc, status, provider_at)
-       VALUES ($1, $2, $3, 'masuk', $4, $5, $6, 'jalurpesan', $7, $8, $9, $10, 'diterima', $11)
+                                   pengirim_hmac, pengirim_enc, status, provider_at, quoted_message_id, quoted_wa_message_id, forwarded)
+       VALUES ($1, $2, $3, 'masuk', $4, $5, $6, 'jalurpesan', $7, $8, $9, $10, 'diterima', $11, $12, $13, $14)
        ON CONFLICT (provider, device_id, provider_message_id) WHERE provider_message_id IS NOT NULL DO NOTHING`,
       [
         messageId,
@@ -443,6 +471,9 @@ export class KirimIngest {
         sender ? this.crypto.lookup(sender.canonical) : null,
         sender ? this.crypto.seal(sender.canonical, columnAad("kirim_messages", "pengirim_enc", messageId)) : null,
         message.receivedAt,
+        quotedId,
+        message.quotedWaId,
+        message.forwarded,
       ],
     );
     if ((inserted.rowCount ?? 0) === 0) return;
@@ -461,6 +492,8 @@ export class KirimIngest {
       // J-3: null until the engine forwards mentions.
       menyebut_nomor_ini: message.mentionedJids === null ? null : ownPhone !== null && message.mentionedJids.some((jid) => jid.startsWith(`${ownPhone}@`) || jid.startsWith(`${ownPhone}:`)),
       received_at: message.receivedAt,
+      kutipan_message_id: quotedId,
+      diteruskan: message.forwarded,
     });
   }
 
@@ -493,10 +526,11 @@ export class KirimIngest {
     const messageId = randomUUID();
     const mediaId = await this.storeMedia(client, device, media, "keluar");
     const tipe = TIPE_BY_ENGINE[message.messageType] ?? "lainnya";
+    const quotedId = await this.quotedMessageId(client, device.id, message);
     const inserted = await client.query(
       `INSERT INTO kirim_messages (id, conversation_id, group_id, device_id, arah, asal, tipe, body_enc, media_id, provider, provider_message_id,
-                                   wa_message_id, status, provider_at)
-       VALUES ($1, $2, $3, $4, 'keluar', 'hp', $5, $6, $7, 'jalurpesan', $8, $8, 'diserahkan', $9)
+                                   wa_message_id, status, provider_at, quoted_message_id, quoted_wa_message_id, forwarded)
+       VALUES ($1, $2, $3, $4, 'keluar', 'hp', $5, $6, $7, 'jalurpesan', $8, $8, 'diserahkan', $9, $10, $11, $12)
        ON CONFLICT (provider, device_id, provider_message_id) WHERE provider_message_id IS NOT NULL DO NOTHING`,
       [
         messageId,
@@ -508,6 +542,9 @@ export class KirimIngest {
         mediaId,
         message.whatsappMessageId,
         message.receivedAt,
+        quotedId,
+        message.quotedWaId,
+        message.forwarded,
       ],
     );
     if ((inserted.rowCount ?? 0) === 0) return;
@@ -534,6 +571,134 @@ export class KirimIngest {
       disamarkan: false,
       status: "diserahkan",
       waktu: message.receivedAt,
+      kutipan_message_id: quotedId,
+      diteruskan: message.forwarded,
+    });
+  }
+
+  /** KIRIM-IMPL-004 §6.1: the stored message a new message quotes, when Kirim SQ has it. */
+  private async quotedMessageId(client: Queryable, deviceId: string, message: EngineMessage): Promise<string | null> {
+    if (!message.quotedWaId) return null;
+    const found = await client.query<{ id: string }>(
+      "SELECT id FROM kirim_messages WHERE device_id = $1 AND wa_message_id = $2 ORDER BY diimpor, created_at LIMIT 1",
+      [deviceId, message.quotedWaId],
+    );
+    return found.rows[0]?.id ?? null;
+  }
+
+  // ------------------------------------------------- KIRIM-IMPL-004 §6.2: actions and calls
+
+  /** `message.edited`: the new body replaces the old, which is kept. Our own API edits arrive here as no-ops. */
+  private async applyEngineEdit(client: Queryable, device: EngineDevice, change: EngineChange): Promise<void> {
+    const target = await messageByWaId(client, device.id, change.whatsappMessageId);
+    if (!target) return;
+    const by = change.fromMe ? BY_PHONE : BY_SENDER;
+    if (!(await recordEdit(client, this.crypto, target, { body: change.body, at: change.at, by }))) return;
+    await enqueueWebhook(client, this.crypto, device.pemilikConsumerId, "message.edited", {
+      device: device.kode,
+      ...where(target),
+      message_id: target.id,
+      arah: target.arah,
+      cuplikan: change.body ? change.body.slice(0, 200) : null,
+      diedit_at: change.at,
+      diedit_oleh: by,
+    });
+  }
+
+  /** `message.deleted`: marked deleted for everyone, body kept for the module's own rules. */
+  private async applyEngineDelete(client: Queryable, device: EngineDevice, change: EngineChange): Promise<void> {
+    const target = await messageByWaId(client, device.id, change.whatsappMessageId);
+    if (!target) return;
+    let by: string = BY_SENDER;
+    if (change.fromMe) by = BY_PHONE;
+    else if (target.groupId) {
+      const deleter = change.senderJid ? contactFromJid(change.senderJid) : null;
+      // In a group an admin may delete a member's message; only the writer counts as "pengirim".
+      if (!deleter || !target.pengirimHmac || this.crypto.lookup(deleter.canonical) !== target.pengirimHmac) by = BY_GROUP_ADMIN;
+    }
+    if (!(await recordDelete(client, target, { at: change.at, by }))) return;
+    await enqueueWebhook(client, this.crypto, device.pemilikConsumerId, "message.deleted", {
+      device: device.kode,
+      ...where(target),
+      message_id: target.id,
+      arah: target.arah,
+      dihapus_at: change.at,
+      dihapus_oleh: by,
+    });
+  }
+
+  /** `message.reaction`: one current reaction per reactor; `""` removes it. */
+  private async applyEngineReaction(client: Queryable, device: EngineDevice, reaction: EngineChange & { emoji: string }): Promise<void> {
+    const target = await messageByWaId(client, device.id, reaction.whatsappMessageId);
+    if (!target) return;
+    const reactor = reaction.senderJid ? contactFromJid(reaction.senderJid) : null;
+    if (!reaction.fromMe && !reactor) return;
+    const k = reaction.fromMe ? "nomor_ini" : this.crypto.lookup(reactor!.canonical);
+    const dari = reaction.fromMe ? "nomor_ini" : target.groupId ? "anggota" : "kontak";
+    const next = nextReactions(target.reactions, {
+      k,
+      dari,
+      emoji: reaction.emoji,
+      at: reaction.at,
+      ...(dari === "anggota" ? { enc: this.crypto.seal(reactor!.canonical, reactionAad(target.id, k)) } : {}),
+    });
+    if (!next.changed) return;
+    await saveReactions(client, target.id, next.reactions);
+    await enqueueWebhook(client, this.crypto, device.pemilikConsumerId, "message.reaction", {
+      device: device.kode,
+      ...where(target),
+      message_id: target.id,
+      dari,
+      // Group members are named like `group.message.received` names them; private chats need no number.
+      ...(dari === "anggota" ? { pengirim: { nomor: reactor!.jenis === "pn" ? reactor!.canonical.slice(3) : null } } : {}),
+      emoji: reaction.emoji,
+      waktu: reaction.at,
+    });
+  }
+
+  /**
+   * `call.logged`: a private call becomes a `panggilan` message in that person's conversation. A missed or
+   * rejected call counts as the person writing in (unread, `pesan_masuk_terakhir_at`). Group calls are not stored.
+   */
+  private async storeCall(client: Queryable, device: EngineDevice, call: EngineCall): Promise<void> {
+    if (call.isGroup) return;
+    const contact = contactFromJid(call.chatJid) ?? contactFromJid(call.fromJid) ?? (call.callerPnJid ? contactFromJid(call.callerPnJid) : null);
+    if (!contact) return;
+    const identity = { pushName: null, peerJidAlt: contact.jenis === "lid" ? call.callerPnJid : null };
+    const resolved = await this.conversationFor(client, device.id, contact, identity);
+    await this.learnContact(client, resolved, contact, identity);
+    const messageId = randomUUID();
+    const hasil = HASIL_BY_OUTCOME[call.outcome];
+    const panggilan = {
+      hasil,
+      video: call.isVideo,
+      mulai: call.startedAt,
+      diangkat_at: call.answeredAt,
+      selesai: call.endedAt,
+      durasi_detik: call.durationSeconds,
+    };
+    const inserted = await client.query(
+      `INSERT INTO kirim_messages (id, conversation_id, device_id, arah, tipe, provider, status, provider_at, panggilan, call_id)
+       VALUES ($1, $2, $3, 'masuk', 'panggilan', 'jalurpesan', 'diterima', $4, $5::jsonb, $6)
+       ON CONFLICT (device_id, call_id) WHERE call_id IS NOT NULL DO NOTHING`,
+      [messageId, resolved.id, device.id, call.startedAt, JSON.stringify(panggilan), call.callId],
+    );
+    if ((inserted.rowCount ?? 0) === 0) return;
+    const unanswered = hasil !== "diangkat";
+    await client.query(
+      `UPDATE kirim_conversations SET
+         pesan_terakhir_at = greatest(coalesce(pesan_terakhir_at, $2), $2),
+         belum_dibaca = belum_dibaca + CASE WHEN $3 THEN 1 ELSE 0 END,
+         pesan_masuk_terakhir_at = CASE WHEN $3 THEN greatest(coalesce(pesan_masuk_terakhir_at, $2), $2) ELSE pesan_masuk_terakhir_at END
+       WHERE id = $1`,
+      [resolved.id, call.startedAt, unanswered],
+    );
+    await enqueueWebhook(client, this.crypto, device.pemilikConsumerId, "call.logged", {
+      device: device.kode,
+      conversation_id: resolved.id,
+      message_id: messageId,
+      from: await this.phoneOf(client, resolved.id, contact),
+      ...panggilan,
     });
   }
 
@@ -558,20 +723,61 @@ export class KirimIngest {
     const ownPhone = await this.ownPhone(this.pool, device.id);
     await withTransaction(this.pool, async (client) => {
       const seen: string[] = [];
-      for (const group of groups) {
-        const { id } = await this.ensureGroup(client, device.id, group.jid);
-        seen.push(id);
-        const admin = ownPhone !== null && group.participants.some((participant) => participant.admin && participant.jid.startsWith(ownPhone));
-        await client.query(
-          `UPDATE kirim_groups SET nama_enc = $2, jumlah_anggota = $3, nomor_ini_admin = $4, keluar_at = NULL, disegarkan_at = now() WHERE id = $1`,
-          [id, group.name ? this.crypto.seal(group.name, columnAad("kirim_groups", "nama_enc", id)) : null, group.size ?? group.participants.length, admin],
-        );
-      }
+      for (const group of groups) seen.push(await this.storeGroupState(client, device.id, group, ownPhone));
       await client.query(
         "UPDATE kirim_groups SET keluar_at = now() WHERE device_id = $1 AND keluar_at IS NULL AND NOT (id = ANY($2::uuid[]))",
         [device.id, seen],
       );
     });
+  }
+
+  /**
+   * One group as the engine reports it: name, size, whether this number is admin, and its members
+   * (KIRIM-IMPL-004 §8, grup bersama). Members are keyed by the same canonical HMAC as conversations, with
+   * the other identity (`phoneJid` / `lidJid`) as `member_alt_*`, so a contact is found by either one.
+   */
+  async storeGroupState(client: Queryable, deviceId: string, group: ProviderGroup, ownPhone: string | null): Promise<string> {
+    const { id } = await this.ensureGroup(client, deviceId, group.jid);
+    const isOwn = (jid: string | null | undefined) => ownPhone !== null && typeof jid === "string" && (jid.startsWith(`${ownPhone}@`) || jid.startsWith(`${ownPhone}:`));
+    const admin = group.participants.some((participant) => participant.admin && (isOwn(participant.jid) || isOwn(participant.phoneJid)));
+    await client.query(
+      `UPDATE kirim_groups SET nama_enc = $2, jumlah_anggota = $3, nomor_ini_admin = $4, keluar_at = NULL, disegarkan_at = now() WHERE id = $1`,
+      [id, group.name ? this.crypto.seal(group.name, columnAad("kirim_groups", "nama_enc", id)) : null, group.size ?? group.participants.length, admin],
+    );
+    const members = new Map<string, { enc: string; altHmac: string | null; altEnc: string | null; admin: boolean }>();
+    for (const participant of group.participants) {
+      const own = contactFromJid(participant.jid);
+      if (!own) continue;
+      const otherJid = own.jenis === "lid" ? participant.phoneJid : participant.lidJid;
+      const other = otherJid ? contactFromJid(otherJid) : null;
+      const alt = other && other.jenis !== own.jenis ? other : null;
+      const hmac = this.crypto.lookup(own.canonical);
+      members.set(hmac, {
+        enc: this.crypto.seal(own.canonical, memberAad(id, hmac, "member_enc")),
+        altHmac: alt ? this.crypto.lookup(alt.canonical) : null,
+        altEnc: alt ? this.crypto.seal(alt.canonical, memberAad(id, hmac, "member_alt_enc")) : null,
+        admin: participant.admin,
+      });
+    }
+    const hmacs = [...members.keys()];
+    await client.query("DELETE FROM kirim_group_members WHERE group_id = $1 AND NOT (member_hmac = ANY($2::text[]))", [id, hmacs]);
+    if (hmacs.length > 0) {
+      const values = [...members.values()];
+      // Unchanged members are not rewritten, so a 15-minute refresh of a large group costs one statement.
+      await client.query(
+        `INSERT INTO kirim_group_members (group_id, member_hmac, member_enc, member_alt_hmac, member_alt_enc, admin)
+         SELECT $1, * FROM unnest($2::text[], $3::text[], $4::text[], $5::text[], $6::boolean[])
+         ON CONFLICT (group_id, member_hmac) DO UPDATE SET
+           member_alt_hmac = coalesce(EXCLUDED.member_alt_hmac, kirim_group_members.member_alt_hmac),
+           member_alt_enc = CASE WHEN EXCLUDED.member_alt_hmac IS NULL THEN kirim_group_members.member_alt_enc ELSE EXCLUDED.member_alt_enc END,
+           admin = EXCLUDED.admin,
+           refreshed_at = now()
+         WHERE kirim_group_members.admin IS DISTINCT FROM EXCLUDED.admin
+            OR (EXCLUDED.member_alt_hmac IS NOT NULL AND kirim_group_members.member_alt_hmac IS DISTINCT FROM EXCLUDED.member_alt_hmac)`,
+        [id, hmacs, values.map((value) => value.enc), values.map((value) => value.altHmac), values.map((value) => value.altEnc), values.map((value) => value.admin)],
+      );
+    }
+    return id;
   }
 
   /**
@@ -691,6 +897,104 @@ interface EngineMessage {
   body: string | null;
   receivedAt: string;
   media: EngineMedia | null;
+  /** KIRIM-IMPL-004 §6.1: WhatsApp id of the message this one quotes, and the "Diteruskan" label. */
+  quotedWaId: string | null;
+  forwarded: boolean;
+}
+
+/** `message.edited` / `message.deleted` (`change`) and `message.reaction` (`reaction`), JalurPesan K3.2 §C. */
+interface EngineChange {
+  whatsappMessageId: string;
+  senderJid: string | null;
+  fromMe: boolean;
+  group: boolean;
+  /** New text of an edit; null when the engine could not read it. */
+  body: string | null;
+  at: string;
+}
+
+interface EngineCall {
+  callId: string;
+  chatJid: string;
+  fromJid: string;
+  callerPnJid: string | null;
+  isVideo: boolean;
+  isGroup: boolean;
+  outcome: "answered_elsewhere" | "rejected" | "missed";
+  startedAt: string;
+  answeredAt: string | null;
+  endedAt: string | null;
+  durationSeconds: number;
+}
+
+const HASIL_BY_OUTCOME: Record<EngineCall["outcome"], "diangkat" | "ditolak" | "tak_terjawab"> = {
+  answered_elsewhere: "diangkat",
+  rejected: "ditolak",
+  missed: "tak_terjawab",
+};
+
+function isoOr(value: unknown, fallback: string): string {
+  return typeof value === "string" && !Number.isNaN(Date.parse(value)) ? value : fallback;
+}
+
+/** Reads `{ version, change | reaction: {...} }` defensively; unknown shapes are skipped, never guessed. */
+export function readChange(payload: unknown, key: "change"): EngineChange | null;
+export function readChange(payload: unknown, key: "reaction"): (EngineChange & { emoji: string }) | null;
+export function readChange(payload: unknown, key: "change" | "reaction"): (EngineChange & { emoji?: string }) | null {
+  if (!payload || typeof payload !== "object") return null;
+  const raw = (payload as Record<string, unknown>)[key];
+  if (!raw || typeof raw !== "object") return null;
+  const value = raw as Record<string, unknown>;
+  if (typeof value.whatsappMessageId !== "string" || !value.whatsappMessageId || value.whatsappMessageId.length > 200) return null;
+  const chatJid = typeof value.chatJid === "string" ? value.chatJid : "";
+  const now = new Date().toISOString();
+  const base: EngineChange = {
+    whatsappMessageId: value.whatsappMessageId,
+    senderJid: typeof value.senderJid === "string" ? value.senderJid : null,
+    fromMe: value.fromMe === true,
+    group: value.recipientType === "group" || chatJid.endsWith("@g.us"),
+    body: typeof value.body === "string" && value.body.length > 0 ? value.body : null,
+    at: isoOr(key === "reaction" ? value.reactedAt : value.editedAt ?? value.deletedAt, now),
+  };
+  if (key === "change") return base;
+  if (typeof value.emoji !== "string" || [...value.emoji].length > 16) return null;
+  return { ...base, body: null, emoji: value.emoji };
+}
+
+/** Reads `{ version, call: {...} }`; only the three final outcomes are accepted. */
+export function readCall(payload: unknown): EngineCall | null {
+  if (!payload || typeof payload !== "object") return null;
+  const raw = (payload as Record<string, unknown>).call;
+  if (!raw || typeof raw !== "object") return null;
+  const value = raw as Record<string, unknown>;
+  if (typeof value.callId !== "string" || !value.callId || value.callId.length > 200) return null;
+  if (value.outcome !== "answered_elsewhere" && value.outcome !== "rejected" && value.outcome !== "missed") return null;
+  const startedAt = isoOr(value.startedAt, new Date().toISOString());
+  const duration = typeof value.durationSeconds === "number" && Number.isFinite(value.durationSeconds) && value.durationSeconds >= 0
+    ? Math.min(Math.round(value.durationSeconds), 86_400)
+    : 0;
+  return {
+    callId: value.callId,
+    chatJid: typeof value.chatJid === "string" ? value.chatJid : "",
+    fromJid: typeof value.fromJid === "string" ? value.fromJid : "",
+    callerPnJid: typeof value.callerPnJid === "string" && value.callerPnJid ? value.callerPnJid : null,
+    isVideo: value.isVideo === true,
+    isGroup: value.isGroup === true || (typeof value.groupJid === "string" && value.groupJid.length > 0),
+    outcome: value.outcome,
+    startedAt,
+    answeredAt: typeof value.answeredAt === "string" && !Number.isNaN(Date.parse(value.answeredAt)) ? value.answeredAt : null,
+    endedAt: typeof value.endedAt === "string" && !Number.isNaN(Date.parse(value.endedAt)) ? value.endedAt : null,
+    durationSeconds: duration,
+  };
+}
+
+/** The conversation or group a message belongs to, as webhooks name it. */
+function where(target: { conversationId: string | null; groupId: string | null }): Record<string, string> {
+  return target.groupId ? { group_id: target.groupId } : { conversation_id: target.conversationId! };
+}
+
+export function memberAad(groupId: string, memberHmac: string, column: "member_enc" | "member_alt_enc"): string {
+  return columnAad("kirim_group_members", column, `${groupId}:${memberHmac}`);
 }
 
 /** JalurPesan names the profile name `senderDisplayName`; `pushName` is the Baileys name. */
@@ -707,7 +1011,10 @@ function readMessage(payload: unknown): EngineMessage | null {
   if (typeof value.id !== "string" || !value.id) return null;
   const chatJid = typeof value.chatJid === "string" ? value.chatJid : "";
   const media = value.media && typeof value.media === "object" ? (value.media as Record<string, unknown>) : null;
+  const quoted = value.quoted && typeof value.quoted === "object" ? (value.quoted as Record<string, unknown>) : null;
   return {
+    quotedWaId: quoted && typeof quoted.id === "string" && quoted.id && quoted.id.length <= 200 ? quoted.id : null,
+    forwarded: value.forwarded === true,
     id: value.id,
     whatsappMessageId: typeof value.whatsappMessageId === "string" && value.whatsappMessageId ? value.whatsappMessageId : null,
     pushName: displayName(value.senderDisplayName) ?? displayName(value.pushName),

@@ -247,7 +247,17 @@ export async function writeAudit(db: Queryable, input: AuditInput): Promise<void
   );
 }
 
-export type WebhookEventType = "message.status" | "message.received" | "message.sent" | "group.message.received" | "device.status";
+export type WebhookEventType =
+  | "message.status"
+  | "message.received"
+  | "message.sent"
+  | "group.message.received"
+  | "device.status"
+  // KIRIM-IMPL-004 §7
+  | "message.edited"
+  | "message.deleted"
+  | "message.reaction"
+  | "call.logged";
 
 /**
  * Queues one signed event for a consumer, in the caller's transaction. Consumers without a
