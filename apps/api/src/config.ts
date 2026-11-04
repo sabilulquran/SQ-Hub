@@ -44,6 +44,9 @@ const serverConfigSchema = foundationConfigSchema.extend({
   HCIS_ROLE_ADMIN_BASE_URL: optionalNonempty(z.string().url()),
   HCIS_ROLE_ADMIN_CLIENT_ID: optionalNonempty(z.string().trim().min(1)),
   HCIS_ROLE_ADMIN_CLIENT_SECRET: optionalNonempty(z.string().min(1)),
+  // HUB-IMPL-024: machine clients that may ask for a staff activation invite (HCIS only). Kept apart
+  // from ALLOWED_MACHINE_CLIENTS so a client that only reads access decisions cannot create identities.
+  STAFF_ACTIVATION_ALLOWED_CLIENTS: optionalNonempty(z.string().trim().min(1)),
 });
 
 export interface FoundationConfig {
@@ -77,6 +80,8 @@ export interface AppConfig extends FoundationConfig {
   hcisRoleAdminBaseUrl?: string;
   hcisRoleAdminClientId?: string;
   hcisRoleAdminClientSecret?: string;
+  /** HUB-IMPL-024: empty means the invite route is not registered. */
+  staffActivationAllowedClients: ReadonlySet<string>;
 }
 
 function foundationConfig(parsed: z.infer<typeof foundationConfigSchema>): FoundationConfig {
@@ -146,8 +151,33 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     throw new Error("HCIS role administration must use its own machine client");
   }
 
+  const staffActivationAllowedClients = new Set(
+    (parsed.STAFF_ACTIVATION_ALLOWED_CLIENTS ?? "").split(",").map((value) => value.trim()).filter(Boolean),
+  );
+  if (staffActivationAllowedClients.size > 0) {
+    // HUB-IMPL-024: exactly the HCIS machine client; a list would invite misconfiguration.
+    if (staffActivationAllowedClients.size !== 1) {
+      throw new Error("STAFF_ACTIVATION_ALLOWED_CLIENTS must name exactly one client (the HCIS machine client)");
+    }
+    if (!managementConfigured) {
+      throw new Error("STAFF_ACTIVATION_ALLOWED_CLIENTS requires the identity management and HCIS verification configuration");
+    }
+    // HUB-IMPL-024: the invite caller is the HCIS machine client, never a client Hub itself uses.
+    const reserved = [
+      parsed.SQ_HUB_OIDC_CLIENT_ID,
+      parsed.KEYCLOAK_DIRECTORY_CLIENT_ID,
+      parsed.KEYCLOAK_IDENTITY_MANAGEMENT_CLIENT_ID,
+      parsed.HCIS_STAFF_VERIFY_CLIENT_ID,
+      parsed.HCIS_ROLE_ADMIN_CLIENT_ID,
+    ].filter((value): value is string => Boolean(value));
+    if (reserved.some((clientId) => staffActivationAllowedClients.has(clientId))) {
+      throw new Error("STAFF_ACTIVATION_ALLOWED_CLIENTS must not name a client SQ Hub itself uses");
+    }
+  }
+
   return {
     ...foundationConfig(parsed),
+    staffActivationAllowedClients,
     hubOidcClientId: parsed.SQ_HUB_OIDC_CLIENT_ID,
     hubOidcClientSecret: parsed.SQ_HUB_OIDC_CLIENT_SECRET,
     hubOidcRedirectUri: parsed.SQ_HUB_OIDC_REDIRECT_URI,

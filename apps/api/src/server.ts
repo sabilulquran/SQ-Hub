@@ -99,6 +99,18 @@ const verifyMachineToken = createKeycloakMachineTokenVerifier({
   audience: config.machineTokenAudience,
   allowedClients: config.allowedMachineClients,
 });
+// HUB-IMPL-024: its own allowlist, and only service-account (client-credentials) tokens.
+const staffActivationInvite = staffLifecycle && config.staffActivationAllowedClients.size > 0
+  ? {
+      verifyMachineToken: createKeycloakMachineTokenVerifier({
+        issuer: config.keycloakIssuer,
+        audience: config.machineTokenAudience,
+        allowedClients: config.staffActivationAllowedClients,
+        requireServiceAccount: true,
+      }),
+      service: staffLifecycle,
+    }
+  : undefined;
 
 const hubOidcProvider = new HubOidcProvider({
   issuer: config.keycloakIssuer,
@@ -192,6 +204,7 @@ const app = buildApp({
   identityDirectory,
   accountSelfService,
   ...(staffLifecycle ? { staffLifecycle } : {}),
+  ...(staffActivationInvite ? { staffActivationInvite } : {}),
   organMemberships,
   governance,
   roleAdministration,
