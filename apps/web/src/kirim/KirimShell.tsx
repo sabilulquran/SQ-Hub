@@ -142,6 +142,7 @@ export function ReasonDialog({
   busy,
   error,
   reasonRequired = true,
+  confirmBlocked = false,
   onConfirm,
   onClose,
   children,
@@ -153,6 +154,8 @@ export function ReasonDialog({
   busy: boolean;
   error: string | null;
   reasonRequired?: boolean;
+  /** Keeps the confirm button disabled, e.g. until an acknowledgement in `children` is ticked. */
+  confirmBlocked?: boolean;
   onConfirm: (reason: string) => void;
   onClose: () => void;
   children?: ReactNode;
@@ -175,7 +178,7 @@ export function ReasonDialog({
           <button
             type="button"
             className={danger ? dangerButton : primaryButton}
-            disabled={busy || (reasonRequired && !reason.trim())}
+            disabled={busy || confirmBlocked || (reasonRequired && !reason.trim())}
             onClick={() => onConfirm(reason.trim())}
           >
             {confirmLabel}

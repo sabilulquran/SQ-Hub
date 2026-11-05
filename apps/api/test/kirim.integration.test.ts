@@ -1079,12 +1079,175 @@ describe("Module cards (KIRIM-IMPL-003)", () => {
     expect((await send("karir-api", { jenis: "notifikasi", to: PHONE, text: "z" })).json().error.code).toBe("consumer_unknown");
   });
 
-  it("empties the owner's card when its number is deactivated, so it can be connected again", async () => {
+  it("empties the owner's card when its number is deactivated, and a new number then needs nomor_berbeda", async () => {
     await registry();
     await adminAs("admin-session");
-    expect((await admin("POST", "/devices/hcis/deactivate", { payload: { alasan: "nomor diblokir" } })).statusCode).toBe(200);
+    expect((await admin("POST", "/devices/hcis/deactivate", { payload: { alasan: "nomor diblokir", konfirmasi: true } })).statusCode).toBe(200);
     const card = (await admin("GET", "/modules")).json().modules.find((item: { application_key: string }) => item.application_key === "hcis");
     expect(card).toMatchObject({ peran: "kosong", nomor: null });
-    expect((await admin("POST", "/modules/hcis/nomor-baru", { payload: {} })).json().nomor.kode).toBe("hcis-2");
+    expect((await admin("POST", "/modules/hcis/nomor-baru", { payload: { nomor_berbeda: true } })).json().nomor.kode).toBe("hcis-2");
+    const audit = await pool.query<{ metadata: Record<string, unknown> }>("SELECT metadata FROM kirim_audit WHERE aksi = 'kartu.nomor_baru'");
+    expect(audit.rows[0]!.metadata).toMatchObject({ device: "hcis-2", nomor_berbeda_dari: ["hcis"] });
+  });
+
+  // ------------------------------------------------------------ KIRIM-IMPL-003 §11 (2026-11-05)
+
+  it("§11.1 Sambungkan ulang re-pairs the same number: same code, conversations, card and routes, and retries a restarting engine", async () => {
+    await registry();
+    await adminAs("admin-session");
+    stub.addEvent("spmb", "message.received", receivedPayload({ body: "Assalamu'alaikum" }));
+    await kirim.ingest!.runOnce();
+    const conversations = async () =>
+      (await pool.query<{ id: string }>("SELECT c.id FROM kirim_conversations c JOIN kirim_devices d ON d.id = c.device_id WHERE d.kode = 'spmb' ORDER BY c.id")).rows;
+    const before = await conversations();
+    expect(before).toHaveLength(1);
+
+    expect((await admin("POST", "/devices/spmb/sambung-ulang", { payload: { mode: "qr" } })).statusCode).toBe(400);
+    expect((await admin("POST", "/devices/hcis/sambung-ulang", { payload: { mode: "qr", alasan: "uji" } })).json().error.code).toBe("pairing_not_applicable");
+
+    // JalurPesan answers 503 once, as while it restarts: the action tries again by itself.
+    stub.resetQueue.push({ status: 503, body: {} });
+    const response = await admin("POST", "/devices/spmb/sambung-ulang", { payload: { mode: "qr", alasan: "QR gagal saat mesin restart" } });
+    expect(response.statusCode).toBe(200);
+    expect(response.headers["cache-control"]).toBe("no-store");
+    expect(response.json()).toMatchObject({
+      mode: "qr",
+      qr: "data:image/png;base64,UVJDT0RF",
+      nomor: { kode: "spmb", provider_ref: "spmb", status: "menunggu_pairing" },
+    });
+    expect(stub.requests.filter((request) => request.path === "/api/v1/platform/tenants/spmb/device/reset")).toHaveLength(2);
+
+    // Nothing new was created and nothing moved.
+    expect((await pool.query<{ kode: string }>("SELECT kode FROM kirim_devices ORDER BY kode")).rows.map((row) => row.kode)).toEqual(["hcis", "spmb"]);
+    expect(await conversations()).toEqual(before);
+    const card = (await admin("GET", "/modules")).json().modules.find((item: { application_key: string }) => item.application_key === "spmb-sq");
+    expect(card).toMatchObject({ peran: "pemilik", nomor: { kode: "spmb" }, dipakai_juga_oleh: ["keluarga"] });
+    const routes = await pool.query(
+      "SELECT 1 FROM kirim_routes r JOIN kirim_consumers c ON c.id = r.consumer_id JOIN kirim_devices d ON d.id = r.device_id WHERE c.nama = 'keluarga' AND d.kode = 'spmb' AND r.jenis = 'kode'",
+    );
+    expect(routes.rowCount).toBe(1);
+
+    const code = await admin("POST", "/devices/spmb/sambung-ulang", { payload: { mode: "kode", phone: "081200001111", alasan: "pakai kode pairing" } });
+    expect(code.json()).toMatchObject({ mode: "kode", pairing_code: "ABCD-EFGH", nomor: { kode: "spmb" } });
+
+    const audit = await pool.query<{ hasil: string; metadata: Record<string, unknown> }>("SELECT hasil, metadata FROM kirim_audit WHERE aksi = 'nomor.sambung_ulang' ORDER BY occurred_at");
+    expect(audit.rows.map((row) => row.hasil)).toEqual(["berhasil", "berhasil"]);
+    expect(audit.rows[0]!.metadata).toMatchObject({ mode: "qr", perangkat_baru: false, status_sebelumnya: "tersambung" });
+    const dump = JSON.stringify(audit.rows) + JSON.stringify((await pool.query("SELECT * FROM kirim_devices")).rows);
+    expect(dump).not.toContain("UVJDT0RF");
+    expect(dump).not.toContain("ABCD-EFGH");
+  });
+
+  it("§11.1 prepares a missing engine device on the same tenant, or moves the same number to a fresh tenant", async () => {
+    await registry();
+    await adminAs("admin-session");
+    stub.tenants.delete("spmb");
+    const again = await admin("POST", "/devices/spmb/sambung-ulang", { payload: { mode: "qr", alasan: "perangkat mesin hilang" } });
+    expect(again.statusCode).toBe(200);
+    expect(again.json().nomor).toMatchObject({ kode: "spmb", provider_ref: "spmb" });
+    expect(stub.tenants.has("spmb")).toBe(true);
+
+    stub.addTenant("spmb-2"); // the engine already knows this tenant, so it is skipped
+    const fresh = await admin("POST", "/devices/spmb/sambung-ulang", { payload: { mode: "qr", alasan: "sesi mesin rusak", perangkat_baru: true } });
+    expect(fresh.statusCode).toBe(200);
+    expect(fresh.json().nomor).toMatchObject({ kode: "spmb", provider_ref: "spmb-3", status: "menunggu_pairing" });
+    expect((await pool.query("SELECT 1 FROM kirim_devices")).rowCount).toBe(2);
+    const audit = await pool.query<{ metadata: Record<string, unknown> }>("SELECT metadata FROM kirim_audit WHERE aksi = 'nomor.sambung_ulang' ORDER BY occurred_at DESC LIMIT 1");
+    expect(audit.rows[0]!.metadata).toMatchObject({ perangkat_baru: true, tenant_lama: "spmb", tenant_baru: "spmb-3" });
+
+    // A new number's code never names a tenant another number already holds.
+    expect((await admin("POST", "/modules/keuangan/nomor-baru", { payload: {} })).json().nomor).toMatchObject({ kode: "keuangan", provider_ref: "keuangan" });
+    await pool.query("UPDATE kirim_devices SET provider_ref = 'karir' WHERE kode = 'spmb'");
+    expect((await admin("POST", "/modules/karir-sq/nomor-baru", { payload: {} })).json().nomor).toMatchObject({ kode: "karir-2", provider_ref: "karir-2" });
+  });
+
+  it("§11.2 Nonaktifkan names the cards and routes on the number and needs konfirmasi", async () => {
+    await registry();
+    await adminAs("admin-session");
+    // Keluarga still uses spmb: K-3 refuses before any confirmation.
+    expect((await admin("POST", "/devices/spmb/deactivate", { payload: { alasan: "uji", konfirmasi: true } })).json().error.code).toBe("nomor_dipakai_modul_lain");
+
+    const usage = await admin("GET", "/devices/hcis/pemakaian");
+    expect(usage.json()).toEqual({ kartu: ["HCIS"], rute: [] });
+    const refused = await admin("POST", "/devices/hcis/deactivate", { payload: { alasan: "pindai ulang" } });
+    expect(refused.statusCode).toBe(409);
+    expect(refused.json().error).toMatchObject({ code: "konfirmasi_diperlukan", dipakai: { kartu: ["HCIS"], rute: [] } });
+    expect(refused.json().error.message).toContain("Sambungkan ulang");
+    expect((await pool.query<{ status: string }>("SELECT status FROM kirim_devices WHERE kode = 'hcis'")).rows[0]!.status).toBe("tersambung");
+    expect((await pool.query("SELECT 1 FROM kirim_audit WHERE aksi = 'nomor.nonaktif'")).rowCount).toBe(0);
+
+    const done = await admin("POST", "/devices/hcis/deactivate", { payload: { alasan: "nomor diblokir", konfirmasi: true } });
+    expect(done.json()).toMatchObject({ kode: "hcis", status: "nonaktif" });
+    const audit = await pool.query<{ metadata: Record<string, unknown> }>("SELECT metadata FROM kirim_audit WHERE aksi = 'nomor.nonaktif'");
+    expect(audit.rows[0]!.metadata).toEqual({ alasan: "nomor diblokir", dipakai: ["HCIS"] });
+  });
+
+  it("§11.3 an emptied card gets its old number back instead of a silent second number", async () => {
+    await registry();
+    await adminAs("admin-session");
+    await admin("POST", "/devices/hcis/deactivate", { payload: { alasan: "salah tekan", konfirmasi: true } });
+    const card = (await admin("GET", "/modules")).json().modules.find((item: { application_key: string }) => item.application_key === "hcis");
+    expect(card).toMatchObject({ peran: "kosong", nomor_lama: [{ kode: "hcis", label: "HCIS", status: "nonaktif" }] });
+
+    const refused = await admin("POST", "/modules/hcis/nomor-baru", { payload: {} });
+    expect(refused.statusCode).toBe(409);
+    expect(refused.json().error).toMatchObject({ code: "nomor_modul_ada", nomor: [{ kode: "hcis", label: "HCIS", status: "nonaktif" }] });
+    expect((await pool.query("SELECT 1 FROM kirim_devices")).rowCount).toBe(2);
+
+    expect((await admin("POST", "/modules/karir-sq/pakai-nomor-lama", { payload: { device: "hcis" } })).json().error.code).toBe("nomor_bukan_milik_modul");
+    const back = await admin("POST", "/modules/hcis/pakai-nomor-lama", { payload: { device: "hcis" } });
+    expect(back.statusCode).toBe(200);
+    expect(back.json()).toMatchObject({ peran: "pemilik", nomor: { kode: "hcis", status: "tersambung" }, nomor_lama: [] });
+    const audit = await pool.query<{ metadata: Record<string, unknown> }>("SELECT metadata FROM kirim_audit WHERE aksi = 'kartu.pakai_nomor_lama'");
+    expect(audit.rows[0]!.metadata).toEqual({ device: "hcis", diaktifkan: true });
+  });
+
+  it("§11.3 holds a second number paired to the same WhatsApp and merges it into the older number", async () => {
+    await registry();
+    await adminAs("admin-session");
+    await admin("GET", "/devices/spmb/status"); // spmb learns its phone
+    expect((await admin("POST", "/devices", { payload: { kode: "spmb-baru", label: "SPMB baru", pemilik: "spmb", provider: "jalurpesan", provider_ref: "spmb-baru" } })).statusCode).toBe(201);
+    stub.addTenant("spmb-baru"); // linked to the same phone as spmb
+
+    const status = await admin("GET", "/devices/spmb-baru/status");
+    expect(status.json()).toMatchObject({ status: "tersambung", nomor_sama: [{ kode: "spmb", label: "SPMB resmi", status: "tersambung", lebih_dulu: true }] });
+    expect(JSON.stringify(status.json())).not.toContain("81200001111");
+    const list = (await admin("GET", "/devices")).json();
+    expect(list.peringatan.nomor_ganda).toEqual(["spmb-baru"]);
+    expect(list.devices.find((device: { kode: string }) => device.kode === "spmb-baru").nomor_ganda).toEqual({ kode: "spmb", label: "SPMB resmi" });
+    expect(list.devices.find((device: { kode: string }) => device.kode === "spmb").nomor_ganda).toBeNull();
+
+    // Held: its messages wait in the engine instead of starting a second conversation history.
+    stub.addEvent("spmb-baru", "message.received", receivedPayload({ body: "Halo dari HP" }));
+    await kirim.ingest!.runOnce();
+    expect((await pool.query("SELECT 1 FROM kirim_messages")).rowCount).toBe(0);
+
+    expect((await admin("POST", "/devices/spmb/pakai-nomor-yang-ada", { payload: { ke: "spmb-baru", alasan: "uji" } })).json().error.code).toBe("nomor_lebih_baru");
+    expect((await admin("POST", "/devices/spmb-baru/pakai-nomor-yang-ada", { payload: { ke: "hcis", alasan: "uji" } })).json().error.code).toBe("nomor_tidak_sama");
+    const merged = await admin("POST", "/devices/spmb-baru/pakai-nomor-yang-ada", { payload: { ke: "spmb", alasan: "WhatsApp sama, nomor kedua tidak sengaja" } });
+    expect(merged.statusCode).toBe(200);
+    expect(merged.json()).toMatchObject({ kode: "spmb", provider_ref: "spmb-baru", status: "tersambung", nomor_ganda: null });
+    expect((await pool.query<{ kode: string }>("SELECT kode FROM kirim_devices ORDER BY kode")).rows.map((row) => row.kode)).toEqual(["hcis", "spmb"]);
+
+    await kirim.ingest!.runOnce();
+    const messages = await pool.query<{ kode: string }>("SELECT d.kode FROM kirim_messages m JOIN kirim_devices d ON d.id = m.device_id");
+    expect(messages.rows).toEqual([{ kode: "spmb" }]);
+    const card = (await admin("GET", "/modules")).json().modules.find((item: { application_key: string }) => item.application_key === "spmb-sq");
+    expect(card).toMatchObject({ nomor: { kode: "spmb" }, dipakai_juga_oleh: ["keluarga"] });
+    const audit = await pool.query<{ aksi: string; objek_ref: string }>("SELECT aksi, objek_ref FROM kirim_audit WHERE aksi LIKE 'nomor.%_duplikat' ORDER BY aksi");
+    expect(audit.rows).toEqual([{ aksi: "nomor.gabung_duplikat", objek_ref: "spmb" }, { aksi: "nomor.hapus_duplikat", objek_ref: "spmb-baru" }]);
+  });
+
+  it("§11.3 refuses to merge a duplicate that already holds its own queue", async () => {
+    await registry();
+    await adminAs("admin-session");
+    await admin("GET", "/devices/spmb/status");
+    await admin("POST", "/devices", { payload: { kode: "spmb-baru", label: "SPMB baru", pemilik: "spmb", provider: "jalurpesan", provider_ref: "spmb-baru" } });
+    stub.addTenant("spmb-baru");
+    await admin("GET", "/devices/spmb-baru/status");
+    expect((await send("spmb-api", { device: "spmb-baru", jenis: "notifikasi", to: PHONE, text: "x" })).statusCode).toBe(202);
+    const refused = await admin("POST", "/devices/spmb-baru/pakai-nomor-yang-ada", { payload: { ke: "spmb", alasan: "uji" } });
+    expect(refused.json().error.code).toBe("nomor_sudah_berisi");
+    expect((await pool.query("SELECT 1 FROM kirim_devices WHERE kode = 'spmb-baru'")).rowCount).toBe(1);
   });
 });

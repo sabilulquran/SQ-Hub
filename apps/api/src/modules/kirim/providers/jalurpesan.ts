@@ -83,6 +83,11 @@ export class JalurPesanProvider implements KirimProvider {
     if (response.status !== 200) throw this.lifecycleError(response);
   }
 
+  async resetSession(device: DeviceRef): Promise<void> {
+    const response = await this.lifecycle("POST", device, "/device/reset");
+    if (response.status !== 200) throw this.lifecycleError(response);
+  }
+
   async sendText(device: DeviceRef, to: Recipient, text: string, idempotencyKey: string, options?: SendOptions): Promise<SendResult> {
     return this.sendMessage(device, { ...target(to), message: text, ...sendExtras(options) }, idempotencyKey);
   }

@@ -74,6 +74,8 @@ export class JalurPesanStub {
   /** Next responses for POST …/messages, consumed in order; default is 200. */
   sendQueue: Array<{ status: number; body: Record<string, unknown> } | "hang"> = [];
   provisionResponse: { status: number; body: Record<string, unknown> } | null = null;
+  /** Next responses for POST …/device/reset, consumed in order; default resets the session (200). */
+  resetQueue: Array<{ status: number; body: Record<string, unknown> }> = [];
   private server: Server | null = null;
   baseUrl = "";
 
@@ -129,6 +131,7 @@ export class JalurPesanStub {
     this.uploads = 0;
     this.sendQueue = [];
     this.provisionResponse = null;
+    this.resetQueue = [];
   }
 
   addTenant(tenant: string, state: Partial<StubTenant> = {}): StubTenant {
@@ -192,6 +195,14 @@ export class JalurPesanStub {
     }
     if (request.method === "POST" && path === "/device/pairing-code") {
       return { status: 200, body: { success: true, pairingCode: "ABCD-EFGH" } };
+    }
+    if (request.method === "POST" && path === "/device/reset") {
+      const next = this.resetQueue.shift();
+      if (next) return next;
+      // JalurPesan resetDevice: credentials and identity are cleared, then a new QR session starts.
+      tenant.live = "qr";
+      tenant.phone = null;
+      return { status: 200, body: { device: { id: tenant.engineDeviceId } } };
     }
     if (request.method === "POST" && path === "/device/logout") {
       tenant.live = "disconnected";

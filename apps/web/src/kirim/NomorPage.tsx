@@ -1,10 +1,11 @@
-import { AlertTriangle, History, Link2, Pause, Play, Plus, PlugZap, Power, QrCode, RefreshCw, Settings2, Unplug } from "lucide-react";
+import { AlertTriangle, History, Link2, Merge, Pause, Play, Plus, PlugZap, Power, QrCode, RefreshCw, RotateCcw, Settings2, Unplug } from "lucide-react";
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 
 import { applicationAppearance } from "@/components/applicationAppearance";
 import {
   kirimFetch,
   KirimRequestError,
+  type DeviceUsage,
   type KirimConsumer,
   type KirimDevice,
   type KirimDeviceList,
@@ -26,12 +27,23 @@ type Dialog =
   | { kind: "disconnect" | "deactivate" | "pause" | "resume"; device: KirimDevice }
   | { kind: "edit"; device: KirimDevice }
   | { kind: "pair"; device: KirimDevice }
+  | { kind: "sambung-ulang"; device: KirimDevice }
+  | { kind: "gabung"; device: KirimDevice; ke: { kode: string; label: string } }
   | { kind: "tambah"; card: KirimModuleCard }
   | { kind: "ubah-pemakai"; card: KirimModuleCard }
   | { kind: "putuskan-modul"; card: KirimModuleCard };
 
 const POLL_MS = 3_000;
 const POLL_LIMIT_MS = 2 * 60_000;
+/** KIRIM-IMPL-003 §11.1: while the engine restarts, the screen tries again on its own a few times. */
+const ENGINE_RETRY_SECONDS = 15;
+const ENGINE_RETRY_LIMIT = 3;
+const RECONNECTABLE = new Set(["terputus", "menunggu_pairing", "tersambung"]);
+
+/** "Sambungkan ulang" fits a JalurPesan number that was paired before and is not nonaktif. */
+export function canReconnect(device: KirimDevice): boolean {
+  return device.provider === "jalurpesan" && RECONNECTABLE.has(device.status);
+}
 
 function messageFor(error: unknown): string {
   if (error instanceof KirimRequestError) return error.message;
@@ -92,8 +104,20 @@ export function NomorPage({ preview }: { preview?: NomorState }) {
           onConfirm={(alasan) => void run(() => kirimFetch(`/devices/${dialog.device.kode}/disconnect`, { method: "POST", body: { alasan } }))} />
       ) : null}
       {dialog?.kind === "deactivate" ? (
-        <ReasonDialog title={`Nonaktifkan ${dialog.device.label}?`} body={sharedBody(shared(dialog.device), "Permintaan kirim baru untuk nomor ini ditolak. Antrean yang ada tidak dihapus.")} confirmLabel="Nonaktifkan" danger busy={busy} error={error} onClose={close}
-          onConfirm={(alasan) => void run(() => kirimFetch(`/devices/${dialog.device.kode}/deactivate`, { method: "POST", body: { alasan } }))} />
+        <DeactivateDialog device={dialog.device} sharers={shared(dialog.device)} busy={busy} error={error} onClose={close}
+          onReconnect={canReconnect(dialog.device) ? () => { setError(null); setDialog({ kind: "sambung-ulang", device: dialog.device }); } : undefined}
+          onConfirm={(alasan) => void run(() => kirimFetch(`/devices/${dialog.device.kode}/deactivate`, { method: "POST", body: { alasan, konfirmasi: true } }))} />
+      ) : null}
+      {dialog?.kind === "gabung" ? (
+        <ReasonDialog
+          title={`Pakai ${dialog.ke.label}?`}
+          body={`${dialog.device.label} tertaut ke WhatsApp yang sama dengan ${dialog.ke.label}. Sesi WhatsApp, kartu, dan rute pindah ke ${dialog.ke.label} beserta percakapannya yang lama, lalu ${dialog.device.label} dihapus. Pesan masuk yang ditahan diambil lagi.`}
+          confirmLabel={`Pakai ${dialog.ke.label}`}
+          busy={busy}
+          error={error}
+          onClose={close}
+          onConfirm={(alasan) => void run(() => kirimFetch(`/devices/${dialog.device.kode}/pakai-nomor-yang-ada`, { method: "POST", body: { ke: dialog.ke.kode, alasan } }))}
+        />
       ) : null}
       {dialog?.kind === "pause" || dialog?.kind === "resume" ? (
         <ReasonDialog
@@ -134,15 +158,27 @@ export function NomorPage({ preview }: { preview?: NomorState }) {
           busy={busy}
           error={error}
           onClose={close}
-          onNewNumber={() => void run(
-            () => kirimFetch<KirimModuleCard>(`/modules/${dialog.card.application_key}/nomor-baru`, { method: "POST", body: {} }),
+          onNewNumber={(nomorBerbeda) => void run(
+            () => kirimFetch<KirimModuleCard>(`/modules/${dialog.card.application_key}/nomor-baru`, { method: "POST", body: nomorBerbeda ? { nomor_berbeda: true } : {} }),
             // Pairing opens right away; a `log` number needs none.
             (created) => (created.nomor?.provider === "jalurpesan" ? { kind: "pair", device: created.nomor } : null),
+          )}
+          onUseOwnNumber={(device) => void run(
+            () => kirimFetch<KirimModuleCard>(`/modules/${dialog.card.application_key}/pakai-nomor-lama`, { method: "POST", body: { device } }),
+            // The number comes back as it was; one that is not connected opens Sambungkan ulang.
+            (card) => (card.nomor && card.nomor.status !== "tersambung" && canReconnect(card.nomor) ? { kind: "sambung-ulang", device: card.nomor } : null),
           )}
           onUseNumber={(device, kodeVerifikasi) => void run(() => kirimFetch(`/modules/${dialog.card.application_key}/pakai-nomor`, { method: "POST", body: { device, kode_verifikasi: kodeVerifikasi } }))}
         />
       ) : null}
-      {dialog?.kind === "pair" ? <PairingDialog device={dialog.device} onClose={() => { close(); void load(); }} /> : null}
+      {dialog?.kind === "pair" || dialog?.kind === "sambung-ulang" ? (
+        <PairingDialog
+          device={dialog.device}
+          reconnect={dialog.kind === "sambung-ulang"}
+          onDuplicate={(ke) => { setError(null); setDialog({ kind: "gabung", device: dialog.device, ke }); void load(); }}
+          onClose={() => { close(); void load(); }}
+        />
+      ) : null}
     </>
   );
 }
@@ -151,6 +187,73 @@ function sharedBody(sharers: string[], body: string): string {
   return sharers.length > 0
     ? `Nomor ini masih dipakai ${sharers.join(", ")}. Putuskan modul itu dulu dari kartunya, atau pindahkan pemilik nomor lewat Ubah. Untuk menghentikan semua pengiriman sementara, pakai Jeda antrean.`
     : body;
+}
+
+/**
+ * KIRIM-IMPL-003 §11.2: Nonaktifkan names every card and route still using the number, points to
+ * Sambungkan ulang for a WhatsApp that only came loose, and needs a ticked acknowledgement.
+ */
+function DeactivateDialog({ device, sharers, busy, error, onClose, onConfirm, onReconnect }: {
+  device: KirimDevice;
+  sharers: string[];
+  busy: boolean;
+  error: string | null;
+  onClose: () => void;
+  onConfirm: (alasan: string) => void;
+  onReconnect?: () => void;
+}) {
+  const [usage, setUsage] = useState<DeviceUsage | null>(null);
+  const [paham, setPaham] = useState(false);
+  useEffect(() => {
+    let active = true;
+    kirimFetch<DeviceUsage>(`/devices/${device.kode}/pemakaian`).then((value) => { if (active) setUsage(value); }).catch(() => undefined);
+    return () => { active = false; };
+  }, [device.kode]);
+  return (
+    <ReasonDialog
+      title={`Nonaktifkan ${device.label}?`}
+      body={sharedBody(sharers, "Permintaan kirim baru untuk nomor ini ditolak. Antrean yang ada tidak dihapus.")}
+      confirmLabel="Nonaktifkan"
+      danger
+      busy={busy}
+      error={error}
+      confirmBlocked={!paham}
+      onClose={onClose}
+      onConfirm={onConfirm}
+    >
+      <DeactivateWarning device={device} usage={usage} paham={paham} onPaham={setPaham} onReconnect={onReconnect} />
+    </ReasonDialog>
+  );
+}
+
+export function DeactivateWarning({ device, usage, paham, onPaham, onReconnect }: {
+  device: KirimDevice;
+  usage: DeviceUsage | null;
+  paham: boolean;
+  onPaham: (value: boolean) => void;
+  onReconnect?: () => void;
+}) {
+  const routes = usage?.rute.map((route) => `${route.modul} (${route.jenis === "kode" ? "kode verifikasi" : "notifikasi"})`) ?? [];
+  return (
+    <div className="mt-3 space-y-2 text-sm">
+      <div role="alert" className="rounded-xl bg-warning-soft px-3 py-2 text-warning-ink">
+        {usage === null ? <p>Memeriksa modul yang memakai nomor ini…</p> : null}
+        {usage && usage.kartu.length > 0 ? <p>Kartu yang dikosongkan: <strong>{usage.kartu.join(", ")}</strong>. Modul itu berhenti mengirim.</p> : null}
+        {usage && routes.length > 0 ? <p>Rute yang ikut berhenti: <strong>{routes.join(", ")}</strong>.</p> : null}
+        {usage && usage.kartu.length === 0 && routes.length === 0 ? <p>Tidak ada kartu atau rute yang memakai nomor ini.</p> : null}
+        <p className="mt-1">Percakapan tetap tersimpan di {device.label}. Jangan membuat nomor baru untuk WhatsApp yang sama.</p>
+      </div>
+      {onReconnect ? (
+        <p className="rounded-xl bg-info-soft px-3 py-2 text-info-ink">
+          WhatsApp-nya hanya terlepas atau gagal dipindai? <button type="button" className="font-bold underline" onClick={onReconnect}>Sambungkan ulang</button> saja, nomor dan kartunya tetap.
+        </p>
+      ) : null}
+      <label className="flex items-start gap-2">
+        <input type="checkbox" className="mt-1" checked={paham} onChange={(event) => onPaham(event.target.checked)} />
+        <span>Saya paham {device.label} dinonaktifkan dan modul di atas berhenti mengirim lewat nomor ini.</span>
+      </label>
+    </div>
+  );
 }
 
 export function NomorView({ state, onOpen, onRetry }: { state: NomorState; onOpen: (dialog: Dialog) => void; onRetry: () => void }) {
@@ -240,6 +343,7 @@ export function ModuleCard({ card, onOpen }: { card: KirimModuleCard; onOpen: (d
       {owner && card.dipakai_juga_oleh.length > 0 ? (
         <p className="mt-3 rounded-xl bg-info-soft px-3 py-2 text-sm text-info-ink">Dipakai juga oleh <strong>{card.dipakai_juga_oleh.join(", ")}</strong></p>
       ) : null}
+      {owner ? <DuplicateWarning device={device} onOpen={onOpen} /> : null}
       {!owner ? (
         <p className="mt-3 rounded-xl bg-info-soft px-3 py-2 text-sm text-info-ink">Nomor bersama. Jam kirim, laju, dan jeda diatur dari kartu <strong>{card.pemilik_nomor ?? device.pemilik}</strong>.</p>
       ) : null}
@@ -273,12 +377,31 @@ export function ModuleCard({ card, onOpen }: { card: KirimModuleCard; onOpen: (d
   );
 }
 
+/** KIRIM-IMPL-003 §11.3: this number's WhatsApp is already another number's; its inbox is held. */
+function DuplicateWarning({ device, onOpen }: { device: KirimDevice; onOpen: (dialog: Dialog) => void }) {
+  if (!device.nomor_ganda) return null;
+  const ke = device.nomor_ganda;
+  return (
+    <div role="alert" className="mt-3 rounded-xl bg-danger-soft px-3 py-2 text-sm text-danger-ink">
+      <p>WhatsApp di nomor ini sama dengan <strong>{ke.label}</strong>. Pesan masuk ditahan sampai digabung.</p>
+      <button type="button" className={`${secondaryButton} mt-2`} onClick={() => onOpen({ kind: "gabung", device, ke })}><Merge className="h-4 w-4" aria-hidden="true" /> Pakai nomor yang ada</button>
+    </div>
+  );
+}
+
+/** Pasang for a number never paired; Sambungkan ulang for one paired before (§11.1). */
+function PairActions({ device, inactive, onOpen }: { device: KirimDevice; inactive: boolean; onOpen: (dialog: Dialog) => void }) {
+  if (device.provider !== "jalurpesan" || inactive) return null;
+  if (device.status === "belum_dipasang") {
+    return <button type="button" className={secondaryButton} onClick={() => onOpen({ kind: "pair", device })}><QrCode className="h-4 w-4" aria-hidden="true" /> Pasang</button>;
+  }
+  return <button type="button" className={secondaryButton} onClick={() => onOpen({ kind: "sambung-ulang", device })}><RotateCcw className="h-4 w-4" aria-hidden="true" /> Sambungkan ulang</button>;
+}
+
 function OwnerActions({ device, inactive, onOpen }: { device: KirimDevice; inactive: boolean; onOpen: (dialog: Dialog) => void }) {
   return (
     <>
-      {device.provider === "jalurpesan" && !inactive && device.status !== "tersambung" ? (
-        <button type="button" className={secondaryButton} onClick={() => onOpen({ kind: "pair", device })}><QrCode className="h-4 w-4" aria-hidden="true" /> Pasang</button>
-      ) : null}
+      <PairActions device={device} inactive={inactive} onOpen={onOpen} />
       <button type="button" className={secondaryButton} onClick={() => onOpen({ kind: "edit", device })}><Settings2 className="h-4 w-4" aria-hidden="true" /> Ubah</button>
       {!inactive ? (
         <a className={secondaryButton} href={`/impor?nomor=${encodeURIComponent(device.kode)}`}><History className="h-4 w-4" aria-hidden="true" /> Impor riwayat</a>
@@ -303,7 +426,7 @@ function OwnerActions({ device, inactive, onOpen }: { device: KirimDevice; inact
  * "+ Tambah WhatsApp": a new number (Kirim SQ picks its code, label and tenant, then pairing
  * opens on the card) or an active number of another module. Nothing technical is typed.
  */
-export function TambahDialog({ card, numbers, owners = {}, editing, busy, error, onClose, onNewNumber, onUseNumber }: {
+export function TambahDialog({ card, numbers, owners = {}, editing, busy, error, onClose, onNewNumber, onUseNumber, onUseOwnNumber = () => undefined }: {
   card: KirimModuleCard;
   numbers: KirimDevice[];
   /** Number code → the owning module's name, so the list says "milik HCIS", not a consumer id. */
@@ -312,22 +435,51 @@ export function TambahDialog({ card, numbers, owners = {}, editing, busy, error,
   busy: boolean;
   error: string | null;
   onClose: () => void;
-  onNewNumber: () => void;
+  /** `nomorBerbeda`: the admin stated the new WhatsApp is not one of the module's earlier numbers. */
+  onNewNumber: (nomorBerbeda: boolean) => void;
   onUseNumber: (device: string, kodeVerifikasi: boolean) => void;
+  onUseOwnNumber?: (device: string) => void;
 }) {
-  const [mode, setMode] = useState<"baru" | "pakai">(editing ? "pakai" : "baru");
+  const own = editing ? [] : card.nomor_lama ?? [];
+  const [mode, setMode] = useState<"lama" | "baru" | "pakai">(editing ? "pakai" : own.length > 0 ? "lama" : "baru");
   const [device, setDevice] = useState(editing ? card.nomor?.kode ?? "" : numbers[0]?.kode ?? "");
+  const [lama, setLama] = useState(own[own.length - 1]?.kode ?? "");
+  const [berbeda, setBerbeda] = useState(false);
   const [kode, setKode] = useState(editing ? card.jenis.includes("kode") : false);
   const choices = editing && card.nomor ? [card.nomor] : numbers;
   const option = "flex gap-3 rounded-xl border p-3 text-sm";
+  const ownLabels = own.map((item) => item.label).join(", ");
   return (
     <DialogFrame title={editing ? `Ubah ${card.nama}` : `Tambah WhatsApp untuk ${card.nama}`}>
       {!editing ? <p className="mt-1.5 text-sm text-muted-foreground">Pilih salah satu. Kode nomor, identitas modul, dan kunci webhook disiapkan otomatis.</p> : null}
       <div className="mt-3 space-y-3">
+        {own.length > 0 ? (
+          <label className={`${option} ${mode === "lama" ? "border-brand-primary bg-brand-primary-pale/40" : "border-border"}`}>
+            <input type="radio" name="cara" className="mt-1" checked={mode === "lama"} onChange={() => setMode("lama")} />
+            <span><strong>Pakai nomor lama {card.nama}</strong><br /><span className="text-muted-foreground">Nomor, percakapan, dan rutenya kembali seperti semula. Bila WhatsApp-nya terlepas, pindai QR lewat Sambungkan ulang.</span></span>
+          </label>
+        ) : null}
+        {mode === "lama" && own.length > 0 ? (
+          <fieldset className="space-y-2 rounded-xl border border-border p-3 text-sm">
+            <legend className="px-1 text-xs font-bold text-brand-heading">Nomor milik {card.nama}</legend>
+            {own.map((item) => (
+              <label key={item.kode} className="flex items-center gap-2">
+                <input type="radio" name="nomor-lama" checked={lama === item.kode} onChange={() => setLama(item.kode)} />
+                <span>{item.label} · {item.nomor_tersamar ?? "nomor belum diketahui"} · {deviceStatusLabel[item.status]}</span>
+              </label>
+            ))}
+          </fieldset>
+        ) : null}
         {!editing ? (
           <label className={`${option} ${mode === "baru" ? "border-brand-primary bg-brand-primary-pale/40" : "border-border"}`}>
             <input type="radio" name="cara" className="mt-1" checked={mode === "baru"} onChange={() => setMode("baru")} />
             <span><strong>Sambungkan nomor baru</strong><br /><span className="text-muted-foreground">Nomor ini menjadi milik {card.nama}; balasan masuk ke {card.nama}. Setelah dibuat, pindai QR langsung terbuka.</span></span>
+          </label>
+        ) : null}
+        {mode === "baru" && own.length > 0 ? (
+          <label className="flex items-start gap-2 rounded-xl bg-warning-soft px-3 py-2 text-sm text-warning-ink">
+            <input type="checkbox" className="mt-1" checked={berbeda} onChange={(event) => setBerbeda(event.target.checked)} />
+            <span>WhatsApp yang akan dipindai <strong>berbeda</strong> dari {ownLabels}. Untuk WhatsApp yang sama, pakai nomor lama.</span>
           </label>
         ) : null}
         {!editing ? (
@@ -355,8 +507,10 @@ export function TambahDialog({ card, numbers, owners = {}, editing, busy, error,
       {error ? <p role="alert" className="mt-3 rounded-xl bg-danger-soft px-3 py-2 text-sm text-danger-ink">{error}</p> : null}
       <div className="mt-4 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
         <button type="button" className={secondaryButton} onClick={onClose} disabled={busy}>Batal</button>
-        {mode === "baru" ? (
-          <button type="button" className={primaryButton} disabled={busy} onClick={onNewNumber}><Plus className="h-4 w-4" aria-hidden="true" /> Buat nomor {card.nama}</button>
+        {mode === "lama" ? (
+          <button type="button" className={primaryButton} disabled={busy || !lama} onClick={() => onUseOwnNumber(lama)}><RotateCcw className="h-4 w-4" aria-hidden="true" /> Pakai nomor lama</button>
+        ) : mode === "baru" ? (
+          <button type="button" className={primaryButton} disabled={busy || (own.length > 0 && !berbeda)} onClick={() => onNewNumber(own.length > 0)}><Plus className="h-4 w-4" aria-hidden="true" /> Buat nomor {card.nama}</button>
         ) : (
           <button type="button" className={primaryButton} disabled={busy || !device} onClick={() => onUseNumber(device, kode)}><Link2 className="h-4 w-4" aria-hidden="true" /> {editing ? "Simpan" : "Sambungkan"}</button>
         )}
@@ -367,12 +521,14 @@ export function TambahDialog({ card, numbers, owners = {}, editing, busy, error,
 
 function Warnings({ list }: { list: KirimDeviceList }) {
 
-  if (list.peringatan.terputus.length === 0 && list.peringatan.webhook_habis === 0) return null;
+  const ganda = list.peringatan.nomor_ganda ?? [];
+  if (list.peringatan.terputus.length === 0 && list.peringatan.webhook_habis === 0 && ganda.length === 0) return null;
   return (
     <div role="status" className="flex gap-3 rounded-2xl border border-warning-ink/20 bg-warning-soft p-4 text-sm text-warning-ink">
       <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0" aria-hidden="true" />
       <div className="space-y-1">
-        {list.peringatan.terputus.length > 0 ? <p><strong>Nomor terputus:</strong> {list.peringatan.terputus.join(", ")}. Antreannya berhenti sampai tersambung lagi.</p> : null}
+        {list.peringatan.terputus.length > 0 ? <p><strong>Nomor terputus:</strong> {list.peringatan.terputus.join(", ")}. Antreannya berhenti sampai tersambung lagi. Pakai <strong>Sambungkan ulang</strong> di kartunya.</p> : null}
+        {ganda.length > 0 ? <p><strong>Nomor ganda:</strong> {ganda.join(", ")} tertaut ke WhatsApp yang sudah punya nomor. Pesan masuknya ditahan sampai digabung lewat <strong>Pakai nomor yang ada</strong>.</p> : null}
         {list.peringatan.webhook_habis > 0 ? <p><strong>{list.peringatan.webhook_habis} event</strong> gagal dikirim ke modul pemakai setelah 8 percobaan.</p> : null}
       </div>
     </div>
@@ -405,10 +561,9 @@ export function DeviceCard({ device, onOpen }: { device: KirimDevice; onOpen: (d
         <div><dt className="text-xs text-muted-foreground">Jam kirim · laju</dt><dd className="font-semibold">{device.jam_kirim_mulai}–{device.jam_kirim_selesai} WIB · {device.rate_per_menit}/menit</dd></div>
         <div className="col-span-2"><dt className="text-xs text-muted-foreground">Status berubah</dt><dd>{formatTime(device.status_berubah_at)}</dd></div>
       </dl>
+      <DuplicateWarning device={device} onOpen={onOpen} />
       <div className="mt-4 flex flex-wrap gap-2">
-        {device.provider === "jalurpesan" && !inactive && device.status !== "tersambung" ? (
-          <button type="button" className={secondaryButton} onClick={() => onOpen({ kind: "pair", device })}><QrCode className="h-4 w-4" aria-hidden="true" /> Pasang</button>
-        ) : null}
+        <PairActions device={device} inactive={inactive} onOpen={onOpen} />
         <button type="button" className={secondaryButton} onClick={() => onOpen({ kind: "edit", device })}><Settings2 className="h-4 w-4" aria-hidden="true" /> Ubah</button>
         {!inactive ? (
           <a className={secondaryButton} href={`/impor?nomor=${encodeURIComponent(device.kode)}`}><History className="h-4 w-4" aria-hidden="true" /> Impor riwayat</a>
@@ -502,25 +657,42 @@ function EditDeviceDialog({ device, consumers, busy, error, onClose, onSave }: {
 export type PairingView =
   | { step: "choose" }
   | { step: "working" }
+  | { step: "retry"; secondsLeft: number; attempt: number }
   | { step: "qr"; qr: string | null; secondsLeft: number }
   | { step: "kode"; code: string; secondsLeft: number }
-  | { step: "connected"; nomor: string | null }
+  | { step: "connected"; nomor: string | null; sama?: { kode: string; label: string } | null }
   | { step: "expired" }
-  | { step: "error"; message: string };
+  | { step: "error"; message: string; retry?: boolean };
+
+type ReconnectResult = PairingResult & { nomor: KirimDevice };
 
 /**
  * QR and pairing codes live only in this component's state: never in the URL, storage or logs.
  * Status is polled every 3 seconds and polling stops after 2 minutes.
+ *
+ * `reconnect` (KIRIM-IMPL-003 §11.1) resets the session of this same number instead of preparing
+ * it; while the engine restarts the request is tried again on its own a few times.
  */
-function PairingDialog({ device, onClose }: { device: KirimDevice; onClose: () => void }) {
+function PairingDialog({ device, reconnect = false, onClose, onDuplicate }: {
+  device: KirimDevice;
+  reconnect?: boolean;
+  onClose: () => void;
+  onDuplicate: (ke: { kode: string; label: string }) => void;
+}) {
   const [view, setView] = useState<PairingView>({ step: "choose" });
   const [phone, setPhone] = useState("");
+  const [alasan, setAlasan] = useState("");
+  const [perangkatBaru, setPerangkatBaru] = useState(false);
   const timer = useRef<number | null>(null);
+  const retryTimer = useRef<number | null>(null);
   const deadline = useRef(0);
+  const lastMode = useRef<"qr" | "kode">("qr");
 
   const stop = () => {
     if (timer.current !== null) window.clearInterval(timer.current);
+    if (retryTimer.current !== null) window.clearInterval(retryTimer.current);
     timer.current = null;
+    retryTimer.current = null;
   };
   useEffect(() => stop, []);
 
@@ -537,7 +709,8 @@ function PairingDialog({ device, onClose }: { device: KirimDevice; onClose: () =
       void kirimFetch<LiveStatus>(`/devices/${device.kode}/status`).then((status) => {
         if (status.status === "tersambung") {
           stop();
-          setView({ step: "connected", nomor: status.nomor_tersamar });
+          const older = status.nomor_sama?.find((other) => other.lebih_dulu) ?? null;
+          setView({ step: "connected", nomor: status.nomor_tersamar, sama: older ? { kode: older.kode, label: older.label } : null });
           return;
         }
         setView(mode === "qr" ? { step: "qr", qr: status.qr, secondsLeft } : { step: "kode", code: code ?? "", secondsLeft });
@@ -545,11 +718,23 @@ function PairingDialog({ device, onClose }: { device: KirimDevice; onClose: () =
     }, POLL_MS);
   };
 
-  const start = async (mode: "qr" | "kode") => {
+  const request = async (mode: "qr" | "kode"): Promise<PairingResult> => {
+    if (reconnect) {
+      return kirimFetch<ReconnectResult>(`/devices/${device.kode}/sambung-ulang`, {
+        method: "POST",
+        body: { mode, ...(mode === "kode" ? { phone } : {}), alasan: alasan.trim(), perangkat_baru: perangkatBaru },
+      });
+    }
+    await kirimFetch(`/devices/${device.kode}/provision`, { method: "POST", body: {} });
+    return kirimFetch<PairingResult>(`/devices/${device.kode}/pairing`, { method: "POST", body: mode === "qr" ? { mode } : { mode, phone } });
+  };
+
+  const start = async (mode: "qr" | "kode", attempt = 0) => {
+    lastMode.current = mode;
+    stop();
     setView({ step: "working" });
     try {
-      await kirimFetch(`/devices/${device.kode}/provision`, { method: "POST", body: {} });
-      const result = await kirimFetch<PairingResult>(`/devices/${device.kode}/pairing`, { method: "POST", body: mode === "qr" ? { mode } : { mode, phone } });
+      const result = await request(mode);
       if (result.mode === "qr") {
         setView({ step: "qr", qr: result.qr, secondsLeft: POLL_LIMIT_MS / 1000 });
         poll("qr");
@@ -558,13 +743,36 @@ function PairingDialog({ device, onClose }: { device: KirimDevice; onClose: () =
         poll("kode", result.pairing_code);
       }
     } catch (failure) {
-      setView({ step: "error", message: messageFor(failure) });
+      const restarting = failure instanceof KirimRequestError && failure.code === "engine_unavailable";
+      if (restarting && attempt < ENGINE_RETRY_LIMIT) {
+        let secondsLeft = ENGINE_RETRY_SECONDS;
+        setView({ step: "retry", secondsLeft, attempt: attempt + 1 });
+        retryTimer.current = window.setInterval(() => {
+          secondsLeft -= 1;
+          if (secondsLeft > 0) {
+            setView({ step: "retry", secondsLeft, attempt: attempt + 1 });
+            return;
+          }
+          stop();
+          void start(mode, attempt + 1);
+        }, 1_000);
+        return;
+      }
+      setView({ step: "error", message: messageFor(failure), retry: restarting });
     }
   };
 
   return (
-    <DialogFrame title={`Pasang ${device.label}`}>
-      <PairingContent view={view} phone={phone} onPhone={setPhone} onStart={(mode) => void start(mode)} />
+    <DialogFrame title={reconnect ? `Sambungkan ulang ${device.label}` : `Pasang ${device.label}`}>
+      <PairingContent
+        view={view}
+        phone={phone}
+        onPhone={setPhone}
+        onStart={(mode) => void start(mode)}
+        reconnect={reconnect ? { device, alasan, onAlasan: setAlasan, perangkatBaru, onPerangkatBaru: setPerangkatBaru } : undefined}
+        onRetry={() => void start(lastMode.current)}
+        onDuplicate={(ke) => { stop(); onDuplicate(ke); }}
+      />
       <div className="mt-4 flex justify-end">
         <button type="button" className={secondaryButton} onClick={() => { stop(); onClose(); }}>{view.step === "connected" ? "Selesai" : "Tutup"}</button>
       </div>
@@ -572,23 +780,55 @@ function PairingDialog({ device, onClose }: { device: KirimDevice; onClose: () =
   );
 }
 
-export function PairingContent({ view, phone, onPhone, onStart }: { view: PairingView; phone: string; onPhone: (value: string) => void; onStart: (mode: "qr" | "kode") => void }) {
+export function PairingContent({ view, phone, onPhone, onStart, reconnect, onRetry, onDuplicate }: {
+  view: PairingView;
+  phone: string;
+  onPhone: (value: string) => void;
+  onStart: (mode: "qr" | "kode") => void;
+  reconnect?: { device: KirimDevice; alasan: string; onAlasan: (value: string) => void; perangkatBaru: boolean; onPerangkatBaru: (value: boolean) => void };
+  onRetry?: () => void;
+  onDuplicate?: (ke: { kode: string; label: string }) => void;
+}) {
   const instructions = <p className="mt-3 rounded-xl bg-muted px-3 py-2 text-sm">Di HP nomor ini buka <strong>WhatsApp → Perangkat tertaut → Tautkan perangkat</strong>.</p>;
   if (view.step === "choose") {
+    const blocked = Boolean(reconnect && !reconnect.alasan.trim());
     return (
       <div className="mt-3 space-y-3">
-        <p className="text-sm text-muted-foreground">Pilih cara memasang. Nomor ditautkan sebagai perangkat tertaut, jadi HP tetap bisa dipakai seperti biasa.</p>
-        <button type="button" className={`${primaryButton} w-full`} onClick={() => onStart("qr")}><QrCode className="h-4 w-4" aria-hidden="true" /> Pindai kode QR</button>
+        {reconnect ? (
+          <>
+            <p className="text-sm text-muted-foreground">Sesi WhatsApp lama di mesin diulang lalu QR baru dibuat untuk <strong>{reconnect.device.label}</strong>. Kode nomor, percakapan, kartu modul, dan rute tetap sama. Tidak ada nomor baru yang dibuat.</p>
+            {reconnect.device.status === "tersambung" ? (
+              <p role="alert" className="rounded-xl bg-warning-soft px-3 py-2 text-sm text-warning-ink">Nomor ini sedang tersambung. Sesi yang berjalan dilepas, dan pesan tidak terkirim sampai QR dipindai lagi.</p>
+            ) : null}
+            <Field label="Alasan">
+              <textarea className="sq-admin-input" rows={2} maxLength={500} value={reconnect.alasan} onChange={(event) => reconnect.onAlasan(event.target.value)} />
+            </Field>
+            <label className="flex items-start gap-2 text-sm">
+              <input type="checkbox" className="mt-1" checked={reconnect.perangkatBaru} onChange={(event) => reconnect.onPerangkatBaru(event.target.checked)} />
+              <span>Pakai perangkat mesin baru untuk nomor ini. Pilih hanya bila Sambungkan ulang biasa tetap gagal; nomor dan percakapannya tetap.</span>
+            </label>
+          </>
+        ) : (
+          <p className="text-sm text-muted-foreground">Pilih cara memasang. Nomor ditautkan sebagai perangkat tertaut, jadi HP tetap bisa dipakai seperti biasa.</p>
+        )}
+        <button type="button" className={`${primaryButton} w-full`} disabled={blocked} onClick={() => onStart("qr")}><QrCode className="h-4 w-4" aria-hidden="true" /> Pindai kode QR</button>
         <div className="rounded-xl border border-border p-3">
           <Field label="Atau dengan kode pairing" helper="Nomor WhatsApp yang dipasang, contoh 0812…; tidak disimpan.">
             <input className="sq-admin-input" inputMode="tel" autoComplete="off" value={phone} onChange={(event) => onPhone(event.target.value)} />
           </Field>
-          <button type="button" className={`${secondaryButton} mt-2 w-full`} disabled={phone.replace(/\D/g, "").length < 8} onClick={() => onStart("kode")}><PlugZap className="h-4 w-4" aria-hidden="true" /> Minta kode pairing</button>
+          <button type="button" className={`${secondaryButton} mt-2 w-full`} disabled={blocked || phone.replace(/\D/g, "").length < 8} onClick={() => onStart("kode")}><PlugZap className="h-4 w-4" aria-hidden="true" /> Minta kode pairing</button>
         </div>
       </div>
     );
   }
-  if (view.step === "working") return <p className="mt-3 text-sm text-muted-foreground" data-state="loading">Menyiapkan nomor di mesin…</p>;
+  if (view.step === "working") return <p className="mt-3 text-sm text-muted-foreground" data-state="loading">{reconnect ? "Mengulang sesi WhatsApp di mesin…" : "Menyiapkan nomor di mesin…"}</p>;
+  if (view.step === "retry") {
+    return (
+      <p role="status" className="mt-3 rounded-xl bg-warning-soft px-3 py-2 text-sm text-warning-ink" aria-live="polite">
+        Mesin WhatsApp sedang dinyalakan ulang. Mencoba lagi dalam {view.secondsLeft} detik (percobaan {view.attempt} dari {ENGINE_RETRY_LIMIT}). Jangan Nonaktifkan nomor ini.
+      </p>
+    );
+  }
   if (view.step === "qr") {
     return (
       <div className="mt-3">
@@ -609,8 +849,24 @@ export function PairingContent({ view, phone, onPhone, onStart }: { view: Pairin
     );
   }
   if (view.step === "connected") {
-    return <p className="mt-3 rounded-xl bg-success-soft px-3 py-3 text-sm font-bold text-success-ink">Tersambung{view.nomor ? ` · ${view.nomor}` : ""}</p>;
+    const sama = view.sama;
+    return (
+      <div className="mt-3 space-y-3">
+        <p className="rounded-xl bg-success-soft px-3 py-3 text-sm font-bold text-success-ink">Tersambung{view.nomor ? ` · ${view.nomor}` : ""}</p>
+        {sama ? (
+          <div role="alert" className="rounded-xl bg-danger-soft px-3 py-2 text-sm text-danger-ink">
+            <p>WhatsApp ini sudah punya nomor di Kirim SQ: <strong>{sama.label}</strong>. Pesan masuknya ditahan supaya percakapan tidak terbelah.</p>
+            {onDuplicate ? <button type="button" className={`${secondaryButton} mt-2`} onClick={() => onDuplicate(sama)}><Merge className="h-4 w-4" aria-hidden="true" /> Pakai nomor yang ada</button> : null}
+          </div>
+        ) : null}
+      </div>
+    );
   }
-  if (view.step === "expired") return <p className="mt-3 text-sm text-muted-foreground">Waktu pemasangan habis. Tutup lalu coba pasang lagi.</p>;
-  return <p role="alert" className="mt-3 rounded-xl bg-danger-soft px-3 py-2 text-sm text-danger-ink">{view.message}</p>;
+  if (view.step === "expired") return <p className="mt-3 text-sm text-muted-foreground">Waktu pemasangan habis. Tutup lalu coba lagi.</p>;
+  return (
+    <div className="mt-3 space-y-2">
+      <p role="alert" className="rounded-xl bg-danger-soft px-3 py-2 text-sm text-danger-ink">{view.message}</p>
+      {view.retry && onRetry ? <button type="button" className={secondaryButton} onClick={onRetry}><RefreshCw className="h-4 w-4" aria-hidden="true" /> Coba lagi</button> : null}
+    </div>
+  );
 }

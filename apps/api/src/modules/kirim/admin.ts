@@ -7,7 +7,7 @@ import { createHash } from "node:crypto";
 import { InvalidNumberError, maskPhone, normalizePhone, phoneCanonical, type KirimCrypto } from "./crypto.js";
 import type { KirimIngest } from "./ingest.js";
 import { wibDayStart } from "./policy.js";
-import { ProviderOperationError, type KirimProvider, type ProviderName } from "./providers/types.js";
+import { ProviderOperationError, type KirimProvider, type PairingResult, type ProviderName } from "./providers/types.js";
 import {
   conversationContact,
   dbNow,
@@ -15,7 +15,9 @@ import {
   findConsumerByName,
   findDevice,
   listConsumers,
+  heldDevices,
   listDevices,
+  samePhoneDevices,
   setDeviceStatus,
   transitionOutbox,
   withTransaction,
@@ -61,6 +63,23 @@ export const pairingSchema = z.discriminatedUnion("mode", [
 ]);
 
 export const reasonBodySchema = z.object({ alasan: reasonSchema }).strict();
+
+/** KIRIM-IMPL-003 §11.1 "Sambungkan ulang". */
+export const reconnectSchema = z
+  .object({
+    mode: z.enum(["qr", "kode"]),
+    phone: z.string().trim().min(8).max(20).optional(),
+    perangkat_baru: z.boolean().default(false),
+    alasan: reasonSchema,
+  })
+  .strict()
+  .refine((value) => value.mode === "qr" || Boolean(value.phone), { message: "phone wajib untuk mode kode", path: ["phone"] });
+
+/** KIRIM-IMPL-003 §11.2: Nonaktifkan needs `konfirmasi` while a card or route still uses the number. */
+export const deactivateSchema = z.object({ alasan: reasonSchema, konfirmasi: z.boolean().default(false) }).strict();
+
+/** KIRIM-IMPL-003 §11.3: the duplicate number gives its engine session to the older number of the same phone. */
+export const mergeDuplicateSchema = z.object({ ke: kodeSchema, alasan: reasonSchema }).strict();
 export const optionalReasonBodySchema = z.object({ alasan: reasonSchema.optional() }).strict();
 
 export const queueQuerySchema = z.object({
@@ -92,6 +111,23 @@ export const activityQuerySchema = z.object({
 });
 
 const QUEUE_PAGE_SIZE = 50;
+/** Statuses where "Sambungkan ulang" applies; `belum_dipasang` uses Pasang. */
+const RECONNECT_STATUSES = new Set(["terputus", "menunggu_pairing", "tersambung"]);
+/** Waits between tries while the engine answers `engine_unavailable`, e.g. while it restarts. */
+const ENGINE_RETRY_DELAYS_MS = [1_500, 3_000];
+/** Tables whose rows tie a number to its own conversations; a number with any of them is not merged. */
+const DEVICE_DATA_TABLES = [
+  "kirim_conversations",
+  "kirim_messages",
+  "kirim_outbox",
+  "kirim_media",
+  "kirim_media_engine_refs",
+  "kirim_groups",
+  "kirim_group_additions",
+  "kirim_history_imports",
+  "kirim_optouts",
+  "kirim_profile_photos",
+] as const;
 /** Errors that a retry cannot fix (§6.4). */
 const NOT_RETRYABLE = new Set(["optout", "route_denied", "expired"]);
 
@@ -106,6 +142,7 @@ export class KirimAdminService {
     private readonly service: KirimService,
     private readonly providers: Record<ProviderName, KirimProvider | undefined>,
     private readonly ingest?: KirimIngest,
+    private readonly options: { engineRetryDelaysMs?: number[] } = {},
   ) {}
 
   async isAdmin(identity: { issuer: string; subject: string }): Promise<boolean> {
@@ -128,13 +165,15 @@ export class KirimAdminService {
     );
     const byDevice = new Map(counts.rows.map((row) => [row.deviceId, row]));
     const habis = await this.pool.query<{ count: string }>("SELECT count(*) AS count FROM kirim_webhook_deliveries WHERE status = 'habis'");
+    const held = await heldDevices(this.pool);
     return {
       devices: devices.map((device) => ({
-        ...toBrowserDevice(device),
+        ...toBrowserDevice(device, held.get(device.id)),
         antrean: { antre: Number(byDevice.get(device.id)?.antre ?? 0), gagal_hari_ini: Number(byDevice.get(device.id)?.gagal ?? 0) },
       })),
       peringatan: {
         terputus: devices.filter((device) => device.status === "terputus").map((device) => device.kode),
+        nomor_ganda: devices.filter((device) => held.has(device.id)).map((device) => device.kode),
         webhook_habis: Number(habis.rows[0]?.count ?? 0),
       },
     };
@@ -269,6 +308,97 @@ export class KirimAdminService {
     return result.mode === "qr" ? { mode: "qr", qr: result.qr } : { mode: "kode", pairing_code: result.pairingCode };
   }
 
+  /**
+   * KIRIM-IMPL-003 §11.1 "Sambungkan ulang": a new QR or pairing code for the same Kirim number.
+   * Its code, conversations, cards and routes stay; only the engine session is reset (JalurPesan
+   * `/device/reset`), or with `perangkat_baru` the number moves to a fresh engine tenant, as ops did
+   * by hand on 2026-11-05. The QR or code is returned once and never stored, logged or audited.
+   */
+  async reconnect(actor: AdminActor, kode: string, input: z.infer<typeof reconnectSchema>) {
+    const device = await this.requireDevice(kode);
+    if (device.status === "nonaktif") throw new KirimApiError(422, "device_inactive", "Nomor nonaktif. Pakai lagi dari kartu modulnya dulu.");
+    if (device.provider === "log") throw new KirimApiError(409, "pairing_not_applicable", "Provider log tidak perlu dipasang.");
+    if (!RECONNECT_STATUSES.has(device.status)) throw new KirimApiError(409, "belum_dipasang", "Nomor ini belum pernah dipasang. Pakai Pasang.");
+    const provider = this.provider(device);
+    const mode = input.mode === "qr" ? ("qr" as const) : { phone: input.phone! };
+    let tenantBaru: string | null = null;
+    let result: PairingResult;
+    try {
+      let target: DeviceRow = device;
+      if (input.perangkat_baru) {
+        tenantBaru = await this.freeTenant(provider, device);
+        target = { ...device, providerRef: tenantBaru };
+        await this.engine(() => provider.provision(target, device.label));
+      } else {
+        try {
+          await this.engine(() => provider.resetSession(device));
+        } catch (error) {
+          // The tenant has no engine device any more: prepare it again on the same tenant.
+          if (!(error instanceof ProviderOperationError && error.code === "device_not_found")) throw error;
+          await this.engine(() => provider.provision(device, device.label));
+        }
+      }
+      result = await this.engine(() => provider.startPairing(target, mode));
+    } catch (error) {
+      await writeAudit(this.pool, {
+        actorKind: "human", actorRef: actor.ref, aksi: "nomor.sambung_ulang", objekJenis: "device", objekRef: kode, hasil: "gagal",
+        metadata: { mode: input.mode, perangkat_baru: input.perangkat_baru, alasan: input.alasan, code: providerCode(error) },
+      });
+      throw providerError(error);
+    }
+    const nomor = await withTransaction(this.pool, async (client) => {
+      const locked = await findDevice(client, kode, true);
+      if (!locked || locked.status === "nonaktif") throw new KirimApiError(409, "device_inactive", "Nomor dinonaktifkan bersamaan. Muat ulang halaman.");
+      if (tenantBaru) {
+        if (locked.providerRef !== device.providerRef || locked.provider !== "jalurpesan") {
+          throw new KirimApiError(409, "conflict", "Nomor diubah bersamaan. Muat ulang halaman lalu coba lagi.");
+        }
+        await client.query("UPDATE kirim_devices SET provider_ref = $2, updated_at = now() WHERE id = $1", [device.id, tenantBaru]);
+      }
+      await setDeviceStatus(client, this.crypto, device.id, "menunggu_pairing");
+      await writeAudit(client, {
+        actorKind: "human", actorRef: actor.ref, aksi: "nomor.sambung_ulang", objekJenis: "device", objekRef: kode,
+        metadata: {
+          mode: input.mode,
+          perangkat_baru: input.perangkat_baru,
+          alasan: input.alasan,
+          status_sebelumnya: device.status,
+          ...(tenantBaru ? { tenant_lama: device.providerRef, tenant_baru: tenantBaru } : {}),
+        },
+      });
+      return toBrowserDevice((await findDevice(client, kode))!);
+    });
+    return result.mode === "qr" ? { nomor, mode: "qr", qr: result.qr } : { nomor, mode: "kode", pairing_code: result.pairingCode };
+  }
+
+  /** `<kode>-2`, `-3`, …: a tenant no Kirim number names and the engine does not know yet. */
+  private async freeTenant(provider: KirimProvider, device: DeviceRow): Promise<string> {
+    const taken = new Set(
+      (await this.pool.query<{ value: string }>("SELECT provider_ref AS value FROM kirim_devices WHERE provider_ref IS NOT NULL UNION SELECT kode FROM kirim_devices")).rows.map((row) => row.value),
+    );
+    for (let n = 2; n < 50; n += 1) {
+      const candidate = `${device.kode}-${n}`;
+      if (taken.has(candidate)) continue;
+      const state = await this.engine(() => provider.deviceStatus({ ...device, providerRef: candidate }));
+      if (state.status === "belum_dipasang" && !state.engineDeviceId) return candidate;
+    }
+    throw new KirimApiError(409, "tenant_habis", "Tidak ada perangkat mesin yang bebas untuk nomor ini. Hubungi operator.");
+  }
+
+  /** One engine call, tried again while the engine is restarting (`engine_unavailable`). */
+  private async engine<T>(work: () => Promise<T>): Promise<T> {
+    const delays = this.options.engineRetryDelaysMs ?? ENGINE_RETRY_DELAYS_MS;
+    for (let attempt = 0; ; attempt += 1) {
+      try {
+        return await work();
+      } catch (error) {
+        const delay = delays[attempt];
+        if (!(error instanceof ProviderOperationError && error.code === "engine_unavailable") || delay === undefined) throw error;
+        await new Promise((resolve) => setTimeout(resolve, delay));
+      }
+    }
+  }
+
   async liveStatus(kode: string) {
     const device = await this.requireDevice(kode);
     if (device.provider === "jalurpesan" && device.status !== "nonaktif") {
@@ -281,9 +411,89 @@ export class KirimAdminService {
         throw providerError(error);
       }
       const updated = (await findDevice(this.pool, kode))!;
-      return { status: updated.status, nomor_tersamar: updated.nomorTersamar, qr };
+      return { status: updated.status, nomor_tersamar: updated.nomorTersamar, qr, nomor_sama: await this.samePhone(updated) };
     }
-    return { status: device.status, nomor_tersamar: device.nomorTersamar, qr: null };
+    return { status: device.status, nomor_tersamar: device.nomorTersamar, qr: null, nomor_sama: await this.samePhone(device) };
+  }
+
+  /** KIRIM-IMPL-003 §11.3: other Kirim numbers linked to this WhatsApp phone, never the phone itself. */
+  private async samePhone(device: DeviceRow) {
+    return (await samePhoneDevices(this.pool, device.id)).map((other) => ({
+      kode: other.kode, label: other.label, status: other.status, lebih_dulu: other.lebihDulu,
+    }));
+  }
+
+  /** KIRIM-IMPL-003 §11.2: cards and routes that still use a number, shown before Nonaktifkan. */
+  async usage(kode: string) {
+    return this.deviceUsage(this.pool, await this.requireDevice(kode));
+  }
+
+  private async deviceUsage(db: Queryable, device: Pick<DeviceRow, "id">) {
+    const appName = "LEFT JOIN applications a ON a.application_key = c.application_key OR (c.application_key IS NULL AND a.machine_client_id = c.client_id)";
+    const cards = await db.query<{ nama: string }>(
+      `SELECT DISTINCT coalesce(a.name, c.nama) AS nama FROM kirim_consumers c ${appName} WHERE c.nomor_device_id = $1 ORDER BY 1`,
+      [device.id],
+    );
+    const routes = await db.query<{ nama: string; jenis: string }>(
+      `SELECT DISTINCT coalesce(a.name, c.nama) AS nama, r.jenis FROM kirim_routes r JOIN kirim_consumers c ON c.id = r.consumer_id ${appName}
+        WHERE r.device_id = $1 ORDER BY 1, 2`,
+      [device.id],
+    );
+    return { kartu: cards.rows.map((row) => row.nama), rute: routes.rows.map((row) => ({ modul: row.nama, jenis: row.jenis })) };
+  }
+
+  /**
+   * KIRIM-IMPL-003 §11.3 "Pakai nomor yang ada": `kode` is a newer number whose phone is already the
+   * phone of the older number `ke`. The older number takes over the newer one's engine session,
+   * cards and routes, and the newer row is removed, as ops did by hand on 2026-11-05. Refused once
+   * the newer number holds conversations or a queue of its own; those need an operator.
+   */
+  async useExistingNumber(actor: AdminActor, kode: string, input: z.infer<typeof mergeDuplicateSchema>) {
+    if (!kodeSchema.safeParse(kode).success || kode === input.ke) throw new KirimApiError(404, "not_found", "Nomor tidak ditemukan.");
+    return withTransaction(this.pool, async (client) => {
+      await client.query("SELECT id FROM kirim_devices WHERE kode = ANY($1::text[]) ORDER BY id FOR UPDATE", [[kode, input.ke]]);
+      const source = await findDevice(client, kode);
+      const target = await findDevice(client, input.ke);
+      if (!source || !target) throw new KirimApiError(404, "not_found", "Nomor tidak ditemukan.");
+      const match = (await samePhoneDevices(client, source.id)).find((other) => other.kode === target.kode);
+      if (!match) throw new KirimApiError(409, "nomor_tidak_sama", "Kedua nomor tidak tertaut ke WhatsApp yang sama.");
+      if (!match.lebihDulu) throw new KirimApiError(409, "nomor_lebih_baru", "Pilih nomor yang lebih dulu ada sebagai tujuan.");
+      if (source.provider !== "jalurpesan" || target.provider !== "jalurpesan" || !source.providerRef) {
+        throw new KirimApiError(409, "pairing_not_applicable", "Hanya nomor JalurPesan yang bisa digabung.");
+      }
+      if (source.pemilikConsumerId !== target.pemilikConsumerId) {
+        throw new KirimApiError(409, "pemilik_berbeda", `${target.label} milik modul lain. Putuskan nomor baru ini, lalu pakai "Pakai nomor yang sudah aktif" di kartu modulnya.`);
+      }
+      const counts = await client.query<{ n: string }>(
+        `SELECT (${DEVICE_DATA_TABLES.map((table) => `(SELECT count(*) FROM ${table} WHERE device_id = $1)`).join(" + ")})::text AS n`,
+        [source.id],
+      );
+      if (Number(counts.rows[0]?.n ?? 0) > 0) {
+        throw new KirimApiError(409, "nomor_sudah_berisi", `${source.label} sudah menyimpan percakapan atau antrean sendiri, jadi tidak bisa digabung dari layar. Hubungi operator.`);
+      }
+      // Engine event cursors are global, so the older number keeps pulling from its own cursor.
+      await client.query("UPDATE kirim_events SET device_id = $2 WHERE device_id = $1", [source.id, target.id]);
+      await client.query("UPDATE kirim_consumers SET nomor_device_id = $2, updated_at = now() WHERE nomor_device_id = $1", [source.id, target.id]);
+      await client.query(
+        "INSERT INTO kirim_routes (consumer_id, device_id, jenis) SELECT consumer_id, $2, jenis FROM kirim_routes WHERE device_id = $1 ON CONFLICT DO NOTHING",
+        [source.id, target.id],
+      );
+      await client.query("DELETE FROM kirim_routes WHERE device_id = $1", [source.id]);
+      await client.query("DELETE FROM kirim_devices WHERE id = $1", [source.id]);
+      await client.query("UPDATE kirim_devices SET provider_ref = $2, updated_at = now() WHERE id = $1", [target.id, source.providerRef]);
+      if (target.status !== source.status) {
+        await setDeviceStatus(client, this.crypto, target.id, source.status === "nonaktif" ? "terputus" : source.status, { allowFromNonaktif: true });
+      }
+      await writeAudit(client, {
+        actorKind: "human", actorRef: actor.ref, aksi: "nomor.gabung_duplikat", objekJenis: "device", objekRef: target.kode,
+        metadata: { dari: source.kode, tenant_lama: target.providerRef, tenant_baru: source.providerRef, alasan: input.alasan },
+      });
+      await writeAudit(client, {
+        actorKind: "human", actorRef: actor.ref, aksi: "nomor.hapus_duplikat", objekJenis: "device", objekRef: source.kode,
+        metadata: { digabung_ke: target.kode, alasan: input.alasan },
+      });
+      return toBrowserDevice((await findDevice(client, target.kode))!);
+    });
   }
 
   /**
@@ -334,16 +544,34 @@ export class KirimAdminService {
     });
   }
 
-  /** New requests are refused with `device_inactive`; the existing queue is kept. */
-  async deactivate(actor: AdminActor, kode: string, alasan: string) {
+  /**
+   * New requests are refused with `device_inactive`; the existing queue is kept. While a card or a
+   * route still uses the number, `konfirmasi` is required (KIRIM-IMPL-003 §11.2): on 2026-11-05 a
+   * Nonaktifkan meant as "pair again" emptied the SPMB card and a second number followed.
+   */
+  async deactivate(actor: AdminActor, kode: string, input: z.infer<typeof deactivateSchema>) {
+    const alasan = input.alasan;
     return withTransaction(this.pool, async (client) => {
       const device = await findDevice(client, kode, true);
       if (!device) throw new KirimApiError(404, "not_found", "Nomor tidak ditemukan.");
       await this.assertNotShared(device, client);
+      const dipakai = await this.deviceUsage(client, device);
+      const users = [...new Set([...dipakai.kartu, ...dipakai.rute.map((route) => route.modul)])];
+      if (users.length > 0 && !input.konfirmasi) {
+        throw new KirimApiError(
+          409,
+          "konfirmasi_diperlukan",
+          `Nomor ini masih dipakai ${users.join(", ")}. Menonaktifkan mengosongkan kartunya dan pengiriman berhenti. Bila WhatsApp-nya hanya terlepas, pakai Sambungkan ulang.`,
+          { dipakai },
+        );
+      }
       await setDeviceStatus(client, this.crypto, device.id, "nonaktif");
       // KIRIM-IMPL-003: the owner's card is emptied, so "+ Tambah WhatsApp" is offered again.
       await client.query("UPDATE kirim_consumers SET nomor_device_id = NULL, updated_at = now() WHERE nomor_device_id = $1", [device.id]);
-      await writeAudit(client, { actorKind: "human", actorRef: actor.ref, aksi: "nomor.nonaktif", objekJenis: "device", objekRef: kode, metadata: { alasan } });
+      await writeAudit(client, {
+        actorKind: "human", actorRef: actor.ref, aksi: "nomor.nonaktif", objekJenis: "device", objekRef: kode,
+        metadata: { alasan, ...(users.length > 0 ? { dipakai: users } : {}) },
+      });
       return toBrowserDevice((await findDevice(client, kode))!);
     });
   }
@@ -688,6 +916,8 @@ function adminNumber(value: string): string {
   }
 }
 
+const ENGINE_UNAVAILABLE = "Mesin WhatsApp sedang tidak tersedia, mungkin sedang dinyalakan ulang. Tunggu sekitar satu menit lalu coba lagi.";
+
 function providerCode(error: unknown): string {
   return error instanceof ProviderOperationError ? error.code : "error";
 }
@@ -701,17 +931,18 @@ function providerError(error: unknown): KirimApiError {
       case "device_not_found":
         return new KirimApiError(409, "engine_device_missing", "Nomor belum disiapkan di mesin. Jalankan Siapkan dulu.");
       case "session_reset_required":
-        return new KirimApiError(409, "session_reset_required", "Sesi WhatsApp perlu diputus lalu dipasang ulang.");
+        return new KirimApiError(409, "session_reset_required", "Sesi WhatsApp di mesin perlu diulang. Pakai Sambungkan ulang.");
       case "engine_rejected":
         return new KirimApiError(422, "engine_rejected", "Mesin menolak permintaan.");
       default:
-        return new KirimApiError(503, "engine_unavailable", "Mesin sedang tidak tersedia.");
+        return new KirimApiError(503, "engine_unavailable", ENGINE_UNAVAILABLE);
     }
   }
-  return new KirimApiError(503, "engine_unavailable", "Mesin sedang tidak tersedia.");
+  return new KirimApiError(503, "engine_unavailable", ENGINE_UNAVAILABLE);
 }
 
-export function toBrowserDevice(device: DeviceRow) {
+/** `ganda`: the older number this one duplicates (KIRIM-IMPL-003 §11.3); its inbox is held until merged. */
+export function toBrowserDevice(device: DeviceRow, ganda?: { kode: string; label: string }) {
   return {
     kode: device.kode,
     label: device.label,
@@ -725,5 +956,6 @@ export function toBrowserDevice(device: DeviceRow) {
     jam_kirim_mulai: device.jamKirimMulai,
     jam_kirim_selesai: device.jamKirimSelesai,
     status_berubah_at: device.statusBerubahAt.toISOString(),
+    nomor_ganda: ganda ?? null,
   };
 }

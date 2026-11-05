@@ -15,7 +15,9 @@ import {
   findDeviceById,
   findWhatsAppApplication,
   freeIdentifier,
+  heldDevices,
   listWhatsAppApplications,
+  setDeviceStatus,
   withTransaction,
   writeAudit,
   type ConsumerRow,
@@ -35,6 +37,12 @@ import { isAllowedWebhookUrl, resolveWebhookSecret } from "./webhooks.js";
 const kodeSchema = z.string().trim().regex(/^[a-z][a-z0-9-]{1,30}$/);
 
 export const useNumberSchema = z.object({ device: kodeSchema, kode_verifikasi: z.boolean().default(false) }).strict();
+/**
+ * KIRIM-IMPL-003 §11.3. `nomor_berbeda`: the admin states the new WhatsApp is a different phone
+ * from the module's earlier numbers. Without it a module that already owns a number is refused.
+ */
+export const newNumberSchema = z.object({ nomor_berbeda: z.boolean().default(false) }).strict();
+export const ownNumberSchema = z.object({ device: kodeSchema }).strict();
 export const cardReasonSchema = z.object({ alasan: z.string().trim().min(1).max(500) }).strict();
 export const webhookRegistrationSchema = z.object({ url: z.string().trim().min(1).max(2048) }).strict();
 
@@ -49,6 +57,8 @@ export interface ModuleCard {
   antrean: { antre: number; gagal_hari_ini: number };
   dipakai_juga_oleh: string[];
   pemilik_nomor: string | null;
+  /** KIRIM-IMPL-003 §11.3: other numbers this module owns, nonaktif ones included, for "Pakai nomor lama". */
+  nomor_lama: Array<{ kode: string; label: string; status: string; nomor_tersamar: string | null }>;
 }
 
 export class KirimModuleCards {
@@ -68,10 +78,27 @@ export class KirimModuleCards {
     return { modules: cards, ...(await this.admin.listDevices()) };
   }
 
-  /** "Sambungkan nomor baru": the number's code, label, provider and tenant are chosen here. */
-  async connectNewNumber(actor: AdminActor, applicationKey: string) {
+  /**
+   * "Sambungkan nomor baru": the number's code, label, provider and tenant are chosen here. A module
+   * that already owns a number (nonaktif included) is refused unless the admin states the new
+   * WhatsApp is a different phone (§11.3): the same phone belongs on the old number via
+   * "Pakai nomor lama" and "Sambungkan ulang", not on a second number.
+   */
+  async connectNewNumber(actor: AdminActor, applicationKey: string, input: z.infer<typeof newNumberSchema> = { nomor_berbeda: false }) {
     return this.change(applicationKey, async (client, application, consumer) => {
       if (consumer.nomorDeviceId) throw new KirimApiError(409, "kartu_sudah_tersambung", "Modul ini sudah tersambung. Putuskan dulu sebelum memakai nomor lain.");
+      const own = await client.query<{ kode: string; label: string; status: string }>(
+        "SELECT kode, label, status FROM kirim_devices WHERE pemilik_consumer_id = $1 ORDER BY created_at, kode",
+        [consumer.id],
+      );
+      if (own.rows.length > 0 && !input.nomor_berbeda) {
+        throw new KirimApiError(
+          409,
+          "nomor_modul_ada",
+          `${application.name} sudah punya ${own.rows.map((row) => row.label).join(", ")}. Pakai nomor yang ada, lalu Sambungkan ulang bila WhatsApp-nya terlepas. Buat nomor baru hanya untuk WhatsApp yang berbeda.`,
+          { nomor: own.rows },
+        );
+      }
       const kode = await freeIdentifier(client, "kirim_devices", application.applicationKey);
       const provider: ProviderName = this.providers.jalurpesan ? "jalurpesan" : "log";
       const deviceId = randomUUID();
@@ -83,7 +110,31 @@ export class KirimModuleCards {
       await client.query("UPDATE kirim_consumers SET nomor_device_id = $2, updated_at = now() WHERE id = $1", [consumer.id, deviceId]);
       await writeAudit(client, {
         actorKind: "human", actorRef: actor.ref, aksi: "kartu.nomor_baru", objekJenis: "modul", objekRef: application.applicationKey,
-        metadata: { device: kode, provider },
+        metadata: { device: kode, provider, ...(own.rows.length > 0 ? { nomor_berbeda_dari: own.rows.map((row) => row.kode) } : {}) },
+      });
+    });
+  }
+
+  /**
+   * KIRIM-IMPL-003 §11.3 "Pakai nomor lama": the card takes back a number this module already owns.
+   * A nonaktif number becomes `terputus` (a `log` number `tersambung`); its conversations, routes and
+   * engine tenant are those it had. The screen then offers "Sambungkan ulang".
+   */
+  async useOwnNumber(actor: AdminActor, applicationKey: string, input: z.infer<typeof ownNumberSchema>) {
+    return this.change(applicationKey, async (client, application, consumer) => {
+      const device = await findDevice(client, input.device, true);
+      if (!device || device.pemilikConsumerId !== consumer.id) throw new KirimApiError(422, "nomor_bukan_milik_modul", "Nomor ini bukan milik modul ini.");
+      if (consumer.nomorDeviceId && consumer.nomorDeviceId !== device.id) {
+        throw new KirimApiError(409, "kartu_sudah_tersambung", "Modul ini sudah tersambung. Putuskan dulu sebelum memakai nomor lain.");
+      }
+      const diaktifkan = device.status === "nonaktif";
+      if (diaktifkan) {
+        await setDeviceStatus(client, this.crypto, device.id, device.provider === "log" ? "tersambung" : "terputus", { allowFromNonaktif: true });
+      }
+      await client.query("UPDATE kirim_consumers SET nomor_device_id = $2, updated_at = now() WHERE id = $1", [consumer.id, device.id]);
+      await writeAudit(client, {
+        actorKind: "human", actorRef: actor.ref, aksi: "kartu.pakai_nomor_lama", objekJenis: "modul", objekRef: application.applicationKey,
+        metadata: { device: device.kode, diaktifkan },
       });
     });
   }
@@ -216,9 +267,16 @@ export class KirimModuleCards {
   private async card(db: Queryable, application: RegistryApplication): Promise<ModuleCard> {
     const consumer = await findLinkedConsumer(db, application);
     const device = consumer?.nomorDeviceId ? await findDeviceById(db, consumer.nomorDeviceId) : null;
+    const nomorLama = consumer
+      ? (await db.query<{ kode: string; label: string; status: string; nomor_tersamar: string | null }>(
+          `SELECT kode, label, status, nomor_tersamar FROM kirim_devices
+            WHERE pemilik_consumer_id = $1 AND id IS DISTINCT FROM $2 ORDER BY created_at, kode`,
+          [consumer.id, device?.id ?? null],
+        )).rows
+      : [];
     const empty: ModuleCard = {
       application_key: application.applicationKey, nama: application.name, peran: "kosong", nomor: null, jenis: [],
-      antrean: { antre: 0, gagal_hari_ini: 0 }, dipakai_juga_oleh: [], pemilik_nomor: null,
+      antrean: { antre: 0, gagal_hari_ini: 0 }, dipakai_juga_oleh: [], pemilik_nomor: null, nomor_lama: nomorLama,
     };
     if (!consumer || !device) return empty;
     const now = await dbNow(db);
@@ -239,7 +297,7 @@ export class KirimModuleCards {
     return {
       ...empty,
       peran: owner ? "pemilik" : "pemakai",
-      nomor: toBrowserDevice(device),
+      nomor: toBrowserDevice(device, (await heldDevices(db)).get(device.id)),
       jenis: await allowedJenis(db, consumer.id, device),
       antrean: { antre: Number(counts.rows[0]?.antre ?? 0), gagal_hari_ini: Number(counts.rows[0]?.gagal ?? 0) },
       dipakai_juga_oleh: names.rows.filter((row) => row.id !== consumer.id && row.id !== device.pemilikConsumerId).map((row) => row.nama),

@@ -187,6 +187,12 @@ export interface KirimProvider {
   provision(device: DeviceRef, label: string): Promise<void>;
   startPairing(device: DeviceRef, mode: "qr" | { phone: string }): Promise<PairingResult>;
   disconnect(device: DeviceRef): Promise<void>;
+  /**
+   * KIRIM-IMPL-003 §11 "Sambungkan ulang": drops the stored WhatsApp session of this tenant and
+   * starts a new QR session on the same tenant (JalurPesan `POST /device/reset`). Works where a
+   * logout cannot: a phone that already unlinked the session, or a session marked for reset.
+   */
+  resetSession(device: DeviceRef): Promise<void>;
   pullEvents(device: DeviceRef, cursor: number, limit: number): Promise<ProviderEventPage>;
   /** Copies an inbound engine media file; `null` when it is larger than `maxBytes`. */
   downloadMedia(device: DeviceRef, providerMediaId: string, maxBytes: number): Promise<Buffer | null>;

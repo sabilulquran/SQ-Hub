@@ -23,11 +23,13 @@ export interface KirimDevice {
   jam_kirim_selesai: string;
   status_berubah_at: string;
   antrean?: { antre: number; gagal_hari_ini: number };
+  /** KIRIM-IMPL-003 §11.3: the older number with the same WhatsApp; this one's inbox is held. */
+  nomor_ganda?: { kode: string; label: string } | null;
 }
 
 export interface KirimDeviceList {
   devices: KirimDevice[];
-  peringatan: { terputus: string[]; webhook_habis: number };
+  peringatan: { terputus: string[]; webhook_habis: number; nomor_ganda?: string[] };
 }
 
 /** KIRIM-IMPL-003 §4: one card per WhatsApp-capable registry application. */
@@ -40,6 +42,8 @@ export interface KirimModuleCard {
   antrean: { antre: number; gagal_hari_ini: number };
   dipakai_juga_oleh: string[];
   pemilik_nomor: string | null;
+  /** KIRIM-IMPL-003 §11.3: other numbers this module owns, nonaktif ones included. */
+  nomor_lama?: Array<{ kode: string; label: string; status: DeviceStatus; nomor_tersamar: string | null }>;
 }
 
 export interface KirimModuleList extends KirimDeviceList {
@@ -139,6 +143,14 @@ export interface LiveStatus {
   status: DeviceStatus;
   nomor_tersamar: string | null;
   qr: string | null;
+  /** Other Kirim numbers linked to the same WhatsApp; `lebih_dulu` = linked before this one. */
+  nomor_sama?: Array<{ kode: string; label: string; status: DeviceStatus; lebih_dulu: boolean }>;
+}
+
+/** KIRIM-IMPL-003 §11.2: what still uses a number, shown before Nonaktifkan. */
+export interface DeviceUsage {
+  kartu: string[];
+  rute: Array<{ modul: string; jenis: "notifikasi" | "kode" }>;
 }
 
 export class KirimRequestError extends Error {

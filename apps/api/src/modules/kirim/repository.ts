@@ -126,6 +126,12 @@ export async function freeIdentifier(db: Queryable, table: "kirim_consumers" | "
   const taken = new Set(
     (await db.query<{ value: string }>(`SELECT ${column} AS value FROM ${table} WHERE ${column} = $1 OR ${column} LIKE $2`, [base, `${base}-%`])).rows.map((row) => row.value),
   );
+  if (table === "kirim_devices") {
+    // A new number's tenant is its code, so a code must not name a tenant another number already
+    // holds (after 2026-11-05 `spmb` runs on tenant `spmb-2`).
+    const tenants = await db.query<{ value: string }>("SELECT provider_ref AS value FROM kirim_devices WHERE provider_ref = $1 OR provider_ref LIKE $2", [base, `${base}-%`]);
+    for (const row of tenants.rows) taken.add(row.value);
+  }
   if (!taken.has(base)) return base;
   for (let n = 2; ; n += 1) if (!taken.has(`${base}-${n}`)) return `${base}-${n}`;
 }
@@ -149,6 +155,66 @@ export async function ensureApplicationConsumer(db: Queryable, application: Regi
     [id, application.machineClientId, await freeIdentifier(db, "kirim_consumers", application.applicationKey), application.applicationKey],
   );
   return (await findConsumerById(db, id))!;
+}
+
+/**
+ * KIRIM-IMPL-003 §11. `d` is a newer number whose linked phone is already the phone of an older
+ * number (any status, nonaktif included). Used inside `EXISTS (...)` with the device aliased `d`.
+ */
+export const HELD_DEVICE_SQL = `SELECT 1 FROM kirim_devices o
+  WHERE o.id <> d.id AND d.nomor_hmac IS NOT NULL AND o.nomor_hmac = d.nomor_hmac AND (o.created_at, o.id) < (d.created_at, d.id)`;
+
+export interface SamePhoneDevice {
+  kode: string;
+  label: string;
+  status: DeviceStatus | "nonaktif";
+  pemilikConsumerId: string;
+  /** This number was linked to the phone first. */
+  lebihDulu: boolean;
+}
+
+/** Other numbers linked to the same WhatsApp phone as `deviceId`, compared by the lookup HMAC. */
+export async function samePhoneDevices(db: Queryable, deviceId: string): Promise<SamePhoneDevice[]> {
+  const result = await db.query<SamePhoneDevice>(
+    `SELECT o.kode, o.label, o.status, o.pemilik_consumer_id AS "pemilikConsumerId", (o.created_at, o.id) < (d.created_at, d.id) AS "lebihDulu"
+       FROM kirim_devices d JOIN kirim_devices o ON o.id <> d.id AND o.nomor_hmac = d.nomor_hmac
+      WHERE d.id = $1 AND d.nomor_hmac IS NOT NULL
+      ORDER BY o.created_at, o.id`,
+    [deviceId],
+  );
+  return result.rows;
+}
+
+/** Every held number (see HELD_DEVICE_SQL) → the oldest number with the same phone. */
+export async function heldDevices(db: Queryable): Promise<Map<string, { kode: string; label: string }>> {
+  const result = await db.query<{ id: string; kode: string; label: string }>(
+    `SELECT DISTINCT ON (d.id) d.id, o.kode, o.label
+       FROM kirim_devices d JOIN kirim_devices o ON o.id <> d.id AND o.nomor_hmac = d.nomor_hmac AND (o.created_at, o.id) < (d.created_at, d.id)
+      WHERE d.nomor_hmac IS NOT NULL
+      ORDER BY d.id, o.created_at, o.id`,
+  );
+  return new Map(result.rows.map((row) => [row.id, { kode: row.kode, label: row.label }]));
+}
+
+/**
+ * Fills `nomor_hmac` from `nomor_enc` for numbers linked before the column existed (migration 0015),
+ * nonaktif ones included, so a phone that comes back on a new number is still recognised.
+ */
+export async function backfillDeviceHmac(db: Queryable, crypto: KirimCrypto): Promise<number> {
+  const rows = await db.query<{ id: string; enc: string }>("SELECT id, nomor_enc AS enc FROM kirim_devices WHERE nomor_enc IS NOT NULL AND nomor_hmac IS NULL");
+  let filled = 0;
+  for (const row of rows.rows) {
+    let canonical: string;
+    try {
+      canonical = crypto.open(row.enc, columnAad("kirim_devices", "nomor_enc", row.id));
+    } catch {
+      continue;
+    }
+    if (!/^pn:\+\d{8,15}$/.test(canonical)) continue;
+    const updated = await db.query("UPDATE kirim_devices SET nomor_hmac = $2 WHERE id = $1 AND nomor_hmac IS NULL", [row.id, crypto.lookup(canonical)]);
+    filled += updated.rowCount ?? 0;
+  }
+  return filled;
 }
 
 /** Consumers other than the owner that use a number: by route or as their card's number. */

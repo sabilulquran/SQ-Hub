@@ -55,6 +55,8 @@ export class LogProvider implements KirimProvider {
 
   async disconnect(): Promise<void> {}
 
+  async resetSession(): Promise<void> {}
+
   async pullEvents() {
     return { events: [], nextCursor: 0, hasMore: false };
   }
