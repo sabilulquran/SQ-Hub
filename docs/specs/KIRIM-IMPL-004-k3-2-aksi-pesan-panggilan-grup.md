@@ -399,6 +399,13 @@ Tidak ada secret baru. `infra/production.env.example` diperbarui.
 
 Urutan 1→2 tidak wajib: Kirim SQ K3.2 di atas mesin lama tetap berjalan (event baru tidak datang, aksi dan foto gagal dengan galat yang jelas, kirim biasa tidak berubah karena `quoted`/`forwarded` hanya dikirim bila diisi).
 
+## 16. Stiker keluar (adendum 2026-11-05, SPMB-IMPL-005 §22)
+
+- `POST /internal/kirim/media` menerima `image/webp` (header `RIFF....WEBP`, maks. 500 KiB) sebagai stiker.
+- Balasan dengan media itu menjadi pesan `tipe: stiker`. Stiker tidak bisa diberi keterangan (`422 invalid_request`).
+- Worker mengunggahnya ke mesin dengan `type=sticker`; JalurPesan mengirimnya sebagai stiker WhatsApp. Tidak perlu perubahan mesin.
+- Stiker yang tersalin juga bisa diteruskan (§5.2).
+
 ## 15. Keputusan yang diambil agent (`DRAFT`, dilaporkan ke owner)
 
 | # | Topik | Keputusan |

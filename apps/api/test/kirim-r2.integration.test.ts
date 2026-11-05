@@ -347,6 +347,33 @@ describe("officer replies (§5)", () => {
     expect((await call("GET", `/media/${uploaded.json().media_id}`, { client: "hcis-api" })).statusCode).toBe(404);
   });
 
+  it("sends a WebP as a sticker without a caption, and refuses a fake WebP", async () => {
+    const id = await inbound();
+    const upload = async (data: Buffer) => {
+      const boundary = "kirimboundary";
+      const multipart = Buffer.concat([
+        Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="device"\r\n\r\nspmb\r\n--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="stiker.webp"\r\nContent-Type: image/webp\r\n\r\n`),
+        data,
+        Buffer.from(`\r\n--${boundary}--\r\n`),
+      ]);
+      return app.inject({ method: "POST", url: "/internal/kirim/media",
+        headers: { authorization: `Bearer ${await token("spmb-api")}`, "content-type": `multipart/form-data; boundary=${boundary}` }, payload: multipart });
+    };
+    // RIFF with a WAVE body is not a sticker.
+    expect((await upload(Buffer.concat([Buffer.from("RIFF"), Buffer.alloc(4), Buffer.from("WAVEfmt ")]))).statusCode).toBe(422);
+    const webp = Buffer.concat([Buffer.from("RIFF"), Buffer.from([0x20, 0, 0, 0]), Buffer.from("WEBPVP8 "), Buffer.alloc(20)]);
+    const uploaded = await upload(webp);
+    expect(uploaded.statusCode).toBe(201);
+    const withCaption = await call("POST", `/conversations/${id}/messages`, { key: "st1", payload: { media_id: uploaded.json().media_id, caption: "x", atas_nama: OFFICER } });
+    expect(withCaption.statusCode).toBe(422);
+    const reply = await call("POST", `/conversations/${id}/messages`, { key: "st2", payload: { media_id: uploaded.json().media_id, atas_nama: OFFICER } });
+    expect(reply.statusCode).toBe(202);
+    await worker().runOnce();
+    expect(stub.uploadTypes).toEqual(["sticker"]);
+    const sent = (await call("GET", `/conversations/${id}/messages`)).json().items[0];
+    expect(sent).toMatchObject({ arah: "keluar", tipe: "stiker" });
+  });
+
   it("replies to a LID contact by its JID", async () => {
     stub.addEvent("spmb", "message.received", receivedPayload({ from: "99887766554433@lid", body: "dari lid" }));
     await pull();

@@ -66,7 +66,9 @@ const OPTOUT_REPLY_WINDOW_MS = 24 * 60 * 60 * 1000;
 /** §3: one `percakapan.baca` audit row per officer per conversation per 15 minutes. */
 const READ_AUDIT_WINDOW = "15 minutes";
 
-const TIPE_BY_MIME: Record<string, "dokumen" | "gambar"> = { "application/pdf": "dokumen", "image/jpeg": "gambar", "image/png": "gambar" };
+const TIPE_BY_MIME: Record<string, "dokumen" | "gambar" | "stiker"> = {
+  "application/pdf": "dokumen", "image/jpeg": "gambar", "image/png": "gambar", "image/webp": "stiker",
+};
 
 export function atasNamaRef(value: AtasNama): string {
   return `${value.issuer} ${value.sub}`;
@@ -310,6 +312,7 @@ export class KirimConversations {
       if (!wroteRecently) throw new KirimApiError(422, "optout", "Nomor minta tidak dihubungi dan tidak menulis dalam 24 jam terakhir.");
     }
     const tipe = await this.replyMediaTipe(consumer, device.id, input.media_id);
+    if (tipe === "stiker" && input.caption) throw new KirimApiError(422, "invalid_request", "Stiker tidak bisa diberi keterangan.");
     const target = { conversationId: conversation.id, groupId: null, toHmac: conversation.kontakHmac };
     const quotedMessageId = await this.checkQuote(target, input.kutip_message_id);
     return this.queueReply(consumer, device, idempotencyKey, requestHash, replyContent(input, tipe, quotedMessageId), now, target);
@@ -452,6 +455,7 @@ export class KirimConversations {
     const device = (await findDevice(this.pool, group.kode))!;
     if (device.status === "nonaktif") throw new KirimApiError(422, "device_inactive", "Nomor tidak aktif.");
     const tipe = await this.replyMediaTipe(consumer, device.id, input.media_id);
+    if (tipe === "stiker" && input.caption) throw new KirimApiError(422, "invalid_request", "Stiker tidak bisa diberi keterangan.");
     const target = { conversationId: null, groupId: group.id, toHmac: group.groupHmac };
     const quotedMessageId = await this.checkQuote(target, input.kutip_message_id);
     return this.queueReply(consumer, device, idempotencyKey, requestHash, replyContent(input, tipe, quotedMessageId), await dbNow(this.pool), target);
@@ -495,7 +499,7 @@ export class KirimConversations {
     }
   }
 
-  private async replyMediaTipe(consumer: ConsumerRow, deviceId: string, mediaId: string | undefined): Promise<"teks" | "dokumen" | "gambar"> {
+  private async replyMediaTipe(consumer: ConsumerRow, deviceId: string, mediaId: string | undefined): Promise<"teks" | "dokumen" | "gambar" | "stiker"> {
     if (!mediaId) return "teks";
     const media = await this.pool.query<{ mime: string }>(
       `SELECT mime FROM kirim_media WHERE id = $1 AND device_id = $2 AND uploaded_by_consumer_id = $3 AND arah = 'keluar' AND path IS NOT NULL`,
@@ -798,7 +802,7 @@ export interface QueuedContent {
   forwardedFrom: string | null;
 }
 
-function replyContent(input: ReplyInput, tipe: "teks" | "dokumen" | "gambar", quotedMessageId: string | null): QueuedContent {
+function replyContent(input: ReplyInput, tipe: "teks" | "dokumen" | "gambar" | "stiker", quotedMessageId: string | null): QueuedContent {
   return {
     body: input.text ?? input.caption ?? null,
     mediaId: input.media_id ?? null,

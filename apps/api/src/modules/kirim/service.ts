@@ -62,12 +62,20 @@ export const optoutSchema = z.discriminatedUnion("cakupan", [
 
 export type OptoutInput = z.infer<typeof optoutSchema>;
 
-/** KIRIM-IMPL-002 §5.3: PDF, JPEG and PNG, checked by their magic bytes. */
+/** KIRIM-IMPL-002 §5.3: PDF, JPEG and PNG, checked by their magic bytes; KIRIM-IMPL-004 §16: a WebP sticker. */
 const MEDIA_SIGNATURES: Array<{ mime: string; magic: Buffer }> = [
   { mime: "application/pdf", magic: Buffer.from("%PDF-", "ascii") },
   { mime: "image/jpeg", magic: Buffer.from([0xff, 0xd8, 0xff]) },
   { mime: "image/png", magic: Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]) },
+  { mime: "image/webp", magic: Buffer.from("RIFF", "ascii") },
 ];
+/** A sticker is small: WhatsApp takes 100 KB static and 500 KB animated. */
+export const STICKER_MAX_BYTES = 500 * 1024;
+
+/** RIFF....WEBP: the 4-byte RIFF magic alone would also match WAV and AVI. */
+function isWebp(data: Buffer): boolean {
+  return data.length >= 12 && data.subarray(0, 4).toString("ascii") === "RIFF" && data.subarray(8, 12).toString("ascii") === "WEBP";
+}
 export const OUTBOUND_MEDIA_MIMES = MEDIA_SIGNATURES.map((item) => item.mime);
 
 const NOTIFICATION_TTL_MS = 24 * 60 * 60 * 1000;
@@ -359,9 +367,10 @@ export class KirimService {
       input.data.length === 0 ||
       input.data.length > MEDIA_MAX_BYTES ||
       !signature ||
-      !input.data.subarray(0, signature.magic.length).equals(signature.magic)
+      !input.data.subarray(0, signature.magic.length).equals(signature.magic) ||
+      (input.mime === "image/webp" && (!isWebp(input.data) || input.data.length > STICKER_MAX_BYTES))
     ) {
-      throw new KirimApiError(422, "media_invalid", "Hanya PDF, JPEG, atau PNG sampai 5 MiB yang diterima.");
+      throw new KirimApiError(422, "media_invalid", "Hanya PDF, JPEG, atau PNG sampai 5 MiB, atau stiker WebP sampai 500 KiB, yang diterima.");
     }
     const id = randomUUID();
     const sha256 = createHash("sha256").update(input.data).digest("hex");

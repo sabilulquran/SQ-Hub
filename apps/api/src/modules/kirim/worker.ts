@@ -232,8 +232,10 @@ export function recipientFromContact(contact: string): Recipient | null {
   return null;
 }
 
-const EXTENSION_BY_MIME: Record<string, string> = { "application/pdf": "pdf", "image/jpeg": "jpg", "image/png": "png" };
+const EXTENSION_BY_MIME: Record<string, string> = { "application/pdf": "pdf", "image/jpeg": "jpg", "image/png": "png", "image/webp": "webp" };
 
 export function mediaFile(mediaId: string, mime: string, data: () => Promise<Buffer>): MediaFile {
-  return { mediaId, mime, filename: `${mediaId}.${EXTENSION_BY_MIME[mime] ?? "bin"}`, kind: mime.startsWith("image/") ? "image" : "document", data };
+  // A WebP goes to the engine as a sticker (JalurPesan sends it as a WhatsApp sticker, never with a caption).
+  const kind = mime === "image/webp" ? "sticker" : mime.startsWith("image/") ? "image" : "document";
+  return { mediaId, mime, filename: `${mediaId}.${EXTENSION_BY_MIME[mime] ?? "bin"}`, kind, data };
 }

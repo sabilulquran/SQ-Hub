@@ -54,7 +54,9 @@ export const reactionSchema = z
   .strict();
 
 /** Inbound media Kirim SQ can send again as it is: the outbound types (KIRIM-IMPL-002 §5.3). */
-const FORWARD_TIPE_BY_MIME: Record<string, "dokumen" | "gambar"> = { "application/pdf": "dokumen", "image/jpeg": "gambar", "image/png": "gambar" };
+const FORWARD_TIPE_BY_MIME: Record<string, "dokumen" | "gambar" | "stiker"> = {
+  "application/pdf": "dokumen", "image/jpeg": "gambar", "image/png": "gambar", "image/webp": "stiker",
+};
 const NOT_SENT = new Set(["antre", "gagal", "dibatalkan"]);
 
 interface OwnedMessage extends TargetMessage {
