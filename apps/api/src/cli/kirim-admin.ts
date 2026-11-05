@@ -4,6 +4,7 @@ import { createPool } from "../db/pool.js";
 import { loadKirimConfig } from "../modules/kirim/config.js";
 import { columnAad, KirimCrypto } from "../modules/kirim/crypto.js";
 import { findConsumerByName, findDevice, listConsumers, listDevices, withTransaction, writeAudit } from "../modules/kirim/repository.js";
+import { queueStoredImport } from "../modules/kirim/history-import.js";
 import { isAllowedWebhookUrl } from "../modules/kirim/webhooks.js";
 
 /**
@@ -222,6 +223,18 @@ async function main() {
     return;
   }
 
+  // KIRIM-IMPL-002 §10.3: the same request as the admin button "Impor semua dari salinan awal". The running
+  // Hub (KIRIM_HISTORY_IMPORT_ENABLED=true) lists the engine's stored chats and imports them; nothing here
+  // calls the engine or reads a message.
+  if (area === "history" && action === "import-stored") {
+    const queued = await queueStoredImport(pool, { kode: value("--device")!, actorKind: "human", actorRef: operator(), alasan: value("--reason")! });
+    console.log(`queued stored-copy import ${queued.id} for ${queued.device}`);
+    if (process.env.KIRIM_HISTORY_IMPORT_ENABLED !== "true") {
+      console.warn("note: KIRIM_HISTORY_IMPORT_ENABLED is not true in this shell; the Hub runner only imports when it is true in final.env");
+    }
+    return;
+  }
+
   if (area === "device" && action === "list") {
     const devices = (await listDevices(pool)).map((device) => ({
       kode: device.kode,
@@ -252,6 +265,7 @@ async function main() {
       "  route add|remove --consumer <nama> --device <kode> --jenis notifikasi|kode --reason <text>",
       "  route list",
       "  device list",
+      "  history import-stored --device <kode> --reason <text>",
     ].join("\n"),
   );
 }

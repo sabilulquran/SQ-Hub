@@ -391,6 +391,20 @@ export class KirimIngest {
     return { id, keyedByPhone: contact.jenis === "pn" };
   }
 
+  /**
+   * KIRIM-IMPL-002 §10.3: the conversation for a chat of the engine's stored history copy, found or
+   * created the way an inbound message would be (number and LID matched both ways). Null for a JID
+   * that is not a private chat. Creates no event, webhook or unread count.
+   */
+  async conversationForChat(client: Queryable, deviceId: string, chatJid: string, phoneDigits: string | null): Promise<string | null> {
+    const contact = contactFromJid(chatJid);
+    if (!contact) return null;
+    const identity = { pushName: null, peerJidAlt: contact.jenis === "lid" && phoneDigits ? `${phoneDigits}@s.whatsapp.net` : null };
+    const resolved = await this.conversationFor(client, deviceId, contact, identity);
+    await this.learnContact(client, resolved, contact, identity);
+    return resolved.id;
+  }
+
   /** §9 / J-3: profile name, and the contact's other identity so the two never split into two conversations. */
   private async learnContact(
     client: Queryable,
@@ -1013,7 +1027,8 @@ interface EngineCall {
   startedAt: string;
   answeredAt: string | null;
   endedAt: string | null;
-  durationSeconds: number;
+  /** Null when the engine does not know it, e.g. a call answered on the phone (`answered_elsewhere`). */
+  durationSeconds: number | null;
 }
 
 const HASIL_BY_OUTCOME: Record<EngineCall["outcome"], "diangkat" | "ditolak" | "tak_terjawab"> = {
@@ -1062,7 +1077,7 @@ export function readCall(payload: unknown): EngineCall | null {
   const startedAt = isoOr(value.startedAt, new Date().toISOString());
   const duration = typeof value.durationSeconds === "number" && Number.isFinite(value.durationSeconds) && value.durationSeconds >= 0
     ? Math.min(Math.round(value.durationSeconds), 86_400)
-    : 0;
+    : null;
   return {
     callId: value.callId,
     chatJid: typeof value.chatJid === "string" ? value.chatJid : "",

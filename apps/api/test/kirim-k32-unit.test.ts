@@ -98,6 +98,9 @@ describe("engine payloads (§6.2)", () => {
     expect(readCall({ call: { ...call, fromMe: true, revision: 2 } })).toMatchObject({ fromMe: true, revision: 2 });
     expect(readCall({ call: { ...call, groupJid: "1@g.us" } })!.isGroup).toBe(true);
     expect(readCall({ call: { ...call, outcome: "ringing" } })).toBeNull();
+    // An answered-elsewhere call has no known length: kept as null, never 0.
+    expect(readCall({ call: { ...call, outcome: "answered_elsewhere", durationSeconds: null } })!.durationSeconds).toBeNull();
+    expect(readCall({ call: { ...call, durationSeconds: undefined } })!.durationSeconds).toBeNull();
     expect(readCall({ call: { ...call, revision: 0 } })!.revision).toBe(1);
   });
 

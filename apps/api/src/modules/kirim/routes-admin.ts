@@ -24,7 +24,7 @@ import {
   type KirimAdminService,
 } from "./admin.js";
 import { cardReasonSchema, newNumberSchema, ownNumberSchema, useNumberSchema, type KirimModuleCards } from "./cards.js";
-import { deviceImportSchema, EXPORT_MAX_BYTES, exportImportSchema, exportPreviewSchema, type KirimHistoryImport } from "./history-import.js";
+import { deviceImportSchema, EXPORT_MAX_BYTES, exportImportSchema, exportPreviewSchema, storedImportSchema, type KirimHistoryImport } from "./history-import.js";
 import { handleKirimError, sendKirimError } from "./routes-internal.js";
 import { KirimApiError } from "./service.js";
 
@@ -192,6 +192,8 @@ export function registerKirimAdminRoutes(
     const exportLimit = { bodyLimit: Math.ceil(EXPORT_MAX_BYTES * 1.1) + 4096 };
     read("/devices/:kode/history-imports", (request) => history.list(params(request).kode!));
     write("POST", "/devices/:kode/history-imports", (request, actor) => history.startDeviceImport(actor, params(request).kode!, deviceImportSchema.parse(body(request))), 202);
+    // KIRIM-IMPL-002 §10.3: every private chat of the engine's stored initial copy.
+    write("POST", "/devices/:kode/history-imports/salinan", (request, actor) => history.startStoredImport(actor, params(request).kode!, storedImportSchema.parse(body(request))), 202);
     write("POST", "/devices/:kode/history-exports/preview", (request) => history.previewExport(params(request).kode!, exportPreviewSchema.parse(body(request))), 200, exportLimit);
     write("POST", "/devices/:kode/history-exports", (request, actor) => history.importExport(actor, params(request).kode!, exportImportSchema.parse(body(request))), 201, exportLimit);
   }

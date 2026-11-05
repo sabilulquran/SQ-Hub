@@ -41,7 +41,7 @@ const ENGINE_RETRY_LIMIT = 3;
 const RECONNECTABLE = new Set(["terputus", "menunggu_pairing", "tersambung"]);
 
 /** "Sambungkan ulang" fits a JalurPesan number that was paired before and is not nonaktif. */
-export function canReconnect(device: KirimDevice): boolean {
+function canReconnect(device: KirimDevice): boolean {
   return device.provider === "jalurpesan" && RECONNECTABLE.has(device.status);
 }
 

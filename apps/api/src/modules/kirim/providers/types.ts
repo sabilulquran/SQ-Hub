@@ -121,6 +121,14 @@ export interface ProviderHistoryMessage {
   media: { id: string; mimeType: string; sizeBytes: number; sha256: string | null } | null;
 }
 
+/** One private chat of the engine's initial history copy (JalurPesan `GET /history-chats`). */
+export interface ProviderHistoryChat {
+  chatJid: string;
+  /** International digits when the engine knows the number of a LID chat (or of a number chat). */
+  phoneDigits: string | null;
+  messageCount: number;
+}
+
 export type ProviderHistoryStatus =
   | { status: "awaiting" }
   | { status: "completed" }
@@ -223,6 +231,13 @@ export interface KirimProvider {
   requestHistory(device: DeviceRef, chatJid: string, maxMessages: number): Promise<{ importId: string }>;
   historyStatus(device: DeviceRef, importId: string): Promise<ProviderHistoryStatus>;
   historyMessages(device: DeviceRef, importId: string, page: number): Promise<{ messages: ProviderHistoryMessage[]; hasMore: boolean }>;
+  /** KIRIM-IMPL-002 §10.3: private chats in the engine's initial history copy, newest first, 200 per page. */
+  listHistoryChats(device: DeviceRef, page: number): Promise<{ chats: ProviderHistoryChat[]; hasMore: boolean }>;
+  /**
+   * §10.3: an import from the stored copy (`source: "stored"`), complete at once and without asking
+   * WhatsApp; `null` when the chat has no stored message (`409 no_anchor`).
+   */
+  requestStoredHistory(device: DeviceRef, chatJid: string): Promise<{ importId: string } | null>;
 }
 
 /** WhatsApp JID of a private recipient, for read receipts and history requests. */

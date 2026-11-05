@@ -65,6 +65,8 @@ export class JalurPesanStub {
   historyRoutes = true;
   /** POSTs to `/history-imports` answered `409 import_active` before the engine accepts again. */
   historyBusy = 0;
+  /** KIRIM-IMPL-002 §10.3: the private chats of the stored initial copy (`GET /history-chats`). */
+  storedChats: Array<{ chatJid: string; phone: string | null }> = [];
   /**
    * Holds a `/events` reply open after its page has been read, so a test can arrange what a real
    * engine does all the time: an event arriving while a pull is already past the point of seeing it.
@@ -119,6 +121,7 @@ export class JalurPesanStub {
     this.pendingHistory.clear();
     this.historyRoutes = true;
     this.historyBusy = 0;
+    this.storedChats = [];
     this.actions.length = 0;
     this.actionQueue = [];
     this.beforeActionAnswer = null;
@@ -325,8 +328,26 @@ export class JalurPesanStub {
         body: { contacts: all.slice((page - 1) * size, page * size), pagination: { page, pageSize: size, total: all.length, totalPages: Math.max(1, Math.ceil(all.length / size)) } },
       };
     }
+    if (request.method === "GET" && path === "/history-chats") {
+      if (!this.historyRoutes) return { status: 404, body: {} };
+      const page = Number(url.searchParams.get("page") ?? "1");
+      const size = Math.min(200, Number(url.searchParams.get("pageSize") ?? "200"));
+      const chats = this.storedChats.map((chat) => ({ ...chat, messageCount: (this.pendingHistory.get(chat.chatJid) ?? []).length, firstMessageAt: null, lastMessageAt: null }));
+      return {
+        status: 200,
+        body: { success: true, chats: chats.slice((page - 1) * size, page * size), pagination: { page, pageSize: size, total: chats.length, totalPages: Math.max(1, Math.ceil(chats.length / size)) } },
+      };
+    }
     if (path.startsWith("/history-imports")) {
       if (!this.historyRoutes) return { status: 404, body: {} };
+      if (request.method === "POST" && path === "/history-imports" && (JSON.parse(raw.toString("utf8") || "{}") as { source?: string }).source === "stored") {
+        // §10.3: complete at once from the stored copy, with no WhatsApp request and no active-import slot.
+        const body = JSON.parse(raw.toString("utf8")) as { chatJid: string };
+        if (!(this.pendingHistory.get(body.chatJid) ?? []).length) return { status: 409, body: { success: false, code: "no_anchor", error: "No stored message for this chat" } };
+        const id = randomUUID();
+        this.history.set(id, { status: "completed", chatJid: body.chatJid, messages: [] });
+        return { status: 201, body: { success: true, historyImport: { id, status: "completed" } } };
+      }
       if (request.method === "POST" && path === "/history-imports") {
         if (this.historyBusy > 0) {
           this.historyBusy -= 1;

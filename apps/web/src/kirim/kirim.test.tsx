@@ -304,6 +304,26 @@ describe("KIRIM-IMPL-002 §12 screens", () => {
     expect(html).toContain("Belum tersedia");
     expect(html).toContain("Tanpa media");
     expect(html).toContain("12 masuk");
+    expect(html).toMatch(/disabled=""[^>]*>.*Impor semua dari salinan awal/);
+  });
+
+  it("offers Impor semua dari salinan awal and labels stored-copy rows (KIRIM-IMPL-002 §10.3)", () => {
+    const state: ImporState = {
+      status: "ready",
+      kode: "spmb",
+      imports: {
+        impor_perangkat_tersedia: true,
+        impor_salinan_tersedia: true,
+        ringkasan: { antre: 2900, berjalan: 1, selesai: 40, gagal: 0, dimasukkan: 1200, ganda: 3, dilewati: 0 },
+        impor: [{ id: "y", jalur: "salinan", status: "selesai", dimasukkan: 30, ganda: 0, dilewati: 0, galat: null, dibuat: "2026-11-05T15:00:00Z", selesai: "2026-11-05T15:00:01Z" }],
+      },
+    };
+    const html = renderToStaticMarkup(<ImporView state={state} busy={false} error={null} notice={null} onReload={noop} onDeviceImport={noop} onStoredImport={noop} onPreview={async () => null} onImport={async () => true} />);
+    expect(html).toContain("Dari salinan awal");
+    expect(html).toContain("termasuk chat yang belum pernah aktif di Kirim SQ");
+    expect(html).not.toMatch(/disabled=""[^>]*>.*Impor semua dari salinan awal/);
+    expect(html).toContain("Salinan awal</span> · Selesai");
+    expect(html).toContain("2901 berjalan");
   });
 
   it("links each active number to its history import", () => {

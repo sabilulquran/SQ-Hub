@@ -22,7 +22,7 @@ import { LogProvider } from "../src/modules/kirim/providers/log.js";
 import type { KirimProvider, ProviderName } from "../src/modules/kirim/providers/types.js";
 import { verifyKeyCanaries } from "../src/modules/kirim/service.js";
 import { KirimWebhookSender } from "../src/modules/kirim/webhooks.js";
-import { KirimHistoryImport } from "../src/modules/kirim/history-import.js";
+import { KirimHistoryImport, queueStoredImport } from "../src/modules/kirim/history-import.js";
 import { KirimSendWorker } from "../src/modules/kirim/worker.js";
 import { JalurPesanStub, receiptPayload, receivedPayload } from "./kirim.fixture.js";
 
@@ -933,6 +933,102 @@ describe("Admin R2: Jangan hubungi, Aktivitas, Impor riwayat (KIRIM-IMPL-002 §1
     await history.runOnce(); // accepted
     await history.runOnce(); // completed → insert
     expect((await history.list("spmb")).impor[0]).toMatchObject({ status: "selesai", dimasukkan: 1 });
+  });
+
+  it("§10.3 imports every chat of the stored copy, creating conversations like inbound messages, with no webhook or unread count", async () => {
+    stub.addEvent("spmb", "message.received", receivedPayload({ body: "Halo lagi", whatsappMessageId: "WA-NEW" }));
+    await kirim.ingest!.runOnce();
+    const before = (await webhookPayloads()).length;
+    const lid = "123456789012345@lid";
+    stub.storedChats = [
+      { chatJid: "6281234567890@s.whatsapp.net", phone: "6281234567890" }, // already a conversation
+      { chatJid: lid, phone: "6285711112222" }, // never active in Kirim SQ, known by LID and number
+      { chatJid: "6289900001111@s.whatsapp.net", phone: null }, // no stored message: 409 no_anchor
+      { chatJid: "120363000000@g.us", phone: null }, // a group is not a private chat
+    ];
+    stub.pendingHistory.set("6281234567890@s.whatsapp.net", [
+      { whatsappMessageId: "WA-OLD-1", direction: "inbound", chatJid: "6281234567890@s.whatsapp.net", messageType: "text", body: "Pesan lama", occurredAt: "2026-09-01T03:00:00.000Z" },
+      { whatsappMessageId: "WA-NEW", direction: "inbound", chatJid: "6281234567890@s.whatsapp.net", messageType: "text", body: "Halo lagi", occurredAt: new Date().toISOString() },
+    ]);
+    stub.pendingHistory.set(lid, [
+      { whatsappMessageId: "WA-LID-1", direction: "inbound", chatJid: lid, messageType: "text", body: "Assalamu'alaikum, mau daftar", occurredAt: "2026-08-01T02:00:00.000Z" },
+      { whatsappMessageId: "WA-LID-2", direction: "outbound", chatJid: lid, messageType: "text", body: "Wa'alaikumussalam", occurredAt: "2026-08-01T02:05:00.000Z" },
+    ]);
+    const history = new KirimHistoryImport(pool, kirim.crypto, kirim.service, providers, { enabled: true, inboundMediaMaxBytes: 64 * 1024, ingest: kirim.ingest! });
+    expect(await history.startStoredImport({ ref: "staff:test" }, "spmb", { alasan: "salinan awal SPMB" })).toEqual({ permintaan: expect.any(String) });
+    await expect(history.startStoredImport({ ref: "staff:test" }, "spmb", {})).rejects.toMatchObject({ code: "history_import_running" });
+    await expect(history.startStoredImport({ ref: "staff:test" }, "hcis", {})).rejects.toMatchObject({ code: "history_import_unavailable" });
+    await history.runOnce(); // the request becomes one row per private chat
+    expect((await pool.query("SELECT 1 FROM kirim_history_imports WHERE jalur = 'salinan' AND chat_enc IS NOT NULL")).rowCount).toBe(3);
+    await history.runOnce(); // the chats are imported
+    const rows = await pool.query<{ status: string; dimasukkan: number; ganda: number; dilewati: number }>(
+      "SELECT status, jumlah_dimasukkan AS dimasukkan, jumlah_ganda AS ganda, jumlah_dilewati AS dilewati FROM kirim_history_imports WHERE jalur = 'salinan' ORDER BY chat_enc IS NULL DESC, jumlah_dimasukkan DESC",
+    );
+    expect(rows.rows).toEqual([
+      { status: "selesai", dimasukkan: 0, ganda: 0, dilewati: 1 },
+      { status: "selesai", dimasukkan: 2, ganda: 0, dilewati: 0 },
+      { status: "selesai", dimasukkan: 1, ganda: 1, dilewati: 0 },
+      { status: "selesai", dimasukkan: 0, ganda: 0, dilewati: 0 },
+    ]);
+    const conversations = await pool.query<{ id: string; jenis: string; altHmac: string | null; belum: number }>(
+      `SELECT id, kontak_jenis AS jenis, kontak_alt_hmac AS "altHmac", belum_dibaca AS belum FROM kirim_conversations ORDER BY created_at`,
+    );
+    expect(conversations.rows).toHaveLength(2);
+    expect(conversations.rows[1]).toMatchObject({ jenis: "lid", altHmac: kirim.crypto.lookup("pn:+6285711112222"), belum: 0 });
+    const imported = await pool.query<{ conversationId: string; arah: string; asal: string | null }>(
+      `SELECT conversation_id AS "conversationId", arah, asal FROM kirim_messages WHERE diimpor ORDER BY provider_at`,
+    );
+    expect(imported.rows.map((row) => [row.conversationId === conversations.rows[1]!.id, row.arah, row.asal])).toEqual([
+      [true, "masuk", null],
+      [true, "keluar", "hp"],
+      [false, "masuk", null],
+    ]);
+    expect((await webhookPayloads()).length).toBe(before);
+    const posts = stub.requests.filter((entry) => entry.path.endsWith("/history-imports") && entry.method === "POST").map((entry) => JSON.parse(entry.body));
+    expect(posts.every((body) => body.source === "stored")).toBe(true);
+    expect(stub.requests.some((entry) => entry.path.includes("/history-imports/") && entry.method === "GET" && !entry.path.endsWith("/messages"))).toBe(false);
+    const audit = await pool.query<{ aksi: string; actorKind: string; metadata: Record<string, unknown> }>(
+      `SELECT aksi, actor_kind AS "actorKind", metadata FROM kirim_audit WHERE aksi LIKE 'riwayat.%' ORDER BY occurred_at`,
+    );
+    expect(audit.rows.map((row) => [row.aksi, row.actorKind])).toEqual([["riwayat.impor_salinan", "human"], ["riwayat.salinan_dibagi", "system"]]);
+    expect(audit.rows[1]!.metadata).toMatchObject({ percakapan: 3, dilewati: 1 });
+    expect(JSON.stringify(audit.rows) + JSON.stringify((await pool.query("SELECT * FROM kirim_history_imports")).rows)).not.toMatch(/85711112222|123456789012345/);
+    const summary = await history.list("spmb");
+    expect(summary).toMatchObject({ impor_salinan_tersedia: true, ringkasan: { selesai: 3, dimasukkan: 3, ganda: 1 } });
+  });
+
+  it("§10.3 puts a chat back in the queue while the engine is down, and a re-run adds nothing", async () => {
+    // Live ingest already stored WA-NEW in the number's conversation; the stored copy names the chat by LID only.
+    stub.addEvent("spmb", "message.received", receivedPayload({ body: "Halo lagi", whatsappMessageId: "WA-NEW" }));
+    await kirim.ingest!.runOnce();
+    const lid = "99887766554433@lid";
+    stub.storedChats = [{ chatJid: lid, phone: null }];
+    stub.pendingHistory.set(lid, [
+      { whatsappMessageId: "WA-NEW", direction: "inbound", chatJid: lid, messageType: "text", body: "Halo lagi", occurredAt: new Date().toISOString() },
+    ]);
+    const history = new KirimHistoryImport(pool, kirim.crypto, kirim.service, providers, { enabled: true, inboundMediaMaxBytes: 64 * 1024, ingest: kirim.ingest! });
+    await history.startStoredImport({ ref: "staff:test" }, "spmb", {});
+    await history.runOnce(); // expand
+    const port = stub.baseUrl;
+    (providers.jalurpesan as unknown as { options: { baseUrl: string } }).options.baseUrl = "http://127.0.0.1:9"; // engine unreachable
+    await history.runOnce();
+    (providers.jalurpesan as unknown as { options: { baseUrl: string } }).options.baseUrl = port;
+    expect((await pool.query<{ status: string }>("SELECT status FROM kirim_history_imports WHERE chat_enc IS NOT NULL")).rows).toEqual([{ status: "antre" }]);
+    await history.runOnce();
+    // The same WhatsApp message is not stored twice, even under the person's other identity.
+    expect((await pool.query("SELECT 1 FROM kirim_messages WHERE wa_message_id = 'WA-NEW'")).rowCount).toBe(1);
+    expect((await pool.query("SELECT 1 FROM kirim_conversations")).rowCount).toBe(1);
+    expect((await pool.query<{ status: string; ganda: number }>("SELECT status, jumlah_ganda AS ganda FROM kirim_history_imports WHERE chat_enc IS NOT NULL")).rows).toEqual([{ status: "selesai", ganda: 1 }]);
+  });
+
+  it("§10.3 the operator CLI queues the same request and the runner waits while the engine is down", async () => {
+    await expect(queueStoredImport(pool, { kode: "spmb", actorKind: "human", actorRef: "operator:ops", alasan: "agent tidak bisa login" })).resolves.toMatchObject({ device: "spmb" });
+    expect((await pool.query<{ ref: string }>("SELECT actor_ref AS ref FROM kirim_audit WHERE aksi = 'riwayat.impor_salinan'")).rows).toEqual([{ ref: "operator:ops" }]);
+    stub.historyRoutes = false; // the engine has no stored-copy route for this tenant yet
+    const history = new KirimHistoryImport(pool, kirim.crypto, kirim.service, providers, { enabled: true, inboundMediaMaxBytes: 64 * 1024, ingest: kirim.ingest! });
+    await history.runOnce();
+    const request = await pool.query<{ status: string; galat: string | null }>("SELECT status, galat FROM kirim_history_imports WHERE jalur = 'salinan'");
+    expect(request.rows).toEqual([{ status: "gagal", galat: "Mesin belum menyediakan salinan awal untuk nomor ini." }]);
   });
 });
 

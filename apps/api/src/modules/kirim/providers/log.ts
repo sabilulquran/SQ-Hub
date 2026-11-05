@@ -93,6 +93,14 @@ export class LogProvider implements KirimProvider {
     throw new ProviderOperationError("engine_rejected", "log provider has no WhatsApp history");
   }
 
+  async listHistoryChats(): Promise<never> {
+    throw new ProviderOperationError("engine_rejected", "log provider has no WhatsApp history");
+  }
+
+  async requestStoredHistory(): Promise<never> {
+    throw new ProviderOperationError("engine_rejected", "log provider has no WhatsApp history");
+  }
+
   /** KIRIM-IMPL-004 §5: actions on a message are a dry run like sends; nothing reaches WhatsApp. */
   async react(device: { kode: string }): Promise<ActionResult> {
     this.log({ event: "kirim.log.action", device: device.kode, aksi: "reaksi" }, "kirim log provider (dry run)");
