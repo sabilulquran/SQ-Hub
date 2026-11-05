@@ -32,8 +32,8 @@ export interface MediaFile {
   mediaId: string;
   mime: string;
   filename: string;
-  /** Engine upload type; PDF is `document`, JPEG/PNG is `image` (KIRIM-IMPL-002 §5.3). */
-  kind?: "document" | "image";
+  /** Engine upload type; PDF is `document`, JPEG/PNG is `image` (KIRIM-IMPL-002 §5.3), WebP is `sticker`. */
+  kind?: "document" | "image" | "sticker";
   data: () => Promise<Buffer>;
 }
 

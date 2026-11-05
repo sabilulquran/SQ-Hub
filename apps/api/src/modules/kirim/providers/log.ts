@@ -32,7 +32,7 @@ export class LogProvider implements KirimProvider {
   async sendDocument(
     device: { kode: string },
     to: Recipient,
-    file: { kind?: "document" | "image" },
+    file: { kind?: "document" | "image" | "sticker" },
     caption: string | null,
     idempotencyKey: string,
     options?: SendOptions,
