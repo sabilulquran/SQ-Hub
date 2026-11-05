@@ -17,7 +17,20 @@ export interface KirimConfig {
   contactRefreshIntervalMs?: number;
   replyDefaultTtlHours?: number;
   historyImportEnabled?: boolean;
+  /** KIRIM-IMPL-004 §11 (`DRAFT`, akan diukur): edit and delete-for-everyone windows, group add limit, photo refresh. */
+  editWindowMinutes?: number;
+  deleteWindowHours?: number;
+  groupAddLimitPerHour?: number;
+  photoRefreshIntervalMs?: number;
 }
+
+/** KIRIM-IMPL-004 §11 defaults (`DRAFT` until measured on the `spmb` number). */
+export const KIRIM_K32_DEFAULTS = {
+  editWindowMinutes: 15,
+  deleteWindowHours: 48,
+  groupAddLimitPerHour: 20,
+  photoRefreshIntervalMs: 3_600_000,
+} as const;
 
 const booleanString = z.enum(["true", "false"]).transform((value) => value === "true");
 const optionalNonempty = <T extends z.ZodTypeAny>(schema: T) =>
@@ -36,6 +49,10 @@ const envSchema = z.object({
   KIRIM_CONTACT_REFRESH_INTERVAL_MS: z.coerce.number().int().min(60_000).max(604_800_000).default(21_600_000),
   KIRIM_REPLY_DEFAULT_TTL_HOURS: z.coerce.number().int().min(1).max(168).default(72),
   KIRIM_HISTORY_IMPORT_ENABLED: booleanString.prefault("false"),
+  KIRIM_EDIT_WINDOW_MINUTES: z.coerce.number().int().min(1).max(1440).default(KIRIM_K32_DEFAULTS.editWindowMinutes),
+  KIRIM_DELETE_WINDOW_HOURS: z.coerce.number().int().min(1).max(720).default(KIRIM_K32_DEFAULTS.deleteWindowHours),
+  KIRIM_GROUP_ADD_LIMIT_PER_HOUR: z.coerce.number().int().min(1).max(200).default(KIRIM_K32_DEFAULTS.groupAddLimitPerHour),
+  KIRIM_PHOTO_REFRESH_INTERVAL_MS: z.coerce.number().int().min(60_000).max(86_400_000).default(KIRIM_K32_DEFAULTS.photoRefreshIntervalMs),
   JALURPESAN_BASE_URL: optionalNonempty(z.string().url()),
   JALURPESAN_PLATFORM_KEY: optionalNonempty(z.string().min(1)),
   JALURPESAN_WEBHOOK_SECRET: optionalNonempty(z.string().min(1)),
@@ -74,6 +91,10 @@ export function loadKirimConfig(env: NodeJS.ProcessEnv = process.env): KirimConf
     contactRefreshIntervalMs: parsed.KIRIM_CONTACT_REFRESH_INTERVAL_MS,
     replyDefaultTtlHours: parsed.KIRIM_REPLY_DEFAULT_TTL_HOURS,
     historyImportEnabled: parsed.KIRIM_HISTORY_IMPORT_ENABLED,
+    editWindowMinutes: parsed.KIRIM_EDIT_WINDOW_MINUTES,
+    deleteWindowHours: parsed.KIRIM_DELETE_WINDOW_HOURS,
+    groupAddLimitPerHour: parsed.KIRIM_GROUP_ADD_LIMIT_PER_HOUR,
+    photoRefreshIntervalMs: parsed.KIRIM_PHOTO_REFRESH_INTERVAL_MS,
     jalurpesan: parsed.JALURPESAN_BASE_URL && parsed.JALURPESAN_PLATFORM_KEY
       ? {
           baseUrl: parsed.JALURPESAN_BASE_URL.replace(/\/$/, ""),

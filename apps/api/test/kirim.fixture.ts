@@ -23,6 +23,14 @@ export interface StubEvent {
   payload: unknown;
 }
 
+/** K3.2 §E: members carry their other identity when the engine knows it. */
+export interface StubGroup {
+  id: string;
+  subject: string;
+  size: number;
+  participants: Array<{ jid: string; admin: string | null; phoneJid?: string | null; lidJid?: string | null }>;
+}
+
 export class JalurPesanStub {
   readonly tenants = new Map<string, StubTenant>();
   readonly sendsByKey = new Map<string, number>();
@@ -31,7 +39,22 @@ export class JalurPesanStub {
   readonly events: StubEvent[] = [];
   readonly media = new Map<string, Buffer>();
   /** KIRIM-IMPL-002: groups per tenant, contacts per tenant, read receipts and J-2 history. */
-  readonly groups = new Map<string, Array<{ id: string; subject: string; size: number; participants: Array<{ jid: string; admin: string | null }> }>>();
+  readonly groups = new Map<string, StubGroup[]>();
+  /** KIRIM-IMPL-004 / K3.2 §B: actions received (reaction, edit, delete) with their body. */
+  readonly actions: Array<{ action: string; whatsappMessageId: string; idempotencyKey: string | null; body: Record<string, unknown> }> = [];
+  /** Next responses for the K3.2 §B action routes, consumed in order; default is 200. */
+  actionQueue: Array<{ status: number; body: Record<string, unknown> }> = [];
+  /** Runs while an action is "at WhatsApp", before the engine answers: e.g. its own echo being ingested first. */
+  beforeActionAnswer: (() => Promise<void>) | null = null;
+  /** K3.2 §D: photo per JID; a JID without one answers `profile_picture_unavailable`. */
+  readonly profilePictures = new Map<string, Buffer>();
+  /** When false the profile-picture route answers a bare 404, like an engine without it. */
+  profilePictureRoute = true;
+  /** K3.2 §E: WhatsApp's status per participant digits on an addition; default "200". */
+  readonly participantStatus = new Map<string, string>();
+  readonly inviteCodes = new Map<string, string>();
+  /** Group management calls received (participants, subject, description, invite). */
+  readonly groupCalls: Array<{ method: string; path: string; body: Record<string, unknown> }> = [];
   readonly contacts = new Map<string, Array<{ jid: string; canonicalJid: string; displayName: string }>>();
   readonly reads: Array<{ remoteJid: string; whatsappMessageId: string }> = [];
   readonly uploadTypes: string[] = [];
@@ -94,6 +117,14 @@ export class JalurPesanStub {
     this.pendingHistory.clear();
     this.historyRoutes = true;
     this.historyBusy = 0;
+    this.actions.length = 0;
+    this.actionQueue = [];
+    this.beforeActionAnswer = null;
+    this.profilePictures.clear();
+    this.profilePictureRoute = true;
+    this.participantStatus.clear();
+    this.inviteCodes.clear();
+    this.groupCalls.length = 0;
     this.onEventsRead = null;
     this.uploads = 0;
     this.sendQueue = [];
@@ -192,6 +223,72 @@ export class JalurPesanStub {
       const body = JSON.parse(raw.toString("utf8")) as { messages: Array<{ remoteJid: string; whatsappMessageId: string }> };
       this.reads.push(...body.messages);
       return { status: 200, body: { success: true, count: body.messages.length } };
+    }
+    const action = /^\/messages\/([^/]+)\/(reaction|edit|delete)$/.exec(path);
+    if (request.method === "POST" && action) {
+      const body = JSON.parse(raw.toString("utf8") || "{}") as Record<string, unknown>;
+      const next = this.actionQueue.shift();
+      if (next) return next;
+      const target = decodeURIComponent(action[1]!);
+      this.actions.push({ action: action[2]!, whatsappMessageId: target, idempotencyKey, body });
+      if (this.beforeActionAnswer) await this.beforeActionAnswer();
+      return { status: 200, body: { success: true, action: action[2], messageId: randomUUID(), targetMessageId: target } };
+    }
+    if (request.method === "GET" && path === "/profile-picture") {
+      if (!this.profilePictureRoute) return { status: 404, body: {} };
+      const data = this.profilePictures.get(url.searchParams.get("jid") ?? "");
+      if (!data) return { status: 404, body: { success: false, code: "profile_picture_unavailable" } };
+      return { status: 200, raw: data, headers: { "content-type": "image/jpeg", "cache-control": "no-store" } };
+    }
+    if (request.method === "POST" && path === "/groups") {
+      const body = JSON.parse(raw.toString("utf8")) as { subject: string; participants: string[] };
+      this.groupCalls.push({ method: "POST", path: "create", body });
+      const own = tenant.phone ? [{ jid: `${tenant.phone}@s.whatsapp.net`, admin: "superadmin" as string | null, phoneJid: null, lidJid: null }] : [];
+      const joined = body.participants
+        .filter((digits) => (this.participantStatus.get(digits) ?? "200") === "200")
+        .map((digits) => ({ jid: `${digits}@s.whatsapp.net`, admin: null, phoneJid: null, lidJid: null }));
+      const group: StubGroup = { id: `1203639${String(Date.now()).slice(-8)}@g.us`, subject: body.subject, size: own.length + joined.length, participants: [...own, ...joined] };
+      this.groups.set(tenantId, [...(this.groups.get(tenantId) ?? []), group]);
+      return { status: 201, body: { success: true, group } };
+    }
+    const manage = /^\/groups\/([^/]+)\/(participants|subject|description|invite|invite\/revoke)$/.exec(path);
+    if (manage) {
+      const jid = decodeURIComponent(manage[1]!);
+      const group = (this.groups.get(tenantId) ?? []).find((item) => item.id === jid);
+      if (!group) return { status: 404, body: { success: false, error: "WhatsApp group not found for this device" } };
+      const body = raw.length ? (JSON.parse(raw.toString("utf8")) as Record<string, unknown>) : {};
+      this.groupCalls.push({ method: request.method ?? "", path: manage[2]!, body });
+      if (manage[2] === "participants" && request.method === "POST") {
+        const updates = (body.participants as string[]).map((digits) => {
+          const member = `${digits}@s.whatsapp.net`;
+          if (body.action === "remove") {
+            const index = group.participants.findIndex((item) => item.jid === member);
+            if (index < 0) return { jid: member, status: "404" };
+            group.participants.splice(index, 1);
+            return { jid: member, status: "200" };
+          }
+          const status = this.participantStatus.get(digits) ?? "200";
+          if (status === "200") group.participants.push({ jid: member, admin: null, phoneJid: null, lidJid: null });
+          return { jid: member, status };
+        });
+        group.size = group.participants.length;
+        return { status: 200, body: { success: true, updates, group } };
+      }
+      if (manage[2] === "subject" && request.method === "PATCH") {
+        group.subject = String(body.subject);
+        return { status: 200, body: { success: true } };
+      }
+      if (manage[2] === "description" && request.method === "PATCH") return { status: 200, body: { success: true } };
+      if (manage[2] === "invite" && request.method === "GET") {
+        const code = this.inviteCodes.get(jid) ?? "KODEAWAL";
+        this.inviteCodes.set(jid, code);
+        return { status: 200, body: { success: true, code } };
+      }
+      if (manage[2] === "invite/revoke" && request.method === "POST") {
+        const code = `KODE${randomUUID().slice(0, 6)}`;
+        this.inviteCodes.set(jid, code);
+        return { status: 200, body: { success: true, code } };
+      }
     }
     if (request.method === "GET" && path === "/groups") {
       return { status: 200, body: { groups: this.groups.get(tenantId) ?? [] } };

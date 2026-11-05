@@ -14,7 +14,10 @@ import {
   replySchema,
   type KirimConversations,
 } from "./conversations.js";
+import { deleteSchema, editSchema, forwardSchema, reactionSchema, type KirimMessageActions } from "./actions.js";
 import { webhookRegistrationSchema, type KirimModuleCards } from "./cards.js";
+import { createGroupSchema, inviteRevokeSchema, participantsSchema, updateGroupSchema, type KirimGroupAdmin } from "./groups-admin.js";
+import { PHOTO_CACHE_SECONDS, type KirimProfilePhotos } from "./photos.js";
 import { verifyJalurPesanSignature } from "./crypto.js";
 import type { KirimIngest } from "./ingest.js";
 import { KirimApiError, MEDIA_MAX_BYTES, optoutSchema, sendMessageSchema, type KirimService } from "./service.js";
@@ -46,7 +49,12 @@ function sendInvalidBody(request: FastifyRequest, reply: FastifyReply, error: z.
 }
 
 export function handleKirimError(reply: FastifyReply, error: unknown) {
-  if (error instanceof KirimApiError) return sendKirimError(reply, error.statusCode, error.code, error.message);
+  if (error instanceof KirimApiError) {
+    if (!error.details) return sendKirimError(reply, error.statusCode, error.code, error.message);
+    const retryAfter = error.details.retry_after_detik;
+    if (typeof retryAfter === "number") reply.header("Retry-After", String(Math.max(1, Math.ceil(retryAfter))));
+    return reply.status(error.statusCode).send({ error: { code: error.code, message: error.message, ...error.details } });
+  }
   if (error instanceof z.ZodError) {
     return sendKirimError(reply, 400, "invalid_request", "Permintaan tidak sah.", invalidRequestFields(error));
   }
@@ -59,6 +67,10 @@ export function registerKirimInternalRoutes(
     service: KirimService;
     cards?: KirimModuleCards;
     conversations?: KirimConversations;
+    /** KIRIM-IMPL-004: message actions, profile photos, R3 groups and grup bersama. */
+    actions?: KirimMessageActions;
+    photos?: KirimProfilePhotos;
+    groupAdmin?: KirimGroupAdmin;
     verifyMachineToken: VerifyMachineToken;
     ingest?: KirimIngest;
     jalurpesanWebhookSecret?: string | null;
@@ -169,7 +181,13 @@ export function registerKirimInternalRoutes(
     }
 
     const conversations = input.conversations;
-    if (conversations) registerConversationRoutes(scope, conversations, authenticate);
+    if (conversations) {
+      registerConversationRoutes(scope, conversations, authenticate, {
+        ...(input.actions ? { actions: input.actions } : {}),
+        ...(input.photos ? { photos: input.photos } : {}),
+        ...(input.groupAdmin ? { groupAdmin: input.groupAdmin } : {}),
+      });
+    }
 
     scope.post("/media", async (request, reply) => {
       const consumer = await authenticate(request, reply);
@@ -239,8 +257,13 @@ export function registerKirimInternalRoutes(
 
 type Authenticate = (request: FastifyRequest, reply: FastifyReply) => Promise<ConsumerRow | null>;
 
-/** KIRIM-IMPL-002 §6: the number owner's conversation API. Every handler checks ownership itself. */
-function registerConversationRoutes(scope: FastifyInstance, conversations: KirimConversations, authenticate: Authenticate) {
+/** KIRIM-IMPL-002 §6 and KIRIM-IMPL-004: the number owner's conversation API. Every handler checks ownership itself. */
+function registerConversationRoutes(
+  scope: FastifyInstance,
+  conversations: KirimConversations,
+  authenticate: Authenticate,
+  extra: { actions?: KirimMessageActions; photos?: KirimProfilePhotos; groupAdmin?: KirimGroupAdmin },
+) {
   type Params = { Params: Record<string, string> };
 
   function read<Q extends z.ZodTypeAny>(
@@ -264,8 +287,9 @@ function registerConversationRoutes(scope: FastifyInstance, conversations: Kirim
     path: string,
     body: B,
     handler: (consumer: ConsumerRow, params: Record<string, string>, body: z.infer<B>, request: FastifyRequest, reply: FastifyReply) => Promise<unknown>,
+    method: "POST" | "PATCH" = "POST",
   ) {
-    scope.post<Params>(path, async (request, reply) => {
+    scope.route<Params>({ method, url: path, handler: async (request, reply) => {
       const consumer = await authenticate(request, reply);
       if (!consumer) return reply;
       const parsed = body.safeParse(request.body);
@@ -279,7 +303,7 @@ function registerConversationRoutes(scope: FastifyInstance, conversations: Kirim
       } catch (error) {
         return handleKirimError(reply, error);
       }
-    });
+    } });
   }
 
   function idempotencyKey(request: FastifyRequest): string {
@@ -344,6 +368,83 @@ function registerConversationRoutes(scope: FastifyInstance, conversations: Kirim
   write("/groups/:id/read", readSchema, async (consumer, params, body, _request, reply) =>
     reply.send(await conversations.markGroupRead(consumer, params.id!, body)),
   );
+
+  // KIRIM-IMPL-004 §5: forward, edit, delete for everyone, reaction, and earlier bodies.
+  const { actions, photos, groupAdmin } = extra;
+  if (actions) {
+    write("/messages/:id/teruskan", forwardSchema, async (consumer, params, body, request, reply) =>
+      reply.status(202).send(await actions.forward(consumer, params.id!, idempotencyKey(request), body)),
+    );
+    write("/messages/:id/edit", editSchema, async (consumer, params, body, request, reply) =>
+      reply.send(await actions.edit(consumer, params.id!, idempotencyKey(request), body)),
+    );
+    write("/messages/:id/hapus", deleteSchema, async (consumer, params, body, request, reply) =>
+      reply.send(await actions.remove(consumer, params.id!, idempotencyKey(request), body)),
+    );
+    write("/messages/:id/reaksi", reactionSchema, async (consumer, params, body, request, reply) =>
+      reply.send(await actions.react(consumer, params.id!, idempotencyKey(request), body)),
+    );
+    read("/messages/:id/riwayat-edit", null, (consumer, params, _query, request) =>
+      actions.editHistory(consumer, params.id!, atasNamaFromHeaders(request.headers)),
+    );
+  }
+
+  // KIRIM-IMPL-004 §8: small profile photos, cacheable by the module for a day.
+  if (photos) {
+    for (const kind of ["conversation", "group"] as const) {
+      scope.get<Params>(kind === "conversation" ? "/conversations/:id/foto" : "/groups/:id/foto", async (request, reply) => {
+        const consumer = await authenticate(request, reply);
+        if (!consumer) return reply;
+        try {
+          atasNamaFromHeaders(request.headers);
+          const photo = await photos.read(consumer, kind, request.params.id!);
+          reply
+            .header("Cache-Control", `private, max-age=${PHOTO_CACHE_SECONDS}`)
+            .header("ETag", photo.etag)
+            .header("X-Content-Type-Options", "nosniff");
+          if (headerValue(request.headers["if-none-match"]) === photo.etag) return reply.status(304).send();
+          return reply.header("Content-Type", "image/jpeg").send(photo.data);
+        } catch (error) {
+          return handleKirimError(reply, error);
+        }
+      });
+    }
+  }
+
+  // KIRIM-IMPL-004 §9–§10: managing the number's groups (R3), members, and grup bersama.
+  if (groupAdmin) {
+    read("/conversations/:id/grup-bersama", null, async (consumer, params, _query, request) => {
+      atasNamaFromHeaders(request.headers);
+      return groupAdmin.sharedGroups(consumer, params.id!);
+    });
+    read("/groups/:id/anggota", null, async (consumer, params, _query, request) => {
+      atasNamaFromHeaders(request.headers);
+      return groupAdmin.members(consumer, params.id!);
+    });
+    write("/devices/:kode/groups", createGroupSchema, async (consumer, params, body, request, reply) => {
+      const key = request.headers["idempotency-key"];
+      if (key !== undefined && (typeof key !== "string" || key.length < 1 || key.length > 200)) {
+        throw new KirimApiError(400, "idempotency_key_required", "Idempotency-Key 1–200 karakter.");
+      }
+      const result = await groupAdmin.create(consumer, params.kode!, typeof key === "string" ? key : null, body);
+      return reply.status(result.status).send(result.body);
+    });
+    write("/groups/:id/participants", participantsSchema, async (consumer, params, body, _request, reply) =>
+      reply.send(await groupAdmin.addMembers(consumer, params.id!, body)),
+    );
+    write("/groups/:id/participants/keluarkan", participantsSchema, async (consumer, params, body, _request, reply) =>
+      reply.send(await groupAdmin.removeMembers(consumer, params.id!, body)),
+    );
+    read("/groups/:id/invite-link", null, (consumer, params, _query, request) =>
+      groupAdmin.inviteLink(consumer, params.id!, atasNamaFromHeaders(request.headers), false),
+    );
+    write("/groups/:id/invite-link/tarik", inviteRevokeSchema, async (consumer, params, body, _request, reply) =>
+      reply.send(await groupAdmin.inviteLink(consumer, params.id!, body.atas_nama, true)),
+    );
+    write("/groups/:id", updateGroupSchema, async (consumer, params, body, _request, reply) =>
+      reply.send(await groupAdmin.update(consumer, params.id!, body)),
+    "PATCH");
+  }
 }
 
 function headerValue(value: string | string[] | undefined): string | undefined {

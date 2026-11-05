@@ -233,7 +233,7 @@ Galat memakai bentuk R1 `{ "error": { "code", "message" } }`. Semua jawaban `Cac
 | `POST /groups/:id/messages` | Balasan petugas ke grup, `Idempotency-Key`, `{ text \| media_id, caption?, atas_nama, ref? }` → `202`. Aturan §5.1 kecuali opt-out (pesan ke grup bukan pesan pribadi ke orang yang opt-out). Status berhenti di `diserahkan` karena mesin belum melaporkan tanda grup (§2) |
 | `POST /groups/:id/read` | `{ atas_nama, sampai_message_id }` → `belum_dibaca = 0` di Kirim SQ saja; mesin tidak punya tanda dibaca grup |
 
-Panggilan membuat grup, menambah atau mengeluarkan anggota, tautan undangan, dan mengubah grup adalah **R3** dan menjawab `404` di R2.
+Panggilan membuat grup, menambah atau mengeluarkan anggota, tautan undangan, dan mengubah grup adalah **R3** dan menjawab `404` di R2. R3 dan aksi pesan K3.2 (kutip, teruskan, edit, hapus, reaksi, panggilan) dibangun di [KIRIM-IMPL-004](KIRIM-IMPL-004-k3-2-aksi-pesan-panggilan-grup.md), yang menambah field pada item pesan §6.1 secara aditif.
 
 ## 7. Event ke modul
 

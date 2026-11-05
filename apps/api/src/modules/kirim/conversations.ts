@@ -4,6 +4,7 @@ import type { Pool } from "pg";
 import { z } from "zod";
 
 import { columnAad, InvalidNumberError, normalizePhone, phoneCanonical, type KirimCrypto } from "./crypto.js";
+import { changedByItem, reactionAad, type StoredReaction } from "./message-state.js";
 import type { KirimLog } from "./providers/log.js";
 import { ProviderOperationError, type KirimProvider, type ProviderName, type ReadReceiptKey } from "./providers/types.js";
 import {
@@ -47,6 +48,8 @@ export const replySchema = z
     atas_nama: atasNamaSchema,
     ref: z.string().max(200).optional(),
     kedaluwarsa: z.string().datetime({ offset: true }).optional(),
+    /** KIRIM-IMPL-004 §5.1: reply quoting a message of the same conversation or group. */
+    kutip_message_id: z.guid().optional(),
   })
   .strict()
   .refine((body) => (body.text === undefined) !== (body.media_id === undefined), { message: "send exactly one of text or media_id" })
@@ -141,6 +144,20 @@ interface MessageRow {
   errorCode: string | null;
   createdAt: Date;
   providerAt: Date | null;
+  // KIRIM-IMPL-004 §6.3
+  quotedMessageId: string | null;
+  quotedWaMessageId: string | null;
+  forwarded: boolean;
+  editedAt: Date | null;
+  deletedAt: Date | null;
+  deletedBy: string | null;
+  reactions: StoredReaction[];
+  panggilan: Record<string, unknown> | null;
+  quotedArah: "masuk" | "keluar" | null;
+  quotedTipe: string | null;
+  quotedBodyEnc: string | null;
+  quotedDisamarkan: boolean | null;
+  quotedDeletedAt: Date | null;
 }
 
 const CONVERSATION_COLUMNS = `
@@ -154,13 +171,17 @@ const MESSAGE_COLUMNS = `
   m.id, m.conversation_id AS "conversationId", m.group_id AS "groupId", m.arah, m.asal, m.diimpor, m.petugas, mc.nama AS consumer,
   m.jenis, m.tipe, m.body_enc AS "bodyEnc", m.body_disamarkan AS "bodyDisamarkan", m.media_id AS "mediaId",
   md.mime AS "mediaMime", md.ukuran::text AS "mediaUkuran", md.path AS "mediaPath", md.tidak_disalin AS "mediaTidakDisalin",
-  m.pengirim_enc AS "pengirimEnc", m.status, o.error_code AS "errorCode", m.created_at AS "createdAt", m.provider_at AS "providerAt"
+  m.pengirim_enc AS "pengirimEnc", m.status, o.error_code AS "errorCode", m.created_at AS "createdAt", m.provider_at AS "providerAt",
+  m.quoted_message_id AS "quotedMessageId", m.quoted_wa_message_id AS "quotedWaMessageId", m.forwarded, m.edited_at AS "editedAt",
+  m.deleted_at AS "deletedAt", m.deleted_by AS "deletedBy", m.reactions, m.panggilan,
+  q.arah AS "quotedArah", q.tipe AS "quotedTipe", q.body_enc AS "quotedBodyEnc", q.body_disamarkan AS "quotedDisamarkan", q.deleted_at AS "quotedDeletedAt"
 `;
 
 const MESSAGE_JOINS = `
   LEFT JOIN kirim_consumers mc ON mc.id = m.consumer_id
   LEFT JOIN kirim_media md ON md.id = m.media_id
   LEFT JOIN kirim_outbox o ON o.message_id = m.id
+  LEFT JOIN kirim_messages q ON q.id = m.quoted_message_id
 `;
 
 export class KirimConversations {
@@ -182,7 +203,7 @@ export class KirimConversations {
   }
 
   /** A conversation on another consumer's number answers 404, like one that does not exist. */
-  private async ownedConversation(db: Queryable, consumer: ConsumerRow, id: string, lock = false): Promise<ConversationRow> {
+  async ownedConversation(db: Queryable, consumer: ConsumerRow, id: string, lock = false): Promise<ConversationRow> {
     if (!z.guid().safeParse(id).success) throw new KirimApiError(404, "not_found", "Percakapan tidak ditemukan.");
     const result = await db.query<ConversationRow>(
       `SELECT ${CONVERSATION_COLUMNS} FROM kirim_conversations c JOIN kirim_devices d ON d.id = c.device_id
@@ -194,7 +215,7 @@ export class KirimConversations {
     return row;
   }
 
-  private async ownedGroup(db: Queryable, consumer: ConsumerRow, id: string, lock = false) {
+  async ownedGroup(db: Queryable, consumer: ConsumerRow, id: string, lock = false) {
     if (!z.guid().safeParse(id).success) throw new KirimApiError(404, "not_found", "Grup tidak ditemukan.");
     const result = await db.query<GroupRow>(
       `SELECT ${GROUP_COLUMNS} FROM kirim_groups g JOIN kirim_devices d ON d.id = g.device_id
@@ -289,11 +310,30 @@ export class KirimConversations {
       if (!wroteRecently) throw new KirimApiError(422, "optout", "Nomor minta tidak dihubungi dan tidak menulis dalam 24 jam terakhir.");
     }
     const tipe = await this.replyMediaTipe(consumer, device.id, input.media_id);
-    return this.queueReply(consumer, device, idempotencyKey, requestHash, input, tipe, now, {
-      conversationId: conversation.id,
-      groupId: null,
-      toHmac: conversation.kontakHmac,
-    });
+    const target = { conversationId: conversation.id, groupId: null, toHmac: conversation.kontakHmac };
+    const quotedMessageId = await this.checkQuote(target, input.kutip_message_id);
+    return this.queueReply(consumer, device, idempotencyKey, requestHash, replyContent(input, tipe, quotedMessageId), now, target);
+  }
+
+  /**
+   * KIRIM-IMPL-004 §5.1: a reply may quote a message of the same conversation or group that WhatsApp
+   * knows (it has a WhatsApp id), that is not deleted and is not a call. Checked here rather than at
+   * send time, so the officer learns at once instead of the quote silently disappearing.
+   */
+  private async checkQuote(target: { conversationId: string | null; groupId: string | null }, quotedId: string | undefined): Promise<string | null> {
+    if (!quotedId) return null;
+    const result = await this.pool.query<{ waMessageId: string | null; tipe: string; deletedAt: Date | null; arah: string; pengirimEnc: string | null }>(
+      `SELECT wa_message_id AS "waMessageId", tipe, deleted_at AS "deletedAt", arah, pengirim_enc AS "pengirimEnc" FROM kirim_messages
+        WHERE id = $1 AND (conversation_id = $2 OR group_id = $3)`,
+      [quotedId, target.conversationId, target.groupId],
+    );
+    const row = result.rows[0];
+    if (!row || row.tipe === "panggilan") throw new KirimApiError(422, "quote_invalid", "Pesan yang dikutip tidak ada di percakapan ini.");
+    if (row.deletedAt) throw new KirimApiError(409, "message_deleted", "Pesan yang dikutip sudah dihapus.");
+    if (!row.waMessageId || (target.groupId && row.arah === "masuk" && !row.pengirimEnc)) {
+      throw new KirimApiError(422, "quote_unavailable", "Pesan itu belum bisa dikutip karena WhatsApp belum mengenalnya.");
+    }
+    return quotedId;
   }
 
   /** §6.1: `belum_dibaca = 0`, then read receipts to WhatsApp for messages with a WhatsApp id. */
@@ -412,11 +452,9 @@ export class KirimConversations {
     const device = (await findDevice(this.pool, group.kode))!;
     if (device.status === "nonaktif") throw new KirimApiError(422, "device_inactive", "Nomor tidak aktif.");
     const tipe = await this.replyMediaTipe(consumer, device.id, input.media_id);
-    return this.queueReply(consumer, device, idempotencyKey, requestHash, input, tipe, await dbNow(this.pool), {
-      conversationId: null,
-      groupId: group.id,
-      toHmac: group.groupHmac,
-    });
+    const target = { conversationId: null, groupId: group.id, toHmac: group.groupHmac };
+    const quotedMessageId = await this.checkQuote(target, input.kutip_message_id);
+    return this.queueReply(consumer, device, idempotencyKey, requestHash, replyContent(input, tipe, quotedMessageId), await dbNow(this.pool), target);
   }
 
   /** The engine has no group read receipts, so this only clears the counter in Kirim SQ. */
@@ -468,29 +506,29 @@ export class KirimConversations {
     return TIPE_BY_MIME[mime] ?? "dokumen";
   }
 
-  private async queueReply(
+  async queueReply(
     consumer: ConsumerRow,
     device: DeviceRow,
     idempotencyKey: string,
     requestHash: string,
-    input: ReplyInput,
-    tipe: "teks" | "dokumen" | "gambar",
+    content: QueuedContent,
     now: Date,
     target: { conversationId: string | null; groupId: string | null; toHmac: string },
   ): Promise<{ id: string; status: string }> {
     const ttlMs = (this.options.replyTtlHours ?? REPLY_DEFAULT_TTL_HOURS) * 60 * 60 * 1000;
-    const requested = input.kedaluwarsa ? new Date(input.kedaluwarsa).getTime() : null;
+    const requested = content.kedaluwarsa ? new Date(content.kedaluwarsa).getTime() : null;
     const expiresAt = new Date(Math.min(requested ?? now.getTime() + ttlMs, now.getTime() + REPLY_MAX_TTL_MS));
     if (expiresAt.getTime() <= now.getTime()) throw new KirimApiError(400, "invalid_request", "kedaluwarsa harus di masa depan.");
-    const officer = atasNamaRef(input.atas_nama);
-    const body = input.text ?? input.caption ?? null;
+    const officer = atasNamaRef(content.atasNama);
+    const { body, tipe } = content;
     try {
       return await withTransaction(this.pool, async (client) => {
         const messageId = randomUUID();
         const outboxId = randomUUID();
         await client.query(
-          `INSERT INTO kirim_messages (id, conversation_id, group_id, device_id, arah, asal, petugas, jenis, tipe, body_enc, media_id, provider, status, consumer_id)
-           VALUES ($1, $2, $3, $4, 'keluar', 'petugas', $5, 'percakapan', $6, $7, $8, $9, 'antre', $10)`,
+          `INSERT INTO kirim_messages (id, conversation_id, group_id, device_id, arah, asal, petugas, jenis, tipe, body_enc, media_id, provider, status, consumer_id,
+                                       quoted_message_id, forwarded)
+           VALUES ($1, $2, $3, $4, 'keluar', 'petugas', $5, 'percakapan', $6, $7, $8, $9, 'antre', $10, $11, $12)`,
           [
             messageId,
             target.conversationId,
@@ -499,25 +537,33 @@ export class KirimConversations {
             officer,
             tipe,
             body ? this.crypto.seal(body, columnAad("kirim_messages", "body_enc", messageId)) : null,
-            input.media_id ?? null,
+            content.mediaId,
             device.provider,
             consumer.id,
+            content.quotedMessageId,
+            content.forwardedFrom !== null,
           ],
         );
         await client.query(
           `INSERT INTO kirim_outbox (id, consumer_id, device_id, idempotency_key, request_hash, jenis, prioritas, to_hmac, ref, message_id, expires_at, atas_nama, group_id)
            VALUES ($1, $2, $3, $4, $5, 'percakapan', 'petugas', $6, $7, $8, $9, $10, $11)`,
-          [outboxId, consumer.id, device.id, idempotencyKey, requestHash, target.toHmac, input.ref ?? null, messageId, expiresAt, officer, target.groupId],
+          [outboxId, consumer.id, device.id, idempotencyKey, requestHash, target.toHmac, content.ref, messageId, expiresAt, officer, target.groupId],
         );
         if (target.groupId) await client.query("UPDATE kirim_groups SET pesan_terakhir_at = now() WHERE id = $1", [target.groupId]);
         else await client.query("UPDATE kirim_conversations SET pesan_terakhir_at = now() WHERE id = $1", [target.conversationId]);
+        // A forward is audited on the message it copies, so "who forwarded this" can be answered from either side.
         await writeAudit(client, {
           actorKind: "service",
           actorRef: consumer.clientId,
-          aksi: target.groupId ? "grup.balas" : "percakapan.balas",
-          objekJenis: target.groupId ? "grup" : "percakapan",
-          objekRef: target.groupId ?? target.conversationId!,
-          metadata: { device: device.kode, tipe },
+          aksi: content.forwardedFrom ? "pesan.teruskan" : target.groupId ? "grup.balas" : "percakapan.balas",
+          objekJenis: content.forwardedFrom ? "pesan" : target.groupId ? "grup" : "percakapan",
+          objekRef: content.forwardedFrom ?? target.groupId ?? target.conversationId!,
+          metadata: {
+            device: device.kode,
+            tipe,
+            ...(content.quotedMessageId ? { kutip: true } : {}),
+            ...(content.forwardedFrom ? { ke: target.groupId ? "grup" : "percakapan", ke_ref: target.groupId ?? target.conversationId, message_id: messageId } : {}),
+          },
           atasNama: officer,
         });
         return { id: messageId, status: "antre" };
@@ -616,10 +662,14 @@ export class KirimConversations {
       disamarkan: item.disamarkan,
       status: item.status,
       waktu: item.waktu,
+      // KIRIM-IMPL-004 §6.3: enough for "Pesan ini telah dihapus" and the missed-call chip in a list.
+      diedit_at: item.diedit_at,
+      dihapus_at: item.dihapus_at,
+      panggilan: item.panggilan,
     };
   }
 
-  private messageItem(row: MessageRow) {
+  messageItem(row: MessageRow) {
     const isi = row.bodyEnc && !row.bodyDisamarkan ? this.crypto.open(row.bodyEnc, columnAad("kirim_messages", "body_enc", row.id)) : null;
     const pengirim = row.pengirimEnc ? this.crypto.open(row.pengirimEnc, columnAad("kirim_messages", "pengirim_enc", row.id)) : null;
     return {
@@ -640,10 +690,67 @@ export class KirimConversations {
       error_code: row.errorCode,
       waktu: row.createdAt.toISOString(),
       waktu_mesin: row.providerAt?.toISOString() ?? null,
+      // KIRIM-IMPL-004 §6.3. A deleted message keeps `isi`: the module decides who may still see it.
+      kutipan: this.quoteItem(row),
+      diteruskan: row.forwarded,
+      diedit_at: row.editedAt?.toISOString() ?? null,
+      dihapus_at: row.deletedAt?.toISOString() ?? null,
+      dihapus_oleh: changedByItem(row.deletedBy),
+      reaksi: this.reactionItems(row.id, row.reactions),
+      panggilan: row.tipe === "panggilan" ? row.panggilan : null,
     };
   }
 
-  private async groupItem(row: GroupRow) {
+  /** One message item as the list shows it (KIRIM-IMPL-004 §6: the answer to an action). */
+  async messageItemById(id: string) {
+    const result = await this.pool.query<MessageRow>(`SELECT ${MESSAGE_COLUMNS} FROM kirim_messages m ${MESSAGE_JOINS} WHERE m.id = $1`, [id]);
+    return result.rows[0] ? this.messageItem(result.rows[0]) : null;
+  }
+
+  /** The quoted message, short; `id: null` when WhatsApp quoted a message Kirim SQ never stored. */
+  private quoteItem(row: MessageRow) {
+    if (row.quotedMessageId) {
+      const body = row.quotedBodyEnc && !row.quotedDisamarkan
+        ? this.crypto.open(row.quotedBodyEnc, columnAad("kirim_messages", "body_enc", row.quotedMessageId))
+        : null;
+      return {
+        id: row.quotedMessageId,
+        arah: row.quotedArah,
+        tipe: row.quotedTipe,
+        cuplikan: body ? body.slice(0, 200) : null,
+        disamarkan: row.quotedDisamarkan ?? false,
+        dihapus: row.quotedDeletedAt !== null,
+      };
+    }
+    if (row.quotedWaMessageId) return { id: null, arah: null, tipe: null, cuplikan: null, disamarkan: false, dihapus: false };
+    return null;
+  }
+
+  /** Reactions oldest first; a group member is named by number like `pengirim`, a LID member by `null`. */
+  private reactionItems(messageId: string, reactions: StoredReaction[]) {
+    if (!Array.isArray(reactions)) return [];
+    return reactions.map((reaction) => {
+      const member = reaction.enc ? this.crypto.open(reaction.enc, reactionAad(messageId, reaction.k)) : null;
+      return {
+        emoji: reaction.emoji,
+        dari: reaction.dari,
+        ...(reaction.dari === "anggota" ? { nomor: member?.startsWith("pn:+") ? member.slice(3) : null } : {}),
+        petugas: atasNamaFromRef(reaction.petugas ?? null),
+        waktu: reaction.at,
+      };
+    });
+  }
+
+  /** KIRIM-IMPL-004 §9: a group item by id, including a group the number has just created. */
+  async groupItemById(id: string) {
+    const result = await this.pool.query<GroupRow>(
+      `SELECT ${GROUP_COLUMNS} FROM kirim_groups g JOIN kirim_devices d ON d.id = g.device_id WHERE g.id = $1 AND g.keluar_at IS NULL`,
+      [id],
+    );
+    return result.rows[0] ? this.groupItem(result.rows[0]) : null;
+  }
+
+  async groupItem(row: GroupRow) {
     const last = await this.pool.query<MessageRow>(
       `SELECT ${MESSAGE_COLUMNS} FROM kirim_messages m ${MESSAGE_JOINS} WHERE m.group_id = $1 ORDER BY m.created_at DESC, m.id DESC LIMIT 1`,
       [row.id],
@@ -677,6 +784,32 @@ const GROUP_COLUMNS = `
   g.id, d.kode, g.group_hmac AS "groupHmac", g.nama_enc AS "namaEnc", g.jumlah_anggota AS "jumlahAnggota",
   g.nomor_ini_admin AS "nomorIniAdmin", g.pesan_terakhir_at AS "pesanTerakhirAt", g.belum_dibaca AS "belumDibaca", g.created_at AS "createdAt"
 `;
+
+/** What `queueReply` writes: an officer reply, or a forward of a stored message (KIRIM-IMPL-004 §5.2). */
+export interface QueuedContent {
+  body: string | null;
+  mediaId: string | null;
+  tipe: string;
+  atasNama: AtasNama;
+  ref: string | null;
+  kedaluwarsa: string | null;
+  quotedMessageId: string | null;
+  /** The message a forward copies; null for an ordinary reply. */
+  forwardedFrom: string | null;
+}
+
+function replyContent(input: ReplyInput, tipe: "teks" | "dokumen" | "gambar", quotedMessageId: string | null): QueuedContent {
+  return {
+    body: input.text ?? input.caption ?? null,
+    mediaId: input.media_id ?? null,
+    tipe,
+    atasNama: input.atas_nama,
+    ref: input.ref ?? null,
+    kedaluwarsa: input.kedaluwarsa ?? null,
+    quotedMessageId,
+    forwardedFrom: null,
+  };
+}
 
 function mediaReason(reason: string | null): string {
   if (reason === "terlalu_besar") return "Media terlalu besar untuk disalin ke Kirim SQ.";

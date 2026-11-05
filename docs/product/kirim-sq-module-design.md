@@ -237,11 +237,12 @@ Modul pemilik nomor mengelola grup tempat nomornya menjadi anggota. Aturan umum 
 | `GET /internal/kirim/groups/:id/messages?sebelum=&batas=` | Isi pesan grup, dengan pengirim per pesan | R2 |
 | `POST /internal/kirim/groups/:id/messages` | Balasan petugas ke grup (`text \| media_id`, `atas_nama`, `ref`) | R2 |
 | `POST /internal/kirim/devices/:kode/groups` | Membuat grup baru `{ nama, deskripsi?, anggota[] }`; nomor ini menjadi admin | R3 |
-| `POST /internal/kirim/groups/:id/participants`, `DELETE …/participants/:nomor` | Menambah dan mengeluarkan anggota. Bila orang itu tidak bisa ditambahkan langsung karena pengaturan privasinya, jawaban menandai `perlu_undangan` | R3 |
+| `POST /internal/kirim/groups/:id/participants`, `POST …/participants/keluarkan` (KIRIM-IMPL-004 §9.3: nomor di body, bukan di path) | Menambah dan mengeluarkan anggota. Bila orang itu tidak bisa ditambahkan langsung karena pengaturan privasinya, jawaban menandai `perlu_undangan` | R3 |
 | `GET /internal/kirim/groups/:id/invite-link`, `PATCH /internal/kirim/groups/:id` | Tautan undangan; ubah nama atau deskripsi | R3 |
 
 - Pesan grup masuk diteruskan ke modul sebagai event `group.message.received` (tanpa membuat percakapan pribadi).
 - Penambahan anggota kena **batas laju sendiri** (awal 20 orang per jam per nomor) dan opt-out; ini untuk menjaga nomor dari blokir WhatsApp.
+- **R3 dibangun di [KIRIM-IMPL-004](../specs/KIRIM-IMPL-004-k3-2-aksi-pesan-panggilan-grup.md) §9** (2026-11-05), bersama balas berkutip, teruskan, edit, hapus untuk semua, reaksi, log panggilan, foto profil, dan grup bersama (SPMB-IMPL-005 K3.2).
 - **Mesin:** JalurPesan sudah punya daftar grup dan pesan grup (`/api/v1/platform/tenants/:id/groups…`), tetapi belum punya buat grup, tambah/keluarkan anggota, dan tautan undangan. Itu perlu ditambahkan ke JalurPesan sebelum tahap R3 (Baileys mendukung).
 
 ### 5.5 Impor riwayat chat lama (keputusan PO 2026-10-19, SPMB-002 §7.8)

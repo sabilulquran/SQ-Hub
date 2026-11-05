@@ -1,18 +1,24 @@
 import {
   ProviderOperationError,
+  type ActionChat,
+  type ActionResult,
+  type ActionTarget,
   type DeviceRef,
   type GroupContent,
   type KirimProvider,
   type MediaFile,
   type PairingResult,
+  type ParticipantUpdate,
   type ProviderContactPage,
   type ProviderDeviceStatus,
   type ProviderEventPage,
   type ProviderGroup,
+  type ProviderGroupParticipant,
   type ProviderHistoryMessage,
   type ProviderHistoryStatus,
   type ReadReceiptKey,
   type Recipient,
+  type SendOptions,
   type SendResult,
 } from "./types.js";
 
@@ -26,7 +32,7 @@ export interface EngineMediaRefs {
 export const JALURPESAN_TIMEOUT_MS = 15_000;
 const CAPACITY_ERROR = "Configured active device safety cap reached";
 
-interface EngineResponse {
+export interface EngineResponse {
   status: number;
   body: Record<string, unknown>;
 }
@@ -77,8 +83,8 @@ export class JalurPesanProvider implements KirimProvider {
     if (response.status !== 200) throw this.lifecycleError(response);
   }
 
-  async sendText(device: DeviceRef, to: Recipient, text: string, idempotencyKey: string): Promise<SendResult> {
-    return this.sendMessage(device, { ...target(to), message: text }, idempotencyKey);
+  async sendText(device: DeviceRef, to: Recipient, text: string, idempotencyKey: string, options?: SendOptions): Promise<SendResult> {
+    return this.sendMessage(device, { ...target(to), message: text, ...sendExtras(options) }, idempotencyKey);
   }
 
   async sendDocument(
@@ -87,19 +93,20 @@ export class JalurPesanProvider implements KirimProvider {
     file: MediaFile,
     caption: string | null,
     idempotencyKey: string,
+    options?: SendOptions,
   ): Promise<SendResult> {
     const engineMediaId = await this.engineMedia(device, file);
     if (typeof engineMediaId !== "string") return engineMediaId;
     return this.sendMessage(
       device,
-      { ...target(to), mediaId: engineMediaId, ...(caption ? { caption } : {}) },
+      { ...target(to), mediaId: engineMediaId, ...(caption ? { caption } : {}), ...sendExtras(options) },
       idempotencyKey,
       () => this.forgetMedia(device, file),
     );
   }
 
   /** KIRIM-IMPL-002 §6.2. The group answer carries the WhatsApp message id like a private send. */
-  async sendGroup(device: DeviceRef, groupJid: string, content: GroupContent, idempotencyKey: string): Promise<SendResult> {
+  async sendGroup(device: DeviceRef, groupJid: string, content: GroupContent, idempotencyKey: string, options?: SendOptions): Promise<SendResult> {
     let body: Record<string, unknown>;
     let onMediaMissing: (() => Promise<void>) | undefined;
     if ("text" in content) {
@@ -113,7 +120,7 @@ export class JalurPesanProvider implements KirimProvider {
     let response: EngineResponse;
     try {
       response = await this.request("POST", this.url(device, `/groups/${encodeURIComponent(groupJid)}/messages`), {
-        json: body,
+        json: { ...body, ...sendExtras(options) },
         headers: { "idempotency-key": idempotencyKey },
       });
     } catch {
@@ -136,20 +143,149 @@ export class JalurPesanProvider implements KirimProvider {
   async listGroups(device: DeviceRef): Promise<ProviderGroup[]> {
     const response = await this.lifecycle("GET", device, "/groups");
     if (response.status !== 200 || !Array.isArray(response.body.groups)) throw this.lifecycleError(response);
-    return (response.body.groups as Array<Record<string, unknown>>).flatMap((group) =>
-      typeof group.id === "string"
-        ? [{
-            jid: group.id,
-            name: typeof group.subject === "string" ? group.subject.slice(0, 200) : "",
-            size: typeof group.size === "number" ? group.size : null,
-            participants: Array.isArray(group.participants)
-              ? (group.participants as Array<Record<string, unknown>>).flatMap((participant) =>
-                  typeof participant.jid === "string" ? [{ jid: participant.jid, admin: participant.admin === "admin" || participant.admin === "superadmin" }] : [],
-                )
-              : [],
-          }]
-        : [],
-    );
+    return (response.body.groups as unknown[]).flatMap((group) => {
+      const read = readGroup(group);
+      return read ? [read] : [];
+    });
+  }
+
+  // ------------------------------------------------------------- K3.2 §B: actions on a message
+
+  async react(device: DeviceRef, target: ActionTarget & { fromMe: boolean; participant?: string }, emoji: string, idempotencyKey: string): Promise<ActionResult> {
+    return this.messageAction(device, target, "reaction", {
+      fromMe: target.fromMe,
+      ...(target.participant ? { participant: target.participant } : {}),
+      emoji,
+    }, idempotencyKey);
+  }
+
+  async editMessage(device: DeviceRef, target: ActionTarget, text: string, idempotencyKey: string): Promise<ActionResult> {
+    return this.messageAction(device, target, "edit", { message: text }, idempotencyKey);
+  }
+
+  async deleteMessage(device: DeviceRef, target: ActionTarget, idempotencyKey: string): Promise<ActionResult> {
+    return this.messageAction(device, target, "delete", {}, idempotencyKey);
+  }
+
+  private async messageAction(
+    device: DeviceRef,
+    target: ActionTarget,
+    action: "reaction" | "edit" | "delete",
+    body: Record<string, unknown>,
+    idempotencyKey: string,
+  ): Promise<ActionResult> {
+    let response: EngineResponse;
+    try {
+      response = await this.request("POST", this.url(device, `/messages/${encodeURIComponent(target.whatsappMessageId)}/${action}`), {
+        json: { ...chatTarget(target.chat), ...body },
+        headers: { "idempotency-key": idempotencyKey },
+      });
+    } catch {
+      return { ok: false, code: "engine_unavailable" };
+    }
+    return mapActionResponse(response);
+  }
+
+  // ----------------------------------------------------------------- K3.2 §D: profile photos
+
+  async profilePicture(device: DeviceRef, jid: string): Promise<Buffer | null> {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), this.timeoutMs);
+    try {
+      const response = await fetch(this.url(device, `/profile-picture?jid=${encodeURIComponent(jid)}`), {
+        headers: { authorization: `Bearer ${this.options.platformKey}` },
+        signal: controller.signal,
+        redirect: "manual",
+      });
+      if (response.status !== 200 || !response.body) {
+        const text = await response.text().catch(() => "");
+        let body: Record<string, unknown> = {};
+        try {
+          const parsed = text ? JSON.parse(text) : {};
+          if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) body = parsed as Record<string, unknown>;
+        } catch {
+          body = {};
+        }
+        if (response.status === 404 && body.code === "profile_picture_unavailable") return null;
+        if (response.status === 503) throw new ProviderOperationError("not_connected", "WhatsApp is not connected");
+        // K3.2 §D: 120 photo requests per hour per number; wait for the next round instead of recording "no photo".
+        if (response.status === 429) throw new ProviderOperationError("engine_unavailable", "profile picture rate limited");
+        throw this.lifecycleError({ status: response.status, body });
+      }
+      const chunks: Buffer[] = [];
+      let total = 0;
+      for await (const chunk of response.body) {
+        total += chunk.length;
+        if (total > PROFILE_PICTURE_MAX_BYTES) {
+          controller.abort();
+          throw new ProviderOperationError("engine_rejected", "profile picture larger than expected");
+        }
+        chunks.push(Buffer.from(chunk));
+      }
+      return Buffer.concat(chunks);
+    } catch (error) {
+      if (error instanceof ProviderOperationError) throw error;
+      throw new ProviderOperationError("engine_unavailable", "profile picture download failed");
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  // ----------------------------------------------------------- K3.2 §E: managing a group (R3)
+
+  async createGroup(device: DeviceRef, subject: string, participants: string[]): Promise<ProviderGroup> {
+    const response = await this.lifecycle("POST", device, "/groups", { subject, participants });
+    const group = (response.status === 200 || response.status === 201) ? readGroup(response.body.group) : null;
+    if (group) return group;
+    throw this.groupError(response);
+  }
+
+  async updateParticipants(
+    device: DeviceRef,
+    groupJid: string,
+    action: "add" | "remove",
+    participants: string[],
+  ): Promise<{ updates: ParticipantUpdate[]; group: ProviderGroup | null }> {
+    const response = await this.lifecycle("POST", device, `/groups/${encodeURIComponent(groupJid)}/participants`, { action, participants });
+    if (response.status !== 200 || !Array.isArray(response.body.updates)) throw this.groupError(response);
+    return {
+      updates: (response.body.updates as unknown[]).flatMap((item) => {
+        if (!item || typeof item !== "object") return [];
+        const value = item as Record<string, unknown>;
+        return typeof value.jid === "string" ? [{ jid: value.jid, status: String(value.status ?? "") }] : [];
+      }),
+      group: readGroup(response.body.group),
+    };
+  }
+
+  async setGroupSubject(device: DeviceRef, groupJid: string, subject: string): Promise<void> {
+    const response = await this.lifecycle("PATCH", device, `/groups/${encodeURIComponent(groupJid)}/subject`, { subject });
+    if (response.status !== 200) throw this.groupError(response);
+  }
+
+  async setGroupDescription(device: DeviceRef, groupJid: string, description: string): Promise<void> {
+    const response = await this.lifecycle("PATCH", device, `/groups/${encodeURIComponent(groupJid)}/description`, { description });
+    if (response.status !== 200) throw this.groupError(response);
+  }
+
+  async groupInviteCode(device: DeviceRef, groupJid: string): Promise<string> {
+    const response = await this.lifecycle("GET", device, `/groups/${encodeURIComponent(groupJid)}/invite`);
+    if (response.status === 200 && typeof response.body.code === "string" && response.body.code) return response.body.code;
+    throw this.groupError(response);
+  }
+
+  async revokeGroupInvite(device: DeviceRef, groupJid: string): Promise<string> {
+    const response = await this.lifecycle("POST", device, `/groups/${encodeURIComponent(groupJid)}/invite/revoke`, {});
+    if (response.status === 200 && typeof response.body.code === "string" && response.body.code) return response.body.code;
+    throw this.groupError(response);
+  }
+
+  private groupError(response: EngineResponse): ProviderOperationError {
+    if (response.status === 404 && typeof response.body.error === "string" && response.body.error.startsWith("WhatsApp group not found")) {
+      return new ProviderOperationError("group_not_found", "WhatsApp group not found for this device");
+    }
+    if (response.status === 503) return new ProviderOperationError("not_connected", "WhatsApp is not connected");
+    return this.lifecycleError(response);
   }
 
   async listContacts(device: DeviceRef, page: number): Promise<ProviderContactPage> {
@@ -398,6 +534,69 @@ async function mapSendResponse(response: EngineResponse, onMediaMissing?: () => 
 
 function target(to: Recipient): { to: string } | { toJid: string } {
   return "jid" in to ? { toJid: to.jid } : { to: to.phoneDigits };
+}
+
+/** JalurPesan K3.2 §D: previews are at most 256 KiB; anything far larger is not a preview. */
+export const PROFILE_PICTURE_MAX_BYTES = 512 * 1024;
+
+/** K3.2 §A: `quoted` and `forwarded` only when set, so an ordinary send keeps its R2 body and fingerprint. */
+function sendExtras(options: SendOptions | undefined): Record<string, unknown> {
+  if (!options) return {};
+  const quoted = options.quoted
+    ? {
+        id: options.quoted.id,
+        fromMe: options.quoted.fromMe,
+        ...(options.quoted.participant ? { participant: options.quoted.participant } : {}),
+        ...(options.quoted.text ? { text: options.quoted.text.slice(0, 4096) } : {}),
+        ...(options.quoted.messageType ? { messageType: options.quoted.messageType } : {}),
+      }
+    : null;
+  return { ...(quoted ? { quoted } : {}), ...(options.forwarded ? { forwarded: true } : {}) };
+}
+
+/** K3.2 §B: exactly one of `to`, `toJid`, `groupJid`. */
+function chatTarget(chat: ActionChat): Record<string, string> {
+  if ("groupJid" in chat) return { groupJid: chat.groupJid };
+  return target(chat);
+}
+
+/** K3.2 §B answers. 409 "in progress" is temporary; 429 carries the engine's rate-limit code. */
+export function mapActionResponse(response: EngineResponse): ActionResult {
+  const { status, body } = response;
+  if (status === 200 && body.success !== false) return { ok: true, dryRun: false };
+  if (status === 409 && body.code === "idempotency_key_conflict") return { ok: false, code: "engine_conflict" };
+  if (status === 409) return { ok: false, code: "engine_unavailable" };
+  if (status === 429) return { ok: false, code: "rate_limited", reason: typeof body.code === "string" ? body.code.slice(0, 50) : null };
+  if (status === 404 && body.error === "Tenant device not found") return { ok: false, code: "device_disconnected" };
+  if (status === 503) return { ok: false, code: "device_disconnected" };
+  if (status >= 500) return { ok: false, code: "engine_unavailable" };
+  return { ok: false, code: "engine_rejected" };
+}
+
+/** One engine group (`GET /groups`, `POST /groups`, participant updates), read defensively. */
+export function readGroup(value: unknown): ProviderGroup | null {
+  if (!value || typeof value !== "object") return null;
+  const group = value as Record<string, unknown>;
+  if (typeof group.id !== "string" || !group.id) return null;
+  const participants: ProviderGroupParticipant[] = Array.isArray(group.participants)
+    ? (group.participants as unknown[]).flatMap((item) => {
+        if (!item || typeof item !== "object") return [];
+        const participant = item as Record<string, unknown>;
+        if (typeof participant.jid !== "string") return [];
+        return [{
+          jid: participant.jid,
+          admin: participant.admin === "admin" || participant.admin === "superadmin" || participant.admin === true,
+          phoneJid: typeof participant.phoneJid === "string" && participant.phoneJid ? participant.phoneJid : null,
+          lidJid: typeof participant.lidJid === "string" && participant.lidJid ? participant.lidJid : null,
+        }];
+      })
+    : [];
+  return {
+    jid: group.id,
+    name: typeof group.subject === "string" ? group.subject.slice(0, 200) : "",
+    size: typeof group.size === "number" ? group.size : null,
+    participants,
+  };
 }
 
 /** Reads one J-2 history message defensively; unknown shapes are skipped, never guessed. */

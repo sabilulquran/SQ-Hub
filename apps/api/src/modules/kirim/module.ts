@@ -8,14 +8,17 @@ import { PgHubAuthRepository } from "../hub-auth/repository.js";
 import { HubAuthService, type HubAuthRuntime } from "../hub-auth/service.js";
 import { HubTokenVault } from "../hub-auth/token-vault.js";
 import { PgHubWorkspaceRepository, type HubWorkspaceApplicationSource } from "../hub-auth/workspace-repository.js";
+import { KirimMessageActions } from "./actions.js";
 import { KirimAdminService } from "./admin.js";
 import { KirimModuleCards } from "./cards.js";
-import type { KirimConfig } from "./config.js";
+import { KIRIM_K32_DEFAULTS, type KirimConfig } from "./config.js";
 import { KirimConversations } from "./conversations.js";
 import { KirimHistoryImport } from "./history-import.js";
 import { KirimCrypto } from "./crypto.js";
+import { KirimGroupAdmin } from "./groups-admin.js";
 import { KirimIngest } from "./ingest.js";
 import { JalurPesanProvider, type EngineMediaRefs } from "./providers/jalurpesan.js";
+import { KirimProfilePhotos } from "./photos.js";
 import { LogProvider, type KirimLog } from "./providers/log.js";
 import type { KirimProvider, ProviderName } from "./providers/types.js";
 import {
@@ -38,6 +41,9 @@ export interface KirimModule {
   crypto: KirimCrypto;
   service: KirimService;
   conversations: KirimConversations;
+  actions: KirimMessageActions;
+  photos: KirimProfilePhotos;
+  groupAdmin: KirimGroupAdmin;
   history: KirimHistoryImport;
   admin: KirimAdminService;
   cards: KirimModuleCards;
@@ -109,6 +115,16 @@ export function createKirimModule(input: {
     ...(config.replyDefaultTtlHours ? { replyTtlHours: config.replyDefaultTtlHours } : {}),
     log,
   });
+  const actions = new KirimMessageActions(pool, crypto, service, conversations, providers, {
+    editWindowMinutes: config.editWindowMinutes ?? KIRIM_K32_DEFAULTS.editWindowMinutes,
+    deleteWindowHours: config.deleteWindowHours ?? KIRIM_K32_DEFAULTS.deleteWindowHours,
+    log,
+  });
+  const photos = new KirimProfilePhotos(pool, crypto, service, conversations, providers.jalurpesan, { log });
+  const groupAdmin = new KirimGroupAdmin(pool, crypto, service, conversations, providers, ingest, {
+    addLimitPerHour: config.groupAddLimitPerHour ?? KIRIM_K32_DEFAULTS.groupAddLimitPerHour,
+    log,
+  });
   const worker = new KirimSendWorker(pool, crypto, service, providers, { log });
   const webhooks = new KirimWebhookSender(pool, crypto, { ...(input.webhookTransport ? { transport: input.webhookTransport } : {}), log });
 
@@ -149,6 +165,9 @@ export function createKirimModule(input: {
     crypto,
     service,
     conversations,
+    actions,
+    photos,
+    groupAdmin,
     history,
     admin,
     cards,
@@ -160,6 +179,9 @@ export function createKirimModule(input: {
         service,
         cards,
         conversations,
+        actions,
+        photos,
+        groupAdmin,
         verifyMachineToken,
         ...(ingest ? { ingest } : {}),
         jalurpesanWebhookSecret: config.jalurpesan?.webhookSecret ?? null,
@@ -188,6 +210,7 @@ export function createKirimModule(input: {
               loop(() => ingest.runOnce(), config.eventPullIntervalMs, startLog, "kirim.ingest"),
               loop(() => ingest.refreshDirectory("groups"), config.groupRefreshIntervalMs ?? 900_000, startLog, "kirim.groups"),
               loop(() => ingest.refreshDirectory("contacts"), config.contactRefreshIntervalMs ?? 21_600_000, startLog, "kirim.contacts"),
+              loop(() => photos.runOnce(), config.photoRefreshIntervalMs ?? KIRIM_K32_DEFAULTS.photoRefreshIntervalMs, startLog, "kirim.photos"),
             ]
           : []),
         ...(config.historyImportEnabled ? [loop(() => history.runOnce(), 10_000, startLog, "kirim.history")] : []),
