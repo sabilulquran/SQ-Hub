@@ -11,16 +11,19 @@ import {
   activityQuerySchema,
   adminOptoutSchema,
   createDeviceSchema,
+  deactivateSchema,
+  mergeDuplicateSchema,
   optoutListQuerySchema,
   optionalReasonBodySchema,
   pairingSchema,
   queueQuerySchema,
   reasonBodySchema,
+  reconnectSchema,
   updateDeviceSchema,
   type AdminActor,
   type KirimAdminService,
 } from "./admin.js";
-import { cardReasonSchema, useNumberSchema, type KirimModuleCards } from "./cards.js";
+import { cardReasonSchema, newNumberSchema, ownNumberSchema, useNumberSchema, type KirimModuleCards } from "./cards.js";
 import { deviceImportSchema, EXPORT_MAX_BYTES, exportImportSchema, exportPreviewSchema, type KirimHistoryImport } from "./history-import.js";
 import { handleKirimError, sendKirimError } from "./routes-internal.js";
 import { KirimApiError } from "./service.js";
@@ -152,7 +155,8 @@ export function registerKirimAdminRoutes(
   }
   // KIRIM-IMPL-003 §4: one card per WhatsApp-capable registry application.
   read("/modules", () => input.cards.list());
-  write("POST", "/modules/:app/nomor-baru", (request, actor) => input.cards.connectNewNumber(actor, params(request).app!));
+  write("POST", "/modules/:app/nomor-baru", (request, actor) => input.cards.connectNewNumber(actor, params(request).app!, newNumberSchema.parse(body(request))));
+  write("POST", "/modules/:app/pakai-nomor-lama", (request, actor) => input.cards.useOwnNumber(actor, params(request).app!, ownNumberSchema.parse(body(request))));
   write("POST", "/modules/:app/pakai-nomor", (request, actor) => input.cards.useNumber(actor, params(request).app!, useNumberSchema.parse(body(request))));
   write("POST", "/modules/:app/putuskan", (request, actor) => input.cards.disconnect(actor, params(request).app!, cardReasonSchema.parse(body(request)).alasan));
   read("/devices", () => input.admin.listDevices());
@@ -161,10 +165,14 @@ export function registerKirimAdminRoutes(
   write("POST", "/devices/:kode/provision", (request, actor) => input.admin.provision(actor, params(request).kode!));
   write("POST", "/devices/:kode/pairing", (request, actor) => input.admin.startPairing(actor, params(request).kode!, pairingSchema.parse(body(request))));
   read("/devices/:kode/status", (request) => input.admin.liveStatus(params(request).kode!));
+  // KIRIM-IMPL-003 §11.
+  write("POST", "/devices/:kode/sambung-ulang", (request, actor) => input.admin.reconnect(actor, params(request).kode!, reconnectSchema.parse(body(request))));
+  read("/devices/:kode/pemakaian", (request) => input.admin.usage(params(request).kode!));
+  write("POST", "/devices/:kode/pakai-nomor-yang-ada", (request, actor) => input.admin.useExistingNumber(actor, params(request).kode!, mergeDuplicateSchema.parse(body(request))));
   write("POST", "/devices/:kode/disconnect", (request, actor) => input.admin.disconnect(actor, params(request).kode!, reasonBodySchema.parse(body(request)).alasan));
   write("POST", "/devices/:kode/pause", (request, actor) => input.admin.setPaused(actor, params(request).kode!, true, optionalReasonBodySchema.parse(body(request)).alasan));
   write("POST", "/devices/:kode/resume", (request, actor) => input.admin.setPaused(actor, params(request).kode!, false, optionalReasonBodySchema.parse(body(request)).alasan));
-  write("POST", "/devices/:kode/deactivate", (request, actor) => input.admin.deactivate(actor, params(request).kode!, reasonBodySchema.parse(body(request)).alasan));
+  write("POST", "/devices/:kode/deactivate", (request, actor) => input.admin.deactivate(actor, params(request).kode!, deactivateSchema.parse(body(request))));
   read("/consumers", async () => ({ consumers: await input.admin.listConsumers() }));
   read("/routes", async () => ({ routes: await input.admin.listRoutes() }));
   read("/queue/summary", () => input.admin.queueSummary());

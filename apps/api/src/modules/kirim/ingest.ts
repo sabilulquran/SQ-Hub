@@ -2,7 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 
 import type { Pool } from "pg";
 
-import { columnAad, maskPhone, type KirimCrypto } from "./crypto.js";
+import { columnAad, maskPhone, phoneCanonical, type KirimCrypto } from "./crypto.js";
 import { advanceStatus, type OutboundStatus } from "./policy.js";
 import {
   BY_GROUP_ADMIN,
@@ -29,6 +29,7 @@ import {
   dbNow,
   enqueueWebhook,
   ensureConversation,
+  HELD_DEVICE_SQL,
   setDeviceStatus,
   transitionOutbox,
   withTransaction,
@@ -49,6 +50,12 @@ const MAX_PAGES_PER_PULL = 10;
 interface EngineDevice extends DeviceRef {
   pemilikConsumerId: string;
   status: string;
+  /**
+   * KIRIM-IMPL-003 §11: the phone linked here is already the phone of an older Kirim number. Its
+   * events stay in the engine until an admin chooses "Pakai nomor yang ada", so the two numbers'
+   * conversations never diverge.
+   */
+  held?: boolean;
 }
 
 const TIPE_BY_ENGINE: Record<string, string> = {
@@ -117,10 +124,11 @@ export class KirimIngest {
     await withTransaction(this.pool, async (client) => {
       if (state.phoneDigits) {
         const masked = maskPhone(`+${state.phoneDigits}`);
+        const nomorHmac = this.crypto.lookup(phoneCanonical(`+${state.phoneDigits}`));
         await client.query(
-          `UPDATE kirim_devices SET nomor_tersamar = $2, nomor_enc = $3, updated_at = now()
-           WHERE id = $1 AND nomor_tersamar IS DISTINCT FROM $2`,
-          [device.id, masked, this.crypto.seal(`pn:+${state.phoneDigits}`, columnAad("kirim_devices", "nomor_enc", device.id))],
+          `UPDATE kirim_devices SET nomor_tersamar = $2, nomor_enc = $3, nomor_hmac = $4, updated_at = now()
+           WHERE id = $1 AND (nomor_tersamar IS DISTINCT FROM $2 OR nomor_hmac IS DISTINCT FROM $4)`,
+          [device.id, masked, this.crypto.seal(`pn:+${state.phoneDigits}`, columnAad("kirim_devices", "nomor_enc", device.id)), nomorHmac],
         );
       }
       await setDeviceStatus(client, this.crypto, device.id, state.status);
@@ -180,11 +188,13 @@ export class KirimIngest {
 
   private async pullPages(deviceId: string): Promise<void> {
     const device = (await this.devices()).find((item) => item.id === deviceId);
-    if (!device) return;
+    if (!device || device.held) return;
     for (let page = 0; page < MAX_PAGES_PER_PULL; page += 1) {
+      // Engine cursors run across all tenants: the cursor is that of the tenant this number uses now
+      // (KIRIM-IMPL-003 §11.3), so a number that moved to another tenant starts that tenant from 0.
       const cursorRow = await this.pool.query<{ cursor: string | null }>(
-        "SELECT max(provider_cursor)::text AS cursor FROM kirim_events WHERE device_id = $1 AND provider = 'jalurpesan'",
-        [device.id],
+        "SELECT max(provider_cursor)::text AS cursor FROM kirim_events WHERE device_id = $1 AND provider = 'jalurpesan' AND provider_ref = $2",
+        [device.id, device.providerRef],
       );
       const cursor = Number(cursorRow.rows[0]?.cursor ?? 0);
       const result = await this.provider.pullEvents(device, cursor, PAGE_LIMIT);
@@ -224,10 +234,10 @@ export class KirimIngest {
 
     await withTransaction(this.pool, async (client) => {
       const recorded = await client.query(
-        `INSERT INTO kirim_events (id, device_id, provider, provider_event_id, provider_cursor, jenis, payload_ringkas)
-         VALUES ($1, $2, 'jalurpesan', $3, $4, $5, $6::jsonb)
+        `INSERT INTO kirim_events (id, device_id, provider, provider_event_id, provider_cursor, jenis, payload_ringkas, provider_ref)
+         VALUES ($1, $2, 'jalurpesan', $3, $4, $5, $6::jsonb, $7)
          ON CONFLICT (provider, provider_event_id) DO NOTHING`,
-        [randomUUID(), device.id, event.eventId, event.cursor, event.type.slice(0, 100), JSON.stringify(summary)],
+        [randomUUID(), device.id, event.eventId, event.cursor, event.type.slice(0, 100), JSON.stringify(summary), device.providerRef],
       );
       if ((recorded.rowCount ?? 0) === 0) return;
       if (change && event.type === "message.edited") return this.applyEngineEdit(client, device, change);
@@ -903,7 +913,7 @@ export class KirimIngest {
   /** Timers in module.ts: every `jalurpesan` number, errors logged without content. */
   async refreshDirectory(kind: "groups" | "contacts"): Promise<void> {
     for (const device of await this.devices()) {
-      if (device.status !== "tersambung") continue;
+      if (device.status !== "tersambung" || device.held) continue;
       try {
         if (kind === "groups") await this.refreshGroups(device);
         else await this.refreshContacts(device);
@@ -931,8 +941,9 @@ export class KirimIngest {
 
   private async devices(): Promise<EngineDevice[]> {
     const result = await this.pool.query<EngineDevice>(
-      `SELECT id, kode, provider_ref AS "providerRef", pemilik_consumer_id AS "pemilikConsumerId", status
-       FROM kirim_devices WHERE provider = 'jalurpesan' AND status <> 'nonaktif' AND provider_ref IS NOT NULL ORDER BY kode`,
+      `SELECT d.id, d.kode, d.provider_ref AS "providerRef", d.pemilik_consumer_id AS "pemilikConsumerId", d.status,
+              EXISTS (${HELD_DEVICE_SQL}) AS held
+       FROM kirim_devices d WHERE d.provider = 'jalurpesan' AND d.status <> 'nonaktif' AND d.provider_ref IS NOT NULL ORDER BY d.kode`,
     );
     return result.rows;
   }

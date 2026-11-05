@@ -307,7 +307,8 @@ Semua perubahan wajib: sesi valid, Application Access aktif untuk `kirim-sq`, te
 | `GET /devices/:kode/status` | Status langsung dari mesin (polling layar saat pairing, tiap 3 detik, berhenti setelah 2 menit) |
 | `POST /devices/:kode/disconnect` | Logout sesi WhatsApp |
 | `POST /devices/:kode/pause`, `/resume` | Jeda/lanjutkan antrean nomor |
-| `POST /devices/:kode/deactivate` | Nonaktifkan nomor; permintaan baru ditolak `device_inactive`; antrean tidak dihapus |
+| `POST /devices/:kode/deactivate` | Nonaktifkan nomor; permintaan baru ditolak `device_inactive`; antrean tidak dihapus. Butuh `konfirmasi` bila kartu/rute masih memakai nomor ([KIRIM-IMPL-003 §11.2](KIRIM-IMPL-003-kartu-modul.md)) |
+| `POST /devices/:kode/sambung-ulang` | QR/kode pairing baru untuk nomor yang sama lewat reset sesi mesin ([KIRIM-IMPL-003 §11.1](KIRIM-IMPL-003-kartu-modul.md)) |
 | `GET /consumers`, `GET /routes` | Baca pemakai dan rute (pengubahan lewat CLI di R1, D-4) |
 | `GET /queue?device=&status=&page=` | Antrean: `id`, pemakai, `ref`, jenis, tujuan tersamar, status, percobaan, `error_code`, waktu. **Tanpa isi pesan** |
 | `POST /queue/:id/retry` | Pesan `gagal` (bukan `optout`/`route_denied`/`expired`) diantrekan ulang dengan percobaan baru |

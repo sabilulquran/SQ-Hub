@@ -28,6 +28,7 @@ import {
   registerKirimAuthRoutes,
 } from "./routes-admin.js";
 import { registerKirimInternalRoutes } from "./routes-internal.js";
+import { backfillDeviceHmac } from "./repository.js";
 import { KirimService, verifyKeyCanaries } from "./service.js";
 import { KirimWebhookSender, type WebhookTransport } from "./webhooks.js";
 import { KirimSendWorker } from "./worker.js";
@@ -202,6 +203,8 @@ export function createKirimModule(input: {
     },
     async start(startLog) {
       await verifyKeyCanaries(pool, crypto);
+      // KIRIM-IMPL-003 §11: numbers linked before migration 0015 get their phone HMAC here.
+      await backfillDeviceHmac(pool, crypto);
       const timers = [
         loop(() => worker.runOnce(), config.workerIntervalMs, startLog, "kirim.worker"),
         loop(() => webhooks.runOnce(), config.workerIntervalMs, startLog, "kirim.webhooks"),

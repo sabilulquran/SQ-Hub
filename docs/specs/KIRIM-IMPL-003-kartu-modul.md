@@ -140,9 +140,70 @@ Aplikasi HCIS dipindah dari adapter `log` ke `kirim` dengan mekanisme §6 (perub
 | K-5 | Satu modul satu nomor | DRAFT | Kartu menampilkan satu nomor. Rute lama ke nomor lain tetap berlaku tetapi tidak tampil di kartu |
 | K-6 | Allowlist HCIS | DIPUTUSKAN (owner) | Hanya nomor owner sampai owner menyatakan go-live; saklar `WHATSAPP_RECIPIENT_MODE=all` |
 
+## 11. Addendum 2026-11-05: Sambungkan ulang, peringatan Nonaktifkan, satu nomor per WhatsApp
+
+**Status:** ACCEPTED (tugas dari sesi induk K3.2, 2026-11-05, di bawah aturan owner 2026-10-26/27). Keputusan agent yang belum tertulis di dokumen lain dicatat di §11.5.
+
+### Kejadian yang memicu (2026-11-05 11.25–11.29 WIB)
+
+1. Owner melepas tautan nomor SPMB di HP lalu mencoba memindai QR baru untuk nomor `spmb`. Pemindaian gagal karena JalurPesan sedang restart.
+2. Owner menekan **Nonaktifkan**. Kartu SPMB kosong, lalu "+ Tambah WhatsApp → Sambungkan nomor baru" membuat nomor kedua `spmb-2` (audit `kartu.nomor_baru`, `nomor.provision spmb-2`) yang dipindai dengan WhatsApp yang sama.
+3. Kartu dan rute SPMB serta Keluarga pindah ke `spmb-2`, sementara inbox SPMB membaca nomor `spmb`; pesan masuk berhenti.
+4. Ops memperbaiki di database: `spmb.provider_ref` = `spmb-2` (tenant JalurPesan yang memegang sesi), kartu dan rute kembali ke `spmb`, baris ganda dihapus (audit `nomor.gabung_duplikat`, `nomor.hapus_duplikat`). Cursor event JalurPesan global, jadi mengganti `provider_ref` aman.
+
+Akar masalah: layar tidak punya cara memindai ulang nomor yang sudah ada, **Pasang** gagal pada sesi yang perlu di-reset, Nonaktifkan tidak menjelaskan akibatnya, dan kartu bisa membuat nomor kedua untuk WhatsApp yang sama tanpa peringatan.
+
+### 11.1 Sambungkan ulang
+
+`POST /devices/:kode/sambung-ulang` `{ mode: "qr" | "kode", phone?, alasan, perangkat_baru?: false }`, `Cache-Control: no-store`.
+
+- Berlaku untuk nomor `jalurpesan` berstatus `terputus`, `menunggu_pairing`, atau `tersambung`. `belum_dipasang` memakai **Pasang**; `nonaktif` → `422 device_inactive`; `log` → `409 pairing_not_applicable`. `alasan` wajib (memutus sesi yang mungkin masih berjalan).
+- Kirim SQ memanggil JalurPesan `POST /device/reset` pada tenant nomor itu (menghapus kredensial dan identitas sesi lalu membuka sesi QR baru; juga jalan saat mesin meminta `recoveryAction: "reset"` dan saat HP sudah melepas tautan). Bila tenant tidak punya perangkat (`404`), perangkat disiapkan lagi di tenant yang sama (`PUT /device`). Lalu QR atau kode pairing diminta seperti Pasang.
+- **Nomor yang sama tetap dipakai**: `kode`, percakapan, kartu modul, rute, dan antrean tidak berubah. Status menjadi `menunggu_pairing` (pemakai menerima `device.status`). Jawaban: `{ nomor, mode, qr | pairing_code }`; QR dan kode tidak disimpan, dicatat log, atau diaudit.
+- `perangkat_baru: true` (pilihan lanjutan, "bila Sambungkan ulang biasa tetap gagal"): Kirim SQ memilih tenant `<kode>-2`, `-3`, … yang tidak dipakai nomor lain dan belum dikenal mesin, menyiapkannya, lalu mengganti `provider_ref` nomor yang sama di akhir transaksi, persis seperti perbaikan manual 5 November. Tenant lama dibiarkan di mesin (dibersihkan operator bila perlu).
+- Mesin restart (`engine_unavailable`): server mencoba lagi dua kali (jeda 1,5 dan 3 detik); layar lalu mencoba lagi sendiri tiga kali dengan hitung mundur 15 detik dan teks "Mesin WhatsApp sedang dinyalakan ulang … Jangan Nonaktifkan nomor ini", lalu tombol **Coba lagi**. Pesan galat `engine_unavailable` di admin API menjadi "Mesin WhatsApp sedang tidak tersedia, mungkin sedang dinyalakan ulang. Tunggu sekitar satu menit lalu coba lagi." dan `session_reset_required` menunjuk ke Sambungkan ulang.
+- Audit `nomor.sambung_ulang` (berhasil/gagal) dengan `mode`, `perangkat_baru`, `alasan`, `status_sebelumnya`, dan `tenant_lama`/`tenant_baru` bila berganti tenant.
+- Layar: kartu pemilik dan "Nomor tanpa kartu modul" menampilkan **Pasang** hanya untuk `belum_dipasang`, dan **Sambungkan ulang** untuk tiga status di atas. Dialog menjelaskan bahwa tidak ada nomor baru yang dibuat dan memperingatkan bila nomor sedang tersambung.
+
+### 11.2 Nonaktifkan memperingatkan dan meminta konfirmasi
+
+- `GET /devices/:kode/pemakaian` → `{ kartu: [nama modul], rute: [{ modul, jenis }] }`: kartu yang `nomor_device_id`-nya nomor ini dan rute ke nomor ini, pemilik termasuk.
+- `POST /devices/:kode/deactivate` `{ alasan, konfirmasi?: false }`. Aturan K-3 tetap lebih dulu (`409 nomor_dipakai_modul_lain` bila modul lain memakai nomor). Bila masih ada kartu atau rute (misalnya kartu pemiliknya sendiri) dan `konfirmasi` tidak `true` → `409 konfirmasi_diperlukan` dengan `dipakai` dan pesan yang menyarankan Sambungkan ulang. Audit `nomor.nonaktif` mencatat `dipakai`.
+- Layar: dialog Nonaktifkan menampilkan kartu yang dikosongkan dan rute yang berhenti, tautan **Sambungkan ulang** ("WhatsApp-nya hanya terlepas atau gagal dipindai?"), dan kotak centang "Saya paham …" yang wajib dicentang sebelum tombol Nonaktifkan aktif.
+
+### 11.3 Satu nomor Kirim per WhatsApp
+
+Data (migration `0015_kirim_device_nomor_hmac.sql`, aditif): kolom `kirim_devices.nomor_hmac` = HMAC lookup Kirim dari `pn:+<digit>`, sama dengan HMAC nomor di `kirim_optouts`. Diisi saat status mesin dibaca dan, untuk nomor lama (termasuk nonaktif), dari `nomor_enc` saat Hub start. Nomor utuh tidak pernah keluar ke layar; yang dibandingkan hanya HMAC. Kolom `kirim_events.provider_ref` mencatat tenant setiap event (baris lama diisi tenant nomornya saat ini, jadi cursor production tidak bergeser): nomor mesin menomori event lintas semua tenant, sehingga cursor tarik sebuah nomor adalah cursor tertinggi **dari tenant yang dipakainya sekarang**, dan nomor yang pindah tenant mulai dari 0 di tenant itu.
+
+1. **Mencegah dari kartu.** `POST /modules/:app/nomor-baru` ditolak `409 nomor_modul_ada` (dengan daftar `nomor`) bila modul sudah memiliki nomor, nonaktif termasuk, kecuali `{ nomor_berbeda: true }`. Kartu membawa `nomor_lama[]` (nomor milik modul selain nomor kartunya). Dialog "+ Tambah WhatsApp" menaruh **Pakai nomor lama <modul>** di urutan pertama dan terpilih; **Sambungkan nomor baru** baru aktif setelah admin mencentang "WhatsApp yang akan dipindai berbeda dari …". Audit `kartu.nomor_baru` mencatat `nomor_berbeda_dari`.
+2. **Pakai nomor lama.** `POST /modules/:app/pakai-nomor-lama` `{ device }`: hanya nomor milik modul itu (`422 nomor_bukan_milik_modul`). Nomor nonaktif menjadi `terputus` (`log` → `tersambung`) dengan percakapan, rute, dan tenant yang sama; kartu menautkannya lagi; layar langsung membuka Sambungkan ulang bila belum tersambung. Audit `kartu.pakai_nomor_lama`.
+3. **Mendeteksi saat dipindai.** Nomor yang lebih baru, tertaut ke WhatsApp yang sama dengan nomor yang lebih dulu ada (status apa pun), dan **belum pernah menerima pesan masuk** **ditahan** (nomor yang sudah menerima pesan tidak pernah ditahan, supaya pasangan lama yang sudah berjalan tidak tiba-tiba berhenti; peringatan `nomor_sama` tetap tampil di status): event mesinnya tidak ditarik dan direktori grup/kontaknya tidak disegarkan, sehingga percakapan tidak terbelah; event menunggu di mesin. Kirim keluar tidak ditahan. `GET /devices/:kode/status` membawa `nomor_sama[]` (`kode`, `label`, `status`, `lebih_dulu`); `GET /devices` dan kartu membawa `nomor_ganda` per nomor dan `peringatan.nomor_ganda`. Dialog pemasangan dan kartu menampilkan peringatan dengan tombol **Pakai nomor yang ada**.
+4. **Pakai nomor yang ada.** `POST /devices/:kode/pakai-nomor-yang-ada` `{ ke, alasan }`: `kode` = nomor ganda yang lebih baru, `ke` = nomor yang lebih dulu ada dengan HMAC sama (`409 nomor_tidak_sama` / `nomor_lebih_baru` bila tidak). Keduanya `jalurpesan` dan milik modul yang sama (`409 pemilik_berbeda`). Nomor ganda tidak boleh sudah punya percakapan, pesan, antrean, media, grup, impor, opt-out, atau foto (`409 nomor_sudah_berisi`, perlu operator). Dalam satu transaksi: event dan kartu/rute nomor ganda pindah ke `ke`, nomor ganda dihapus, `ke.provider_ref` diganti tenant nomor ganda, dan status `ke` mengikuti status nomor ganda. Event nomor ganda tetap bertanda tenantnya, jadi `ke` menarik event yang ditahan dari cursor tenant itu (0 bila belum ada), bukan dari cursor tenant lamanya. Audit `nomor.gabung_duplikat` (objek `ke`) dan `nomor.hapus_duplikat` (objek nomor ganda), nama aksi yang sama dengan perbaikan manual.
+5. Perbaikan samping: kode nomor baru tidak boleh sama dengan tenant yang sudah dipegang nomor lain (setelah 5 November `spmb` memakai tenant `spmb-2`, jadi nomor baru SPMB berikutnya tidak boleh berkode `spmb-2`).
+
+### 11.4 Uji
+
+- Sambungkan ulang: kode, percakapan, kartu, dan rute sama sesudahnya; perubahan `provider_ref` bersamaan ditolak `409 conflict`; `/device/reset` dipanggil; 503 sekali dicoba lagi; mode kode pairing; tenant hilang disiapkan ulang; `perangkat_baru` memilih tenant bebas dan mengganti `provider_ref` saja; QR/kode tidak tersimpan.
+- Nonaktifkan: `pemakaian`, `409 konfirmasi_diperlukan` tanpa konfirmasi dan tanpa perubahan/audit, berhasil dengan konfirmasi; K-3 tetap lebih dulu.
+- Nomor ganda: kartu kosong menolak nomor baru tanpa `nomor_berbeda` dan tidak membuat baris; pakai nomor lama mengaktifkan nomor yang sama; nomor kedua dengan WhatsApp sama ditahan, pesan masuknya tidak masuk sebelum digabung dan masuk ke nomor lama sesudahnya walaupun nomor lama sudah mencatat cursor yang lebih tinggi di tenantnya; nomor yang sudah menerima pesan tidak ditahan; arah gabung yang salah dan nomor ganda yang sudah berisi ditolak.
+- Layar: Pasang vs Sambungkan ulang per status, dialog sambung ulang (alasan wajib, peringatan tersambung, coba lagi), peringatan Nonaktifkan, Tambah dengan nomor lama di depan, peringatan nomor ganda.
+
+### 11.5 Keputusan
+
+| # | Topik | Status | Keputusan |
+| --- | --- | --- | --- |
+| K-7 | Nonaktifkan pada nomor yang dipakai kartu pemiliknya sendiri | DIPUTUSKAN (agent, permintaan sesi induk) | Boleh, setelah peringatan dan centang konfirmasi. K-3 untuk modul lain tidak berubah |
+| K-8 | Nomor ganda yang sudah menyimpan percakapan atau antrean | DRAFT | Tidak digabung dari layar; operator memindahkan data dengan dry-run seperti 5 November. Alasan: memindahkan percakapan yang bentrok butuh aturan gabung riwayat yang belum ada. Batas yang diketahui: kirim keluar tidak ditahan, jadi bila kartu sudah mengirim lewat nomor ganda (nomor baru yang dibuat dengan `nomor_berbeda`), penggabungan dari layar ditolak `nomor_sudah_berisi`; status kirim nomor yang ditahan juga baru masuk setelah digabung. Karena itu pencegahan di kartu (§11.3 butir 1) adalah pengaman utamanya |
+| K-9 | Tenant lama setelah `perangkat_baru` atau gabung | DRAFT | Dibiarkan di mesin; operator menghapusnya bila perlu. Kirim SQ tidak menghapus perangkat mesin otomatis |
+| K-10 | Coba ulang saat mesin restart | DRAFT | Server 2× (1,5 dan 3 detik), layar 3× tiap 15 detik. Watchdog JalurPesan biasanya pulih dalam ±1 menit |
+
+**Recovery plan:** dump database Hub sebelum migrasi (runbook rilis). Migration 0015 aditif dan berjalan dalam satu transaksi; rollback aplikasi ke rilis sebelumnya aman karena kode lama tidak membaca `nomor_hmac`. Nomor yang sedang ditahan pada rilis ini kembali ditarik normal oleh kode lama (perilaku sebelum addendum).
+
 ## Riwayat
 
 | Tanggal | Perubahan |
 | --- | --- |
 | 2026-11-03 | Versi pertama atas permintaan owner; mockup dibagikan ke owner |
 | 2026-11-03 | Review independen: token service account wajib, client mengikuti registry, kartu kosong saat nomor nonaktif, path webhook mandiri dibatasi |
+| 2026-11-05 | §11: Sambungkan ulang, konfirmasi Nonaktifkan, satu nomor per WhatsApp (kejadian SPMB 5 November) |
+| 2026-11-05 | Review independen §11: cursor event per tenant (`kirim_events.provider_ref`), penahanan hanya untuk nomor tanpa pesan masuk, cek `provider_ref` bersamaan di Sambungkan ulang, batas gabung dicatat di K-8 |

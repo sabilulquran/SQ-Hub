@@ -12,7 +12,8 @@ import { ImporView, type ImporState } from "@/kirim/ImporPage";
 import { JanganHubungiView, type JanganHubungiState, type OptoutFilter } from "@/kirim/JanganHubungiPage";
 import { KirimAppView } from "@/kirim/KirimApp";
 import { KirimShell } from "@/kirim/KirimShell";
-import { NomorView, PairingContent, TambahDialog } from "@/kirim/NomorPage";
+import type { KirimDevice } from "@/kirim/api";
+import { DeactivateDialog, DeactivateWarning, ModuleCard, NomorView, PairingContent, TambahDialog } from "@/kirim/NomorPage";
 import { isKirimHost, resolveKirimRoute } from "@/kirim/routes";
 
 const noop = () => undefined;
@@ -94,9 +95,94 @@ describe("WhatsApp modul screen (KIRIM-IMPL-003)", () => {
     expect(html).toContain("12 antre · 1 gagal hari ini");
     expect(html).toContain("Nomor terputus:");
     expect(html).toContain("gagal dikirim ke modul pemakai setelah 8 percobaan");
-    expect(html).toContain("Pasang");
+    // KIRIM-IMPL-003 §11.1: a number paired before gets Sambungkan ulang, not Pasang.
+    expect(html).toContain("Sambungkan ulang");
+    expect(html).toContain("Pakai <strong>Sambungkan ulang</strong> di kartunya");
     expect(html).toContain("Putuskan");
     expect(html).toContain("Nonaktifkan");
+  });
+
+  it("offers Pasang only for a number never paired, and Sambungkan ulang for terputus, menunggu_pairing and tersambung", () => {
+    const base = kirimNomorFixture.status === "ready" ? kirimNomorFixture.list.modules.find((item) => item.application_key === "spmb-sq")! : null!;
+    const render = (status: KirimDevice["status"]) =>
+      renderToStaticMarkup(<ModuleCard card={{ ...base, nomor: { ...base.nomor!, status } }} onOpen={noop} />);
+    expect(render("belum_dipasang")).toContain("Pasang");
+    expect(render("belum_dipasang")).not.toContain("Sambungkan ulang");
+    for (const status of ["terputus", "menunggu_pairing", "tersambung"] as const) {
+      expect(render(status)).toContain("Sambungkan ulang");
+      expect(render(status)).not.toContain("> Pasang");
+    }
+    expect(render("nonaktif")).not.toContain("Sambungkan ulang");
+  });
+
+  it("explains Sambungkan ulang keeps the number, asks a reason, warns when connected, and retries while the engine restarts", () => {
+    const device = kirimNomorFixture.status === "ready" ? kirimNomorFixture.list.devices.find((item) => item.kode === "spmb")! : null!;
+    const reconnect = (status: KirimDevice["status"], alasan = "") => ({ device: { ...device, status }, alasan, onAlasan: noop, perangkatBaru: false, onPerangkatBaru: noop });
+    const choose = renderToStaticMarkup(<PairingContent view={{ step: "choose" }} phone="" onPhone={noop} onStart={noop} reconnect={reconnect("terputus")} />);
+    expect(choose).toContain("Kode nomor, percakapan, kartu modul, dan rute tetap sama");
+    expect(choose).toContain("Tidak ada nomor baru yang dibuat");
+    expect(choose).toContain("Pakai perangkat mesin baru");
+    expect(choose).toMatch(/<button[^>]*disabled=""[^>]*>.*Pindai kode QR/);
+    expect(choose).not.toContain("Sesi yang berjalan dilepas");
+    const connected = renderToStaticMarkup(<PairingContent view={{ step: "choose" }} phone="" onPhone={noop} onStart={noop} reconnect={reconnect("tersambung", "QR gagal")} />);
+    expect(connected).toContain("Sesi yang berjalan dilepas");
+    expect(connected).not.toMatch(/<button[^>]*disabled=""[^>]*>.*Pindai kode QR/);
+    const retry = renderToStaticMarkup(<PairingContent view={{ step: "retry", secondsLeft: 12, attempt: 1 }} phone="" onPhone={noop} onStart={noop} />);
+    expect(retry).toContain("Mesin WhatsApp sedang dinyalakan ulang");
+    expect(retry).toContain("12 detik (percobaan 1 dari 3)");
+    expect(retry).toContain("Jangan Nonaktifkan nomor ini");
+    const failed = renderToStaticMarkup(<PairingContent view={{ step: "error", message: "Mesin WhatsApp sedang tidak tersedia", retry: true }} phone="" onPhone={noop} onStart={noop} onRetry={noop} />);
+    expect(failed).toContain("Coba lagi");
+  });
+
+  it("warns before Nonaktifkan with the cards and routes still on the number, and points to Sambungkan ulang", () => {
+    const device = kirimNomorFixture.status === "ready" ? kirimNomorFixture.list.devices.find((item) => item.kode === "spmb")! : null!;
+    const html = renderToStaticMarkup(
+      <DeactivateWarning device={device} usage={{ kartu: ["SPMB SQ"], rute: [{ modul: "SPMB SQ", jenis: "kode" }] }} paham={false} onPaham={noop} onReconnect={noop} />,
+    );
+    expect(html).toContain("Kartu yang dikosongkan: <strong>SPMB SQ</strong>");
+    expect(html).toContain("SPMB SQ (kode verifikasi)");
+    expect(html).toContain("Sambungkan ulang</button> saja");
+    expect(html).toContain("Jangan membuat nomor baru untuk WhatsApp yang sama");
+    expect(html).toContain('type="checkbox"');
+    // The tick box is the browser's only guard: Nonaktifkan stays disabled until it is ticked.
+    const dialog = renderToStaticMarkup(<DeactivateDialog device={device} sharers={[]} busy={false} error={null} onClose={noop} onConfirm={noop} />);
+    expect(dialog).toMatch(/<button[^>]*disabled=""[^>]*>Nonaktifkan<\/button>/);
+  });
+
+  it("offers the module's old number first and asks before a new number for an emptied card", () => {
+    const card = kirimNomorFixture.status === "ready" ? kirimNomorFixture.list.modules.find((item) => item.application_key === "keuangan")! : null!;
+    const html = renderToStaticMarkup(
+      <TambahDialog
+        card={{ ...card, nomor_lama: [{ kode: "keuangan", label: "Nomor Keuangan", status: "nonaktif", nomor_tersamar: "+62 812-••••-7890" }] }}
+        numbers={[]}
+        editing={false}
+        busy={false}
+        error={null}
+        onClose={noop}
+        onNewNumber={noop}
+        onUseNumber={noop}
+      />,
+    );
+    expect(html).toContain("Pakai nomor lama Keuangan");
+    expect(html).toContain("Nomor Keuangan · +62 812-••••-7890 · Nonaktif");
+    expect(html.indexOf("Pakai nomor lama Keuangan")).toBeLessThan(html.indexOf("Sambungkan nomor baru"));
+    expect(html).toMatch(/<button[^>]*>.*Pakai nomor lama<\/button>/);
+  });
+
+  it("flags a number whose WhatsApp already has a number and offers Pakai nomor yang ada", () => {
+    if (kirimNomorFixture.status !== "ready") throw new Error("fixture");
+    const spmb = kirimNomorFixture.list.modules.find((item) => item.application_key === "spmb-sq")!;
+    const held = { ...spmb, nomor: { ...spmb.nomor!, kode: "spmb-2", nomor_ganda: { kode: "spmb", label: "SPMB resmi" } } };
+    const html = renderToStaticMarkup(<ModuleCard card={held} onOpen={noop} />);
+    expect(html).toContain("WhatsApp di nomor ini sama dengan <strong>SPMB resmi</strong>");
+    expect(html).toContain("Pakai nomor yang ada");
+    const done = renderToStaticMarkup(<PairingContent view={{ step: "connected", nomor: "+62 812-••••-7890", sama: { kode: "spmb", label: "SPMB resmi" } }} phone="" onPhone={noop} onStart={noop} onDuplicate={noop} />);
+    expect(done).toContain("WhatsApp ini sudah punya nomor di Kirim SQ: <strong>SPMB resmi</strong>");
+    const warn = renderToStaticMarkup(
+      <NomorView state={{ ...kirimNomorFixture, list: { ...kirimNomorFixture.list, peringatan: { terputus: [], webhook_habis: 0, nomor_ganda: ["spmb-2"] } } }} onOpen={noop} onRetry={noop} />,
+    );
+    expect(warn).toContain("<strong>Nomor ganda:</strong> spmb-2");
   });
 
   it("shows a QR with the linking instruction and a pairing code, and confirms the connection", () => {
