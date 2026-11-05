@@ -411,7 +411,7 @@ describe("engine events (§6)", () => {
     stub.beforeActionAnswer = echo("message.deleted", { deletedAt: new Date().toISOString() });
     expect((await call("POST", `/messages/${mine.id}/hapus`, { key: "h1", payload: { atas_nama: OFFICER } })).json()).toMatchObject({ dihapus_oleh: { jenis: "petugas" } });
     stub.beforeActionAnswer = null;
-    const audit = await pool.query<{ aksi: string }>(`SELECT aksi FROM kirim_audit WHERE aksi IN ('pesan.edit', 'pesan.hapus') ORDER BY created_at`);
+    const audit = await pool.query<{ aksi: string }>(`SELECT aksi FROM kirim_audit WHERE aksi IN ('pesan.edit', 'pesan.hapus') ORDER BY occurred_at`);
     expect(audit.rows.map((row) => row.aksi)).toEqual(["pesan.edit", "pesan.hapus"]);
   });
 
