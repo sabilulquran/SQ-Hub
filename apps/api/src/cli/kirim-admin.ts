@@ -229,6 +229,9 @@ async function main() {
   if (area === "history" && action === "import-stored") {
     const queued = await queueStoredImport(pool, { kode: value("--device")!, actorKind: "human", actorRef: operator(), alasan: value("--reason")! });
     console.log(`queued stored-copy import ${queued.id} for ${queued.device}`);
+    if (process.env.KIRIM_HISTORY_IMPORT_ENABLED !== "true") {
+      console.warn("note: KIRIM_HISTORY_IMPORT_ENABLED is not true in this shell; the Hub runner only imports when it is true in final.env");
+    }
     return;
   }
 

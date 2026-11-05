@@ -143,7 +143,7 @@ export function ImporView({
           <Panel>
             <h2 className="font-display text-base font-bold text-brand-heading">Dari salinan awal</h2>
             <p className="mt-1 text-sm leading-6 text-muted-foreground">
-              Memasukkan semua chat pribadi dari salinan riwayat yang diterima mesin saat nomor ditautkan, termasuk chat yang belum pernah aktif di Kirim SQ. Hanya teks; pesan yang sudah ada tidak dimasukkan dua kali, dan tidak ada notifikasi ke modul atau tanda belum dibaca.
+              Memasukkan semua chat pribadi dari salinan riwayat yang diterima mesin saat nomor ditautkan, termasuk chat yang belum pernah aktif di Kirim SQ. Pesan yang sudah ada tidak dimasukkan dua kali, dan tidak ada notifikasi ke modul atau tanda belum dibaca.
             </p>
             <button type="button" className={`${primaryButton} mt-3`} disabled={busy || !state.imports.impor_salinan_tersedia} onClick={onStoredImport}>
               <History className="h-4 w-4" aria-hidden="true" /> Impor semua dari salinan awal

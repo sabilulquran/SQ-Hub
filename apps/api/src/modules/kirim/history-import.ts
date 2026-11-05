@@ -23,6 +23,8 @@ const POLL_INTERVAL_MS = 10_000;
 const WAIT_LIMIT_MS = 10 * 60_000;
 /** §10.3: stored-copy chats imported per runner tick; the engine needs no WhatsApp round trip for them. */
 const STORED_BATCH = 25;
+/** §10.3: a tick stops starting new stored chats after this, so device-link imports and shutdown get their turn. */
+const STORED_TICK_BUDGET_MS = 20_000;
 /** §10.3: at most 100 pages of 200 chats, and 100 pages of 100 messages per chat. */
 const STORED_MAX_PAGES = 100;
 
@@ -46,6 +48,7 @@ export async function queueStoredImport(
     if (device.provider !== "jalurpesan" || device.status === "nonaktif") {
       throw new KirimApiError(409, "history_import_unavailable", "Impor dari salinan awal hanya untuk nomor JalurPesan yang aktif.");
     }
+    // The device row is locked above (FOR UPDATE), so two requests for one number cannot both pass this check.
     const busy = await client.query(
       "SELECT 1 FROM kirim_history_imports WHERE device_id = $1 AND jalur = 'salinan' AND status IN ('antre', 'menunggu_mesin', 'memasukkan') LIMIT 1",
       [device.id],
@@ -294,7 +297,9 @@ export class KirimHistoryImport {
       `SELECT id, device_id AS "deviceId", conversation_id AS "conversationId", chat_enc AS "chatEnc" FROM kirim_history_imports
         WHERE jalur = 'salinan' AND chat_enc IS NOT NULL AND status IN ('antre', 'memasukkan') ORDER BY created_at, id LIMIT ${STORED_BATCH}`,
     );
+    const started = Date.now();
     for (const row of rows.rows) {
+      if (Date.now() - started > STORED_TICK_BUDGET_MS) return;
       if (!(await this.importStoredChat(row))) return;
     }
   }
@@ -320,7 +325,20 @@ export class KirimHistoryImport {
       if (code === "engine_unavailable") return; // tried again next round
       return this.fail(request.id, code === "device_not_found" || code === "engine_rejected" ? "Mesin belum menyediakan salinan awal untuk nomor ini." : "Impor gagal.");
     }
+    try {
+      await this.insertStoredChats(request, device, chats, tanpaAlamat);
+    } catch (error) {
+      if (error instanceof AlreadyExpanded) return;
+      this.options.log?.({ event: "kirim.history.stored_expand_failed", device: device.kode }, "kirim stored history expansion failed");
+      await this.fail(request.id, "Impor gagal.");
+    }
+  }
+
+  private async insertStoredChats(request: { id: string; dimintaOleh: string }, device: DeviceRow, chats: Map<string, string | null>, tanpaAlamat: number): Promise<void> {
     await withTransaction(this.pool, async (client) => {
+      // Claimed first: a second runner (e.g. while a release overlaps) finds the request taken and stops.
+      const claimed = await client.query("UPDATE kirim_history_imports SET status = 'memasukkan', updated_at = now() WHERE id = $1 AND status = 'antre'", [request.id]);
+      if ((claimed.rowCount ?? 0) === 0) throw new AlreadyExpanded();
       for (const [jid, phone] of chats) {
         const id = randomUUID();
         await client.query(
@@ -352,7 +370,14 @@ export class KirimHistoryImport {
       await this.fail(row.id, "Mesin nomor ini tidak dikonfigurasi.");
       return true;
     }
-    const chat = JSON.parse(this.crypto.open(row.chatEnc, columnAad("kirim_history_imports", "chat_enc", row.id))) as { jid: string; phone: string | null };
+    let chat: { jid: string; phone: string | null };
+    try {
+      chat = JSON.parse(this.crypto.open(row.chatEnc, columnAad("kirim_history_imports", "chat_enc", row.id))) as { jid: string; phone: string | null };
+    } catch {
+      // A row that cannot be read must not block the rows after it.
+      await this.fail(row.id, "Data chat tidak terbaca.");
+      return true;
+    }
     await this.pool.query("UPDATE kirim_history_imports SET status = 'memasukkan', updated_at = now() WHERE id = $1", [row.id]);
     try {
       const requested = await provider.requestStoredHistory(device, chat.jid);
@@ -370,6 +395,12 @@ export class KirimHistoryImport {
             continue;
           }
           if (!conversationId) {
+            // A chat whose messages are all here already gets no (empty) conversation of its own.
+            const known = await this.pool.query("SELECT 1 FROM kirim_messages WHERE device_id = $1 AND wa_message_id = $2 LIMIT 1", [device.id, message.whatsappMessageId]);
+            if ((known.rowCount ?? 0) > 0) {
+              counts.ganda += 1;
+              continue;
+            }
             // Found or created like an inbound message would be; no event, webhook or unread count.
             conversationId = await withTransaction(this.pool, async (client) => {
               const id = await ingest.conversationForChat(client, device.id, chat.jid, chat.phone);
@@ -459,7 +490,9 @@ export class KirimHistoryImport {
   }
 
   private async insertEngineMessage(device: DeviceRow, conversationId: string, message: ProviderHistoryMessage): Promise<"dimasukkan" | "ganda" | "dilewati"> {
-    const known = await this.pool.query("SELECT 1 FROM kirim_messages WHERE conversation_id = $1 AND wa_message_id = $2 LIMIT 1", [conversationId, message.whatsappMessageId]);
+    // Per number, not per conversation: a message live ingest stored under the person's other identity is the same
+    // message (and this uses kirim_messages_wa_idx).
+    const known = await this.pool.query("SELECT 1 FROM kirim_messages WHERE device_id = $1 AND wa_message_id = $2 LIMIT 1", [device.id, message.whatsappMessageId]);
     if ((known.rowCount ?? 0) > 0) return "ganda";
     if (!message.body && !message.media) return "dilewati";
     let mediaData: Buffer | null = null;
@@ -651,6 +684,8 @@ export class KirimHistoryImport {
     return this.options.now?.() ?? Date.now();
   }
 }
+
+class AlreadyExpanded extends Error {}
 
 const TIPE_BY_ENGINE: Record<string, string> = { text: "teks", document: "dokumen", image: "gambar", audio: "audio", video: "video", sticker: "stiker" };
 

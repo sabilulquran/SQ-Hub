@@ -997,6 +997,30 @@ describe("Admin R2: Jangan hubungi, Aktivitas, Impor riwayat (KIRIM-IMPL-002 §1
     expect(summary).toMatchObject({ impor_salinan_tersedia: true, ringkasan: { selesai: 3, dimasukkan: 3, ganda: 1 } });
   });
 
+  it("§10.3 puts a chat back in the queue while the engine is down, and a re-run adds nothing", async () => {
+    // Live ingest already stored WA-NEW in the number's conversation; the stored copy names the chat by LID only.
+    stub.addEvent("spmb", "message.received", receivedPayload({ body: "Halo lagi", whatsappMessageId: "WA-NEW" }));
+    await kirim.ingest!.runOnce();
+    const lid = "99887766554433@lid";
+    stub.storedChats = [{ chatJid: lid, phone: null }];
+    stub.pendingHistory.set(lid, [
+      { whatsappMessageId: "WA-NEW", direction: "inbound", chatJid: lid, messageType: "text", body: "Halo lagi", occurredAt: new Date().toISOString() },
+    ]);
+    const history = new KirimHistoryImport(pool, kirim.crypto, kirim.service, providers, { enabled: true, inboundMediaMaxBytes: 64 * 1024, ingest: kirim.ingest! });
+    await history.startStoredImport({ ref: "staff:test" }, "spmb", {});
+    await history.runOnce(); // expand
+    const port = stub.baseUrl;
+    (providers.jalurpesan as unknown as { options: { baseUrl: string } }).options.baseUrl = "http://127.0.0.1:9"; // engine unreachable
+    await history.runOnce();
+    (providers.jalurpesan as unknown as { options: { baseUrl: string } }).options.baseUrl = port;
+    expect((await pool.query<{ status: string }>("SELECT status FROM kirim_history_imports WHERE chat_enc IS NOT NULL")).rows).toEqual([{ status: "antre" }]);
+    await history.runOnce();
+    // The same WhatsApp message is not stored twice, even under the person's other identity.
+    expect((await pool.query("SELECT 1 FROM kirim_messages WHERE wa_message_id = 'WA-NEW'")).rowCount).toBe(1);
+    expect((await pool.query("SELECT 1 FROM kirim_conversations")).rowCount).toBe(1);
+    expect((await pool.query<{ status: string; ganda: number }>("SELECT status, jumlah_ganda AS ganda FROM kirim_history_imports WHERE chat_enc IS NOT NULL")).rows).toEqual([{ status: "selesai", ganda: 1 }]);
+  });
+
   it("§10.3 the operator CLI queues the same request and the runner waits while the engine is down", async () => {
     await expect(queueStoredImport(pool, { kode: "spmb", actorKind: "human", actorRef: "operator:ops", alasan: "agent tidak bisa login" })).resolves.toMatchObject({ device: "spmb" });
     expect((await pool.query<{ ref: string }>("SELECT actor_ref AS ref FROM kirim_audit WHERE aksi = 'riwayat.impor_salinan'")).rows).toEqual([{ ref: "operator:ops" }]);
