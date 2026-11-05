@@ -14,6 +14,7 @@ import {
   type ProviderEventPage,
   type ProviderGroup,
   type ProviderGroupParticipant,
+  type ProviderHistoryChat,
   type ProviderHistoryMessage,
   type ProviderHistoryStatus,
   type ReadReceiptKey,
@@ -343,6 +344,34 @@ export class JalurPesanProvider implements KirimProvider {
       }),
       hasMore: typeof pagination.totalPages === "number" && page < pagination.totalPages,
     };
+  }
+
+  async listHistoryChats(device: DeviceRef, page: number): Promise<{ chats: ProviderHistoryChat[]; hasMore: boolean }> {
+    const response = await this.lifecycle("GET", device, `/history-chats?page=${page}&pageSize=200`);
+    if (response.status !== 200 || !Array.isArray(response.body.chats)) throw this.lifecycleError(response);
+    const pagination = (response.body.pagination ?? {}) as Record<string, unknown>;
+    return {
+      chats: (response.body.chats as unknown[]).flatMap((item) => {
+        if (!item || typeof item !== "object") return [];
+        const value = item as Record<string, unknown>;
+        if (typeof value.chatJid !== "string" || !value.chatJid || value.chatJid.length > 200) return [];
+        const phone = typeof value.phone === "string" ? value.phone.replace(/^\+/, "") : "";
+        return [{
+          chatJid: value.chatJid,
+          phoneDigits: /^\d{8,15}$/.test(phone) ? phone : null,
+          messageCount: typeof value.messageCount === "number" && value.messageCount >= 0 ? value.messageCount : 0,
+        }];
+      }),
+      hasMore: typeof pagination.totalPages === "number" && page < pagination.totalPages,
+    };
+  }
+
+  async requestStoredHistory(device: DeviceRef, chatJid: string): Promise<{ importId: string } | null> {
+    const response = await this.lifecycle("POST", device, "/history-imports", { chatJid, source: "stored" });
+    const record = (response.body.historyImport ?? {}) as Record<string, unknown>;
+    if ((response.status === 201 || response.status === 200) && typeof record.id === "string") return { importId: record.id };
+    if (response.status === 409 && (response.body.code === "no_anchor" || response.body.error === "no_anchor")) return null;
+    throw this.lifecycleError(response);
   }
 
   private async engineMedia(device: DeviceRef, file: MediaFile): Promise<string | SendResult> {

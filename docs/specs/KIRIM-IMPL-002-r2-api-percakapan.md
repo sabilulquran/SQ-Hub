@@ -310,6 +310,27 @@ Batas yang perlu diketahui panitia: percakapan yang **tidak pernah aktif lagi se
 5. **Pencegah ganda** terhadap pesan yang sudah ada (dari mesin atau impor sebelumnya): menit yang sama, arah sama, dan HMAC isi sama.
 6. Berkas dibaca di memori (≤ 10 MiB), tidak disimpan di disk, dan tidak masuk log.
 
+### 10.3 Jalur salinan awal JalurPesan (addendum 2026-11-05)
+
+**Status:** ACCEPTED (permintaan sesi induk K3.2, 2026-11-05). Kontrak mesin: imadjinasi/jalurpesan#21, aktif per tenant lewat `HISTORY_BOOTSTRAP_TENANTS` (production: `spmb-2`, tenant nomor `spmb`).
+
+Langkah 1 (§10.1) hanya menjangkau chat yang sudah punya percakapan di Kirim SQ dan pesan jangkar di mesin. Salinan awal yang diterima JalurPesan saat nomor ditautkan memuat chat pribadi lain; jalur ini memasukkan **semua** chat itu.
+
+| Mesin | Arti |
+| --- | --- |
+| `GET …/history-chats?page=&pageSize=200` | Daftar chat pribadi di salinan, terbaru dulu: `chatJid`, `phone` atau null, `messageCount`, `firstMessageAt`, `lastMessageAt`, `pagination` |
+| `POST …/history-imports` `{ chatJid, source: "stored" }` | `201 { historyImport: { id, status: "completed" } }` seketika, tanpa permintaan ke WhatsApp dan tanpa slot impor aktif; `409 no_anchor` bila chat tanpa pesan |
+| `GET …/history-imports/:id/messages` | Seperti §10.1, terlama dulu, ganda per `whatsappMessageId` |
+
+Alur di Kirim SQ:
+
+1. **Memulai**: tombol **Impor semua dari salinan awal** di layar Impor riwayat (`POST /api/admin/kirim/devices/:kode/history-imports/salinan` `{ alasan? }` → `202 { permintaan }`), atau operator `kirim:admin history import-stored --device <kode> --reason <teks>` (agent tidak bisa masuk sebagai `kirim_admin`). Keduanya hanya menulis **satu baris permintaan** (`jalur = 'salinan'`, `chat_enc` kosong) dan `kirim_audit` `riwayat.impor_salinan`; tidak ada panggilan mesin dari permintaan HTTP atau CLI. Ditolak `409 history_import_running` bila impor salinan nomor itu masih berjalan, `409 history_import_unavailable` untuk nomor non-JalurPesan atau nonaktif.
+2. **Membagi**: runner Hub (`KIRIM_HISTORY_IMPORT_ENABLED=true`, tiap 10 detik) membaca `history-chats` (maks. 100 halaman) dan membuat satu baris per chat pribadi dengan `chat_enc` (JID dan nomor chat, terenkripsi, AAD per baris). Chat yang bukan chat pribadi dihitung `dilewati` di baris permintaan. Audit `riwayat.salinan_dibagi` (jumlah, tanpa nomor).
+3. **Memasukkan**: 25 chat per putaran. Untuk tiap chat: `source: "stored"`, lalu pesannya dimasukkan seperti §10.1 (`diimpor`, ganda per `wa_message_id` dalam percakapan). Percakapan dicari atau dibuat **seperti pesan masuk** (nomor dan LID dicocokkan dua arah; LID dengan `phone` mengingat nomornya) dan hanya bila chat punya pesan yang bisa dimasukkan. Tidak ada event, webhook `message.received`, balasan otomatis, kenaikan `belum_dibaca`, atau jendela balas 24 jam. `no_anchor` → baris `selesai` tanpa pesan. `engine_unavailable` → baris kembali `antre` dan putaran berhenti.
+4. Ringkasan layar Impor riwayat menghitung semua baris nomor itu (bukan hanya 500 baris terakhir yang ditampilkan).
+
+Migration `0016_kirim_history_salinan.sql` (aditif): `jalur` boleh `salinan`, kolom `chat_enc`, indeks parsial antrean salinan. Recovery: dump sebelum migrasi; rilis lama mengabaikan baris `salinan`.
+
 ## 11. Akses dan keamanan
 
 - Semua rute §6–§8 di `/internal/kirim/*`: loopback saja, `404` di edge (uji edge R1 diulang untuk rute baru).
@@ -440,3 +461,4 @@ Product Owner menyetujui semua saran di bawah pada 2026-10-19. Nomor `T-n` dipak
 | 2026-10-19 | DRAFT pertama untuk R2 dari KIRIM-001 revisi 3 dan keputusan PO §13 no. 1–7, setelah memeriksa kode sumber JalurPesan |
 | 2026-10-19 | PO menyetujui semua saran T-1…T-6 (§17); ACCEPTED, implementasi R2 di repository diizinkan |
 | 2026-10-19 | §2.1 dan §15: status J-1…J-3 di JalurPesan#18 (saklar `LINKED_DEVICE_SENT_EVENTS`, `senderDisplayName`, kode 409 J-2) |
+| 2026-11-05 | §10.3 jalur salinan awal JalurPesan (`source: "stored"`), tombol dan CLI `history import-stored` |

@@ -16,6 +16,7 @@ export type ImporState =
 export const EXPORT_MAX_BYTES = 10 * 1024 * 1024;
 
 const STATUS_LABEL: Record<string, string> = { antre: "Antre", menunggu_mesin: "Menunggu WhatsApp", memasukkan: "Memasukkan", selesai: "Selesai", gagal: "Gagal" };
+const JALUR_LABEL: Record<string, string> = { perangkat: "WhatsApp", ekspor: "Ekspor chat", salinan: "Salinan awal" };
 
 function kodeFromLocation(): string | null {
   const value = new URLSearchParams(window.location.search).get("nomor");
@@ -71,6 +72,11 @@ export function ImporPage({ preview }: { preview?: ImporState }) {
           if (result) setNotice(`Impor dimulai untuk ${result.percakapan} percakapan. Kemajuan tampil di bawah.`);
         })
       }
+      onStoredImport={() =>
+        void act(() => kirimFetch<{ permintaan: string }>(`/devices/${kode}/history-imports/salinan`, { method: "POST", body: {} })).then((result) => {
+          if (result) setNotice("Impor salinan awal diantrekan. Kirim SQ membaca daftar chat dari mesin lalu memasukkannya bertahap; kemajuan tampil di bawah.");
+        })
+      }
       onPreview={(nomor, teks) => act(() => kirimFetch<KirimExportPreview>(`/devices/${kode}/history-exports/preview`, { method: "POST", body: { nomor, teks } }))}
       onImport={(nomor, teks, namaYayasan) =>
         act(() => kirimFetch<{ dimasukkan: number; ganda: number; dilewati: number }>(`/devices/${kode}/history-exports`, { method: "POST", body: { nomor, teks, nama_yayasan: namaYayasan } })).then((result) => {
@@ -89,6 +95,7 @@ export function ImporView({
   notice,
   onReload,
   onDeviceImport,
+  onStoredImport = () => undefined,
   onPreview,
   onImport,
 }: {
@@ -98,6 +105,7 @@ export function ImporView({
   notice: string | null;
   onReload: () => void;
   onDeviceImport: () => void;
+  onStoredImport?: () => void;
   onPreview: (nomor: string, teks: string) => Promise<KirimExportPreview | null>;
   onImport: (nomor: string, teks: string, namaYayasan: string) => Promise<boolean>;
 }) {
@@ -132,6 +140,18 @@ export function ImporView({
               <p className="sq-admin-helper mt-2">Belum tersedia: mesin WhatsApp nomor ini belum mendukung permintaan riwayat.</p>
             ) : null}
           </Panel>
+          <Panel>
+            <h2 className="font-display text-base font-bold text-brand-heading">Dari salinan awal</h2>
+            <p className="mt-1 text-sm leading-6 text-muted-foreground">
+              Memasukkan semua chat pribadi dari salinan riwayat yang diterima mesin saat nomor ditautkan, termasuk chat yang belum pernah aktif di Kirim SQ. Hanya teks; pesan yang sudah ada tidak dimasukkan dua kali, dan tidak ada notifikasi ke modul atau tanda belum dibaca.
+            </p>
+            <button type="button" className={`${primaryButton} mt-3`} disabled={busy || !state.imports.impor_salinan_tersedia} onClick={onStoredImport}>
+              <History className="h-4 w-4" aria-hidden="true" /> Impor semua dari salinan awal
+            </button>
+            {!state.imports.impor_salinan_tersedia ? (
+              <p className="sq-admin-helper mt-2">Belum tersedia untuk nomor ini.</p>
+            ) : null}
+          </Panel>
           <ExportForm busy={busy} onPreview={onPreview} onImport={onImport} />
           <Panel>
             <h2 className="font-display text-base font-bold text-brand-heading">Riwayat impor</h2>
@@ -146,7 +166,7 @@ export function ImporView({
                 {state.imports.impor.slice(0, 50).map((row) => (
                   <li key={row.id} className="flex flex-wrap items-baseline justify-between gap-2 py-2 text-sm">
                     <span>
-                      <span className="font-bold">{row.jalur === "perangkat" ? "WhatsApp" : "Ekspor chat"}</span> · {STATUS_LABEL[row.status] ?? row.status}
+                      <span className="font-bold">{JALUR_LABEL[row.jalur] ?? row.jalur}</span> · {STATUS_LABEL[row.status] ?? row.status}
                       {row.status === "selesai" ? ` · ${row.dimasukkan} masuk, ${row.ganda} sudah ada` : ""}
                       {row.galat ? ` · ${row.galat}` : ""}
                     </span>

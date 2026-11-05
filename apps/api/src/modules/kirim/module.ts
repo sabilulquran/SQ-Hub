@@ -111,6 +111,7 @@ export function createKirimModule(input: {
     enabled: config.historyImportEnabled ?? false,
     inboundMediaMaxBytes: config.inboundMediaMaxBytes,
     log,
+    ...(ingest ? { ingest } : {}),
   });
   const conversations = new KirimConversations(pool, crypto, service, providers, {
     ...(config.replyDefaultTtlHours ? { replyTtlHours: config.replyDefaultTtlHours } : {}),

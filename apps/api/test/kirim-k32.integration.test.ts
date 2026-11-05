@@ -526,6 +526,17 @@ describe("engine events (§6)", () => {
     expect(events[1]!.data.message_id).toBe(events[0]!.data.message_id);
   });
 
+  it("keeps an unknown duration as null for a call answered on the phone (answered_elsewhere)", async () => {
+    const { conversationId } = await inbound();
+    const startedAt = new Date().toISOString();
+    stub.addEvent("spmb", "call.logged", { version: 1, call: { callId: "CALL-HP", chatJid: CONTACT_JID, fromJid: CONTACT_JID, callerPnJid: CONTACT_JID, isVideo: false, isGroup: false,
+      fromMe: false, revision: 1, outcome: "answered_elsewhere", startedAt, answeredAt: startedAt, endedAt: startedAt, durationSeconds: null, providerStatuses: ["offer", "accept"] } });
+    await pull();
+    const item = (await messages(conversationId)).find((message) => message.tipe === "panggilan");
+    expect(item!.panggilan).toMatchObject({ hasil: "diangkat", durasi_detik: null });
+    expect((await webhooks("call.logged"))[0]!.data).toMatchObject({ hasil: "diangkat", durasi_detik: null });
+  });
+
   it("stores a call placed from the number's phone as outgoing, without counting it as unread", async () => {
     const { conversationId } = await inbound();
     await call("POST", `/conversations/${conversationId}/read`, { payload: { atas_nama: OFFICER, sampai_message_id: (await messages(conversationId))[0]!.id } });

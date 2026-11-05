@@ -4,7 +4,7 @@ import type { Pool } from "pg";
 import { z } from "zod";
 
 import { columnAad, InvalidNumberError, normalizePhone, phoneCanonical, type KirimCrypto } from "./crypto.js";
-import { contactFromJid } from "./ingest.js";
+import { contactFromJid, type KirimIngest } from "./ingest.js";
 import type { KirimLog } from "./providers/log.js";
 import { ProviderOperationError, recipientJid, type KirimProvider, type ProviderHistoryMessage, type ProviderName } from "./providers/types.js";
 import { ensureConversation, findDevice, findDeviceById, withTransaction, writeAudit, type DeviceRow, type Queryable } from "./repository.js";
@@ -21,10 +21,52 @@ const PREVIEW_LINES = 20;
 /** §10.1: ask every 10 seconds, give up after 10 minutes. */
 const POLL_INTERVAL_MS = 10_000;
 const WAIT_LIMIT_MS = 10 * 60_000;
+/** §10.3: stored-copy chats imported per runner tick; the engine needs no WhatsApp round trip for them. */
+const STORED_BATCH = 25;
+/** §10.3: at most 100 pages of 200 chats, and 100 pages of 100 messages per chat. */
+const STORED_MAX_PAGES = 100;
 
 export const deviceImportSchema = z.object({ jumlah_per_percakapan: z.number().int().min(1).max(500).default(200) }).strict();
 export const exportPreviewSchema = z.object({ nomor: z.string().trim().min(1).max(40), teks: z.string().min(1).max(EXPORT_MAX_BYTES) }).strict();
 export const exportImportSchema = exportPreviewSchema.extend({ nama_yayasan: z.string().trim().min(1).max(200) }).strict();
+export const storedImportSchema = z.object({ alasan: z.string().trim().min(1).max(500).optional() }).strict();
+
+/**
+ * KIRIM-IMPL-002 §10.3 "Impor semua dari salinan awal": queues one request row; the Hub runner lists
+ * the engine's stored chats and imports each. Used by the admin route and by `kirim:admin history
+ * import-stored`, so an operator can start it without a `kirim_admin` sign-in; both write kirim_audit.
+ */
+export async function queueStoredImport(
+  pool: Pool,
+  input: { kode: string; actorKind: "human" | "system"; actorRef: string; alasan?: string | undefined },
+): Promise<{ id: string; device: string }> {
+  return withTransaction(pool, async (client) => {
+    const device = await findDevice(client, input.kode, true);
+    if (!device) throw new KirimApiError(404, "device_unknown", "Nomor tidak dikenal.");
+    if (device.provider !== "jalurpesan" || device.status === "nonaktif") {
+      throw new KirimApiError(409, "history_import_unavailable", "Impor dari salinan awal hanya untuk nomor JalurPesan yang aktif.");
+    }
+    const busy = await client.query(
+      "SELECT 1 FROM kirim_history_imports WHERE device_id = $1 AND jalur = 'salinan' AND status IN ('antre', 'menunggu_mesin', 'memasukkan') LIMIT 1",
+      [device.id],
+    );
+    if ((busy.rowCount ?? 0) > 0) throw new KirimApiError(409, "history_import_running", "Impor salinan awal untuk nomor ini masih berjalan.");
+    const id = randomUUID();
+    await client.query(
+      "INSERT INTO kirim_history_imports (id, device_id, jalur, status, diminta_oleh) VALUES ($1, $2, 'salinan', 'antre', $3)",
+      [id, device.id, input.actorRef],
+    );
+    await writeAudit(client, {
+      actorKind: input.actorKind,
+      actorRef: input.actorRef,
+      aksi: "riwayat.impor_salinan",
+      objekJenis: "device",
+      objekRef: device.kode,
+      metadata: { permintaan: id, ...(input.alasan ? { alasan: input.alasan } : {}) },
+    });
+    return { id, device: device.kode };
+  });
+}
 
 // ----------------------------------------------------------------------------- export parser
 
@@ -129,7 +171,7 @@ export class KirimHistoryImport {
     private readonly crypto: KirimCrypto,
     private readonly service: KirimService,
     private readonly providers: Record<ProviderName, KirimProvider | undefined>,
-    private readonly options: { enabled: boolean; inboundMediaMaxBytes: number; log?: KirimLog; now?: () => number },
+    private readonly options: { enabled: boolean; inboundMediaMaxBytes: number; log?: KirimLog; now?: () => number; ingest?: KirimIngest },
   ) {}
 
   get deviceImportEnabled(): boolean {
@@ -154,18 +196,27 @@ export class KirimHistoryImport {
        FROM kirim_history_imports WHERE device_id = $1 ORDER BY created_at DESC LIMIT 500`,
       [device.id],
     );
+    // Over every row of the number, not only the 500 listed: a stored-copy import queues one row per chat.
+    const totals = await this.pool.query<{ status: string; jumlah: string; dimasukkan: string; ganda: string; dilewati: string }>(
+      `SELECT status, count(*)::text AS jumlah, sum(jumlah_dimasukkan)::text AS dimasukkan, sum(jumlah_ganda)::text AS ganda,
+              sum(jumlah_dilewati)::text AS dilewati
+       FROM kirim_history_imports WHERE device_id = $1 AND NOT (jalur = 'salinan' AND chat_enc IS NULL) GROUP BY status`,
+      [device.id],
+    );
     const ringkasan = { antre: 0, berjalan: 0, selesai: 0, gagal: 0, dimasukkan: 0, ganda: 0, dilewati: 0 };
-    for (const row of rows.rows) {
-      if (row.status === "antre") ringkasan.antre += 1;
-      else if (row.status === "selesai") ringkasan.selesai += 1;
-      else if (row.status === "gagal") ringkasan.gagal += 1;
-      else ringkasan.berjalan += 1;
-      ringkasan.dimasukkan += row.jumlahDimasukkan;
-      ringkasan.ganda += row.jumlahGanda;
-      ringkasan.dilewati += row.jumlahDilewati;
+    for (const row of totals.rows) {
+      const jumlah = Number(row.jumlah);
+      if (row.status === "antre") ringkasan.antre += jumlah;
+      else if (row.status === "selesai") ringkasan.selesai += jumlah;
+      else if (row.status === "gagal") ringkasan.gagal += jumlah;
+      else ringkasan.berjalan += jumlah;
+      ringkasan.dimasukkan += Number(row.dimasukkan);
+      ringkasan.ganda += Number(row.ganda);
+      ringkasan.dilewati += Number(row.dilewati);
     }
     return {
       impor_perangkat_tersedia: this.options.enabled && device.provider === "jalurpesan",
+      impor_salinan_tersedia: this.options.enabled && device.provider === "jalurpesan" && device.status !== "nonaktif",
       ringkasan,
       impor: rows.rows.map((row) => ({
         id: row.id,
@@ -210,14 +261,146 @@ export class KirimHistoryImport {
     });
   }
 
-  /** Timer in module.ts: one conversation at a time across all numbers (the engine allows one per number). */
+  /** §10.3 admin route: "Impor semua dari salinan awal". */
+  async startStoredImport(actor: ImportActor, kode: string, input: z.infer<typeof storedImportSchema>) {
+    if (!this.options.enabled) throw new KirimApiError(409, "history_import_unavailable", "Impor riwayat belum dinyalakan di Kirim SQ.");
+    const queued = await queueStoredImport(this.pool, { kode, actorKind: "human", actorRef: actor.ref, alasan: input.alasan });
+    return { permintaan: queued.id };
+  }
+
+  /**
+   * Timer in module.ts: one conversation at a time across all numbers for requests to WhatsApp (the
+   * engine allows one per number), then a batch of stored-copy chats, which need no WhatsApp request.
+   */
   runOnce(): Promise<void> {
     if (!this.options.enabled) return Promise.resolve();
     if (this.running) return this.running;
-    this.running = this.step().finally(() => {
-      this.running = null;
-    });
+    this.running = this.step()
+      .then(() => this.stepStored())
+      .finally(() => {
+        this.running = null;
+      });
     return this.running;
+  }
+
+  /** §10.3: expand one request into one row per stored chat, or import the next batch of chats. */
+  private async stepStored(): Promise<void> {
+    const request = await this.pool.query<{ id: string; deviceId: string; dimintaOleh: string }>(
+      `SELECT id, device_id AS "deviceId", diminta_oleh AS "dimintaOleh" FROM kirim_history_imports
+        WHERE jalur = 'salinan' AND chat_enc IS NULL AND status = 'antre' ORDER BY created_at, id LIMIT 1`,
+    );
+    if (request.rows[0]) return this.expandStored(request.rows[0]);
+    const rows = await this.pool.query<{ id: string; deviceId: string; conversationId: string | null; chatEnc: string }>(
+      `SELECT id, device_id AS "deviceId", conversation_id AS "conversationId", chat_enc AS "chatEnc" FROM kirim_history_imports
+        WHERE jalur = 'salinan' AND chat_enc IS NOT NULL AND status IN ('antre', 'memasukkan') ORDER BY created_at, id LIMIT ${STORED_BATCH}`,
+    );
+    for (const row of rows.rows) {
+      if (!(await this.importStoredChat(row))) return;
+    }
+  }
+
+  private async expandStored(request: { id: string; deviceId: string; dimintaOleh: string }): Promise<void> {
+    const device = (await findDeviceById(this.pool, request.deviceId))!;
+    const provider = this.providers[device.provider];
+    if (!provider || device.status === "nonaktif") return this.fail(request.id, "Nomor ini tidak bisa diimpor dari salinan awal.");
+    const chats = new Map<string, string | null>();
+    let tanpaAlamat = 0;
+    try {
+      for (let page = 1; page <= STORED_MAX_PAGES; page += 1) {
+        const result = await provider.listHistoryChats(device, page);
+        for (const chat of result.chats) {
+          if (!contactFromJid(chat.chatJid)) tanpaAlamat += 1;
+          else if (!chats.has(chat.chatJid)) chats.set(chat.chatJid, chat.phoneDigits);
+        }
+        if (!result.hasMore) break;
+      }
+    } catch (error) {
+      const code = error instanceof ProviderOperationError ? error.code : "error";
+      this.options.log?.({ event: "kirim.history.stored_list_failed", device: device.kode, code }, "kirim stored history list failed");
+      if (code === "engine_unavailable") return; // tried again next round
+      return this.fail(request.id, code === "device_not_found" || code === "engine_rejected" ? "Mesin belum menyediakan salinan awal untuk nomor ini." : "Impor gagal.");
+    }
+    await withTransaction(this.pool, async (client) => {
+      for (const [jid, phone] of chats) {
+        const id = randomUUID();
+        await client.query(
+          `INSERT INTO kirim_history_imports (id, device_id, jalur, status, diminta_oleh, chat_enc) VALUES ($1, $2, 'salinan', 'antre', $3, $4)`,
+          [id, device.id, request.dimintaOleh, this.crypto.seal(JSON.stringify({ jid, phone }), columnAad("kirim_history_imports", "chat_enc", id))],
+        );
+      }
+      await client.query(
+        "UPDATE kirim_history_imports SET status = 'selesai', jumlah_dilewati = $2, selesai_at = now(), updated_at = now() WHERE id = $1",
+        [request.id, tanpaAlamat],
+      );
+      await writeAudit(client, {
+        actorKind: "system",
+        actorRef: "kirim.history",
+        aksi: "riwayat.salinan_dibagi",
+        objekJenis: "device",
+        objekRef: device.kode,
+        metadata: { permintaan: request.id, percakapan: chats.size, dilewati: tanpaAlamat },
+      });
+    });
+  }
+
+  /** One stored chat. Returns false when the engine is unavailable, so the batch stops until the next round. */
+  private async importStoredChat(row: { id: string; deviceId: string; conversationId: string | null; chatEnc: string }): Promise<boolean> {
+    const device = (await findDeviceById(this.pool, row.deviceId))!;
+    const provider = this.providers[device.provider];
+    const ingest = this.options.ingest;
+    if (!provider || !ingest) {
+      await this.fail(row.id, "Mesin nomor ini tidak dikonfigurasi.");
+      return true;
+    }
+    const chat = JSON.parse(this.crypto.open(row.chatEnc, columnAad("kirim_history_imports", "chat_enc", row.id))) as { jid: string; phone: string | null };
+    await this.pool.query("UPDATE kirim_history_imports SET status = 'memasukkan', updated_at = now() WHERE id = $1", [row.id]);
+    try {
+      const requested = await provider.requestStoredHistory(device, chat.jid);
+      if (!requested) {
+        await this.pool.query("UPDATE kirim_history_imports SET status = 'selesai', selesai_at = now(), updated_at = now() WHERE id = $1", [row.id]);
+        return true;
+      }
+      const counts = { dimasukkan: 0, ganda: 0, dilewati: 0 };
+      let conversationId = row.conversationId;
+      for (let page = 1; page <= STORED_MAX_PAGES; page += 1) {
+        const result = await provider.historyMessages(device, requested.importId, page);
+        for (const message of result.messages) {
+          if (!message.body && !message.media) {
+            counts.dilewati += 1;
+            continue;
+          }
+          if (!conversationId) {
+            // Found or created like an inbound message would be; no event, webhook or unread count.
+            conversationId = await withTransaction(this.pool, async (client) => {
+              const id = await ingest.conversationForChat(client, device.id, chat.jid, chat.phone);
+              if (id) await client.query("UPDATE kirim_history_imports SET conversation_id = $2 WHERE id = $1", [row.id, id]);
+              return id;
+            });
+            if (!conversationId) {
+              await this.fail(row.id, "Bukan chat pribadi.");
+              return true;
+            }
+          }
+          counts[await this.insertEngineMessage(device, conversationId, message)] += 1;
+        }
+        if (!result.hasMore) break;
+      }
+      await this.pool.query(
+        `UPDATE kirim_history_imports SET status = 'selesai', jumlah_dimasukkan = $2, jumlah_ganda = $3, jumlah_dilewati = $4,
+           selesai_at = now(), updated_at = now() WHERE id = $1`,
+        [row.id, counts.dimasukkan, counts.ganda, counts.dilewati],
+      );
+      return true;
+    } catch (error) {
+      const code = error instanceof ProviderOperationError ? error.code : "error";
+      this.options.log?.({ event: "kirim.history.stored_failed", device: device.kode, code }, "kirim stored history import failed");
+      if (code === "engine_unavailable") {
+        await this.pool.query("UPDATE kirim_history_imports SET status = 'antre', updated_at = now() WHERE id = $1", [row.id]);
+        return false;
+      }
+      await this.fail(row.id, code === "engine_rejected" ? "Mesin menolak permintaan riwayat." : "Impor gagal.");
+      return true;
+    }
   }
 
   private async step(): Promise<void> {

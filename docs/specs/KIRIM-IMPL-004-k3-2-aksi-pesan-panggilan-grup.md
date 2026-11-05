@@ -242,6 +242,8 @@ Semua item di `GET /conversations/:id/messages`, `GET /groups/:id/messages`, dan
 { "hasil": "tak_terjawab", "video": true, "mulai": "…", "diangkat_at": null, "selesai": "…", "durasi_detik": 0, "revisi": 1 }
 ```
 
+`durasi_detik` bisa `null` bila mesin tidak tahu lamanya, misalnya panggilan yang diangkat di HP (`answered_elsewhere` → `hasil: "diangkat"`, `durationSeconds: null`, addendum 2026-11-05). Kirim SQ menyimpan dan meneruskan `null` apa adanya di item pesan dan webhook `call.logged`; tidak pernah diubah menjadi 0.
+
 `pesan_terakhir` di item percakapan dan grup bertambah `diedit_at`, `dihapus_at`, dan `panggilan` (untuk chip "Panggilan tak terjawab").
 
 ## 7. Webhook baru ke modul pemilik nomor
@@ -427,3 +429,4 @@ Urutan 1→2 tidak wajib: Kirim SQ K3.2 di atas mesin lama tetap berjalan (event
 | --- | --- |
 | 2026-11-05 | Dibuat dan dibangun bersama kontrak mesin JalurPesan K3.2, termasuk adendum: `fromMe`/`revision` pada `call.logged`, dan edit/hapus hanya dari penulis pesan |
 | 2026-11-05 | Review independen: audit dan petugas tetap tercatat bila pantulan mesin datang lebih dulu (§5.6). Tindak lanjut `TBD`: kunci idempotensi buat grup saat mesin timeout, kutipan/reaksi masuk dicocokkan per chat (bukan per nomor), ganti nama+deskripsi sebagian gagal, berkas foto yatim bila transaksi gagal |
+| 2026-11-05 | `durasi_detik` boleh `null` (panggilan diangkat di HP) |

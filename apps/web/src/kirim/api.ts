@@ -126,8 +126,10 @@ export interface KirimActivitySummary {
 
 export interface KirimHistoryImports {
   impor_perangkat_tersedia: boolean;
+  /** KIRIM-IMPL-002 §10.3. */
+  impor_salinan_tersedia?: boolean;
   ringkasan: { antre: number; berjalan: number; selesai: number; gagal: number; dimasukkan: number; ganda: number; dilewati: number };
-  impor: Array<{ id: string; jalur: "perangkat" | "ekspor"; status: string; dimasukkan: number; ganda: number; dilewati: number; galat: string | null; dibuat: string; selesai: string | null }>;
+  impor: Array<{ id: string; jalur: "perangkat" | "ekspor" | "salinan"; status: string; dimasukkan: number; ganda: number; dilewati: number; galat: string | null; dibuat: string; selesai: string | null }>;
 }
 
 export interface KirimExportPreview {
