@@ -352,19 +352,9 @@ describe("officer replies (§5)", () => {
     const upload = async (data: Buffer) => {
       const boundary = "kirimboundary";
       const multipart = Buffer.concat([
-        Buffer.from(`--${boundary}
-Content-Disposition: form-data; name="device"
-
-spmb
---${boundary}
-Content-Disposition: form-data; name="file"; filename="stiker.webp"
-Content-Type: image/webp
-
-`),
+        Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="device"\r\n\r\nspmb\r\n--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="stiker.webp"\r\nContent-Type: image/webp\r\n\r\n`),
         data,
-        Buffer.from(`
---${boundary}--
-`),
+        Buffer.from(`\r\n--${boundary}--\r\n`),
       ]);
       return app.inject({ method: "POST", url: "/internal/kirim/media",
         headers: { authorization: `Bearer ${await token("spmb-api")}`, "content-type": `multipart/form-data; boundary=${boundary}` }, payload: multipart });
