@@ -148,8 +148,12 @@ export class KirimMessageActions {
     this.check(await provider.editMessage(device, { chat, whatsappMessageId: message.waMessageId! }, input.text, this.engineKey(consumer, "edit", idempotencyKey)));
     await withTransaction(this.pool, async (client) => {
       const locked = (await messageById(client, message.id, true))!;
-      const changed = await recordEdit(client, this.crypto, locked, { body: input.text, at: await dbNow(client), by: atasNamaRef(input.atas_nama) });
-      if (changed) await this.audit(client, consumer, "pesan.edit", message, input.atas_nama, { panjang: input.text.length });
+      const by = atasNamaRef(input.atas_nama);
+      const changed = await recordEdit(client, this.crypto, locked, { body: input.text, at: await dbNow(client), by });
+      // The engine may echo our own edit back first (fromMe) and ingest records it as made on the phone; it was the
+      // officer, so the history row is put right. The audit row is written whenever the engine accepted the edit.
+      if (!changed) await reattributeEcho(client, message.id, "edit", by);
+      await this.audit(client, consumer, "pesan.edit", message, input.atas_nama, { panjang: input.text.length });
     });
     return this.item(message.id);
   }
@@ -186,9 +190,10 @@ export class KirimMessageActions {
     this.check(await provider.deleteMessage(device, { chat, whatsappMessageId: message.waMessageId! }, this.engineKey(consumer, "delete", idempotencyKey)));
     await withTransaction(this.pool, async (client) => {
       const locked = (await messageById(client, message.id, true))!;
-      if (await recordDelete(client, locked, { at: await dbNow(client), by: atasNamaRef(input.atas_nama) })) {
-        await this.audit(client, consumer, "pesan.hapus", message, input.atas_nama, {});
-      }
+      const by = atasNamaRef(input.atas_nama);
+      if (!(await recordDelete(client, locked, { at: await dbNow(client), by }))) await reattributeEcho(client, message.id, "delete", by);
+      // As for edits: the engine accepted it, so it is audited even when its echo was stored first.
+      await this.audit(client, consumer, "pesan.hapus", message, input.atas_nama, {});
     });
     return this.item(message.id);
   }
@@ -221,7 +226,8 @@ export class KirimMessageActions {
       const locked = (await messageById(client, message.id, true))!;
       const next = nextReactions(locked.reactions, { k: "nomor_ini", dari: "nomor_ini", emoji: input.emoji, at: (await dbNow(client)).toISOString(), petugas: officer });
       await saveReactions(client, message.id, next.reactions);
-      if (next.changed) await this.audit(client, consumer, "pesan.reaksi", message, input.atas_nama, { dicabut: input.emoji === "" });
+      // Audited whenever the engine accepted it; an echo stored first only lacked the officer, which nextReactions adds.
+      await this.audit(client, consumer, "pesan.reaksi", message, input.atas_nama, { dicabut: input.emoji === "" });
     });
     return this.item(message.id);
   }
@@ -320,5 +326,25 @@ export function actionError(result: Exclude<ActionResult, { ok: true }>): KirimA
       return new KirimApiError(503, "engine_unavailable", "Mesin WhatsApp tidak tersedia; coba lagi.");
     default:
       return new KirimApiError(422, "engine_rejected", "WhatsApp menolak aksi ini; pesan tidak berubah.");
+  }
+}
+
+/**
+ * An officer's edit or delete whose engine echo (`fromMe`) was ingested before the API's own transaction: ingest
+ * stored it as done on the phone. Within a few minutes of the change, that phone attribution is the officer's.
+ */
+async function reattributeEcho(client: Queryable, messageId: string, aksi: "edit" | "delete", by: string): Promise<void> {
+  if (aksi === "edit") {
+    await client.query(
+      `UPDATE kirim_message_edits SET oleh = $2
+        WHERE id = (SELECT id FROM kirim_message_edits WHERE message_id = $1 ORDER BY diganti_at DESC, created_at DESC LIMIT 1)
+          AND oleh = 'hp' AND diganti_at > now() - interval '5 minutes'`,
+      [messageId, by],
+    );
+  } else {
+    await client.query(
+      `UPDATE kirim_messages SET deleted_by = $2, updated_at = now() WHERE id = $1 AND deleted_by = 'hp' AND deleted_at > now() - interval '5 minutes'`,
+      [messageId, by],
+    );
   }
 }

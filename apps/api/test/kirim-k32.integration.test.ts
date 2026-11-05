@@ -398,6 +398,23 @@ describe("engine events (§6)", () => {
     expect((await pool.query("SELECT 1 FROM kirim_message_edits")).rowCount).toBe(1);
   });
 
+  it("keeps the officer and the audit when the engine's echo of an API edit, delete or reaction is ingested first", async () => {
+    const { conversationId } = await inbound();
+    const mine = await sentReply(conversationId, "lama");
+    const echo = (type: string, change: Record<string, unknown>) => async () => {
+      stub.addEvent("spmb", type, { version: 1, change: { whatsappMessageId: mine.whatsappMessageId, chatJid: CONTACT_JID, senderJid: "6281200001111@s.whatsapp.net", fromMe: true, recipientType: "individual", ...change } });
+      await pull();
+    };
+    stub.beforeActionAnswer = echo("message.edited", { body: "baru", editedAt: new Date().toISOString() });
+    expect((await call("POST", `/messages/${mine.id}/edit`, { key: "e1", payload: { text: "baru", atas_nama: OFFICER } })).statusCode).toBe(200);
+    expect((await call("GET", `/messages/${mine.id}/riwayat-edit`)).json().items).toMatchObject([{ isi: "lama", diganti_oleh: { jenis: "petugas" } }]);
+    stub.beforeActionAnswer = echo("message.deleted", { deletedAt: new Date().toISOString() });
+    expect((await call("POST", `/messages/${mine.id}/hapus`, { key: "h1", payload: { atas_nama: OFFICER } })).json()).toMatchObject({ dihapus_oleh: { jenis: "petugas" } });
+    stub.beforeActionAnswer = null;
+    const audit = await pool.query<{ aksi: string }>(`SELECT aksi FROM kirim_audit WHERE aksi IN ('pesan.edit', 'pesan.hapus') ORDER BY created_at`);
+    expect(audit.rows.map((row) => row.aksi)).toEqual(["pesan.edit", "pesan.hapus"]);
+  });
+
   it("marks a message deleted by its sender and keeps the body", async () => {
     const { conversationId, messageId, whatsappMessageId } = await inbound("nomor KK saya 3201…");
     stub.addEvent("spmb", "message.deleted", { version: 1, change: { whatsappMessageId, chatJid: CONTACT_JID, senderJid: CONTACT_JID, fromMe: false, recipientType: "individual", deletedAt: new Date().toISOString() } });

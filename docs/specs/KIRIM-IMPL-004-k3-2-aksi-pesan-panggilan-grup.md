@@ -186,6 +186,8 @@ Jawaban `200` = item pesan (§6.3) yang sudah diperbarui. Isi lama masuk `kirim_
 
 Batas waktu diukur dengan jam database dari `provider_at` (waktu pesan diserahkan ke WhatsApp). Pada setiap galat, pesan di Kirim SQ **tidak berubah**. Audit: `pesan.edit` (metadata `panjang`), `pesan.hapus`, `pesan.reaksi` (metadata `dicabut`).
 
+Mesin bisa memantulkan aksi kita sendiri (`fromMe`) dan pantulan itu bisa diproses sebelum transaksi API selesai. Bila begitu, catatan "diubah di HP" (`hp`) dari 5 menit terakhir diganti menjadi petugas yang meminta. Baris audit selalu ditulis begitu mesin menerima aksinya. Webhook dari pantulan itu tetap bisa sampai ke modul sebagai `hp`; modul hanya memakainya sebagai tanda segarkan.
+
 ## 6. Event dari mesin dan isi pesan
 
 ### 6.1 Pesan masuk dan `message.sent`
@@ -417,3 +419,4 @@ Urutan 1→2 tidak wajib: Kirim SQ K3.2 di atas mesin lama tetap berjalan (event
 | Tanggal | Perubahan |
 | --- | --- |
 | 2026-11-05 | Dibuat dan dibangun bersama kontrak mesin JalurPesan K3.2, termasuk adendum: `fromMe`/`revision` pada `call.logged`, dan edit/hapus hanya dari penulis pesan |
+| 2026-11-05 | Review independen: audit dan petugas tetap tercatat bila pantulan mesin datang lebih dulu (§5.6). Tindak lanjut `TBD`: kunci idempotensi buat grup saat mesin timeout, kutipan/reaksi masuk dicocokkan per chat (bukan per nomor), ganti nama+deskripsi sebagian gagal, berkas foto yatim bila transaksi gagal |

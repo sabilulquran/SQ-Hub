@@ -44,6 +44,8 @@ export class JalurPesanStub {
   readonly actions: Array<{ action: string; whatsappMessageId: string; idempotencyKey: string | null; body: Record<string, unknown> }> = [];
   /** Next responses for the K3.2 §B action routes, consumed in order; default is 200. */
   actionQueue: Array<{ status: number; body: Record<string, unknown> }> = [];
+  /** Runs while an action is "at WhatsApp", before the engine answers: e.g. its own echo being ingested first. */
+  beforeActionAnswer: (() => Promise<void>) | null = null;
   /** K3.2 §D: photo per JID; a JID without one answers `profile_picture_unavailable`. */
   readonly profilePictures = new Map<string, Buffer>();
   /** When false the profile-picture route answers a bare 404, like an engine without it. */
@@ -117,6 +119,7 @@ export class JalurPesanStub {
     this.historyBusy = 0;
     this.actions.length = 0;
     this.actionQueue = [];
+    this.beforeActionAnswer = null;
     this.profilePictures.clear();
     this.profilePictureRoute = true;
     this.participantStatus.clear();
@@ -228,6 +231,7 @@ export class JalurPesanStub {
       if (next) return next;
       const target = decodeURIComponent(action[1]!);
       this.actions.push({ action: action[2]!, whatsappMessageId: target, idempotencyKey, body });
+      if (this.beforeActionAnswer) await this.beforeActionAnswer();
       return { status: 200, body: { success: true, action: action[2], messageId: randomUUID(), targetMessageId: target } };
     }
     if (request.method === "GET" && path === "/profile-picture") {
