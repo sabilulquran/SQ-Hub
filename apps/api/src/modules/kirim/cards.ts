@@ -74,7 +74,8 @@ export class KirimModuleCards {
   async list() {
     const applications = (await listWhatsAppApplications(this.pool)).filter((application) => application.status === "active");
     const cards = [];
-    for (const application of applications) cards.push(await this.card(this.pool, application));
+    const held = await heldDevices(this.pool);
+    for (const application of applications) cards.push(await this.card(this.pool, application, held));
     return { modules: cards, ...(await this.admin.listDevices()) };
   }
 
@@ -264,7 +265,7 @@ export class KirimModuleCards {
     return application;
   }
 
-  private async card(db: Queryable, application: RegistryApplication): Promise<ModuleCard> {
+  private async card(db: Queryable, application: RegistryApplication, held?: Map<string, { kode: string; label: string }>): Promise<ModuleCard> {
     const consumer = await findLinkedConsumer(db, application);
     const device = consumer?.nomorDeviceId ? await findDeviceById(db, consumer.nomorDeviceId) : null;
     const nomorLama = consumer
@@ -297,7 +298,7 @@ export class KirimModuleCards {
     return {
       ...empty,
       peran: owner ? "pemilik" : "pemakai",
-      nomor: toBrowserDevice(device, (await heldDevices(db)).get(device.id)),
+      nomor: toBrowserDevice(device, (held ?? (await heldDevices(db))).get(device.id)),
       jenis: await allowedJenis(db, consumer.id, device),
       antrean: { antre: Number(counts.rows[0]?.antre ?? 0), gagal_hari_ini: Number(counts.rows[0]?.gagal ?? 0) },
       dipakai_juga_oleh: names.rows.filter((row) => row.id !== consumer.id && row.id !== device.pemilikConsumerId).map((row) => row.nama),

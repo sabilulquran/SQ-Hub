@@ -193,7 +193,7 @@ function sharedBody(sharers: string[], body: string): string {
  * KIRIM-IMPL-003 §11.2: Nonaktifkan names every card and route still using the number, points to
  * Sambungkan ulang for a WhatsApp that only came loose, and needs a ticked acknowledgement.
  */
-function DeactivateDialog({ device, sharers, busy, error, onClose, onConfirm, onReconnect }: {
+export function DeactivateDialog({ device, sharers, busy, error, onClose, onConfirm, onReconnect }: {
   device: KirimDevice;
   sharers: string[];
   busy: boolean;
@@ -800,6 +800,7 @@ export function PairingContent({ view, phone, onPhone, onStart, reconnect, onRet
             {reconnect.device.status === "tersambung" ? (
               <p role="alert" className="rounded-xl bg-warning-soft px-3 py-2 text-sm text-warning-ink">Nomor ini sedang tersambung. Sesi yang berjalan dilepas, dan pesan tidak terkirim sampai QR dipindai lagi.</p>
             ) : null}
+            <p className="text-sm text-muted-foreground">Setelah tersambung, hapus perangkat tertaut lama di HP (WhatsApp → Perangkat tertaut) bila masih tercantum.</p>
             <Field label="Alasan">
               <textarea className="sq-admin-input" rows={2} maxLength={500} value={reconnect.alasan} onChange={(event) => reconnect.onAlasan(event.target.value)} />
             </Field>

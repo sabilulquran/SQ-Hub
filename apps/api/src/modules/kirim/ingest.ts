@@ -190,9 +190,11 @@ export class KirimIngest {
     const device = (await this.devices()).find((item) => item.id === deviceId);
     if (!device || device.held) return;
     for (let page = 0; page < MAX_PAGES_PER_PULL; page += 1) {
+      // Engine cursors run across all tenants: the cursor is that of the tenant this number uses now
+      // (KIRIM-IMPL-003 §11.3), so a number that moved to another tenant starts that tenant from 0.
       const cursorRow = await this.pool.query<{ cursor: string | null }>(
-        "SELECT max(provider_cursor)::text AS cursor FROM kirim_events WHERE device_id = $1 AND provider = 'jalurpesan'",
-        [device.id],
+        "SELECT max(provider_cursor)::text AS cursor FROM kirim_events WHERE device_id = $1 AND provider = 'jalurpesan' AND provider_ref = $2",
+        [device.id, device.providerRef],
       );
       const cursor = Number(cursorRow.rows[0]?.cursor ?? 0);
       const result = await this.provider.pullEvents(device, cursor, PAGE_LIMIT);
@@ -232,10 +234,10 @@ export class KirimIngest {
 
     await withTransaction(this.pool, async (client) => {
       const recorded = await client.query(
-        `INSERT INTO kirim_events (id, device_id, provider, provider_event_id, provider_cursor, jenis, payload_ringkas)
-         VALUES ($1, $2, 'jalurpesan', $3, $4, $5, $6::jsonb)
+        `INSERT INTO kirim_events (id, device_id, provider, provider_event_id, provider_cursor, jenis, payload_ringkas, provider_ref)
+         VALUES ($1, $2, 'jalurpesan', $3, $4, $5, $6::jsonb, $7)
          ON CONFLICT (provider, provider_event_id) DO NOTHING`,
-        [randomUUID(), device.id, event.eventId, event.cursor, event.type.slice(0, 100), JSON.stringify(summary)],
+        [randomUUID(), device.id, event.eventId, event.cursor, event.type.slice(0, 100), JSON.stringify(summary), device.providerRef],
       );
       if ((recorded.rowCount ?? 0) === 0) return;
       if (change && event.type === "message.edited") return this.applyEngineEdit(client, device, change);

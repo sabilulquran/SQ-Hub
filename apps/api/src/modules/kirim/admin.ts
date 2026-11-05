@@ -349,10 +349,11 @@ export class KirimAdminService {
     const nomor = await withTransaction(this.pool, async (client) => {
       const locked = await findDevice(client, kode, true);
       if (!locked || locked.status === "nonaktif") throw new KirimApiError(409, "device_inactive", "Nomor dinonaktifkan bersamaan. Muat ulang halaman.");
+      // The engine work above ran on the tenant read before it; a merge or provider change since then wins.
+      if (locked.providerRef !== device.providerRef || locked.provider !== "jalurpesan") {
+        throw new KirimApiError(409, "conflict", "Nomor diubah bersamaan. Muat ulang halaman lalu coba lagi.");
+      }
       if (tenantBaru) {
-        if (locked.providerRef !== device.providerRef || locked.provider !== "jalurpesan") {
-          throw new KirimApiError(409, "conflict", "Nomor diubah bersamaan. Muat ulang halaman lalu coba lagi.");
-        }
         await client.query("UPDATE kirim_devices SET provider_ref = $2, updated_at = now() WHERE id = $1", [device.id, tenantBaru]);
       }
       await setDeviceStatus(client, this.crypto, device.id, "menunggu_pairing");
@@ -479,7 +480,15 @@ export class KirimAdminService {
         [source.id, target.id],
       );
       await client.query("DELETE FROM kirim_routes WHERE device_id = $1", [source.id]);
-      await client.query("DELETE FROM kirim_devices WHERE id = $1", [source.id]);
+      try {
+        await client.query("DELETE FROM kirim_devices WHERE id = $1", [source.id]);
+      } catch (error) {
+        // A send landed on the duplicate after the count above: its rows now reference it.
+        if ((error as { code?: string }).code === "23503") {
+          throw new KirimApiError(409, "nomor_sudah_berisi", `${source.label} baru saja dipakai mengirim, jadi tidak bisa digabung dari layar. Hubungi operator.`);
+        }
+        throw error;
+      }
       await client.query("UPDATE kirim_devices SET provider_ref = $2, updated_at = now() WHERE id = $1", [target.id, source.providerRef]);
       if (target.status !== source.status) {
         await setDeviceStatus(client, this.crypto, target.id, source.status === "nonaktif" ? "terputus" : source.status, { allowFromNonaktif: true });

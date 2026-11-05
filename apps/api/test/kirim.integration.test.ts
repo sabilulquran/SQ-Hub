@@ -1217,10 +1217,13 @@ describe("Module cards (KIRIM-IMPL-003)", () => {
     expect(list.devices.find((device: { kode: string }) => device.kode === "spmb-baru").nomor_ganda).toEqual({ kode: "spmb", label: "SPMB resmi" });
     expect(list.devices.find((device: { kode: string }) => device.kode === "spmb").nomor_ganda).toBeNull();
 
-    // Held: its messages wait in the engine instead of starting a second conversation history.
+    // Held: its messages wait in the engine instead of starting a second conversation history. Meanwhile the
+    // older number records a later event of its own tenant, so the engine's global cursor runs past the held one.
     stub.addEvent("spmb-baru", "message.received", receivedPayload({ body: "Halo dari HP" }));
+    stub.addEvent("spmb", "device.connection", { version: 1 });
     await kirim.ingest!.runOnce();
     expect((await pool.query("SELECT 1 FROM kirim_messages")).rowCount).toBe(0);
+    expect((await pool.query<{ ref: string }>("SELECT provider_ref AS ref FROM kirim_events")).rows).toEqual([{ ref: "spmb" }]);
 
     expect((await admin("POST", "/devices/spmb/pakai-nomor-yang-ada", { payload: { ke: "spmb-baru", alasan: "uji" } })).json().error.code).toBe("nomor_lebih_baru");
     expect((await admin("POST", "/devices/spmb-baru/pakai-nomor-yang-ada", { payload: { ke: "hcis", alasan: "uji" } })).json().error.code).toBe("nomor_tidak_sama");
@@ -1236,6 +1239,23 @@ describe("Module cards (KIRIM-IMPL-003)", () => {
     expect(card).toMatchObject({ nomor: { kode: "spmb" }, dipakai_juga_oleh: ["keluarga"] });
     const audit = await pool.query<{ aksi: string; objek_ref: string }>("SELECT aksi, objek_ref FROM kirim_audit WHERE aksi LIKE 'nomor.%_duplikat' ORDER BY aksi");
     expect(audit.rows).toEqual([{ aksi: "nomor.gabung_duplikat", objek_ref: "spmb" }, { aksi: "nomor.hapus_duplikat", objek_ref: "spmb-baru" }]);
+  });
+
+  it("§11.3 never holds a number that already took in messages, so an existing pair keeps running", async () => {
+    await registry();
+    await adminAs("admin-session");
+    await admin("GET", "/devices/spmb/status");
+    await admin("POST", "/devices", { payload: { kode: "spmb-baru", label: "SPMB baru", pemilik: "spmb", provider: "jalurpesan", provider_ref: "spmb-baru" } });
+    const tenant = stub.addTenant("spmb-baru", { phone: null });
+    stub.addEvent("spmb-baru", "message.received", receivedPayload({ body: "Pesan pertama" }));
+    await kirim.ingest!.runOnce();
+    tenant.phone = "6281200001111"; // the engine now reports the same WhatsApp as spmb
+    const status = await admin("GET", "/devices/spmb-baru/status");
+    expect(status.json().nomor_sama).toEqual([expect.objectContaining({ kode: "spmb", lebih_dulu: true })]);
+    expect((await admin("GET", "/devices")).json().peringatan.nomor_ganda).toEqual([]);
+    stub.addEvent("spmb-baru", "message.received", receivedPayload({ body: "Pesan kedua", id: "wa-2", whatsappMessageId: "wa-2" }));
+    await kirim.ingest!.pullDevice((await pool.query<{ id: string }>("SELECT id FROM kirim_devices WHERE kode = 'spmb-baru'")).rows[0]!.id);
+    expect((await pool.query("SELECT 1 FROM kirim_messages m JOIN kirim_devices d ON d.id = m.device_id WHERE d.kode = 'spmb-baru'")).rowCount).toBe(2);
   });
 
   it("§11.3 refuses to merge a duplicate that already holds its own queue", async () => {

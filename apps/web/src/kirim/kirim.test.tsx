@@ -13,7 +13,7 @@ import { JanganHubungiView, type JanganHubungiState, type OptoutFilter } from "@
 import { KirimAppView } from "@/kirim/KirimApp";
 import { KirimShell } from "@/kirim/KirimShell";
 import type { KirimDevice } from "@/kirim/api";
-import { DeactivateWarning, ModuleCard, NomorView, PairingContent, TambahDialog } from "@/kirim/NomorPage";
+import { DeactivateDialog, DeactivateWarning, ModuleCard, NomorView, PairingContent, TambahDialog } from "@/kirim/NomorPage";
 import { isKirimHost, resolveKirimRoute } from "@/kirim/routes";
 
 const noop = () => undefined;
@@ -145,6 +145,9 @@ describe("WhatsApp modul screen (KIRIM-IMPL-003)", () => {
     expect(html).toContain("Sambungkan ulang</button> saja");
     expect(html).toContain("Jangan membuat nomor baru untuk WhatsApp yang sama");
     expect(html).toContain('type="checkbox"');
+    // The tick box is the browser's only guard: Nonaktifkan stays disabled until it is ticked.
+    const dialog = renderToStaticMarkup(<DeactivateDialog device={device} sharers={[]} busy={false} error={null} onClose={noop} onConfirm={noop} />);
+    expect(dialog).toMatch(/<button[^>]*disabled=""[^>]*>Nonaktifkan<\/button>/);
   });
 
   it("offers the module's old number first and asks before a new number for an emptied card", () => {

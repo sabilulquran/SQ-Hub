@@ -159,10 +159,14 @@ export async function ensureApplicationConsumer(db: Queryable, application: Regi
 
 /**
  * KIRIM-IMPL-003 §11. `d` is a newer number whose linked phone is already the phone of an older
- * number (any status, nonaktif included). Used inside `EXISTS (...)` with the device aliased `d`.
+ * number (any status, nonaktif included) and that has never taken in a message: its inbox is held so
+ * the person's history does not split. A number that already received messages is never held, so a
+ * pair that existed before this rule keeps running. Used inside `EXISTS (...)` with the device aliased `d`.
  */
-export const HELD_DEVICE_SQL = `SELECT 1 FROM kirim_devices o
-  WHERE o.id <> d.id AND d.nomor_hmac IS NOT NULL AND o.nomor_hmac = d.nomor_hmac AND (o.created_at, o.id) < (d.created_at, d.id)`;
+const HELD_CONDITION = `o.id <> d.id AND o.nomor_hmac = d.nomor_hmac AND (o.created_at, o.id) < (d.created_at, d.id)
+  AND NOT EXISTS (SELECT 1 FROM kirim_messages m WHERE m.device_id = d.id AND m.arah = 'masuk')`;
+
+export const HELD_DEVICE_SQL = `SELECT 1 FROM kirim_devices o WHERE d.nomor_hmac IS NOT NULL AND ${HELD_CONDITION}`;
 
 export interface SamePhoneDevice {
   kode: string;
@@ -189,7 +193,7 @@ export async function samePhoneDevices(db: Queryable, deviceId: string): Promise
 export async function heldDevices(db: Queryable): Promise<Map<string, { kode: string; label: string }>> {
   const result = await db.query<{ id: string; kode: string; label: string }>(
     `SELECT DISTINCT ON (d.id) d.id, o.kode, o.label
-       FROM kirim_devices d JOIN kirim_devices o ON o.id <> d.id AND o.nomor_hmac = d.nomor_hmac AND (o.created_at, o.id) < (d.created_at, d.id)
+       FROM kirim_devices d JOIN kirim_devices o ON ${HELD_CONDITION}
       WHERE d.nomor_hmac IS NOT NULL
       ORDER BY d.id, o.created_at, o.id`,
   );
