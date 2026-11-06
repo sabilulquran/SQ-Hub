@@ -691,6 +691,77 @@ describe("R3 group API (§9)", () => {
   });
 });
 
+describe("group admin parity with WhatsApp (§9.7)", () => {
+  it("makes and unmakes admins, changes the four settings, answers join requests, sets the photo and leaves", async () => {
+    await kirim.ingest!.refreshDirectory("groups");
+    const groupId = (await pool.query<{ id: string }>("SELECT id FROM kirim_groups")).rows[0]!.id;
+    const stubGroup = stub.groups.get("spmb")![0]!;
+    await call("POST", `/groups/${groupId}/participants`, { payload: { nomor: ["+6281200000004"], atas_nama: OFFICER } });
+
+    const made = await call("POST", `/groups/${groupId}/admin`, { payload: { nomor: ["+6281200000004", "+6281200000009"], jadikan: true, atas_nama: OFFICER } });
+    expect(made.json().anggota).toMatchObject([{ nomor: "+6281200000004", status: "dijadikan_admin" }, { nomor: "+6281200000009", status: "bukan_anggota" }]);
+    expect((await call("GET", `/groups/${groupId}/anggota`)).json().items).toEqual(expect.arrayContaining([expect.objectContaining({ nomor: "+6281200000004", admin: true })]));
+    const unmade = await call("POST", `/groups/${groupId}/admin`, { payload: { nomor: ["+6281200000004"], jadikan: false, atas_nama: OFFICER } });
+    expect(unmade.json().anggota[0].status).toBe("dicabut_admin");
+
+    expect((await call("GET", `/groups/${groupId}/setelan`)).json()).toEqual({ hanya_admin_kirim: false, hanya_admin_ubah_info: false, semua_boleh_tambah: false, perlu_persetujuan: false });
+    const set = await call("PATCH", `/groups/${groupId}/setelan`, { payload: { hanya_admin_kirim: true, perlu_persetujuan: true, atas_nama: OFFICER } });
+    expect(set.json()).toEqual({ hanya_admin_kirim: true, hanya_admin_ubah_info: false, semua_boleh_tambah: false, perlu_persetujuan: true });
+    expect((await call("PATCH", `/groups/${groupId}/setelan`, { payload: { atas_nama: OFFICER } })).statusCode).toBe(400);
+
+    stub.refuseNextSetting = true;
+    const refused = await call("PATCH", `/groups/${groupId}/setelan`, { payload: { hanya_admin_ubah_info: true, atas_nama: OFFICER } });
+    expect(refused.statusCode).toBe(409);
+    expect(refused.json().error.code).toBe("not_group_admin");
+
+    stubGroup.requests = [
+      { jid: "6281200000007@s.whatsapp.net", phoneJid: null, requestedAt: "2026-11-06T01:00:00.000Z" },
+      { jid: "6281200000008@s.whatsapp.net", phoneJid: null, requestedAt: null },
+      { jid: "556677889900@lid", phoneJid: null, requestedAt: null },
+    ];
+    const listed = (await call("GET", `/groups/${groupId}/permintaan`)).json().items as Array<{ nomor: string | null; diminta_at: string | null; ref: string }>;
+    expect(listed.map((r) => ({ nomor: r.nomor, diminta_at: r.diminta_at }))).toEqual([
+      { nomor: "+6281200000007", diminta_at: "2026-11-06T01:00:00.000Z" }, { nomor: "+6281200000008", diminta_at: null }, { nomor: null, diminta_at: null },
+    ]);
+    expect(listed.every((r) => typeof r.ref === "string" && !r.ref.includes("556677889900"))).toBe(true);
+    const approved = await call("POST", `/groups/${groupId}/permintaan`, { payload: { nomor: ["+6281200000007"], setujui: true, atas_nama: OFFICER } });
+    expect(approved.json().anggota[0].status).toBe("disetujui");
+    // Stored at once: the approved member is in the list without waiting for the refresh.
+    expect((await call("GET", `/groups/${groupId}/anggota`)).json().items).toEqual(expect.arrayContaining([expect.objectContaining({ nomor: "+6281200000007" })]));
+    // A requester known only by LID is answered by its ref.
+    const byRef = await call("POST", `/groups/${groupId}/permintaan`, { payload: { ref: [listed[2]!.ref], setujui: true, atas_nama: OFFICER } });
+    expect(byRef.json().anggota[0].status).toBe("disetujui");
+    expect((await call("POST", `/groups/${groupId}/permintaan`, { payload: { ref: ["x".repeat(40)], setujui: true, atas_nama: OFFICER } })).json().error.code).toBe("invalid_ref");
+    const rejected = await call("POST", `/groups/${groupId}/permintaan`, { payload: { nomor: ["+6281200000008"], setujui: false, atas_nama: OFFICER } });
+    expect(rejected.json().anggota[0].status).toBe("ditolak");
+
+    const jpeg = Buffer.concat([Buffer.from([0xff, 0xd8, 0xff, 0xe0]), Buffer.alloc(60)]).toString("base64");
+    expect((await call("POST", `/groups/${groupId}/foto`, { payload: { gambar: jpeg, atas_nama: OFFICER } })).statusCode).toBe(200);
+    expect(stubGroup.picture).toBe(64);
+    expect((await call("GET", `/groups/${groupId}/foto`)).statusCode).toBe(200);
+    const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2]).toString("base64");
+    expect((await call("POST", `/groups/${groupId}/foto`, { payload: { gambar: png, atas_nama: OFFICER } })).json().error.code).toBe("picture_invalid");
+    expect((await call("POST", `/groups/${groupId}/foto/hapus`, { payload: { atas_nama: OFFICER } })).statusCode).toBe(200);
+    expect(stubGroup.picture).toBeNull();
+
+    // A 1 MB photo fits through the route (about 1.4 MB as base64).
+    const big = Buffer.concat([Buffer.from([0xff, 0xd8, 0xff, 0xe0]), Buffer.alloc(1000 * 1024)]).toString("base64");
+    expect((await call("POST", `/groups/${groupId}/foto`, { payload: { gambar: big, atas_nama: OFFICER } })).statusCode).toBe(200);
+
+    expect((await call("POST", `/groups/${groupId}/keluar`, { payload: { atas_nama: OFFICER } })).json()).toEqual({ ok: true });
+    expect(stubGroup.left).toBe(true);
+    expect((await pool.query("SELECT 1 FROM kirim_groups WHERE id = $1 AND keluar_at IS NOT NULL", [groupId])).rowCount).toBe(1);
+
+    const actions = (await pool.query<{ aksi: string; metadata: unknown }>("SELECT aksi, metadata FROM kirim_audit WHERE objek_jenis = 'grup'")).rows;
+    expect(actions.map((row) => row.aksi)).toEqual(expect.arrayContaining([
+      "grup.admin_jadikan", "grup.admin_cabut", "grup.setelan", "grup.permintaan_setujui", "grup.permintaan_tolak", "grup.foto_ganti", "grup.foto_hapus", "grup.keluar",
+    ]));
+    // Counts only: never the numbers.
+    expect(JSON.stringify(actions)).not.toContain("6281200000007");
+    expect((await call("GET", `/groups/${groupId}/setelan`, { client: "hcis-api" })).statusCode).toBe(404);
+  });
+});
+
 describe("privacy", () => {
   it("logs no message text or number from the new routes", async () => {
     const { messageId, conversationId } = await inbound("rahasia keluarga");

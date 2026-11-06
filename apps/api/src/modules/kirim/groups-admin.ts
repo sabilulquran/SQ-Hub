@@ -8,7 +8,16 @@ import { columnAad, InvalidNumberError, normalizePhone, phoneCanonical, type Kir
 import { KirimApiError } from "./errors.js";
 import { contactFromJid, memberAad, type KirimIngest } from "./ingest.js";
 import type { KirimLog } from "./providers/log.js";
-import { ProviderOperationError, type KirimProvider, type ParticipantUpdate, type ProviderGroup, type ProviderName } from "./providers/types.js";
+import type { KirimProfilePhotos } from "./photos.js";
+import {
+  ProviderOperationError,
+  type KirimProvider,
+  type ParticipantUpdate,
+  type ProviderGroup,
+  type ProviderGroupSetting,
+  type ProviderGroupSettings,
+  type ProviderName,
+} from "./providers/types.js";
 import { findDevice, groupJid, withTransaction, writeAudit, type ConsumerRow, type DeviceRow, type Queryable } from "./repository.js";
 import { canonicalJson, type KirimService } from "./service.js";
 
@@ -35,13 +44,39 @@ export const updateGroupSchema = z
   .strict()
   .refine((body) => body.nama !== undefined || body.deskripsi !== undefined, { message: "send nama or deskripsi" });
 export const inviteRevokeSchema = z.object({ atas_nama: atasNamaSchema }).strict();
+/** §9.7: make admins or take it back. */
+export const adminSchema = z.object({ nomor: nomorList, jadikan: z.boolean(), atas_nama: atasNamaSchema }).strict();
+/** §9.7: the four settings WhatsApp offers group admins; at least one. */
+export const settingsSchema = z
+  .object({
+    hanya_admin_kirim: z.boolean().optional(),
+    hanya_admin_ubah_info: z.boolean().optional(),
+    semua_boleh_tambah: z.boolean().optional(),
+    perlu_persetujuan: z.boolean().optional(),
+    atas_nama: atasNamaSchema,
+  })
+  .strict()
+  .refine((body) => SETTING_KEYS.some((key) => body[key] !== undefined), { message: "send at least one setting" });
+/** By number, or by the `ref` a listed request carries (the only handle for a requester WhatsApp knows by LID alone). */
+export const joinAnswerSchema = z
+  .object({ nomor: nomorList.optional(), ref: z.array(z.string().min(16).max(400)).min(1).max(100).optional(), setujui: z.boolean(), atas_nama: atasNamaSchema })
+  .strict()
+  .refine((body) => body.nomor !== undefined || body.ref !== undefined, { message: "send nomor or ref" });
+/** A JPEG of at most 1 MB as base64 (WhatsApp shrinks it to 640 px itself). */
+export const pictureSchema = z.object({ gambar: z.string().min(8).max(1_400_000), atas_nama: atasNamaSchema }).strict();
+
+const SETTING_KEYS = ["hanya_admin_kirim", "hanya_admin_ubah_info", "semua_boleh_tambah", "perlu_persetujuan"] as const;
+const MAX_PICTURE_BYTES = 1024 * 1024;
+const JPEG = Buffer.from([0xff, 0xd8, 0xff]);
 
 const HOUR_MS = 3_600_000;
 
 /** One requested member and what WhatsApp did with them. */
 export interface MemberResult {
   nomor: string;
-  status: "ditambahkan" | "perlu_undangan" | "sudah_anggota" | "baru_keluar" | "dikeluarkan" | "bukan_anggota" | "optout" | "gagal";
+  status:
+    | "ditambahkan" | "perlu_undangan" | "sudah_anggota" | "baru_keluar" | "dikeluarkan" | "bukan_anggota" | "optout" | "gagal"
+    | "dijadikan_admin" | "dicabut_admin" | "disetujui" | "ditolak";
   perlu_undangan: boolean;
   kode_whatsapp: string | null;
 }
@@ -79,7 +114,7 @@ export class KirimGroupAdmin {
     private readonly conversations: KirimConversations,
     private readonly providers: Record<ProviderName, KirimProvider | undefined>,
     private readonly ingest: KirimIngest | undefined,
-    private readonly options: { addLimitPerHour: number; log?: KirimLog },
+    private readonly options: { addLimitPerHour: number; log?: KirimLog; photos?: KirimProfilePhotos },
   ) {}
 
   // ------------------------------------------------------------------------------- create
@@ -225,6 +260,162 @@ export class KirimGroupAdmin {
       await this.audit(client, consumer, "grup.ubah", group.id, device, input.atas_nama, { nama: input.nama !== undefined, deskripsi: input.deskripsi !== undefined });
     });
     return this.groupItem(group.id);
+  }
+
+  // ------------------------------------------------- §9.7 admin parity with WhatsApp
+
+  /** Make members admin, or take it back. Only this number's own groups, and only where it is admin itself. */
+  async setAdmin(consumer: ConsumerRow, groupId: string, input: z.infer<typeof adminSchema>) {
+    const { group, device, jid } = await this.owned(consumer, groupId);
+    const provider = this.provider(device);
+    const members = this.normalizeAll(input.nomor);
+    let outcome: { updates: ParticipantUpdate[]; group: ProviderGroup | null };
+    try {
+      outcome = await provider.updateParticipants(device, jid, input.jadikan ? "promote" : "demote", members.map((member) => member.digits));
+    } catch (error) {
+      throw this.engineError(error, group.nomorIniAdmin);
+    }
+    const results = members.map((member, index): MemberResult => {
+      const update = this.updateFor(member, index, members.length, outcome.updates);
+      const status = update?.status === "200" ? (input.jadikan ? "dijadikan_admin" : "dicabut_admin") : update?.status === "404" ? "bukan_anggota" : "gagal";
+      return { nomor: member.nomor, status, perlu_undangan: false, kode_whatsapp: update?.status ?? null };
+    });
+    await withTransaction(this.pool, async (client) => {
+      if (outcome.group) await this.storeGroup(client, device, outcome.group);
+      await this.audit(client, consumer, input.jadikan ? "grup.admin_jadikan" : "grup.admin_cabut", group.id, device, input.atas_nama, counts(results));
+    });
+    return { grup: await this.groupItem(group.id), anggota: results };
+  }
+
+  /** The group's settings as WhatsApp has them now. */
+  async settings(consumer: ConsumerRow, groupId: string) {
+    const { group, device, jid } = await this.owned(consumer, groupId);
+    try {
+      return settingsView(await this.provider(device).groupSettings(device, jid));
+    } catch (error) {
+      throw this.engineError(error, group.nomorIniAdmin);
+    }
+  }
+
+  async updateSettings(consumer: ConsumerRow, groupId: string, input: z.infer<typeof settingsSchema>) {
+    const { group, device, jid } = await this.owned(consumer, groupId);
+    const provider = this.provider(device);
+    const changes: ProviderGroupSetting[] = [];
+    if (input.hanya_admin_kirim !== undefined) changes.push(input.hanya_admin_kirim ? "announcement" : "not_announcement");
+    if (input.hanya_admin_ubah_info !== undefined) changes.push(input.hanya_admin_ubah_info ? "locked" : "unlocked");
+    if (input.semua_boleh_tambah !== undefined) changes.push(input.semua_boleh_tambah ? "member_add_all" : "member_add_admin");
+    if (input.perlu_persetujuan !== undefined) changes.push(input.perlu_persetujuan ? "approval_on" : "approval_off");
+    const applied: ProviderGroupSetting[] = [];
+    try {
+      for (const change of changes) {
+        await provider.setGroupSetting(device, jid, change);
+        applied.push(change);
+      }
+    } catch (error) {
+      throw this.engineError(error, group.nomorIniAdmin);
+    } finally {
+      // What is live in WhatsApp is audited, also when a later change was refused.
+      if (applied.length) {
+        await this.audit(this.pool, consumer, "grup.setelan", group.id, device, input.atas_nama,
+          { setelan: applied, ...(applied.length < changes.length ? { gagal_pada: changes[applied.length] } : {}) });
+      }
+    }
+    return this.settings(consumer, groupId);
+  }
+
+  /** Requests to join while approval is on; numbers in full for the module, like the member list. */
+  async joinRequests(consumer: ConsumerRow, groupId: string) {
+    const { group, device, jid } = await this.owned(consumer, groupId);
+    let requests;
+    try {
+      requests = await this.provider(device).groupJoinRequests(device, jid);
+    } catch (error) {
+      throw this.engineError(error, group.nomorIniAdmin);
+    }
+    return {
+      items: requests.map((request) => {
+        const pn = [request.phoneJid, request.jid].map((value) => (value ? contactFromJid(value) : null)).find((contact) => contact?.jenis === "pn");
+        return { nomor: pn ? pn.canonical.slice(3) : null, diminta_at: request.requestedAt, ref: this.crypto.seal(request.jid, joinRequestAad(group.id)) };
+      }),
+    };
+  }
+
+  async answerJoinRequests(consumer: ConsumerRow, groupId: string, input: z.infer<typeof joinAnswerSchema>) {
+    const { group, device, jid } = await this.owned(consumer, groupId);
+    const provider = this.provider(device);
+    // A number, or the requesting JID behind a listed `ref` (sealed for this group, so it cannot name another one).
+    const targets: Array<{ nomor: string | null; digits: string }> = [
+      ...this.normalizeAll(input.nomor ?? []).map((member) => ({ nomor: member.nomor, digits: member.digits })),
+      ...(input.ref ?? []).map((ref) => {
+        let requester: string;
+        try {
+          requester = this.crypto.open(ref, joinRequestAad(group.id));
+        } catch {
+          throw new KirimApiError(422, "invalid_ref", "Permintaan tidak dikenal; muat ulang daftarnya.");
+        }
+        const contact = contactFromJid(requester);
+        return { nomor: contact?.jenis === "pn" ? contact.canonical.slice(3) : null, digits: requester };
+      }),
+    ];
+    let updates: ParticipantUpdate[];
+    try {
+      updates = await provider.answerJoinRequests(device, jid, targets.map((target) => target.digits), input.setujui);
+    } catch (error) {
+      throw this.engineError(error, group.nomorIniAdmin);
+    }
+    const results = targets.map((target, index): MemberResult => {
+      const update = updates.find((item) => item.jid === target.digits || item.jid.startsWith(`${target.digits}@`) || item.jid.startsWith(`${target.digits}:`))
+        ?? (updates.length === targets.length ? updates[index] : undefined);
+      return { nomor: target.nomor ?? "", status: update?.status === "200" ? (input.setujui ? "disetujui" : "ditolak") : "gagal", perlu_undangan: false, kode_whatsapp: update?.status ?? null };
+    });
+    // The approved are members now: stored at once, like after an addition.
+    const fresh = input.setujui ? await provider.groupInfo(device, jid).catch(() => null) : null;
+    await withTransaction(this.pool, async (client) => {
+      if (fresh) await this.storeGroup(client, device, fresh);
+      await this.audit(client, consumer, input.setujui ? "grup.permintaan_setujui" : "grup.permintaan_tolak", group.id, device, input.atas_nama, counts(results));
+    });
+    return { anggota: results };
+  }
+
+  /** The group photo: a JPEG of at most 1 MB, or `null` to remove it. The cached copy follows at once. */
+  async setPicture(consumer: ConsumerRow, groupId: string, input: { gambar: string | null; atas_nama: AtasNama }) {
+    const { group, device, jid } = await this.owned(consumer, groupId);
+    let data: Buffer | null = null;
+    if (input.gambar !== null) {
+      data = /^[A-Za-z0-9+/]+={0,2}$/.test(input.gambar) ? Buffer.from(input.gambar, "base64") : Buffer.alloc(0);
+      if (data.length === 0 || data.length > MAX_PICTURE_BYTES || !data.subarray(0, 3).equals(JPEG)) {
+        throw new KirimApiError(422, "picture_invalid", "Foto grup harus JPEG, maksimal 1 MB.");
+      }
+    }
+    try {
+      await this.provider(device).setGroupPicture(device, jid, data);
+    } catch (error) {
+      throw this.engineError(error, group.nomorIniAdmin);
+    }
+    await this.options.photos?.store(device.id, { kind: "group", id: group.id, jid }, data).catch(() => undefined);
+    await this.audit(this.pool, consumer, data ? "grup.foto_ganti" : "grup.foto_hapus", group.id, device, input.atas_nama, {});
+    return this.groupItem(group.id);
+  }
+
+  /** This number leaves the group; the group stays in history, read-only. */
+  async leave(consumer: ConsumerRow, groupId: string, atasNama: AtasNama) {
+    const { group, device, jid } = await this.owned(consumer, groupId);
+    try {
+      await this.provider(device).leaveGroup(device, jid);
+    } catch (error) {
+      // Already out of the group (left on the phone, or removed): record it as left.
+      if (!(error instanceof ProviderOperationError && error.code === "group_not_found")) throw this.engineError(error, true);
+    }
+    await withTransaction(this.pool, async (client) => {
+      await client.query("UPDATE kirim_groups SET keluar_at = now() WHERE id = $1 AND keluar_at IS NULL", [group.id]);
+      await this.audit(client, consumer, "grup.keluar", group.id, device, atasNama, {});
+    });
+    return { ok: true };
+  }
+
+  private updateFor(member: { digits: string }, index: number, total: number, updates: ParticipantUpdate[]) {
+    return updates.find((item) => item.jid.startsWith(`${member.digits}@`) || item.jid.startsWith(`${member.digits}:`))
+      ?? (updates.length === total ? updates[index] : undefined);
   }
 
   // ---------------------------------------------------------------------- grup bersama
@@ -387,6 +578,7 @@ export class KirimGroupAdmin {
     if (!(error instanceof ProviderOperationError)) return error as Error;
     this.options.log?.({ event: "kirim.group.failed", code: error.code }, "kirim group action refused by the engine");
     if (error.code === "group_not_found") return new KirimApiError(409, "group_unavailable", "Nomor ini sudah bukan anggota grup itu.");
+    if (error.code === "not_group_admin") return new KirimApiError(409, "not_group_admin", "Nomor ini bukan admin grup itu.");
     if (error.code === "engine_rejected" && !isAdmin) return new KirimApiError(409, "not_group_admin", "Nomor ini bukan admin grup itu.");
     if (error.code === "engine_rejected") return new KirimApiError(422, "engine_rejected", "WhatsApp menolak permintaan ini.");
     return new KirimApiError(503, "engine_unavailable", "Mesin WhatsApp tidak tersedia atau nomor tidak tersambung.");
@@ -403,6 +595,21 @@ export class KirimGroupAdmin {
       atasNama: atasNamaRef(atasNama),
     });
   }
+}
+
+/** AAD of a join-request ref: bound to the group, so a ref from one group never answers another. */
+function joinRequestAad(groupId: string): string {
+  return `kirim_groups:permintaan:${groupId}`;
+}
+
+/** The four settings under the names the module uses; null where WhatsApp did not say. */
+export function settingsView(settings: ProviderGroupSettings) {
+  return {
+    hanya_admin_kirim: settings.announce,
+    hanya_admin_ubah_info: settings.restrict,
+    semua_boleh_tambah: settings.memberAddMode,
+    perlu_persetujuan: settings.joinApprovalMode,
+  };
 }
 
 /** Counts only: audit metadata never carries numbers. */

@@ -126,6 +126,7 @@ export function createKirimModule(input: {
   const groupAdmin = new KirimGroupAdmin(pool, crypto, service, conversations, providers, ingest, {
     addLimitPerHour: config.groupAddLimitPerHour ?? KIRIM_K32_DEFAULTS.groupAddLimitPerHour,
     log,
+    photos,
   });
   const worker = new KirimSendWorker(pool, crypto, service, providers, { log });
   const webhooks = new KirimWebhookSender(pool, crypto, { ...(input.webhookTransport ? { transport: input.webhookTransport } : {}), log });

@@ -11,6 +11,8 @@ import {
   type Recipient,
   type SendOptions,
   type SendResult,
+  type ProviderGroupSettings,
+  type ProviderJoinRequest,
 } from "./types.js";
 
 export type KirimLog = (entry: Record<string, unknown>, message: string) => void;
@@ -143,6 +145,34 @@ export class LogProvider implements KirimProvider {
   }
 
   async revokeGroupInvite(): Promise<string> {
+    throw new ProviderOperationError("engine_rejected", "log provider has no WhatsApp groups");
+  }
+
+  async groupSettings(): Promise<ProviderGroupSettings> {
+    throw new ProviderOperationError("engine_rejected", "log provider has no WhatsApp groups");
+  }
+
+  async groupInfo(): Promise<ProviderGroup | null> {
+    throw new ProviderOperationError("engine_rejected", "log provider has no WhatsApp groups");
+  }
+
+  async setGroupSetting(): Promise<void> {
+    throw new ProviderOperationError("engine_rejected", "log provider has no WhatsApp groups");
+  }
+
+  async groupJoinRequests(): Promise<ProviderJoinRequest[]> {
+    throw new ProviderOperationError("engine_rejected", "log provider has no WhatsApp groups");
+  }
+
+  async answerJoinRequests(): Promise<ParticipantUpdate[]> {
+    throw new ProviderOperationError("engine_rejected", "log provider has no WhatsApp groups");
+  }
+
+  async setGroupPicture(): Promise<void> {
+    throw new ProviderOperationError("engine_rejected", "log provider has no WhatsApp groups");
+  }
+
+  async leaveGroup(): Promise<void> {
     throw new ProviderOperationError("engine_rejected", "log provider has no WhatsApp groups");
   }
 }

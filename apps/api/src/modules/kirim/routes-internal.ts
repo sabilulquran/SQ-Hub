@@ -16,7 +16,17 @@ import {
 } from "./conversations.js";
 import { deleteSchema, editSchema, forwardSchema, reactionSchema, type KirimMessageActions } from "./actions.js";
 import { webhookRegistrationSchema, type KirimModuleCards } from "./cards.js";
-import { createGroupSchema, inviteRevokeSchema, participantsSchema, updateGroupSchema, type KirimGroupAdmin } from "./groups-admin.js";
+import {
+  adminSchema,
+  createGroupSchema,
+  inviteRevokeSchema,
+  joinAnswerSchema,
+  participantsSchema,
+  pictureSchema,
+  settingsSchema,
+  updateGroupSchema,
+  type KirimGroupAdmin,
+} from "./groups-admin.js";
 import { PHOTO_CACHE_SECONDS, type KirimProfilePhotos } from "./photos.js";
 import { verifyJalurPesanSignature } from "./crypto.js";
 import type { KirimIngest } from "./ingest.js";
@@ -288,8 +298,9 @@ function registerConversationRoutes(
     body: B,
     handler: (consumer: ConsumerRow, params: Record<string, string>, body: z.infer<B>, request: FastifyRequest, reply: FastifyReply) => Promise<unknown>,
     method: "POST" | "PATCH" = "POST",
+    options: { bodyLimit?: number } = {},
   ) {
-    scope.route<Params>({ method, url: path, handler: async (request, reply) => {
+    scope.route<Params>({ method, url: path, ...options, handler: async (request, reply) => {
       const consumer = await authenticate(request, reply);
       if (!consumer) return reply;
       const parsed = body.safeParse(request.body);
@@ -444,6 +455,34 @@ function registerConversationRoutes(
     write("/groups/:id", updateGroupSchema, async (consumer, params, body, _request, reply) =>
       reply.send(await groupAdmin.update(consumer, params.id!, body)),
     "PATCH");
+    // §9.7: admin parity with WhatsApp.
+    write("/groups/:id/admin", adminSchema, async (consumer, params, body, _request, reply) =>
+      reply.send(await groupAdmin.setAdmin(consumer, params.id!, body)),
+    );
+    read("/groups/:id/setelan", null, async (consumer, params, _query, request) => {
+      atasNamaFromHeaders(request.headers);
+      return groupAdmin.settings(consumer, params.id!);
+    });
+    write("/groups/:id/setelan", settingsSchema, async (consumer, params, body, _request, reply) =>
+      reply.send(await groupAdmin.updateSettings(consumer, params.id!, body)),
+    "PATCH");
+    read("/groups/:id/permintaan", null, async (consumer, params, _query, request) => {
+      atasNamaFromHeaders(request.headers);
+      return groupAdmin.joinRequests(consumer, params.id!);
+    });
+    write("/groups/:id/permintaan", joinAnswerSchema, async (consumer, params, body, _request, reply) =>
+      reply.send(await groupAdmin.answerJoinRequests(consumer, params.id!, body)),
+    );
+    // A 1 MB JPEG is about 1.4 MB as base64.
+    write("/groups/:id/foto", pictureSchema, async (consumer, params, body, _request, reply) =>
+      reply.send(await groupAdmin.setPicture(consumer, params.id!, body)),
+    "POST", { bodyLimit: 2 * 1024 * 1024 });
+    write("/groups/:id/foto/hapus", inviteRevokeSchema, async (consumer, params, body, _request, reply) =>
+      reply.send(await groupAdmin.setPicture(consumer, params.id!, { gambar: null, atas_nama: body.atas_nama })),
+    );
+    write("/groups/:id/keluar", inviteRevokeSchema, async (consumer, params, body, _request, reply) =>
+      reply.send(await groupAdmin.leave(consumer, params.id!, body.atas_nama)),
+    );
   }
 }
 
