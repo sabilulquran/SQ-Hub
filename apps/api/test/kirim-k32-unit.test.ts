@@ -202,3 +202,31 @@ describe("JalurPesan adapter K3.2 (§3)", () => {
     await expect(log.createGroup()).rejects.toBeInstanceOf(ProviderOperationError);
   });
 });
+
+describe("katalog: gambar produk (§17)", () => {
+  const device = { id: "d1", kode: "spmb", status: "aktif", provider: "jalurpesan" };
+  const product = (imageUrl: string) => ({ products: [{ id: "p", name: "P", description: "", price: null, currency: null, url: null, hidden: false, imageUrl }], nextCursor: null });
+  const make = async (imageUrl: string, response: Response) => {
+    const { KirimBusiness } = await import("../src/modules/kirim/business.js");
+    const provider = { listCatalog: async () => product(imageUrl) };
+    const business = new KirimBusiness({} as never, { ownedDevice: async () => device } as never, { jalurpesan: provider } as never, undefined,
+      { fetchImpl: (async () => response) as never });
+    await business.catalog({} as never, "spmb", null);
+    return business;
+  };
+  const jpeg = (headers: Record<string, string>) => new Response(new Uint8Array([0xff, 0xd8, 0xff]), { headers });
+
+  it("serves a JPEG from WhatsApp's CDN", async () => {
+    const business = await make("https://mmg.whatsapp.net/p.jpg", jpeg({ "content-type": "image/jpeg" }));
+    expect((await business.catalogImage({} as never, "spmb", "p")).mime).toBe("image/jpeg");
+  });
+
+  it("refuses SVG, a declared size over 2 MiB, and other hosts", async () => {
+    const svg = await make("https://mmg.whatsapp.net/p.svg", new Response("<svg/>", { headers: { "content-type": "image/svg+xml" } }));
+    await expect(svg.catalogImage({} as never, "spmb", "p")).rejects.toMatchObject({ statusCode: 404 });
+    const big = await make("https://mmg.whatsapp.net/p.jpg", jpeg({ "content-type": "image/jpeg", "content-length": String(3 * 1024 * 1024) }));
+    await expect(big.catalogImage({} as never, "spmb", "p")).rejects.toMatchObject({ statusCode: 404 });
+    const elsewhere = await make("https://whatsapp.net.evil.example/p.jpg", jpeg({ "content-type": "image/jpeg" }));
+    await expect(elsewhere.catalogImage({} as never, "spmb", "p")).rejects.toMatchObject({ statusCode: 404 });
+  });
+});

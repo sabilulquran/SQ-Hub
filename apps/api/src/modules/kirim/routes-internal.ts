@@ -406,7 +406,8 @@ function registerConversationRoutes(
       if (!consumer) return reply;
       try {
         const image = await business.catalogImage(consumer, request.params.kode!, request.params.id!);
-        return reply.header("content-type", image.mime).header("cache-control", "private, max-age=3600").send(image.data);
+        return reply.header("content-type", image.mime).header("x-content-type-options", "nosniff")
+          .header("cache-control", "private, max-age=3600").send(image.data);
       } catch (error) {
         return handleKirimError(reply, error);
       }

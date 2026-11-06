@@ -26,6 +26,7 @@ export const catalogQuerySchema = z.object({ setelah: z.string().max(500).option
 const MAX_IMAGE_BYTES = 2 * 1024 * 1024;
 /** Product images come from WhatsApp's own CDN only. */
 const IMAGE_HOSTS = /(^|\.)(whatsapp\.net|fbcdn\.net|fbsbx\.com)$/i;
+const IMAGE_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
 
 export class KirimBusiness {
   /** Image URLs from the last catalog listing per product, so the image route never takes a URL from the caller. */
@@ -121,11 +122,15 @@ export class KirimBusiness {
     if (url.protocol !== "https:" || !IMAGE_HOSTS.test(url.hostname)) throw new KirimApiError(404, "not_found", "Gambar produk tidak tersedia.");
     const response = await (this.options.fetchImpl ?? fetch)(url, { redirect: "error", signal: AbortSignal.timeout(10_000) }).catch(() => null);
     if (!response?.ok) throw new KirimApiError(404, "not_found", "Gambar produk tidak tersedia.");
-    const data = Buffer.from(await response.arrayBuffer());
-    const mime = response.headers.get("content-type") ?? "image/jpeg";
-    if (data.length === 0 || data.length > MAX_IMAGE_BYTES || !mime.startsWith("image/")) {
+    // Raster images only (never SVG), and a declared size over the cap is refused before reading it.
+    const mime = (response.headers.get("content-type") ?? "").split(";")[0]!.trim().toLowerCase();
+    const declared = Number(response.headers.get("content-length") ?? "0");
+    if (!IMAGE_TYPES.has(mime) || declared > MAX_IMAGE_BYTES) {
+      await response.body?.cancel().catch(() => undefined);
       throw new KirimApiError(404, "not_found", "Gambar produk tidak tersedia.");
     }
+    const data = Buffer.from(await response.arrayBuffer());
+    if (data.length === 0 || data.length > MAX_IMAGE_BYTES) throw new KirimApiError(404, "not_found", "Gambar produk tidak tersedia.");
     return { data, mime };
   }
 
