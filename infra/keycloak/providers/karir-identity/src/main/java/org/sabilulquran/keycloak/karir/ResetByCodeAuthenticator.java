@@ -20,7 +20,8 @@ import org.keycloak.models.utils.FormMessage;
 import org.keycloak.sessions.AuthenticationSessionModel;
 
 /**
- * "Lupa kata sandi" by one-time code (REC-IMPL-001 §4.3, KEL-IMPL-001 §4.3): NIK or nomor KK + Turnstile, then the
+ * "Lupa kata sandi" by one-time code (REC-IMPL-001 §4.3, KEL-IMPL-001 §4.3): NIK, or in {@code sq-keluarga} a
+ * WhatsApp number or email (the nomor KK is still accepted; ADR-0010 as amended 2026-11-06) + Turnstile, then the
  * masked WhatsApp number(s) and/or email, then the code. After a valid code the built-in {@code reset-password} step
  * asks for the new kata sandi.
  *
@@ -87,16 +88,24 @@ final class ResetByCodeAuthenticator implements Authenticator {
             context.forceChallenge(nikPage(context, KarirForms.SERVICE_UNAVAILABLE));
             return;
         }
-        String identifier = profile.normalize(input.getFirst(profile.formField()));
+        LoginIdentifier identifier = LoginIdentifier.parse(profile, input.getFirst(profile.loginField()));
         if (identifier == null) {
-            context.forceChallenge(nikPage(context, KarirForms.INVALID_NIK));
+            context.forceChallenge(nikPage(context,
+                    profile.contactLogin() ? KarirForms.INVALID_IDENTIFIER : KarirForms.INVALID_NIK));
             return;
         }
 
-        String identifierHmac = profile.hmac(runtime.config().nikPepper(), identifier);
+        String pepper = runtime.config().nikPepper();
         AuthenticationSessionModel authSession = context.getAuthenticationSession();
-        authSession.setAuthNote(NOTE_NIK_HMAC, identifierHmac);
-        UserModel user = Candidates.findByIdentifierHmac(context.getSession(), context.getRealm(), profile, identifierHmac);
+        authSession.setAuthNote(NOTE_NIK_HMAC, identifier.hmac(profile, pepper));
+        List<UserModel> accounts = identifier.findAccounts(context.getSession(), context.getRealm(), profile, pepper);
+        if (accounts.size() > 1) {
+            // One parent's number on two KKs (sq-keluarga): a code to that number could open either, so ask for the KK.
+            context.getEvent().error(KarirEvents.SHARED_CONTACT);
+            context.forceChallenge(nikPage(context, KarirForms.SHARED_CONTACT));
+            return;
+        }
+        UserModel user = accounts.isEmpty() ? null : accounts.get(0);
         if (user == null || !user.isEnabled()) {
             startDecoy(context, runtime, user);
             return;
@@ -243,7 +252,10 @@ final class ResetByCodeAuthenticator implements Authenticator {
         if (channel.waDigits() != null) {
             addWaHash(event, runtime, channel.waDigits());
         }
-        if (!runtime.abuseGuard().tryCodeRequest(authSession.getAuthNote(NOTE_NIK_HMAC))) {
+        // Limited per typed identifier and per account, so a family that can type its KK, two numbers and an email
+        // still gets no more than five codes an hour.
+        if (!runtime.abuseGuard().tryCodeRequest(authSession.getAuthNote(NOTE_NIK_HMAC))
+                || !runtime.abuseGuard().tryCodeRequest("account:" + user.getId())) {
             event.error(KarirEvents.CODE_LIMIT);
             return KarirForms.CODE_LIMIT;
         }
@@ -317,7 +329,7 @@ final class ResetByCodeAuthenticator implements Authenticator {
         KarirForms.turnstile(form, runtime.config(), runtime.abuseGuard()
                 .turnstileRequired(AbuseGuard.NikForm.RESET, KarirForms.clientIp(context.getConnection())));
         if (error != null) {
-            form.addError(new FormMessage(runtime.profile().formField(), error));
+            form.addError(new FormMessage(runtime.profile().loginField(), error));
         }
         return form.createForm(TEMPLATE_NIK);
     }

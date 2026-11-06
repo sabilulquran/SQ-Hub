@@ -13,6 +13,12 @@ final class KarirForms {
     static final String NO_PASSWORD = "karirNoPassword";
     static final String NIK_REGISTERED = "karirNikRegistered";
     static final String INVALID_NIK = "karirInvalidNik";
+    /** sq-keluarga sign-in and reset field: neither a WhatsApp number nor an email (nor a KK). */
+    static final String INVALID_IDENTIFIER = "keluargaInvalidIdentifier";
+    /** sq-keluarga reset: the number or email names several family accounts; the KK chooses one. */
+    static final String SHARED_CONTACT = "keluargaSharedContact";
+    /** sq-keluarga sign-in: two accounts of one number or email have the same kata sandi. */
+    static final String SHARED_CONTACT_SAME_PASSWORD = "keluargaSharedContactSamePassword";
     static final String NAME_REQUIRED = "karirNameRequired";
     static final String INVALID_WA = "karirInvalidWa";
     static final String WA_SAME = "karirWaSame";

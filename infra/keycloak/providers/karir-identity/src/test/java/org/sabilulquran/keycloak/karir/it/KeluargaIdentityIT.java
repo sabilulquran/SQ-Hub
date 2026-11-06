@@ -31,7 +31,8 @@ import org.junit.jupiter.api.TestInstance;
 import org.junit.jupiter.api.TestMethodOrder;
 
 /**
- * KEL-IMPL-001 §12, provider bullet, for realm {@code sq-keluarga}: nomor KK sign-in, duplicate KK registration,
+ * KEL-IMPL-001 §12, provider bullet, for realm {@code sq-keluarga}: sign-in by WhatsApp number or email (ADR-0010 as
+ * amended 2026-11-06) with the nomor KK still accepted, one number on several accounts, duplicate KK registration,
  * several WhatsApp numbers on reset (fake relay with {@code X-Keluarga-*} signature), verified-number bookkeeping,
  * the SPMB title for client {@code spmb-keluarga}, and no KK in tokens or the server log. The sq-karir behaviour is
  * covered unchanged by {@link KarirIdentityIT}. Every KK, name and number here is synthetic.
@@ -44,8 +45,11 @@ class KeluargaIdentityIT {
     private static final AtomicInteger IP_COUNTER = new AtomicInteger(RANDOM.nextInt(1 << 22));
     private static final String REALM = "sq-keluarga";
 
-    private static final String MSG_INVALID = "Nomor KK atau kata sandi salah";
-    private static final String MSG_REGISTERED = "Nomor KK ini sudah terdaftar. Silakan masuk.";
+    private static final String MSG_INVALID = "Nomor WhatsApp, email, atau kata sandi salah";
+    private static final String MSG_REGISTERED =
+            "Nomor KK ini sudah terdaftar. Silakan masuk dengan nomor WhatsApp atau email akun itu.";
+    private static final String MSG_NO_PASSWORD = "Akun Anda belum punya kata sandi. Gunakan Lupa kata sandi.";
+    private static final String MSG_SHARED = "Nomor atau email ini dipakai lebih dari satu akun keluarga.";
 
     private KarirKeycloak keycloak;
     private final List<String> kks = new ArrayList<>();
@@ -116,11 +120,83 @@ class KeluargaIdentityIT {
         String verifier2 = verifier();
         Browser.Page login = page(second, authUrl(verifier2, "auth", "keluarga-web", keycloak.publicBaseUrl), "#kc-form-login");
         assertTrue(login.text().contains("Masuk ke Keluarga"), login.text());
-        Browser.Page wrong = second.submit(login, "#kc-form-login", fields("kk", kk, "password", "salah-sekali-2026"));
+        assertTrue(login.has("input[name=identifier]") && !login.has("input[name=kk]"), "WhatsApp/email field, no KK field");
+        assertTrue(login.text().contains("Nomor WhatsApp atau email"), login.text());
+        Browser.Page wrong = second.submit(login, "#kc-form-login", fields("identifier", wa, "password", "salah-sekali-2026"));
         assertTrue(wrong.text().contains(MSG_INVALID), wrong.text());
+        String spaced = "+62 " + wa.substring(1, 4) + "-" + wa.substring(4, 8) + " " + wa.substring(8);
         Browser.Page signedIn = second.follow(second.submit(wrong, "#kc-form-login",
-                fields("kk", kk.substring(0, 4) + "-" + kk.substring(4), "password", "Sandi-Uji-2026")), keycloak.baseUrl);
-        assertNotNull(callbackCode(signedIn, keycloak.publicBaseUrl));
+                fields("identifier", spaced, "password", "Sandi-Uji-2026")), keycloak.baseUrl);
+        assertEquals(user.path("id").asText(), subject(keycloak.exchangeCode(callbackCode(signedIn, keycloak.publicBaseUrl), verifier2)));
+
+        // The nomor KK is no longer offered but still accepted.
+        Browser third = browser();
+        String verifier3 = verifier();
+        Browser.Page byKk = third.follow(third.submit(page(third, authUrl(verifier3, "auth", "keluarga-web", keycloak.publicBaseUrl),
+                "#kc-form-login"), "#kc-form-login",
+                fields("identifier", kk.substring(0, 4) + "-" + kk.substring(4), "password", "Sandi-Uji-2026")), keycloak.baseUrl);
+        assertEquals(user.path("id").asText(), subject(keycloak.exchangeCode(callbackCode(byKk, keycloak.publicBaseUrl), verifier3)));
+    }
+
+    @Test
+    @Order(15)
+    void signInWithEmailIgnoresCase() throws Exception {
+        String kk = kk();
+        String id = createFamily(kk, List.of(e164(waLocal())), true, "Sandi-Email-2026", "Ortu.Uji@Contoh.test");
+        Browser browser = browser();
+        String verifier = verifier();
+        Browser.Page login = page(browser, authUrl(verifier, "auth", "keluarga-web", keycloak.publicBaseUrl), "#kc-form-login");
+        Browser.Page signedIn = browser.follow(browser.submit(login, "#kc-form-login",
+                fields("identifier", " ortu.uji@contoh.TEST ", "password", "Sandi-Email-2026")), keycloak.baseUrl);
+        assertEquals(id, subject(keycloak.exchangeCode(callbackCode(signedIn, keycloak.publicBaseUrl), verifier)));
+    }
+
+    @Test
+    @Order(16)
+    void oneNumberOnTwoFamiliesIsChosenByKataSandi() throws Exception {
+        String shared = waLocal();
+        String first = createFamily(kk(), List.of(e164(shared)), true, "Sandi-Pertama-2026", null);
+        String second = createFamily(kk(), List.of(e164(waLocal()), e164(shared)), true, "Sandi-Kedua-2026", null);
+        assertEquals(first, signInSubject(shared, "Sandi-Pertama-2026"));
+        assertEquals(second, signInSubject(shared, "Sandi-Kedua-2026"));
+
+        Browser browser = browser();
+        Browser.Page login = page(browser, authUrl(verifier(), "auth", "keluarga-web", keycloak.publicBaseUrl), "#kc-form-login");
+        Browser.Page wrong = browser.submit(login, "#kc-form-login", fields("identifier", shared, "password", "salah-sekali-2026"));
+        assertTrue(wrong.text().contains(MSG_INVALID), wrong.text());
+
+        // The same kata sandi on both: only the KK can choose, and it still can.
+        String samePassword = waLocal();
+        String kkA = kk();
+        String a = createFamily(kkA, List.of(e164(samePassword)), true, "Sandi-Sama-2026", null);
+        createFamily(kk(), List.of(e164(samePassword)), true, "Sandi-Sama-2026", null);
+        Browser twice = browser();
+        Browser.Page ambiguous = twice.submit(page(twice, authUrl(verifier(), "auth", "keluarga-web", keycloak.publicBaseUrl),
+                "#kc-form-login"), "#kc-form-login", fields("identifier", samePassword, "password", "Sandi-Sama-2026"));
+        assertTrue(ambiguous.text().contains(MSG_SHARED), ambiguous.text());
+        assertEquals(a, signInSubject(kkA, "Sandi-Sama-2026"));
+
+        // "Lupa kata sandi" with a shared number asks for the KK instead of sending a code.
+        Browser reset = browser();
+        Browser.Page form = resetForm(reset, verifier());
+        Browser.Page asked = reset.submit(form, "#kc-reset-password-form",
+                fields("identifier", shared, "cf-turnstile-response", FakeServices.TURNSTILE_PASS));
+        assertTrue(asked.text().contains(MSG_SHARED), asked.text());
+        assertTrue(keycloak.fakes.deliveriesTo(e164(shared)).isEmpty(), "no code to a shared number");
+    }
+
+    @Test
+    @Order(17)
+    void migratedFamilySigningInWithItsNumberIsSentToReset() throws Exception {
+        String wa = waLocal();
+        createMigratedFamily(kk(), List.of(e164(wa)));
+        Browser browser = browser();
+        Browser.Page login = page(browser, authUrl(verifier(), "auth", "keluarga-web", keycloak.publicBaseUrl), "#kc-form-login");
+        Browser.Page result = browser.submit(login, "#kc-form-login", fields("identifier", wa, "password", "apa-saja-2026"));
+        assertTrue(result.text().contains(MSG_NO_PASSWORD), result.text());
+
+        Browser.Page notAnIdentifier = browser.submit(result, "#kc-form-login", fields("identifier", "bukan nomor", "password", "x"));
+        assertTrue(notAnIdentifier.text().contains(MSG_INVALID), notAnIdentifier.text());
     }
 
     @Test
@@ -146,7 +222,7 @@ class KeluargaIdentityIT {
 
         Browser browser = browser();
         String verifier = verifier();
-        Browser.Page channels = startReset(browser, verifier, kk);
+        Browser.Page channels = startReset(browser, verifier, mother);
         List<String> ids = channelIds(channels);
         assertEquals(List.of("whatsapp", "whatsapp-2"), ids, channels.text());
         assertTrue(channels.text().contains(maskWa(father)) && channels.text().contains(maskWa(mother)), channels.text());
@@ -204,14 +280,36 @@ class KeluargaIdentityIT {
         return page;
     }
 
-    private Browser.Page startReset(Browser browser, String verifier, String kk) {
+    private Browser.Page resetForm(Browser browser, String verifier) {
         Browser.Page login = page(browser, authUrl(verifier, "auth", "keluarga-web", keycloak.publicBaseUrl), "#kc-form-login");
         String href = login.document().selectFirst("a[href*=login-actions/reset-credentials]").absUrl("href");
         Browser.Page form = page(browser, href, "#kc-reset-password-form");
+        assertTrue(form.has("input[name=identifier]"), form.text());
+        return form;
+    }
+
+    /** "Lupa kata sandi" up to the channel page; {@code identifier} is a number, an email or the KK. */
+    private Browser.Page startReset(Browser browser, String verifier, String identifier) {
+        Browser.Page form = resetForm(browser, verifier);
         Browser.Page channels = browser.submit(form, "#kc-reset-password-form",
-                fields("kk", kk, "cf-turnstile-response", FakeServices.TURNSTILE_PASS));
+                fields("identifier", identifier, "cf-turnstile-response", FakeServices.TURNSTILE_PASS));
         assertTrue(channels.has("#kc-choose-channel-form"), channels.text());
         return channels;
+    }
+
+    /** Signs in on a fresh browser and returns the token subject. */
+    private String signInSubject(String identifier, String password) throws Exception {
+        Browser browser = browser();
+        String verifier = verifier();
+        Browser.Page login = page(browser, authUrl(verifier, "auth", "keluarga-web", keycloak.publicBaseUrl), "#kc-form-login");
+        Browser.Page done = browser.follow(browser.submit(login, "#kc-form-login",
+                fields("identifier", identifier, "password", password)), keycloak.baseUrl);
+        return subject(keycloak.exchangeCode(callbackCode(done, keycloak.publicBaseUrl), verifier));
+    }
+
+    private static String subject(JsonNode tokens) throws Exception {
+        String token = tokens.path("id_token").asText();
+        return JSON.readTree(Base64.getUrlDecoder().decode(token.split("\\.")[1])).path("sub").asText();
     }
 
     private static List<String> channelIds(Browser.Page page) {
@@ -311,6 +409,34 @@ class KeluargaIdentityIT {
         List<String> values = new ArrayList<>();
         user.path("attributes").path(name).forEach(value -> values.add(value.asText()));
         return values;
+    }
+
+    /** A family account with a kata sandi, as left by registration plus Keluarga SQ's "Tambah nomor". Returns its id. */
+    private String createFamily(String kk, List<String> numbers, boolean verified, String password, String email)
+            throws Exception {
+        StringBuilder username = new StringBuilder("f_");
+        for (int i = 0; i < 20; i++) {
+            username.append("abcdefghijklmnopqrstuvwxyz234567".charAt(RANDOM.nextInt(32)));
+        }
+        Map<String, Object> attributes = new LinkedHashMap<>();
+        attributes.put("kk_hmac", List.of(kkHmac(kk)));
+        attributes.put("keluarga_source", List.of("self"));
+        attributes.put("wa_numbers", numbers);
+        attributes.put("wa_verified", verified ? numbers : List.of());
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("username", username.toString());
+        body.put("enabled", true);
+        body.put("firstName", "Keluarga Uji Sintetis");
+        if (email != null) {
+            body.put("email", email);
+        }
+        body.put("attributes", attributes);
+        body.put("credentials", List.of(Map.of("type", "password", "value", password, "temporary", false)));
+        KarirKeycloak.Response response = keycloak.admin("POST", "/admin/realms/" + REALM + "/users", JSON.writeValueAsString(body));
+        assertEquals(201, response.status(), response.body());
+        JsonNode users = keycloak.admin("GET", "/admin/realms/" + REALM + "/users?exact=true&username="
+                + username, null).json();
+        return users.get(0).path("id").asText();
     }
 
     /** The request Keluarga SQ's PPDB importer sends with keluarga-identity-admin (KEL-IMPL-001 §9). */

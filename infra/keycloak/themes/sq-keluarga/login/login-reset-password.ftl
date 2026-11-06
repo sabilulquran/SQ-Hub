@@ -1,13 +1,13 @@
 <#import "template.ftl" as layout>
 <#import "buttons.ftl" as buttons>
 <#import "karir-fields.ftl" as karir>
-<@layout.registrationLayout displayInfo=true displayMessage=!messagesPerField.existsError('kk'); section>
+<@layout.registrationLayout displayInfo=true displayMessage=!messagesPerField.existsError('identifier'); section>
 <!-- template: sq-keluarga login-reset-password.ftl -->
     <#if section = "header">
         ${msg("karirResetTitle")}
     <#elseif section = "form">
         <form id="kc-reset-password-form" class="${properties.kcFormClass!}" action="${url.loginAction}" method="post" novalidate="novalidate">
-            <@karir.nik />
+            <@karir.identifier />
             <@karir.turnstile />
             <@buttons.actionGroup>
               <@buttons.button id="kc-form-buttons" label="karirDoContinue"/>

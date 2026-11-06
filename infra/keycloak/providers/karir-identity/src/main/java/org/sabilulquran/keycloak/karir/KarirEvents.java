@@ -15,6 +15,8 @@ final class KarirEvents {
     static final String CODE_INVALID = "karir_code_invalid";
     static final String CODE_EXPIRED = "karir_code_expired";
     static final String WA_INVALID = "karir_wa_invalid";
+    /** sq-keluarga: the number or email names several accounts and the KK is needed to choose. */
+    static final String SHARED_CONTACT = "keluarga_shared_contact";
 
     private KarirEvents() {
     }
