@@ -27,6 +27,7 @@ import {
   updateGroupSchema,
   type KirimGroupAdmin,
 } from "./groups-admin.js";
+import { catalogQuerySchema, quickReplyRemoveSchema, quickReplySchema, type KirimBusiness } from "./business.js";
 import { PHOTO_CACHE_SECONDS, type KirimProfilePhotos } from "./photos.js";
 import { verifyJalurPesanSignature } from "./crypto.js";
 import type { KirimIngest } from "./ingest.js";
@@ -81,6 +82,7 @@ export function registerKirimInternalRoutes(
     actions?: KirimMessageActions;
     photos?: KirimProfilePhotos;
     groupAdmin?: KirimGroupAdmin;
+    business?: KirimBusiness;
     verifyMachineToken: VerifyMachineToken;
     ingest?: KirimIngest;
     jalurpesanWebhookSecret?: string | null;
@@ -196,6 +198,7 @@ export function registerKirimInternalRoutes(
         ...(input.actions ? { actions: input.actions } : {}),
         ...(input.photos ? { photos: input.photos } : {}),
         ...(input.groupAdmin ? { groupAdmin: input.groupAdmin } : {}),
+        ...(input.business ? { business: input.business } : {}),
       });
     }
 
@@ -272,7 +275,7 @@ function registerConversationRoutes(
   scope: FastifyInstance,
   conversations: KirimConversations,
   authenticate: Authenticate,
-  extra: { actions?: KirimMessageActions; photos?: KirimProfilePhotos; groupAdmin?: KirimGroupAdmin },
+  extra: { actions?: KirimMessageActions; photos?: KirimProfilePhotos; groupAdmin?: KirimGroupAdmin; business?: KirimBusiness },
 ) {
   type Params = { Params: Record<string, string> };
 
@@ -381,7 +384,35 @@ function registerConversationRoutes(
   );
 
   // KIRIM-IMPL-004 §5: forward, edit, delete for everyone, reaction, and earlier bodies.
-  const { actions, photos, groupAdmin } = extra;
+  const { actions, photos, groupAdmin, business } = extra;
+  // §11: WhatsApp Business of the module's own number: quick replies both ways, the catalog to read.
+  if (business) {
+    read("/devices/:kode/balasan-cepat", null, async (consumer, params, _query, request) => {
+      atasNamaFromHeaders(request.headers);
+      return business.quickReplies(consumer, params.kode!);
+    });
+    write("/devices/:kode/balasan-cepat/:waId", quickReplySchema, async (consumer, params, body, _request, reply) =>
+      reply.send(await business.saveQuickReply(consumer, params.kode!, params.waId!, body)),
+    "PATCH");
+    write("/devices/:kode/balasan-cepat/:waId/hapus", quickReplyRemoveSchema, async (consumer, params, body, _request, reply) =>
+      reply.send(await business.removeQuickReply(consumer, params.kode!, params.waId!, body.atas_nama)),
+    );
+    read("/devices/:kode/katalog", catalogQuerySchema, async (consumer, params, query, request) => {
+      atasNamaFromHeaders(request.headers);
+      return business.catalog(consumer, params.kode!, query.setelah ?? null);
+    });
+    scope.get<Params>("/devices/:kode/katalog/:id/gambar", async (request, reply) => {
+      const consumer = await authenticate(request, reply);
+      if (!consumer) return reply;
+      try {
+        const image = await business.catalogImage(consumer, request.params.kode!, request.params.id!);
+        return reply.header("content-type", image.mime).header("x-content-type-options", "nosniff")
+          .header("cache-control", "private, max-age=3600").send(image.data);
+      } catch (error) {
+        return handleKirimError(reply, error);
+      }
+    });
+  }
   if (actions) {
     write("/messages/:id/teruskan", forwardSchema, async (consumer, params, body, request, reply) =>
       reply.status(202).send(await actions.forward(consumer, params.id!, idempotencyKey(request), body)),

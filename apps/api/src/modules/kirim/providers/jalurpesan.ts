@@ -24,6 +24,8 @@ import {
   type ProviderGroupSetting,
   type ProviderGroupSettings,
   type ProviderJoinRequest,
+  type ProviderQuickReply,
+  type ProviderCatalogProduct,
 } from "./types.js";
 
 /** Cache of engine `mediaId` per Kirim media and number, so a retry never uploads again (§3.2). */
@@ -338,6 +340,50 @@ export class JalurPesanProvider implements KirimProvider {
       ? await this.lifecycle("PUT", device, path, { image: jpeg.toString("base64") })
       : await this.lifecycle("DELETE", device, path);
     if (response.status !== 200) throw this.groupError(response);
+  }
+
+  async listQuickReplies(device: DeviceRef): Promise<ProviderQuickReply[]> {
+    const response = await this.lifecycle("GET", device, "/quick-replies");
+    if (response.status !== 200 || !Array.isArray(response.body.quickReplies)) throw this.lifecycleError(response);
+    return (response.body.quickReplies as unknown[]).flatMap((item) => {
+      const q = item as Record<string, unknown>;
+      if (!q || typeof q.waId !== "string") return [];
+      return [{
+        waId: q.waId,
+        shortcut: typeof q.shortcut === "string" ? q.shortcut : "",
+        message: typeof q.message === "string" ? q.message : "",
+        deleted: q.deleted === true,
+        updatedAt: typeof q.updatedAt === "string" ? q.updatedAt : new Date(0).toISOString(),
+      }];
+    });
+  }
+
+  async upsertQuickReply(device: DeviceRef, waId: string | null, shortcut: string, message: string): Promise<string> {
+    const response = await this.lifecycle("PUT", device, `/quick-replies/${encodeURIComponent(waId ?? "baru")}`, { shortcut, message });
+    if (response.status === 200 && typeof response.body.waId === "string") return response.body.waId;
+    throw this.lifecycleError(response);
+  }
+
+  async removeQuickReply(device: DeviceRef, waId: string): Promise<void> {
+    const response = await this.lifecycle("DELETE", device, `/quick-replies/${encodeURIComponent(waId)}`);
+    if (response.status !== 200) throw this.lifecycleError(response);
+  }
+
+  async listCatalog(device: DeviceRef, cursor: string | null): Promise<{ products: ProviderCatalogProduct[]; nextCursor: string | null }> {
+    const response = await this.lifecycle("GET", device, `/catalog${cursor ? `?cursor=${encodeURIComponent(cursor)}` : ""}`);
+    if (response.status !== 200 || !Array.isArray(response.body.products)) throw this.lifecycleError(response);
+    return {
+      products: (response.body.products as unknown[]).flatMap((item) => {
+        const p = item as Record<string, unknown>;
+        if (!p || typeof p.id !== "string" || typeof p.name !== "string") return [];
+        return [{
+          id: p.id, name: p.name, description: typeof p.description === "string" ? p.description : "",
+          price: typeof p.price === "number" ? p.price : null, currency: typeof p.currency === "string" ? p.currency : null,
+          url: typeof p.url === "string" ? p.url : null, hidden: p.hidden === true, imageUrl: typeof p.imageUrl === "string" ? p.imageUrl : null,
+        }];
+      }),
+      nextCursor: typeof response.body.nextCursor === "string" ? response.body.nextCursor : null,
+    };
   }
 
   async leaveGroup(device: DeviceRef, groupJid: string): Promise<void> {

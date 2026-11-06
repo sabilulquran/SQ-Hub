@@ -91,6 +91,27 @@ export type ProviderGroupSetting =
   | "announcement" | "not_announcement" | "locked" | "unlocked"
   | "member_add_all" | "member_add_admin" | "approval_on" | "approval_off";
 
+/** A WhatsApp Business quick reply of the number (§11). */
+export interface ProviderQuickReply {
+  waId: string;
+  shortcut: string;
+  message: string;
+  deleted: boolean;
+  updatedAt: string;
+}
+
+/** A product of the number's WhatsApp Business catalog; `price` in thousandths of the currency. */
+export interface ProviderCatalogProduct {
+  id: string;
+  name: string;
+  description: string;
+  price: number | null;
+  currency: string | null;
+  url: string | null;
+  hidden: boolean;
+  imageUrl: string | null;
+}
+
 /** A request to join a group that waits for an admin. */
 export interface ProviderJoinRequest {
   jid: string;
@@ -255,6 +276,11 @@ export interface KirimProvider {
   /** `null` removes the photo. */
   setGroupPicture(device: DeviceRef, groupJid: string, jpeg: Buffer | null): Promise<void>;
   leaveGroup(device: DeviceRef, groupJid: string): Promise<void>;
+  /** KIRIM-IMPL-004 §11: WhatsApp Business quick replies (both ways) and catalog (read). */
+  listQuickReplies(device: DeviceRef): Promise<ProviderQuickReply[]>;
+  upsertQuickReply(device: DeviceRef, waId: string | null, shortcut: string, message: string): Promise<string>;
+  removeQuickReply(device: DeviceRef, waId: string): Promise<void>;
+  listCatalog(device: DeviceRef, cursor: string | null): Promise<{ products: ProviderCatalogProduct[]; nextCursor: string | null }>;
   setGroupSubject(device: DeviceRef, groupJid: string, subject: string): Promise<void>;
   setGroupDescription(device: DeviceRef, groupJid: string, description: string): Promise<void>;
   groupInviteCode(device: DeviceRef, groupJid: string): Promise<string>;

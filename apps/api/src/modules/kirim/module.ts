@@ -15,6 +15,7 @@ import { KIRIM_K32_DEFAULTS, type KirimConfig } from "./config.js";
 import { KirimConversations } from "./conversations.js";
 import { KirimHistoryImport } from "./history-import.js";
 import { KirimCrypto } from "./crypto.js";
+import { KirimBusiness } from "./business.js";
 import { KirimGroupAdmin } from "./groups-admin.js";
 import { KirimIngest } from "./ingest.js";
 import { JalurPesanProvider, type EngineMediaRefs } from "./providers/jalurpesan.js";
@@ -45,6 +46,7 @@ export interface KirimModule {
   actions: KirimMessageActions;
   photos: KirimProfilePhotos;
   groupAdmin: KirimGroupAdmin;
+  business: KirimBusiness;
   history: KirimHistoryImport;
   admin: KirimAdminService;
   cards: KirimModuleCards;
@@ -128,6 +130,7 @@ export function createKirimModule(input: {
     log,
     photos,
   });
+  const business = new KirimBusiness(pool, conversations, providers, ingest, { log });
   const worker = new KirimSendWorker(pool, crypto, service, providers, { log });
   const webhooks = new KirimWebhookSender(pool, crypto, { ...(input.webhookTransport ? { transport: input.webhookTransport } : {}), log });
 
@@ -171,6 +174,7 @@ export function createKirimModule(input: {
     actions,
     photos,
     groupAdmin,
+    business,
     history,
     admin,
     cards,
@@ -185,6 +189,7 @@ export function createKirimModule(input: {
         actions,
         photos,
         groupAdmin,
+        business,
         verifyMachineToken,
         ...(ingest ? { ingest } : {}),
         jalurpesanWebhookSecret: config.jalurpesan?.webhookSecret ?? null,
