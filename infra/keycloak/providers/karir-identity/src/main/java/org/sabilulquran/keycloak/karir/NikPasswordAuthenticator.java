@@ -149,6 +149,17 @@ final class NikPasswordAuthenticator implements Authenticator {
                 matched.add(user);
             }
         }
+        for (UserModel user : matched) {
+            String bruteForceError = AuthenticatorUtils.getDisabledByBruteForceEventError(context, user);
+            if (bruteForceError != null) {
+                // Answer exactly as for one locked account: the page must not tell a right kata sandi from a wrong
+                // one while the account is locked, and nothing is charged to the other accounts.
+                context.getAuthenticationSession().setAuthNote(AbstractUsernameFormAuthenticator.ATTEMPTED_USERNAME, user.getUsername());
+                context.getEvent().user(user).error(bruteForceError);
+                context.forceChallenge(render(context, KarirForms.INVALID_CREDENTIALS));
+                return;
+            }
+        }
         if (matched.size() > 1) {
             // The same kata sandi on two accounts of one number: only the KK can tell them apart.
             context.getEvent().error(KarirEvents.SHARED_CONTACT);
@@ -158,12 +169,6 @@ final class NikPasswordAuthenticator implements Authenticator {
         if (matched.size() == 1) {
             UserModel user = matched.get(0);
             context.getAuthenticationSession().setAuthNote(AbstractUsernameFormAuthenticator.ATTEMPTED_USERNAME, user.getUsername());
-            String bruteForceError = AuthenticatorUtils.getDisabledByBruteForceEventError(context, user);
-            if (bruteForceError != null) {
-                context.getEvent().user(user).error(bruteForceError);
-                context.forceChallenge(render(context, KarirForms.INVALID_CREDENTIALS));
-                return;
-            }
             if (!user.isEnabled()) {
                 context.getEvent().user(user).error(Errors.USER_DISABLED);
                 context.forceChallenge(render(context, KarirForms.ACCOUNT_DISABLED));

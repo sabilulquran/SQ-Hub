@@ -266,6 +266,26 @@ class KeluargaIdentityIT {
     }
 
     @Test
+    @Order(21)
+    void lockedSharedAccountsDoNotRevealTheRightKataSandi() throws Exception {
+        String wa = waLocal();
+        createFamily(kk(), List.of(e164(wa)), true, "Sandi-Kembar-2026", null);
+        createFamily(kk(), List.of(e164(wa)), true, "Sandi-Kembar-2026", null);
+        // Five wrong guesses lock both accounts (realm failureFactor 5; each guess counts on both).
+        for (int i = 0; i < 5; i++) {
+            Browser guess = browser();
+            Browser.Page wrong = guess.submit(page(guess, authUrl(verifier(), "auth", "keluarga-web", keycloak.publicBaseUrl),
+                    "#kc-form-login"), "#kc-form-login", fields("identifier", wa, "password", "tebakan-salah-" + i));
+            assertTrue(wrong.text().contains(MSG_INVALID), wrong.text());
+        }
+        Browser browser = browser();
+        Browser.Page right = browser.submit(page(browser, authUrl(verifier(), "auth", "keluarga-web", keycloak.publicBaseUrl),
+                "#kc-form-login"), "#kc-form-login", fields("identifier", wa, "password", "Sandi-Kembar-2026"));
+        assertTrue(right.text().contains(MSG_INVALID), right.text());
+        assertFalse(right.text().contains(MSG_SHARED), "a locked pair must not confirm the kata sandi");
+    }
+
+    @Test
     @Order(17)
     void migratedFamilySigningInWithItsNumberIsSentToReset() throws Exception {
         String wa = waLocal();
