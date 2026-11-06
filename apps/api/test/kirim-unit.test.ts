@@ -133,6 +133,8 @@ describe("KIRIM-IMPL-001 §5.2 send window (WIB)", () => {
   });
 
   it("lets kode through at any hour", () => {
+    // An automatic answer to someone who just wrote is a reply: it goes at night too.
+    expect(windowDecision({ now: wib("2026-10-18T21:30:00"), jenis: "notifikasi", start: "06:00", end: "21:00", expiresAt: wib("2026-10-19T09:00:00"), replying: true })).toEqual({ action: "send" });
     expect(windowDecision({ now: wib("2026-10-18T23:00:00"), jenis: "kode", start: "06:00", end: "21:00", expiresAt: wib("2026-10-18T23:10:00") })).toEqual({ action: "send" });
   });
 

@@ -309,6 +309,22 @@ describe("officer replies (§5)", () => {
     expect(messages.json().items[0]).toMatchObject({ asal: "petugas", petugas: OFFICER, dikirim_oleh: "spmb", status: "diserahkan" });
   });
 
+  it("sends an automatic answer to someone who wrote within the hour at night too; other notifications wait", async () => {
+    await inbound();
+    await closedWindow();
+    await pool.query("UPDATE kirim_consumers SET kuota_harian = 10");
+    await call("POST", "/messages", { key: "auto-balas", payload: { device: "spmb", jenis: "notifikasi", to: PHONE, text: "Terima kasih, kami balas segera" } });
+    await call("POST", "/messages", { key: "auto-lain", payload: { device: "spmb", jenis: "notifikasi", to: "+6281200000001", text: "Pengingat" } });
+    await worker().runOnce();
+    await worker().runOnce();
+    const sent = stub.requests.filter((request) => request.path.endsWith("/messages") && request.method === "POST");
+    expect(sent.map((request) => JSON.parse(request.body).message)).toEqual(["Terima kasih, kami balas segera"]);
+    const waiting = await pool.query<{ status: string; later: boolean }>(
+      "SELECT status, next_attempt_at > now() + interval '30 minutes' AS later FROM kirim_outbox WHERE status = 'antre'",
+    );
+    expect(waiting.rows).toEqual([{ status: "antre", later: true }]);
+  });
+
   it("refuses an opted-out number unless the person wrote in the last 24 hours", async () => {
     const id = await inbound();
     await call("POST", "/optouts", { payload: { nomor: PHONE, cakupan: "device", device: "spmb", alasan: "Minta tidak dihubungi" } });
