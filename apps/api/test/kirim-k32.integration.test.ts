@@ -792,6 +792,41 @@ describe("group admin parity with WhatsApp (§9.7)", () => {
   });
 });
 
+describe("WhatsApp Business: balasan cepat dan katalog (§11)", () => {
+  it("lists the phone's quick replies, adds, changes and removes them, and audits without the text", async () => {
+    stub.quickReplies.set("spmb", [{ waId: "1730000000", shortcut: "biaya", message: "Biaya SD Rp 1 jt", deleted: false, updatedAt: "2026-11-06T01:00:00.000Z" }]);
+    expect((await call("GET", "/devices/spmb/balasan-cepat")).json().items).toEqual([
+      { wa_id: "1730000000", shortcut: "biaya", pesan: "Biaya SD Rp 1 jt", dihapus: false, diubah_at: "2026-11-06T01:00:00.000Z" },
+    ]);
+    const made = await call("PATCH", "/devices/spmb/balasan-cepat/baru", { payload: { shortcut: "/salam", pesan: "Assalamualaikum", atas_nama: OFFICER } });
+    expect(made.statusCode).toBe(200);
+    expect(stub.quickReplies.get("spmb")!.find((q) => q.waId === made.json().wa_id)).toMatchObject({ shortcut: "salam", message: "Assalamualaikum" });
+    expect((await call("PATCH", "/devices/spmb/balasan-cepat/baru", { payload: { shortcut: "dua kata", pesan: "x", atas_nama: OFFICER } })).json().error.code)
+      .toBe("shortcut_invalid");
+    expect((await call("POST", "/devices/spmb/balasan-cepat/1730000000/hapus", { payload: { atas_nama: OFFICER } })).statusCode).toBe(200);
+    expect(stub.quickReplies.get("spmb")!.find((q) => q.waId === "1730000000")!.deleted).toBe(true);
+    const audit = (await pool.query<{ aksi: string; metadata: unknown }>("SELECT aksi, metadata FROM kirim_audit WHERE objek_jenis = 'balasan_cepat'")).rows;
+    expect(audit.map((r) => r.aksi).sort()).toEqual(["balasan_cepat.hapus", "balasan_cepat.tambah"]);
+    expect(JSON.stringify(audit)).not.toContain("Assalamualaikum");
+    // Another module's number: refused.
+    expect((await call("GET", "/devices/spmb/balasan-cepat", { client: "hcis-api" })).statusCode).toBe(403);
+  });
+
+  it("reads the catalog, leaves hidden products out, gives the wa.me/p link and serves an image only from WhatsApp's CDN", async () => {
+    stub.catalog.set("spmb", [
+      { id: "p-1", name: "SDIT Kelas 1", description: "Fullday", price: 1500000000, currency: "IDR", url: null, hidden: false, imageUrl: "https://mmg.whatsapp.net/p1.jpg" },
+      { id: "p-2", name: "Draf", description: "", price: null, currency: null, url: null, hidden: true, imageUrl: null },
+      { id: "p-3", name: "Brosur", description: "", price: null, currency: null, url: null, hidden: false, imageUrl: "https://evil.example/x.jpg" },
+    ]);
+    const page = (await call("GET", "/devices/spmb/katalog")).json();
+    expect(page.items.map((p: { id: string }) => p.id)).toEqual(["p-1", "p-3"]);
+    expect(page.items[0]).toMatchObject({ nama: "SDIT Kelas 1", harga: 1500000, mata_uang: "IDR", ada_gambar: true });
+    expect(page.items[0].tautan).toMatch(/^https:\/\/wa\.me\/p\/p-1\/\d+$/);
+    expect((await call("GET", "/devices/spmb/katalog/p-3/gambar")).statusCode).toBe(404);
+    expect((await call("GET", "/devices/spmb/katalog/tidak-ada/gambar")).statusCode).toBe(404);
+  });
+});
+
 describe("privacy", () => {
   it("logs no message text or number from the new routes", async () => {
     const { messageId, conversationId } = await inbound("rahasia keluarga");

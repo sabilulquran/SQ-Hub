@@ -1,0 +1,163 @@
+import type { Pool } from "pg";
+import { z } from "zod";
+
+import { atasNamaRef, atasNamaSchema, type AtasNama, type KirimConversations } from "./conversations.js";
+import { KirimApiError } from "./errors.js";
+import type { KirimIngest } from "./ingest.js";
+import type { KirimLog } from "./providers/log.js";
+import { ProviderOperationError, type KirimProvider, type ProviderName } from "./providers/types.js";
+import { writeAudit, type ConsumerRow, type DeviceRow } from "./repository.js";
+
+/**
+ * KIRIM-IMPL-004 §11 (owner 2026-11-06): WhatsApp Business of the module's own number.
+ *
+ * - Balasan cepat: the quick replies of WhatsApp Business, both ways. What the phone sets is read from the engine; a
+ *   module may add, change or remove them. Kirim keeps nothing of its own: the engine is the copy.
+ * - Katalog: read only. It is managed in WhatsApp Business; a product is sent as its `wa.me/p/<id>/<number>` link,
+ *   which WhatsApp shows as the product card.
+ */
+
+export const quickReplySchema = z
+  .object({ shortcut: z.string().trim().min(1).max(26), pesan: z.string().trim().min(1).max(4096), atas_nama: atasNamaSchema })
+  .strict();
+export const quickReplyRemoveSchema = z.object({ atas_nama: atasNamaSchema }).strict();
+export const catalogQuerySchema = z.object({ setelah: z.string().max(500).optional() }).strict();
+
+const MAX_IMAGE_BYTES = 2 * 1024 * 1024;
+/** Product images come from WhatsApp's own CDN only. */
+const IMAGE_HOSTS = /(^|\.)(whatsapp\.net|fbcdn\.net|fbsbx\.com)$/i;
+
+export class KirimBusiness {
+  /** Image URLs from the last catalog listing per product, so the image route never takes a URL from the caller. */
+  private readonly imageUrls = new Map<string, { url: string; deviceId: string }>();
+
+  constructor(
+    private readonly pool: Pool,
+    private readonly conversations: KirimConversations,
+    private readonly providers: Record<ProviderName, KirimProvider | undefined>,
+    private readonly ingest: KirimIngest | undefined,
+    private readonly options: { log?: KirimLog; fetchImpl?: typeof fetch } = {},
+  ) {}
+
+  async quickReplies(consumer: ConsumerRow, kode: string) {
+    const device = await this.engineDevice(consumer, kode);
+    try {
+      const items = await this.provider(device).listQuickReplies(device);
+      return {
+        items: items.map((q) => ({ wa_id: q.waId, shortcut: q.shortcut, pesan: q.message, dihapus: q.deleted, diubah_at: q.updatedAt })),
+      };
+    } catch (error) {
+      throw engineError(error);
+    }
+  }
+
+  /** `waId` "baru" makes a new one. */
+  async saveQuickReply(consumer: ConsumerRow, kode: string, waId: string, input: z.infer<typeof quickReplySchema>) {
+    const device = await this.engineDevice(consumer, kode);
+    const shortcut = input.shortcut.replace(/^\//, "");
+    if (!/^\S{1,25}$/.test(shortcut)) throw new KirimApiError(422, "shortcut_invalid", "Pintasan 1–25 karakter tanpa spasi.");
+    if (waId !== "baru" && !/^[0-9A-Za-z._-]{1,64}$/.test(waId)) throw new KirimApiError(404, "not_found", "Balasan cepat tidak ditemukan.");
+    let saved: string;
+    try {
+      saved = await this.provider(device).upsertQuickReply(device, waId === "baru" ? null : waId, shortcut, input.pesan);
+    } catch (error) {
+      throw engineError(error);
+    }
+    await this.audit(consumer, device, waId === "baru" ? "balasan_cepat.tambah" : "balasan_cepat.ubah", saved, input.atas_nama);
+    return { wa_id: saved };
+  }
+
+  async removeQuickReply(consumer: ConsumerRow, kode: string, waId: string, atasNama: AtasNama) {
+    const device = await this.engineDevice(consumer, kode);
+    if (!/^[0-9A-Za-z._-]{1,64}$/.test(waId)) throw new KirimApiError(404, "not_found", "Balasan cepat tidak ditemukan.");
+    try {
+      await this.provider(device).removeQuickReply(device, waId);
+    } catch (error) {
+      throw engineError(error);
+    }
+    await this.audit(consumer, device, "balasan_cepat.hapus", waId, atasNama);
+    return { ok: true };
+  }
+
+  /** One page of the catalog; hidden products are left out (WhatsApp Business hides them from customers too). */
+  async catalog(consumer: ConsumerRow, kode: string, setelah: string | null) {
+    const device = await this.engineDevice(consumer, kode);
+    let page;
+    try {
+      page = await this.provider(device).listCatalog(device, setelah);
+    } catch (error) {
+      throw engineError(error);
+    }
+    const own = this.ingest ? await this.ingest.ownPhone(this.pool, device.id) : null;
+    const items = page.products.filter((p) => !p.hidden).map((p) => {
+      if (p.imageUrl) this.imageUrls.set(p.id, { url: p.imageUrl, deviceId: device.id });
+      return {
+        id: p.id,
+        nama: p.name,
+        deskripsi: p.description || null,
+        // WhatsApp keeps prices in thousandths of the currency.
+        harga: p.price === null ? null : Math.round(p.price / 1000),
+        mata_uang: p.currency,
+        url: p.url,
+        ada_gambar: Boolean(p.imageUrl),
+        tautan: own ? `https://wa.me/p/${encodeURIComponent(p.id)}/${own}` : null,
+      };
+    });
+    if (this.imageUrls.size > 5000) this.imageUrls.clear();
+    return { items, setelah: page.nextCursor };
+  }
+
+  /** The first image of a product listed before, fetched from WhatsApp's CDN; 404 when unknown or gone. */
+  async catalogImage(consumer: ConsumerRow, kode: string, productId: string): Promise<{ data: Buffer; mime: string }> {
+    const device = await this.conversations.ownedDevice(consumer, kode);
+    const known = this.imageUrls.get(productId);
+    if (!known || known.deviceId !== device.id) throw new KirimApiError(404, "not_found", "Gambar produk tidak tersedia.");
+    let url: URL;
+    try {
+      url = new URL(known.url);
+    } catch {
+      throw new KirimApiError(404, "not_found", "Gambar produk tidak tersedia.");
+    }
+    if (url.protocol !== "https:" || !IMAGE_HOSTS.test(url.hostname)) throw new KirimApiError(404, "not_found", "Gambar produk tidak tersedia.");
+    const response = await (this.options.fetchImpl ?? fetch)(url, { redirect: "error", signal: AbortSignal.timeout(10_000) }).catch(() => null);
+    if (!response?.ok) throw new KirimApiError(404, "not_found", "Gambar produk tidak tersedia.");
+    const data = Buffer.from(await response.arrayBuffer());
+    const mime = response.headers.get("content-type") ?? "image/jpeg";
+    if (data.length === 0 || data.length > MAX_IMAGE_BYTES || !mime.startsWith("image/")) {
+      throw new KirimApiError(404, "not_found", "Gambar produk tidak tersedia.");
+    }
+    return { data, mime };
+  }
+
+  private async engineDevice(consumer: ConsumerRow, kode: string): Promise<DeviceRow> {
+    const device = await this.conversations.ownedDevice(consumer, kode);
+    if (device.status === "nonaktif") throw new KirimApiError(422, "device_inactive", "Nomor tidak aktif.");
+    return device;
+  }
+
+  private provider(device: DeviceRow): KirimProvider {
+    const provider = this.providers[device.provider];
+    if (!provider) throw new KirimApiError(503, "engine_unavailable", "Mesin WhatsApp tidak tersedia.");
+    return provider;
+  }
+
+  private async audit(consumer: ConsumerRow, device: DeviceRow, aksi: string, waId: string, atasNama: AtasNama) {
+    await writeAudit(this.pool, {
+      actorKind: "service",
+      actorRef: consumer.clientId,
+      aksi,
+      objekJenis: "balasan_cepat",
+      objekRef: `${device.kode}:${waId}`,
+      metadata: { device: device.kode },
+      atasNama: atasNamaRef(atasNama),
+    });
+  }
+}
+
+function engineError(error: unknown): Error {
+  if (!(error instanceof ProviderOperationError)) return error as Error;
+  if (error.code === "engine_rejected" || error.code === "device_not_found") {
+    return new KirimApiError(422, "engine_rejected", "WhatsApp menolak permintaan ini (nomor ini bukan WhatsApp Business, atau mesinnya belum mendukung).");
+  }
+  return new KirimApiError(503, "engine_unavailable", "Mesin WhatsApp tidak tersedia atau nomor tidak tersambung.");
+}

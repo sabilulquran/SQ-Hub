@@ -40,6 +40,9 @@ export class JalurPesanStub {
   readonly tenants = new Map<string, StubTenant>();
   /** §9.7: the next settings change is refused as WhatsApp does for a number that is not admin. */
   refuseNextSetting = false;
+  /** §11: WhatsApp Business quick replies and catalog per tenant. */
+  readonly quickReplies = new Map<string, Array<{ waId: string; shortcut: string; message: string; deleted: boolean; updatedAt: string }>>();
+  readonly catalog = new Map<string, Array<Record<string, unknown>>>();
   readonly sendsByKey = new Map<string, number>();
   readonly messageIdByKey = new Map<string, string>();
   readonly requests: Array<{ method: string; path: string; idempotencyKey: string | null; body: string }> = [];
@@ -271,6 +274,30 @@ export class JalurPesanStub {
       const group: StubGroup = { id: `1203639${String(Date.now()).slice(-8)}@g.us`, subject: body.subject, size: own.length + joined.length, participants: [...own, ...joined] };
       this.groups.set(tenantId, [...(this.groups.get(tenantId) ?? []), group]);
       return { status: 201, body: { success: true, group } };
+    }
+    if (path === "/quick-replies" && request.method === "GET") {
+      return { status: 200, body: { success: true, quickReplies: this.quickReplies.get(tenantId) ?? [] } };
+    }
+    const qr = /^\/quick-replies\/([^/]+)$/.exec(path);
+    if (qr) {
+      const list = this.quickReplies.get(tenantId) ?? [];
+      this.quickReplies.set(tenantId, list);
+      const body = raw.length ? (JSON.parse(raw.toString("utf8")) as Record<string, unknown>) : {};
+      const id = decodeURIComponent(qr[1]!) === "baru" ? `qr-${list.length + 1}` : decodeURIComponent(qr[1]!);
+      const found = list.find((q) => q.waId === id);
+      const now = new Date().toISOString();
+      if (request.method === "PUT") {
+        if (found) Object.assign(found, { shortcut: String(body.shortcut), message: String(body.message), deleted: false, updatedAt: now });
+        else list.push({ waId: id, shortcut: String(body.shortcut), message: String(body.message), deleted: false, updatedAt: now });
+        return { status: 200, body: { success: true, waId: id } };
+      }
+      if (request.method === "DELETE") {
+        if (found) Object.assign(found, { deleted: true, updatedAt: now });
+        return { status: 200, body: { success: true } };
+      }
+    }
+    if (path === "/catalog" && request.method === "GET") {
+      return { status: 200, body: { success: true, products: this.catalog.get(tenantId) ?? [], nextCursor: null } };
     }
     const parity = /^\/groups\/([^/]+)(?:\/(settings|requests|picture|leave))?$/.exec(path);
     if (parity && (parity[2] || request.method === "GET")) {

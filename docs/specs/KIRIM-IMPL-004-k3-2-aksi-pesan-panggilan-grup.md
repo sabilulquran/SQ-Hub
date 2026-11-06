@@ -429,6 +429,28 @@ Urutan 1→2 tidak wajib: Kirim SQ K3.2 di atas mesin lama tetap berjalan (event
 - Worker mengunggahnya ke mesin dengan `type=sticker`; JalurPesan mengirimnya sebagai stiker WhatsApp. Tidak perlu perubahan mesin.
 - Stiker yang tersalin juga bisa diteruskan (§5.2).
 
+## 17. WhatsApp Business: balasan cepat dan katalog (adendum 2026-11-06, SPMB-IMPL-005 §31)
+
+Keputusan owner 2026-11-06: balasan cepat disinkronkan dua arah dengan WhatsApp Business di HP, dan katalog memakai katalog WhatsApp Business yang asli, bukan modul katalog sendiri.
+
+**Mesin (JalurPesan, migration v23 `whatsapp_quick_replies`).** Baileys tidak punya event balasan cepat. Mesin menangkap aksi app-state `quick_reply` dari trace logger, lalu menyimpan per perangkat: `wa_id`, pintasan, pesan, `deleted`, dan `updated_at`. Mesin menulis lewat `addOrEditQuickReply`/`removeQuickReply`, dan membaca katalog lewat `getCatalog` (harga dalam per-seribu mata uang).
+
+**Kirim SQ (tanpa tabel baru).** Mesin adalah salinannya, dan Kirim hanya meneruskan:
+
+| Rute | Isi |
+| --- | --- |
+| `GET /devices/:kode/balasan-cepat` | `items[]`: `wa_id`, `shortcut`, `pesan`, `dihapus`, `diubah_at`. Yang dihapus di HP tetap muncul dengan `dihapus: true`, agar modul bisa ikut menonaktifkan |
+| `PATCH /devices/:kode/balasan-cepat/:waId` | `waId` bernilai `baru` untuk menambah. Body `shortcut` (1–25 karakter tanpa spasi, `/` di depan dibuang), `pesan` (1–4096), `atas_nama`. Jawaban `{ wa_id }`. Audit `balasan_cepat.tambah`/`ubah` |
+| `POST /devices/:kode/balasan-cepat/:waId/hapus` | Body `atas_nama`. Audit `balasan_cepat.hapus` |
+| `GET /devices/:kode/katalog?setelah=` | Satu halaman, maks. 100 produk. Produk tersembunyi tidak ikut. Tiap produk berisi `id`, `nama`, `deskripsi`, `harga` (satuan mata uang), `mata_uang`, `url`, `ada_gambar`, `tautan` (`https://wa.me/p/<id>/<nomor sendiri>`). Ada juga kursor `setelah` |
+| `GET /devices/:kode/katalog/:id/gambar` | Gambar pertama produk yang sudah tercantum di daftar. Hanya https dari CDN WhatsApp (`whatsapp.net`, `fbcdn.net`, `fbsbx.com`), tanpa redirect, maks. 2 MiB, `image/*`. Selain itu `404`. URL tidak pernah diambil dari pemanggil |
+
+Semua rute hanya untuk nomor milik modul pemanggil (`403` bagi modul lain). Nomor nonaktif mendapat `422 device_inactive`. Bila WhatsApp atau mesin menolak (misalnya nomor bukan WhatsApp Business), jawabannya `422 engine_rejected`. Bila mesin tidak tersambung, `503`.
+
+**Privasi.** Audit memuat kode nomor dan `wa_id` saja, tanpa pintasan atau isi. Log tidak memuat isi.
+
+**Mengirim produk.** Modul mengirim `tautan` sebagai pesan teks biasa, dan WhatsApp menampilkannya sebagai kartu produk. Tidak ada jenis pesan baru.
+
 ## 15. Keputusan yang diambil agent (`DRAFT`, dilaporkan ke owner)
 
 | # | Topik | Keputusan |
@@ -443,6 +465,8 @@ Urutan 1→2 tidak wajib: Kirim SQ K3.2 di atas mesin lama tetap berjalan (event
 | A-8 | Batas penambahan | Menghitung setiap nomor yang ditawarkan ke WhatsApp, termasuk yang ditolak privasi; permintaan yang melebihi sisa ditolak utuh (`429`) dengan `sisa` |
 | A-9 | Keluarkan anggota | `POST …/participants/keluarkan` dengan body, bukan nomor di path |
 | A-10 | Foto profil | Hanya chat aktif 30 hari, 25+25 per nomor per jam, cache modul 1 hari |
+| A-11 | Katalog | Hanya dibaca. Produk dikelola di aplikasi WhatsApp Business dan dikirim sebagai tautan `wa.me/p` (§17) |
+| A-12 | Balasan cepat dari HP sebelum mesin v23 | Belum diketahui mesin sampai HP mengubahnya lagi atau sinkron app-state ulang. Tidak ada impor paksa |
 
 ## Riwayat
 
@@ -451,3 +475,4 @@ Urutan 1→2 tidak wajib: Kirim SQ K3.2 di atas mesin lama tetap berjalan (event
 | 2026-11-05 | Dibuat dan dibangun bersama kontrak mesin JalurPesan K3.2, termasuk adendum: `fromMe`/`revision` pada `call.logged`, dan edit/hapus hanya dari penulis pesan |
 | 2026-11-05 | Review independen: audit dan petugas tetap tercatat bila pantulan mesin datang lebih dulu (§5.6). Tindak lanjut `TBD`: kunci idempotensi buat grup saat mesin timeout, kutipan/reaksi masuk dicocokkan per chat (bukan per nomor), ganti nama+deskripsi sebagian gagal, berkas foto yatim bila transaksi gagal |
 | 2026-11-05 | `durasi_detik` boleh `null` (panggilan diangkat di HP) |
+| 2026-11-06 | §17 balasan cepat dua arah dan katalog WhatsApp Business |

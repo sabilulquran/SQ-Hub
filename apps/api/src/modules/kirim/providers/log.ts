@@ -13,6 +13,8 @@ import {
   type SendResult,
   type ProviderGroupSettings,
   type ProviderJoinRequest,
+  type ProviderQuickReply,
+  type ProviderCatalogProduct,
 } from "./types.js";
 
 export type KirimLog = (entry: Record<string, unknown>, message: string) => void;
@@ -174,6 +176,22 @@ export class LogProvider implements KirimProvider {
 
   async leaveGroup(): Promise<void> {
     throw new ProviderOperationError("engine_rejected", "log provider has no WhatsApp groups");
+  }
+
+  async listQuickReplies(): Promise<ProviderQuickReply[]> {
+    throw new ProviderOperationError("engine_rejected", "log provider has no WhatsApp Business");
+  }
+
+  async upsertQuickReply(): Promise<string> {
+    throw new ProviderOperationError("engine_rejected", "log provider has no WhatsApp Business");
+  }
+
+  async removeQuickReply(): Promise<void> {
+    throw new ProviderOperationError("engine_rejected", "log provider has no WhatsApp Business");
+  }
+
+  async listCatalog(): Promise<{ products: ProviderCatalogProduct[]; nextCursor: string | null }> {
+    throw new ProviderOperationError("engine_rejected", "log provider has no WhatsApp Business");
   }
 }
 
