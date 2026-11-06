@@ -369,6 +369,12 @@ export class JalurPesanProvider implements KirimProvider {
     if (response.status !== 200) throw this.lifecycleError(response);
   }
 
+  async resyncQuickReplies(device: DeviceRef): Promise<boolean> {
+    const response = await this.lifecycle("POST", device, "/quick-replies/resync");
+    if (response.status !== 200) throw this.lifecycleError(response);
+    return response.body.resynced === true;
+  }
+
   async listCatalog(device: DeviceRef, cursor: string | null): Promise<{ products: ProviderCatalogProduct[]; nextCursor: string | null }> {
     const response = await this.lifecycle("GET", device, `/catalog${cursor ? `?cursor=${encodeURIComponent(cursor)}` : ""}`);
     if (response.status !== 200 || !Array.isArray(response.body.products)) throw this.lifecycleError(response);

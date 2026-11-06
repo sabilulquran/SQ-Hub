@@ -80,6 +80,22 @@ export class KirimBusiness {
     return { ok: true };
   }
 
+  /**
+   * Has the engine read the phone's quick replies again: WhatsApp only sends changes, so those made before the engine
+   * listened appear only after this. At most once per five minutes per number (`dibaca_ulang: false` when skipped).
+   */
+  async resyncQuickReplies(consumer: ConsumerRow, kode: string, atasNama: AtasNama) {
+    const device = await this.engineDevice(consumer, kode);
+    let done: boolean;
+    try {
+      done = await this.provider(device).resyncQuickReplies(device);
+    } catch (error) {
+      throw engineError(error);
+    }
+    if (done) await this.audit(consumer, device, "balasan_cepat.baca_ulang", "semua", atasNama);
+    return { dibaca_ulang: done };
+  }
+
   /** One page of the catalog; hidden products are left out (WhatsApp Business hides them from customers too). */
   async catalog(consumer: ConsumerRow, kode: string, setelah: string | null) {
     const device = await this.engineDevice(consumer, kode);
