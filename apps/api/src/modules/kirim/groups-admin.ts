@@ -57,7 +57,11 @@ export const settingsSchema = z
   })
   .strict()
   .refine((body) => SETTING_KEYS.some((key) => body[key] !== undefined), { message: "send at least one setting" });
-export const joinAnswerSchema = z.object({ nomor: nomorList, setujui: z.boolean(), atas_nama: atasNamaSchema }).strict();
+/** By number, or by the `ref` a listed request carries (the only handle for a requester WhatsApp knows by LID alone). */
+export const joinAnswerSchema = z
+  .object({ nomor: nomorList.optional(), ref: z.array(z.string().min(16).max(400)).min(1).max(100).optional(), setujui: z.boolean(), atas_nama: atasNamaSchema })
+  .strict()
+  .refine((body) => body.nomor !== undefined || body.ref !== undefined, { message: "send nomor or ref" });
 /** A JPEG of at most 1 MB as base64 (WhatsApp shrinks it to 640 px itself). */
 export const pictureSchema = z.object({ gambar: z.string().min(8).max(1_400_000), atas_nama: atasNamaSchema }).strict();
 
@@ -301,12 +305,21 @@ export class KirimGroupAdmin {
     if (input.hanya_admin_ubah_info !== undefined) changes.push(input.hanya_admin_ubah_info ? "locked" : "unlocked");
     if (input.semua_boleh_tambah !== undefined) changes.push(input.semua_boleh_tambah ? "member_add_all" : "member_add_admin");
     if (input.perlu_persetujuan !== undefined) changes.push(input.perlu_persetujuan ? "approval_on" : "approval_off");
+    const applied: ProviderGroupSetting[] = [];
     try {
-      for (const change of changes) await provider.setGroupSetting(device, jid, change);
+      for (const change of changes) {
+        await provider.setGroupSetting(device, jid, change);
+        applied.push(change);
+      }
     } catch (error) {
       throw this.engineError(error, group.nomorIniAdmin);
+    } finally {
+      // What is live in WhatsApp is audited, also when a later change was refused.
+      if (applied.length) {
+        await this.audit(this.pool, consumer, "grup.setelan", group.id, device, input.atas_nama,
+          { setelan: applied, ...(applied.length < changes.length ? { gagal_pada: changes[applied.length] } : {}) });
+      }
     }
-    await this.audit(this.pool, consumer, "grup.setelan", group.id, device, input.atas_nama, { setelan: changes });
     return this.settings(consumer, groupId);
   }
 
@@ -322,25 +335,45 @@ export class KirimGroupAdmin {
     return {
       items: requests.map((request) => {
         const pn = [request.phoneJid, request.jid].map((value) => (value ? contactFromJid(value) : null)).find((contact) => contact?.jenis === "pn");
-        return { nomor: pn ? pn.canonical.slice(3) : null, diminta_at: request.requestedAt };
+        return { nomor: pn ? pn.canonical.slice(3) : null, diminta_at: request.requestedAt, ref: this.crypto.seal(request.jid, joinRequestAad(group.id)) };
       }),
     };
   }
 
   async answerJoinRequests(consumer: ConsumerRow, groupId: string, input: z.infer<typeof joinAnswerSchema>) {
     const { group, device, jid } = await this.owned(consumer, groupId);
-    const members = this.normalizeAll(input.nomor);
+    const provider = this.provider(device);
+    // A number, or the requesting JID behind a listed `ref` (sealed for this group, so it cannot name another one).
+    const targets: Array<{ nomor: string | null; digits: string }> = [
+      ...this.normalizeAll(input.nomor ?? []).map((member) => ({ nomor: member.nomor, digits: member.digits })),
+      ...(input.ref ?? []).map((ref) => {
+        let requester: string;
+        try {
+          requester = this.crypto.open(ref, joinRequestAad(group.id));
+        } catch {
+          throw new KirimApiError(422, "invalid_ref", "Permintaan tidak dikenal; muat ulang daftarnya.");
+        }
+        const contact = contactFromJid(requester);
+        return { nomor: contact?.jenis === "pn" ? contact.canonical.slice(3) : null, digits: requester };
+      }),
+    ];
     let updates: ParticipantUpdate[];
     try {
-      updates = await this.provider(device).answerJoinRequests(device, jid, members.map((member) => member.digits), input.setujui);
+      updates = await provider.answerJoinRequests(device, jid, targets.map((target) => target.digits), input.setujui);
     } catch (error) {
       throw this.engineError(error, group.nomorIniAdmin);
     }
-    const results = members.map((member, index): MemberResult => {
-      const update = this.updateFor(member, index, members.length, updates);
-      return { nomor: member.nomor, status: update?.status === "200" ? (input.setujui ? "disetujui" : "ditolak") : "gagal", perlu_undangan: false, kode_whatsapp: update?.status ?? null };
+    const results = targets.map((target, index): MemberResult => {
+      const update = updates.find((item) => item.jid === target.digits || item.jid.startsWith(`${target.digits}@`) || item.jid.startsWith(`${target.digits}:`))
+        ?? (updates.length === targets.length ? updates[index] : undefined);
+      return { nomor: target.nomor ?? "", status: update?.status === "200" ? (input.setujui ? "disetujui" : "ditolak") : "gagal", perlu_undangan: false, kode_whatsapp: update?.status ?? null };
     });
-    await this.audit(this.pool, consumer, input.setujui ? "grup.permintaan_setujui" : "grup.permintaan_tolak", group.id, device, input.atas_nama, counts(results));
+    // The approved are members now: stored at once, like after an addition.
+    const fresh = input.setujui ? await provider.groupInfo(device, jid).catch(() => null) : null;
+    await withTransaction(this.pool, async (client) => {
+      if (fresh) await this.storeGroup(client, device, fresh);
+      await this.audit(client, consumer, input.setujui ? "grup.permintaan_setujui" : "grup.permintaan_tolak", group.id, device, input.atas_nama, counts(results));
+    });
     return { anggota: results };
   }
 
@@ -370,7 +403,8 @@ export class KirimGroupAdmin {
     try {
       await this.provider(device).leaveGroup(device, jid);
     } catch (error) {
-      throw this.engineError(error, true);
+      // Already out of the group (left on the phone, or removed): record it as left.
+      if (!(error instanceof ProviderOperationError && error.code === "group_not_found")) throw this.engineError(error, true);
     }
     await withTransaction(this.pool, async (client) => {
       await client.query("UPDATE kirim_groups SET keluar_at = now() WHERE id = $1 AND keluar_at IS NULL", [group.id]);
@@ -544,6 +578,7 @@ export class KirimGroupAdmin {
     if (!(error instanceof ProviderOperationError)) return error as Error;
     this.options.log?.({ event: "kirim.group.failed", code: error.code }, "kirim group action refused by the engine");
     if (error.code === "group_not_found") return new KirimApiError(409, "group_unavailable", "Nomor ini sudah bukan anggota grup itu.");
+    if (error.code === "not_group_admin") return new KirimApiError(409, "not_group_admin", "Nomor ini bukan admin grup itu.");
     if (error.code === "engine_rejected" && !isAdmin) return new KirimApiError(409, "not_group_admin", "Nomor ini bukan admin grup itu.");
     if (error.code === "engine_rejected") return new KirimApiError(422, "engine_rejected", "WhatsApp menolak permintaan ini.");
     return new KirimApiError(503, "engine_unavailable", "Mesin WhatsApp tidak tersedia atau nomor tidak tersambung.");
@@ -560,6 +595,11 @@ export class KirimGroupAdmin {
       atasNama: atasNamaRef(atasNama),
     });
   }
+}
+
+/** AAD of a join-request ref: bound to the group, so a ref from one group never answers another. */
+function joinRequestAad(groupId: string): string {
+  return `kirim_groups:permintaan:${groupId}`;
 }
 
 /** The four settings under the names the module uses; null where WhatsApp did not say. */

@@ -362,13 +362,13 @@ Permintaan owner: "fitur admin grup pastikan lengkap seperti di WA asli". Semua 
 | `POST /groups/:id/admin` | `{ nomor[], jadikan, atas_nama }` | `{ grup, anggota[] }`; status `dijadikan_admin`, `dicabut_admin`, `bukan_anggota`, atau `gagal` | `grup.admin_jadikan` / `grup.admin_cabut` |
 | `GET /groups/:id/setelan` | (header atas nama) | `{ hanya_admin_kirim, hanya_admin_ubah_info, semua_boleh_tambah, perlu_persetujuan }`; `null` bila WhatsApp tidak menyebut | — |
 | `PATCH /groups/:id/setelan` | sebagian dari empat kunci itu + `atas_nama` (minimal satu kunci) | setelan terbaru | `grup.setelan` (daftar perubahan) |
-| `GET /groups/:id/permintaan` | — | `{ items: [{ nomor, diminta_at }] }`; nomor `null` bila hanya dikenal lewat LID | — |
-| `POST /groups/:id/permintaan` | `{ nomor[], setujui, atas_nama }` | `{ anggota[] }`; status `disetujui`, `ditolak`, atau `gagal` | `grup.permintaan_setujui` / `grup.permintaan_tolak` |
+| `GET /groups/:id/permintaan` | — | `{ items: [{ nomor, diminta_at, ref }] }`; nomor `null` bila hanya dikenal lewat LID. `ref` adalah JID peminta yang disegel khusus untuk grup itu | — |
+| `POST /groups/:id/permintaan` | `{ nomor[] dan/atau ref[], setujui, atas_nama }`; `ref` dari grup lain menghasilkan `422 invalid_ref`. Yang disetujui langsung tersimpan sebagai anggota | `{ anggota[] }`; status `disetujui`, `ditolak`, atau `gagal` | `grup.permintaan_setujui` / `grup.permintaan_tolak` |
 | `POST /groups/:id/foto` | `{ gambar (JPEG base64, ≤ 1 MB), atas_nama }` | item grup; salinan foto di Kirim langsung diganti | `grup.foto_ganti` |
 | `POST /groups/:id/foto/hapus` | `{ atas_nama }` | item grup | `grup.foto_hapus` |
-| `POST /groups/:id/keluar` | `{ atas_nama }` | `{ ok: true }`; `keluar_at` diisi, grup tetap ada di riwayat | `grup.keluar` |
+| `POST /groups/:id/keluar` | `{ atas_nama }` | `{ ok: true }`; `keluar_at` diisi, grup tetap ada di riwayat. Jika nomor sudah keluar lebih dulu, tetap dicatat keluar | `grup.keluar` |
 
-Foto selain JPEG, atau lebih dari 1 MB, ditolak dengan `422 picture_invalid`; aplikasi CS mengirim JPEG. Rute-rute ini memakai JalurPesan PR #22: `settings` di metadata, nilai setelan `member_add_*`/`approval_*`, `…/requests`, dan `…/picture`.
+Foto selain JPEG, atau lebih dari 1 MB, ditolak dengan `422 picture_invalid`. Batas body rute ini 2 MB, sehingga JPEG 1 MB dalam bentuk base64 tetap muat. Aplikasi CS mengirim JPEG 640 px. Bila WhatsApp menolak karena nomor ini bukan admin, JalurPesan menjawab `403 not_group_admin` dan Kirim meneruskannya sebagai `409 not_group_admin`. Pada perubahan setelan bertahap, setelan yang sudah berlaku tetap diaudit, dengan `gagal_pada` untuk perubahan yang ditolak. Rute-rute ini memakai JalurPesan PR #22: `settings` di metadata, nilai setelan `member_add_*`/`approval_*`, `…/requests`, dan `…/picture`.
 
 ## 10. Grup bersama
 

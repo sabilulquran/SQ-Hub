@@ -298,8 +298,9 @@ function registerConversationRoutes(
     body: B,
     handler: (consumer: ConsumerRow, params: Record<string, string>, body: z.infer<B>, request: FastifyRequest, reply: FastifyReply) => Promise<unknown>,
     method: "POST" | "PATCH" = "POST",
+    options: { bodyLimit?: number } = {},
   ) {
-    scope.route<Params>({ method, url: path, handler: async (request, reply) => {
+    scope.route<Params>({ method, url: path, ...options, handler: async (request, reply) => {
       const consumer = await authenticate(request, reply);
       if (!consumer) return reply;
       const parsed = body.safeParse(request.body);
@@ -472,9 +473,10 @@ function registerConversationRoutes(
     write("/groups/:id/permintaan", joinAnswerSchema, async (consumer, params, body, _request, reply) =>
       reply.send(await groupAdmin.answerJoinRequests(consumer, params.id!, body)),
     );
+    // A 1 MB JPEG is about 1.4 MB as base64.
     write("/groups/:id/foto", pictureSchema, async (consumer, params, body, _request, reply) =>
       reply.send(await groupAdmin.setPicture(consumer, params.id!, body)),
-    );
+    "POST", { bodyLimit: 2 * 1024 * 1024 });
     write("/groups/:id/foto/hapus", inviteRevokeSchema, async (consumer, params, body, _request, reply) =>
       reply.send(await groupAdmin.setPicture(consumer, params.id!, { gambar: null, atas_nama: body.atas_nama })),
     );

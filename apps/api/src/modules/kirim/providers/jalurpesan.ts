@@ -295,6 +295,12 @@ export class JalurPesanProvider implements KirimProvider {
     return readGroupSettings((response.body.group as Record<string, unknown>).settings);
   }
 
+  async groupInfo(device: DeviceRef, groupJid: string): Promise<ProviderGroup | null> {
+    const response = await this.lifecycle("GET", device, `/groups/${encodeURIComponent(groupJid)}`);
+    if (response.status !== 200) throw this.groupError(response);
+    return readGroup(response.body.group);
+  }
+
   async setGroupSetting(device: DeviceRef, groupJid: string, setting: ProviderGroupSetting): Promise<void> {
     const response = await this.lifecycle("POST", device, `/groups/${encodeURIComponent(groupJid)}/settings`, { setting });
     if (response.status !== 200) throw this.groupError(response);
@@ -344,6 +350,10 @@ export class JalurPesanProvider implements KirimProvider {
       return new ProviderOperationError("group_not_found", "WhatsApp group not found for this device");
     }
     if (response.status === 503) return new ProviderOperationError("not_connected", "WhatsApp is not connected");
+    // JalurPesan #22: WhatsApp refused because this number is not an admin of the group.
+    if (response.status === 403 && response.body.code === "not_group_admin") {
+      return new ProviderOperationError("not_group_admin", "this number is not an admin of the group");
+    }
     return this.lifecycleError(response);
   }
 
@@ -660,7 +670,6 @@ export function mapActionResponse(response: EngineResponse): ActionResult {
   return { ok: false, code: "engine_rejected" };
 }
 
-/** One engine group (`GET /groups`, `POST /groups`, participant updates), read defensively. */
 /** JalurPesan `settings` of a group; anything unreadable is null. */
 export function readGroupSettings(value: unknown): ProviderGroupSettings {
   const settings = value && typeof value === "object" ? (value as Record<string, unknown>) : {};
@@ -668,6 +677,7 @@ export function readGroupSettings(value: unknown): ProviderGroupSettings {
   return { announce: flag("announce"), restrict: flag("restrict"), memberAddMode: flag("memberAddMode"), joinApprovalMode: flag("joinApprovalMode") };
 }
 
+/** One engine group (`GET /groups`, `POST /groups`, participant updates), read defensively. */
 export function readGroup(value: unknown): ProviderGroup | null {
   if (!value || typeof value !== "object") return null;
   const group = value as Record<string, unknown>;

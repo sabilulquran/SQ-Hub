@@ -202,6 +202,7 @@ export class ProviderOperationError extends Error {
       | "device_not_found"
       | "session_reset_required"
       | "group_not_found"
+      | "not_group_admin"
       | "not_connected",
     message: string,
   ) {
@@ -244,6 +245,8 @@ export interface KirimProvider {
   ): Promise<{ updates: ParticipantUpdate[]; group: ProviderGroup | null }>;
   /** KIRIM-IMPL-004 §9.7: settings, join requests, photo and leaving, for admin parity with WhatsApp. */
   groupSettings(device: DeviceRef, groupJid: string): Promise<ProviderGroupSettings>;
+  /** The group as the engine has it now (members and admins), to store right after a change. */
+  groupInfo(device: DeviceRef, groupJid: string): Promise<ProviderGroup | null>;
   setGroupSetting(device: DeviceRef, groupJid: string, setting: ProviderGroupSetting): Promise<void>;
   groupJoinRequests(device: DeviceRef, groupJid: string): Promise<ProviderJoinRequest[]>;
   answerJoinRequests(device: DeviceRef, groupJid: string, participants: string[], approve: boolean): Promise<ParticipantUpdate[]>;

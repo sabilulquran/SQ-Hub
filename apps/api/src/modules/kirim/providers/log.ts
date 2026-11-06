@@ -152,6 +152,10 @@ export class LogProvider implements KirimProvider {
     throw new ProviderOperationError("engine_rejected", "log provider has no WhatsApp groups");
   }
 
+  async groupInfo(): Promise<ProviderGroup | null> {
+    throw new ProviderOperationError("engine_rejected", "log provider has no WhatsApp groups");
+  }
+
   async setGroupSetting(): Promise<void> {
     throw new ProviderOperationError("engine_rejected", "log provider has no WhatsApp groups");
   }

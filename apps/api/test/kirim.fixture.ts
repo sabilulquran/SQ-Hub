@@ -38,6 +38,8 @@ export interface StubGroup {
 
 export class JalurPesanStub {
   readonly tenants = new Map<string, StubTenant>();
+  /** §9.7: the next settings change is refused as WhatsApp does for a number that is not admin. */
+  refuseNextSetting = false;
   readonly sendsByKey = new Map<string, number>();
   readonly messageIdByKey = new Map<string, string>();
   readonly requests: Array<{ method: string; path: string; idempotencyKey: string | null; body: string }> = [];
@@ -286,17 +288,24 @@ export class JalurPesanStub {
         };
         const change = map[String(body.setting)];
         if (!change) return { status: 400, body: { success: false } };
+        if (this.refuseNextSetting) {
+          this.refuseNextSetting = false;
+          return { status: 403, body: { success: false, code: "not_group_admin" } };
+        }
         group.settings[change[0]] = change[1];
         return { status: 200, body: { success: true } };
       }
       if (parity[2] === "requests" && request.method === "GET") return { status: 200, body: { success: true, requests: group.requests ?? [] } };
       if (parity[2] === "requests") {
-        const updates = (body.participants as string[]).map((digits) => {
-          const index = (group.requests ?? []).findIndex((item) => item.jid.startsWith(`${digits}@`));
-          if (index < 0) return { jid: `${digits}@s.whatsapp.net`, status: "404" };
+        const updates = (body.participants as string[]).map((value) => {
+          // Digits or a full JID (a LID requester is answered by the JID the list gave).
+          const requester = value.includes("@") ? value : `${value}@s.whatsapp.net`;
+          const index = (group.requests ?? []).findIndex((item) => item.jid === requester);
+          if (index < 0) return { jid: requester, status: "404" };
           group.requests!.splice(index, 1);
-          if (body.action === "approve") group.participants.push({ jid: `${digits}@s.whatsapp.net`, admin: null, phoneJid: null, lidJid: null });
-          return { jid: `${digits}@s.whatsapp.net`, status: "200" };
+          if (body.action === "approve") group.participants.push({ jid: requester, admin: null, phoneJid: null, lidJid: null });
+          group.size = group.participants.length;
+          return { jid: requester, status: "200" };
         });
         return { status: 200, body: { success: true, updates } };
       }
@@ -305,6 +314,7 @@ export class JalurPesanStub {
         return { status: 200, body: { success: true } };
       }
       if (parity[2] === "leave") {
+        if (group.left) return { status: 404, body: { success: false, error: "WhatsApp group not found for this device" } };
         group.left = true;
         return { status: 200, body: { success: true } };
       }
