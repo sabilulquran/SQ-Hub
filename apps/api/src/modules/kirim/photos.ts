@@ -21,6 +21,11 @@ import type { KirimService } from "./service.js";
 export const PHOTO_MAX_AGE_DAYS = 7;
 const ACTIVE_WITHIN_DAYS = 30;
 const PER_DEVICE_PER_ROUND = 25;
+/**
+ * A photo asked for but never fetched (an old or imported chat outside the 30-day refresh) is fetched at once, at most
+ * this many per minute over all numbers, so a long contact list never bursts the engine (owner 2026-11-06).
+ */
+const ON_DEMAND_PER_MINUTE = 60;
 /** The module may cache the photo this long; the refresh interval is a week anyway. */
 export const PHOTO_CACHE_SECONDS = 86_400;
 const JPEG_MAGIC = Buffer.from([0xff, 0xd8, 0xff]);
@@ -40,6 +45,9 @@ export class KirimProfilePhotos {
     private readonly provider: KirimProvider | undefined,
     private readonly options: { log?: KirimLog } = {},
   ) {}
+
+  private onDemand = { windowStart: 0, count: 0 };
+  private readonly inFlight = new Map<string, Promise<void>>();
 
   /** Timer in module.ts. Errors are logged without contact data and retried next round. */
   async runOnce(): Promise<{ fetched: number }> {
@@ -75,6 +83,64 @@ export class KirimProfilePhotos {
       fetched += 1;
     }
     return fetched;
+  }
+
+  /** One subject's photo now (see ON_DEMAND_PER_MINUTE); false when it was not tried (limit, engine down, no route). */
+  private async fetchNow(kind: "conversation" | "group", id: string): Promise<boolean> {
+    if (!this.provider) return false;
+    const running = this.inFlight.get(id);
+    if (running) {
+      await running;
+      return true;
+    }
+    const now = Date.now();
+    if (now - this.onDemand.windowStart >= 60_000) this.onDemand = { windowStart: now, count: 0 };
+    if (this.onDemand.count >= ON_DEMAND_PER_MINUTE) return false;
+    this.onDemand.count += 1;
+    const job = (async () => {
+      const found = await this.subjectFor(kind, id);
+      if (!found) return;
+      let data: Buffer | null;
+      try {
+        data = await this.provider!.profilePicture(found.device, found.subject.jid);
+      } catch (error) {
+        const code = error instanceof ProviderOperationError ? error.code : "error";
+        if (code !== "engine_rejected") return; // engine down: asked again next time
+        data = null;
+      }
+      if (data && !data.subarray(0, 3).equals(JPEG_MAGIC)) data = null;
+      await this.store(found.device.id, found.subject, data);
+    })();
+    this.inFlight.set(id, job);
+    try {
+      await job;
+      return true;
+    } catch {
+      return false;
+    } finally {
+      this.inFlight.delete(id);
+    }
+  }
+
+  /** The engine number and the JID to ask for one conversation or group, like the refresh builds them. */
+  private async subjectFor(kind: "conversation" | "group", id: string): Promise<{ device: EngineDevice; subject: Subject } | null> {
+    const table = kind === "conversation" ? "kirim_conversations" : "kirim_groups";
+    const columns = kind === "conversation" ? `t.kontak_enc AS "a", t.kontak_alt_enc AS "b"` : `t.group_jid_enc AS "a", NULL AS "b"`;
+    const result = await this.pool.query<{ a: string; b: string | null; deviceId: string; kode: string; providerRef: string | null; status: string; provider: string }>(
+      `SELECT ${columns}, d.id AS "deviceId", d.kode, d.provider_ref AS "providerRef", d.status, d.provider
+         FROM ${table} t JOIN kirim_devices d ON d.id = t.device_id WHERE t.id = $1`,
+      [id],
+    );
+    const row = result.rows[0];
+    if (!row || row.provider !== "jalurpesan" || row.status !== "tersambung" || !row.providerRef) return null;
+    const device = { id: row.deviceId, kode: row.kode, providerRef: row.providerRef, status: row.status } as EngineDevice;
+    if (kind === "group") {
+      return { device, subject: { kind: "group", id, jid: this.crypto.open(row.a, columnAad("kirim_groups", "group_jid_enc", id)) } };
+    }
+    const own = this.crypto.open(row.a, columnAad("kirim_conversations", "kontak_enc", id));
+    const alt = row.b ? this.crypto.open(row.b, columnAad("kirim_conversations", "kontak_alt_enc", id)) : null;
+    const jid = jidFromCanonical(own.startsWith("pn:") ? own : alt?.startsWith("pn:") ? alt : own);
+    return jid ? { device, subject: { kind: "conversation", id, jid } } : null;
   }
 
   /** Conversations and groups with recent activity whose photo is missing or older than 7 days. */
@@ -141,11 +207,14 @@ export class KirimProfilePhotos {
       ? await this.conversations.ownedConversation(this.pool, consumer, id)
       : await this.conversations.ownedGroup(this.pool, consumer, id);
     const column = kind === "conversation" ? "conversation_id" : "group_id";
-    const row = await this.pool.query<{ fileId: string | null; path: string | null; sha256: string | null }>(
-      `SELECT file_id AS "fileId", path, sha256 FROM kirim_profile_photos WHERE ${column} = $1 AND tersedia`,
+    const select = () => this.pool.query<{ fileId: string | null; path: string | null; sha256: string | null; tersedia: boolean }>(
+      `SELECT file_id AS "fileId", path, sha256, tersedia FROM kirim_profile_photos WHERE ${column} = $1`,
       [owned.id],
     );
-    const photo = row.rows[0];
+    let row = await select();
+    // Never fetched: an old chat the 30-day refresh does not reach. Fetched now, once; "none" is remembered for a week.
+    if (!row.rows[0] && (await this.fetchNow(kind, owned.id))) row = await select();
+    const photo = row.rows[0]?.tersedia ? row.rows[0] : undefined;
     if (!photo?.fileId || !photo.path || !photo.sha256) throw new KirimApiError(404, "foto_tidak_ada", "Foto profil tidak tersedia.");
     return { data: await this.service.readProfilePhoto(photo.fileId, photo.path), etag: `"${photo.sha256.slice(0, 32)}"` };
   }

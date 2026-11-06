@@ -588,6 +588,23 @@ describe("profile photos (§8)", () => {
     expect((await call("GET", `/conversations/${conversationId}/foto`, { client: "hcis-api" })).statusCode).toBe(404);
   });
 
+  it("fetches the photo of an old chat the moment it is asked for, once, and remembers that there is none", async () => {
+    const { conversationId } = await inbound();
+    // Imported months ago: the 30-day refresh never reaches it.
+    await pool.query("UPDATE kirim_conversations SET pesan_terakhir_at = now() - interval '200 days', created_at = now() - interval '200 days'");
+    stub.profilePictures.set(CONTACT_JID, JPEG);
+    expect((await kirim.photos.runOnce()).fetched).toBe(0);
+    const photo = await call("GET", `/conversations/${conversationId}/foto`);
+    expect(photo.statusCode).toBe(200);
+    expect(photo.rawPayload.equals(JPEG)).toBe(true);
+
+    // No photo: 404, and the "none" is kept, so the engine is not asked on every view.
+    stub.profilePictures.delete(CONTACT_JID);
+    await pool.query("DELETE FROM kirim_profile_photos");
+    expect((await call("GET", `/conversations/${conversationId}/foto`)).statusCode).toBe(404);
+    expect((await pool.query("SELECT tersedia FROM kirim_profile_photos WHERE conversation_id = $1", [conversationId])).rows).toEqual([{ tersedia: false }]);
+  });
+
   it("stops the round without marking anything when the engine has no photo route", async () => {
     await inbound();
     stub.profilePictureRoute = false;
