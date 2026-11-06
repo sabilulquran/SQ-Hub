@@ -56,6 +56,8 @@ export interface QuotedMessage {
 export interface SendOptions {
   quoted?: QuotedMessage;
   forwarded?: boolean;
+  /** Group members @-mentioned, as JIDs (JalurPesan #23). */
+  mentions?: string[];
 }
 
 export interface ProviderGroupParticipant {

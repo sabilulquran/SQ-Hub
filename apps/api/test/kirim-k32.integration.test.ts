@@ -246,6 +246,19 @@ describe("reply with a quote (§5.1)", () => {
     expect(lastSendBody().quoted).toEqual({ id: "WA-GRUP-1", fromMe: false, participant: "6289999999999@s.whatsapp.net", text: "Besok libur?", messageType: "text" });
   });
 
+  it("turns @<number> of a group member into a WhatsApp mention, and leaves other numbers as text (§9.8)", async () => {
+    await kirim.ingest!.refreshDirectory("groups");
+    const groupId = (await pool.query<{ id: string }>("SELECT id FROM kirim_groups")).rows[0]!.id;
+    // 6281200001111 is a member of the stub group; 6281299999999 is not.
+    expect((await call("POST", `/groups/${groupId}/messages`, { key: "m-1", payload: { text: "Mohon dicek @6281200001111 dan @6281299999999", atas_nama: OFFICER } })).statusCode).toBe(202);
+    await send();
+    expect(lastSendBody().mentions).toEqual(["6281200001111@s.whatsapp.net"]);
+    expect(lastSendBody().message).toBe("Mohon dicek @6281200001111 dan @6281299999999");
+    expect((await call("POST", `/groups/${groupId}/messages`, { key: "m-2", payload: { text: "Tanpa sebutan", atas_nama: OFFICER } })).statusCode).toBe(202);
+    await send();
+    expect(lastSendBody().mentions).toBeUndefined();
+  });
+
   it("refuses a quote from another conversation, of a message WhatsApp does not know, or of a deleted message", async () => {
     const first = await inbound("pesan A");
     const second = await inbound("pesan B", {}, "6281200000002@s.whatsapp.net");

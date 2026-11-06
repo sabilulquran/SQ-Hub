@@ -370,6 +370,10 @@ Permintaan owner: "fitur admin grup pastikan lengkap seperti di WA asli". Semua 
 
 Foto selain JPEG, atau lebih dari 1 MB, ditolak dengan `422 picture_invalid`. Batas body rute ini 2 MB, sehingga JPEG 1 MB dalam bentuk base64 tetap muat. Aplikasi CS mengirim JPEG 640 px. Bila WhatsApp menolak karena nomor ini bukan admin, JalurPesan menjawab `403 not_group_admin` dan Kirim meneruskannya sebagai `409 not_group_admin`. Pada perubahan setelan bertahap, setelan yang sudah berlaku tetap diaudit, dengan `gagal_pada` untuk perubahan yang ditolak. Rute-rute ini memakai JalurPesan PR #22: `settings` di metadata, nilai setelan `member_add_*`/`approval_*`, `…/requests`, dan `…/picture`.
 
+### 9.8 Tag @anggota (2026-11-06)
+
+Kirim tidak menambah kolom maupun kunci API. Saat pesan grup dikirim, worker membaca token `@<digit>` (8–15 digit) dalam teks, maksimal 50. Token yang cocok dengan anggota grup itu, baik lewat nomor (`pn:+…`) maupun LID, dikirim ke JalurPesan sebagai `mentions` (#23). WhatsApp lalu menampilkannya sebagai nama anggota dan memberi notifikasi. Nomor yang bukan anggota tetap menjadi teks biasa. Modul cukup menyisipkan `@<nomor tanpa +>` ke teks, misalnya dari pemilih anggota.
+
 ## 10. Grup bersama
 
 `GET /internal/kirim/conversations/:id/grup-bersama` (header `atas_nama`) → grup nomor ini (belum ditinggalkan) yang juga beranggotakan kontak percakapan itu, dicocokkan pada **kedua** identitas: `kontak_hmac`/`kontak_alt_hmac` percakapan terhadap `member_hmac`/`member_alt_hmac`. Jadi kontak yang tercatat sebagai nomor tetap ditemukan walau di grup ia tercatat sebagai LID, dan sebaliknya, selama mesin atau penyegar kontak mengetahui pasangannya.
