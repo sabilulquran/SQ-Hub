@@ -100,15 +100,21 @@ export class KirimSendWorker {
 
   /**
    * Claims the next due row for one number by priority then age. `notifikasi` outside the WIB
-   * send window is moved to the next window start, or fails as expired if that comes too late.
+   * send window is moved to the next window start, or fails as expired if that comes too late,
+   * unless it answers a message the person sent within the hour before (`replying`).
    */
   private async claim(device: { id: string; mulai: string; selesai: string }): Promise<ClaimedRow | null> {
     return withTransaction(this.pool, async (client) => {
       const now = await dbNow(client);
-      const candidates = await client.query<ClaimedRow & { expiresAt: Date }>(
+      const candidates = await client.query<ClaimedRow & { expiresAt: Date; replying: boolean }>(
         `SELECT o.id AS "outboxId", o.message_id AS "messageId", m.conversation_id AS "conversationId", m.group_id AS "groupId", o.jenis, m.tipe,
                 m.body_enc AS "bodyEnc", m.media_id AS "mediaId", o.attempts, o.expires_at AS "expiresAt",
-                m.quoted_message_id AS "quotedMessageId", m.forwarded
+                m.quoted_message_id AS "quotedMessageId", m.forwarded,
+                (o.jenis = 'notifikasi' AND m.conversation_id IS NOT NULL AND EXISTS (
+                  SELECT 1 FROM kirim_messages i
+                  WHERE i.conversation_id = m.conversation_id AND i.arah = 'masuk' AND NOT i.diimpor
+                    AND i.created_at BETWEEN o.created_at - interval '1 hour' AND o.created_at + interval '1 minute'
+                )) AS replying
          FROM kirim_outbox o JOIN kirim_messages m ON m.id = o.message_id
          WHERE o.device_id = $1 AND o.status = 'antre' AND o.next_attempt_at <= now()
          ORDER BY CASE o.prioritas WHEN 'kode' THEN 0 WHEN 'petugas' THEN 1 WHEN 'tinggi' THEN 2 ELSE 3 END, o.created_at
@@ -117,7 +123,9 @@ export class KirimSendWorker {
         [device.id],
       );
       for (const candidate of candidates.rows) {
-        const decision = windowDecision({ now, jenis: candidate.jenis, start: device.mulai, end: device.selesai, expiresAt: candidate.expiresAt });
+        const decision = windowDecision({
+          now, jenis: candidate.jenis, start: device.mulai, end: device.selesai, expiresAt: candidate.expiresAt, replying: candidate.replying,
+        });
         if (decision.action === "expire") {
           await transitionOutbox(client, this.crypto, { outboxId: candidate.outboxId, fromStatuses: ["antre"], status: "gagal", errorCode: "expired" });
           continue;

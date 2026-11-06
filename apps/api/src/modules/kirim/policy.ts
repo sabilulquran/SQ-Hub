@@ -36,10 +36,15 @@ export function windowDecision(input: {
   start: string;
   end: string;
   expiresAt: Date;
+  /**
+   * The person wrote to this number within the hour before the message was queued: an automatic answer to them
+   * (e.g. the first reply of a module) is a reply, not a notification out of the blue, so it never waits for morning.
+   */
+  replying?: boolean;
 }): WindowDecision {
   if (input.expiresAt.getTime() <= input.now.getTime()) return { action: "expire" };
   // `kode` and officer replies (`percakapan`, KIRIM-IMPL-002 §5.2) ignore the send window.
-  if (input.jenis !== "notifikasi") return { action: "send" };
+  if (input.jenis !== "notifikasi" || input.replying) return { action: "send" };
   const window = sendWindow(input.now, input.start, input.end);
   if (window.open) return { action: "send" };
   if (input.expiresAt.getTime() <= window.nextOpenAt.getTime()) return { action: "expire" };
