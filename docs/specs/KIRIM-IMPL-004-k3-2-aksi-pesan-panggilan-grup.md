@@ -353,6 +353,23 @@ Bentuk ini menggantikan `DELETE …/participants/:nomor` di KIRIM-001 §5.4, sup
 
 Setelah buat, tambah, dan keluarkan, Kirim SQ langsung menyimpan nama, jumlah, admin, dan anggota dari jawaban mesin, tanpa menunggu penyegaran 15 menit.
 
+### 9.7 Kelengkapan admin seperti WhatsApp (2026-11-06)
+
+Permintaan owner: "fitur admin grup pastikan lengkap seperti di WA asli". Semua rute di bawah hanya untuk grup milik nomor modul. Bila nomor ini bukan admin, WhatsApp menolak dan Kirim menjawab `409 not_group_admin`. Audit hanya mencatat jumlah, tidak pernah nomor.
+
+| Rute | Isi | Jawaban | Audit |
+| --- | --- | --- | --- |
+| `POST /groups/:id/admin` | `{ nomor[], jadikan, atas_nama }` | `{ grup, anggota[] }`; status `dijadikan_admin`, `dicabut_admin`, `bukan_anggota`, atau `gagal` | `grup.admin_jadikan` / `grup.admin_cabut` |
+| `GET /groups/:id/setelan` | (header atas nama) | `{ hanya_admin_kirim, hanya_admin_ubah_info, semua_boleh_tambah, perlu_persetujuan }`; `null` bila WhatsApp tidak menyebut | — |
+| `PATCH /groups/:id/setelan` | sebagian dari empat kunci itu + `atas_nama` (minimal satu kunci) | setelan terbaru | `grup.setelan` (daftar perubahan) |
+| `GET /groups/:id/permintaan` | — | `{ items: [{ nomor, diminta_at }] }`; nomor `null` bila hanya dikenal lewat LID | — |
+| `POST /groups/:id/permintaan` | `{ nomor[], setujui, atas_nama }` | `{ anggota[] }`; status `disetujui`, `ditolak`, atau `gagal` | `grup.permintaan_setujui` / `grup.permintaan_tolak` |
+| `POST /groups/:id/foto` | `{ gambar (JPEG base64, ≤ 1 MB), atas_nama }` | item grup; salinan foto di Kirim langsung diganti | `grup.foto_ganti` |
+| `POST /groups/:id/foto/hapus` | `{ atas_nama }` | item grup | `grup.foto_hapus` |
+| `POST /groups/:id/keluar` | `{ atas_nama }` | `{ ok: true }`; `keluar_at` diisi, grup tetap ada di riwayat | `grup.keluar` |
+
+Foto selain JPEG, atau lebih dari 1 MB, ditolak dengan `422 picture_invalid`; aplikasi CS mengirim JPEG. Rute-rute ini memakai JalurPesan PR #22: `settings` di metadata, nilai setelan `member_add_*`/`approval_*`, `…/requests`, dan `…/picture`.
+
 ## 10. Grup bersama
 
 `GET /internal/kirim/conversations/:id/grup-bersama` (header `atas_nama`) → grup nomor ini (belum ditinggalkan) yang juga beranggotakan kontak percakapan itu, dicocokkan pada **kedua** identitas: `kontak_hmac`/`kontak_alt_hmac` percakapan terhadap `member_hmac`/`member_alt_hmac`. Jadi kontak yang tercatat sebagai nomor tetap ditemukan walau di grup ia tercatat sebagai LID, dan sebaliknya, selama mesin atau penyegar kontak mengetahui pasangannya.

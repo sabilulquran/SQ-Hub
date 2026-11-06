@@ -16,7 +16,17 @@ import {
 } from "./conversations.js";
 import { deleteSchema, editSchema, forwardSchema, reactionSchema, type KirimMessageActions } from "./actions.js";
 import { webhookRegistrationSchema, type KirimModuleCards } from "./cards.js";
-import { createGroupSchema, inviteRevokeSchema, participantsSchema, updateGroupSchema, type KirimGroupAdmin } from "./groups-admin.js";
+import {
+  adminSchema,
+  createGroupSchema,
+  inviteRevokeSchema,
+  joinAnswerSchema,
+  participantsSchema,
+  pictureSchema,
+  settingsSchema,
+  updateGroupSchema,
+  type KirimGroupAdmin,
+} from "./groups-admin.js";
 import { PHOTO_CACHE_SECONDS, type KirimProfilePhotos } from "./photos.js";
 import { verifyJalurPesanSignature } from "./crypto.js";
 import type { KirimIngest } from "./ingest.js";
@@ -444,6 +454,33 @@ function registerConversationRoutes(
     write("/groups/:id", updateGroupSchema, async (consumer, params, body, _request, reply) =>
       reply.send(await groupAdmin.update(consumer, params.id!, body)),
     "PATCH");
+    // §9.7: admin parity with WhatsApp.
+    write("/groups/:id/admin", adminSchema, async (consumer, params, body, _request, reply) =>
+      reply.send(await groupAdmin.setAdmin(consumer, params.id!, body)),
+    );
+    read("/groups/:id/setelan", null, async (consumer, params, _query, request) => {
+      atasNamaFromHeaders(request.headers);
+      return groupAdmin.settings(consumer, params.id!);
+    });
+    write("/groups/:id/setelan", settingsSchema, async (consumer, params, body, _request, reply) =>
+      reply.send(await groupAdmin.updateSettings(consumer, params.id!, body)),
+    "PATCH");
+    read("/groups/:id/permintaan", null, async (consumer, params, _query, request) => {
+      atasNamaFromHeaders(request.headers);
+      return groupAdmin.joinRequests(consumer, params.id!);
+    });
+    write("/groups/:id/permintaan", joinAnswerSchema, async (consumer, params, body, _request, reply) =>
+      reply.send(await groupAdmin.answerJoinRequests(consumer, params.id!, body)),
+    );
+    write("/groups/:id/foto", pictureSchema, async (consumer, params, body, _request, reply) =>
+      reply.send(await groupAdmin.setPicture(consumer, params.id!, body)),
+    );
+    write("/groups/:id/foto/hapus", inviteRevokeSchema, async (consumer, params, body, _request, reply) =>
+      reply.send(await groupAdmin.setPicture(consumer, params.id!, { gambar: null, atas_nama: body.atas_nama })),
+    );
+    write("/groups/:id/keluar", inviteRevokeSchema, async (consumer, params, body, _request, reply) =>
+      reply.send(await groupAdmin.leave(consumer, params.id!, body.atas_nama)),
+    );
   }
 }
 

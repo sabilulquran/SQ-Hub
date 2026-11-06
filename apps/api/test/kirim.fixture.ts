@@ -29,6 +29,11 @@ export interface StubGroup {
   subject: string;
   size: number;
   participants: Array<{ jid: string; admin: string | null; phoneJid?: string | null; lidJid?: string | null }>;
+  /** §9.7: WhatsApp's settings, join requests waiting, and the last photo set (byte length, null when removed). */
+  settings?: { announce: boolean | null; restrict: boolean | null; memberAddMode: boolean | null; joinApprovalMode: boolean | null };
+  requests?: Array<{ jid: string; phoneJid: string | null; requestedAt: string | null }>;
+  picture?: number | null;
+  left?: boolean;
 }
 
 export class JalurPesanStub {
@@ -265,6 +270,45 @@ export class JalurPesanStub {
       this.groups.set(tenantId, [...(this.groups.get(tenantId) ?? []), group]);
       return { status: 201, body: { success: true, group } };
     }
+    const parity = /^\/groups\/([^/]+)(?:\/(settings|requests|picture|leave))?$/.exec(path);
+    if (parity && (parity[2] || request.method === "GET")) {
+      const jid = decodeURIComponent(parity[1]!);
+      const group = (this.groups.get(tenantId) ?? []).find((item) => item.id === jid);
+      if (!group) return { status: 404, body: { success: false, error: "WhatsApp group not found for this device" } };
+      const body = raw.length ? (JSON.parse(raw.toString("utf8")) as Record<string, unknown>) : {};
+      group.settings ??= { announce: false, restrict: false, memberAddMode: false, joinApprovalMode: false };
+      if (!parity[2]) return { status: 200, body: { group } };
+      this.groupCalls.push({ method: request.method ?? "", path: parity[2], body });
+      if (parity[2] === "settings") {
+        const map: Record<string, [keyof NonNullable<StubGroup["settings"]>, boolean]> = {
+          announcement: ["announce", true], not_announcement: ["announce", false], locked: ["restrict", true], unlocked: ["restrict", false],
+          member_add_all: ["memberAddMode", true], member_add_admin: ["memberAddMode", false], approval_on: ["joinApprovalMode", true], approval_off: ["joinApprovalMode", false],
+        };
+        const change = map[String(body.setting)];
+        if (!change) return { status: 400, body: { success: false } };
+        group.settings[change[0]] = change[1];
+        return { status: 200, body: { success: true } };
+      }
+      if (parity[2] === "requests" && request.method === "GET") return { status: 200, body: { success: true, requests: group.requests ?? [] } };
+      if (parity[2] === "requests") {
+        const updates = (body.participants as string[]).map((digits) => {
+          const index = (group.requests ?? []).findIndex((item) => item.jid.startsWith(`${digits}@`));
+          if (index < 0) return { jid: `${digits}@s.whatsapp.net`, status: "404" };
+          group.requests!.splice(index, 1);
+          if (body.action === "approve") group.participants.push({ jid: `${digits}@s.whatsapp.net`, admin: null, phoneJid: null, lidJid: null });
+          return { jid: `${digits}@s.whatsapp.net`, status: "200" };
+        });
+        return { status: 200, body: { success: true, updates } };
+      }
+      if (parity[2] === "picture") {
+        group.picture = request.method === "PUT" ? Buffer.from(String(body.image), "base64").length : null;
+        return { status: 200, body: { success: true } };
+      }
+      if (parity[2] === "leave") {
+        group.left = true;
+        return { status: 200, body: { success: true } };
+      }
+    }
     const manage = /^\/groups\/([^/]+)\/(participants|subject|description|invite|invite\/revoke)$/.exec(path);
     if (manage) {
       const jid = decodeURIComponent(manage[1]!);
@@ -275,6 +319,12 @@ export class JalurPesanStub {
       if (manage[2] === "participants" && request.method === "POST") {
         const updates = (body.participants as string[]).map((digits) => {
           const member = `${digits}@s.whatsapp.net`;
+          if (body.action === "promote" || body.action === "demote") {
+            const found = group.participants.find((item) => item.jid === member);
+            if (!found) return { jid: member, status: "404" };
+            found.admin = body.action === "promote" ? "admin" : null;
+            return { jid: member, status: "200" };
+          }
           if (body.action === "remove") {
             const index = group.participants.findIndex((item) => item.jid === member);
             if (index < 0) return { jid: member, status: "404" };

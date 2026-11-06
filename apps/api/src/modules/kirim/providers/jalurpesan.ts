@@ -21,6 +21,9 @@ import {
   type Recipient,
   type SendOptions,
   type SendResult,
+  type ProviderGroupSetting,
+  type ProviderGroupSettings,
+  type ProviderJoinRequest,
 } from "./types.js";
 
 /** Cache of engine `mediaId` per Kirim media and number, so a retry never uploads again (§3.2). */
@@ -249,7 +252,7 @@ export class JalurPesanProvider implements KirimProvider {
   async updateParticipants(
     device: DeviceRef,
     groupJid: string,
-    action: "add" | "remove",
+    action: "add" | "remove" | "promote" | "demote",
     participants: string[],
   ): Promise<{ updates: ParticipantUpdate[]; group: ProviderGroup | null }> {
     const response = await this.lifecycle("POST", device, `/groups/${encodeURIComponent(groupJid)}/participants`, { action, participants });
@@ -284,6 +287,56 @@ export class JalurPesanProvider implements KirimProvider {
     const response = await this.lifecycle("POST", device, `/groups/${encodeURIComponent(groupJid)}/invite/revoke`, {});
     if (response.status === 200 && typeof response.body.code === "string" && response.body.code) return response.body.code;
     throw this.groupError(response);
+  }
+
+  async groupSettings(device: DeviceRef, groupJid: string): Promise<ProviderGroupSettings> {
+    const response = await this.lifecycle("GET", device, `/groups/${encodeURIComponent(groupJid)}`);
+    if (response.status !== 200 || !response.body.group || typeof response.body.group !== "object") throw this.groupError(response);
+    return readGroupSettings((response.body.group as Record<string, unknown>).settings);
+  }
+
+  async setGroupSetting(device: DeviceRef, groupJid: string, setting: ProviderGroupSetting): Promise<void> {
+    const response = await this.lifecycle("POST", device, `/groups/${encodeURIComponent(groupJid)}/settings`, { setting });
+    if (response.status !== 200) throw this.groupError(response);
+  }
+
+  async groupJoinRequests(device: DeviceRef, groupJid: string): Promise<ProviderJoinRequest[]> {
+    const response = await this.lifecycle("GET", device, `/groups/${encodeURIComponent(groupJid)}/requests`);
+    if (response.status !== 200 || !Array.isArray(response.body.requests)) throw this.groupError(response);
+    return (response.body.requests as unknown[]).flatMap((item) => {
+      if (!item || typeof item !== "object") return [];
+      const value = item as Record<string, unknown>;
+      if (typeof value.jid !== "string") return [];
+      return [{
+        jid: value.jid,
+        phoneJid: typeof value.phoneJid === "string" && value.phoneJid ? value.phoneJid : null,
+        requestedAt: typeof value.requestedAt === "string" ? value.requestedAt : null,
+      }];
+    });
+  }
+
+  async answerJoinRequests(device: DeviceRef, groupJid: string, participants: string[], approve: boolean): Promise<ParticipantUpdate[]> {
+    const response = await this.lifecycle("POST", device, `/groups/${encodeURIComponent(groupJid)}/requests`,
+      { participants, action: approve ? "approve" : "reject" });
+    if (response.status !== 200 || !Array.isArray(response.body.updates)) throw this.groupError(response);
+    return (response.body.updates as unknown[]).flatMap((item) => {
+      if (!item || typeof item !== "object") return [];
+      const value = item as Record<string, unknown>;
+      return typeof value.jid === "string" ? [{ jid: value.jid, status: String(value.status ?? "") }] : [];
+    });
+  }
+
+  async setGroupPicture(device: DeviceRef, groupJid: string, jpeg: Buffer | null): Promise<void> {
+    const path = `/groups/${encodeURIComponent(groupJid)}/picture`;
+    const response = jpeg
+      ? await this.lifecycle("PUT", device, path, { image: jpeg.toString("base64") })
+      : await this.lifecycle("DELETE", device, path);
+    if (response.status !== 200) throw this.groupError(response);
+  }
+
+  async leaveGroup(device: DeviceRef, groupJid: string): Promise<void> {
+    const response = await this.lifecycle("POST", device, `/groups/${encodeURIComponent(groupJid)}/leave`, {});
+    if (response.status !== 200) throw this.groupError(response);
   }
 
   private groupError(response: EngineResponse): ProviderOperationError {
@@ -608,6 +661,13 @@ export function mapActionResponse(response: EngineResponse): ActionResult {
 }
 
 /** One engine group (`GET /groups`, `POST /groups`, participant updates), read defensively. */
+/** JalurPesan `settings` of a group; anything unreadable is null. */
+export function readGroupSettings(value: unknown): ProviderGroupSettings {
+  const settings = value && typeof value === "object" ? (value as Record<string, unknown>) : {};
+  const flag = (key: string) => (typeof settings[key] === "boolean" ? (settings[key] as boolean) : null);
+  return { announce: flag("announce"), restrict: flag("restrict"), memberAddMode: flag("memberAddMode"), joinApprovalMode: flag("joinApprovalMode") };
+}
+
 export function readGroup(value: unknown): ProviderGroup | null {
   if (!value || typeof value !== "object") return null;
   const group = value as Record<string, unknown>;

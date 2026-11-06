@@ -73,6 +73,29 @@ export interface ProviderGroup {
   participants: ProviderGroupParticipant[];
 }
 
+/** WhatsApp's group settings (JalurPesan `settings`); null where WhatsApp did not say. */
+export interface ProviderGroupSettings {
+  /** Only admins send messages. */
+  announce: boolean | null;
+  /** Only admins edit the group info. */
+  restrict: boolean | null;
+  /** Every member may add others. */
+  memberAddMode: boolean | null;
+  /** New members wait for an admin. */
+  joinApprovalMode: boolean | null;
+}
+
+export type ProviderGroupSetting =
+  | "announcement" | "not_announcement" | "locked" | "unlocked"
+  | "member_add_all" | "member_add_admin" | "approval_on" | "approval_off";
+
+/** A request to join a group that waits for an admin. */
+export interface ProviderJoinRequest {
+  jid: string;
+  phoneJid: string | null;
+  requestedAt: string | null;
+}
+
 /** The chat an action on an existing message is addressed to (JalurPesan K3.2 §B: exactly one of to, toJid, groupJid). */
 export type ActionChat = Recipient | { groupJid: string };
 
@@ -216,9 +239,17 @@ export interface KirimProvider {
   updateParticipants(
     device: DeviceRef,
     groupJid: string,
-    action: "add" | "remove",
+    action: "add" | "remove" | "promote" | "demote",
     participants: string[],
   ): Promise<{ updates: ParticipantUpdate[]; group: ProviderGroup | null }>;
+  /** KIRIM-IMPL-004 §9.7: settings, join requests, photo and leaving, for admin parity with WhatsApp. */
+  groupSettings(device: DeviceRef, groupJid: string): Promise<ProviderGroupSettings>;
+  setGroupSetting(device: DeviceRef, groupJid: string, setting: ProviderGroupSetting): Promise<void>;
+  groupJoinRequests(device: DeviceRef, groupJid: string): Promise<ProviderJoinRequest[]>;
+  answerJoinRequests(device: DeviceRef, groupJid: string, participants: string[], approve: boolean): Promise<ParticipantUpdate[]>;
+  /** `null` removes the photo. */
+  setGroupPicture(device: DeviceRef, groupJid: string, jpeg: Buffer | null): Promise<void>;
+  leaveGroup(device: DeviceRef, groupJid: string): Promise<void>;
   setGroupSubject(device: DeviceRef, groupJid: string, subject: string): Promise<void>;
   setGroupDescription(device: DeviceRef, groupJid: string, description: string): Promise<void>;
   groupInviteCode(device: DeviceRef, groupJid: string): Promise<string>;
