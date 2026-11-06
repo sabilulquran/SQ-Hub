@@ -2,7 +2,7 @@
 <#import "field.ftl" as field>
 <#import "buttons.ftl" as buttons>
 <#import "karir-fields.ftl" as karir>
-<@layout.registrationLayout displayMessage=!messagesPerField.existsError('kk') displayInfo=realm.registrationAllowed; section>
+<@layout.registrationLayout displayMessage=!messagesPerField.existsError('identifier') displayInfo=realm.registrationAllowed; section>
 <!-- template: sq-keluarga login.ftl -->
     <#if section = "header">
         <#if client?? && client.clientId == "spmb-keluarga">${msg("keluargaLoginTitleSpmb")}<#else>${msg("karirLoginTitle")}</#if>
@@ -10,7 +10,7 @@
         <div id="kc-form">
           <div id="kc-form-wrapper">
             <form id="kc-form-login" class="${properties.kcFormClass!}" onsubmit="login.disabled = true; return true;" action="${url.loginAction}" method="post" novalidate="novalidate">
-                <@karir.nik />
+                <@karir.identifier />
                 <@field.password name="password" label=msg("password") error="" forgotPassword=realm.resetPasswordAllowed autocomplete="current-password" />
                 <@karir.turnstile />
                 <@buttons.loginButton />

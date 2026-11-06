@@ -26,10 +26,10 @@ import org.keycloak.models.UserModel;
 public enum IdentityProfile {
     KARIR("sq-karir", "SQ_KARIR_", "NIK_PEPPER", "nik:v1:", "nik", "nik_hmac",
             "wa_number", false, "karir_source", "k_",
-            URI.create("http://127.0.0.1:3304/internal/otp-deliveries"), "X-Karir", "Karir"),
+            URI.create("http://127.0.0.1:3304/internal/otp-deliveries"), "X-Karir", "Karir", false),
     KELUARGA("sq-keluarga", "SQ_KELUARGA_", "KK_PEPPER", "kk:v1:", "kk", "kk_hmac",
             "wa_numbers", true, "keluarga_source", "f_",
-            URI.create("http://127.0.0.1:3306/internal/otp-deliveries"), "X-Keluarga", "Keluarga");
+            URI.create("http://127.0.0.1:3306/internal/otp-deliveries"), "X-Keluarga", "Keluarga", true);
 
     public static final String WA_VERIFIED = "wa_verified";
     public static final String SOURCE_SELF = "self";
@@ -49,10 +49,12 @@ public enum IdentityProfile {
     private final URI defaultRelayUrl;
     private final String relayHeaderPrefix;
     private final String appName;
+    private final boolean contactLogin;
 
     IdentityProfile(String realmName, String envPrefix, String pepperVariable, String hmacPrefix, String formField,
                     String identifierAttribute, String waAttribute, boolean multipleNumbers, String sourceAttribute,
-                    String usernamePrefix, URI defaultRelayUrl, String relayHeaderPrefix, String appName) {
+                    String usernamePrefix, URI defaultRelayUrl, String relayHeaderPrefix, String appName,
+                    boolean contactLogin) {
         this.realmName = realmName;
         this.envPrefix = envPrefix;
         this.pepperVariable = pepperVariable;
@@ -66,6 +68,7 @@ public enum IdentityProfile {
         this.defaultRelayUrl = defaultRelayUrl;
         this.relayHeaderPrefix = relayHeaderPrefix;
         this.appName = appName;
+        this.contactLogin = contactLogin;
     }
 
     /** The profile for a realm name, or {@code null} when this provider must not serve the realm. */
@@ -94,6 +97,20 @@ public enum IdentityProfile {
     /** Name of the identifier field in the sign-in, registration and reset forms. */
     public String formField() {
         return formField;
+    }
+
+    /**
+     * Whether sign-in and "Lupa kata sandi" take a WhatsApp number or an email instead of the registration identifier
+     * (ADR-0010, amended 2026-11-06). Keluarga: yes; the nomor KK is still asked once at registration and is still
+     * accepted, without being offered, as a fallback. Karir: no, it signs in with NIK.
+     */
+    public boolean contactLogin() {
+        return contactLogin;
+    }
+
+    /** Name of the identifier field on the sign-in and "Lupa kata sandi" forms. */
+    public String loginField() {
+        return contactLogin ? "identifier" : formField;
     }
 
     public String identifierAttribute() {
@@ -248,7 +265,7 @@ public enum IdentityProfile {
         return verified.isEmpty() ? all : verified;
     }
 
-    private static String hmacHex(String pepper, String message) {
+    static String hmacHex(String pepper, String message) {
         try {
             Mac mac = Mac.getInstance("HmacSHA256");
             mac.init(new SecretKeySpec(pepper.getBytes(StandardCharsets.UTF_8), "HmacSHA256"));

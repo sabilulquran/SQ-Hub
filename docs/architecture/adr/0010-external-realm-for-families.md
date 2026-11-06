@@ -25,7 +25,7 @@ Families differ from candidates:
 
 ## Decision
 - Families authenticate through a **dedicated external realm `sq-keluarga`** in the existing Keycloak instance. `sq-staff` and `sq-karir` are unchanged. Sign-in pages are at `login.sabilulquran.or.id/realms/sq-keluarga`.
-- **Identifier and credentials:** the user signs in with **nomor KK (16 digits) + kata sandi**. Each KK maps to exactly one Keycloak user.
+- **Identifier and credentials:** ~~the user signs in with nomor KK (16 digits) + kata sandi~~ *(superseded 2026-11-06, see "Product Owner decisions (2026-11-06)")*: the user signs in with a **verified or recorded WhatsApp number, or the account email, + kata sandi**. The nomor KK is still asked once at registration, and each KK still maps to exactly one Keycloak user.
 - **KK stays out of Keycloak, following the NIK pattern in ADR-0008 / REC-IMPL-001:**
   - The Keycloak username is a random opaque ID. Keycloak stores only `kk_hmac` (HMAC-SHA256 with a pepper), never the KK.
   - Sign-in, registration, and reset look users up by `kk_hmac`.
@@ -89,6 +89,18 @@ Families differ from candidates:
 ## Product Owner decisions (2026-10-19)
 - **"Ganti nomor" on the verify screen.** A family that typed the wrong WhatsApp number at sign-up corrects it themselves on the verify screen, without staff. The provider replaces that one not-yet-verified number, keeps the numbers already verified, sends a code to the new number, and records the change in the event log by HMAC, never by number. Karir SQ is unchanged: it keeps the single contact of the account and changes it in Karir SQ.
 - **No "kode terkirim" in dry run.** When the relay answers that it did not really send the message — the app runs with the `log` WhatsApp adapter — the sign-in and reset pages say so plainly instead of claiming a code was sent. This is the follow-up to the stuck sign-up of 2026-10-18 recorded in `sq-core-ops/runbooks/plan-keluarga-spmb-r0-mi8.md` §8b.
+
+## Product Owner decisions (2026-11-06)
+- **Sign in with a WhatsApp number or email, not the KK.** A 16-digit KK is hard to remember and families have to fetch the card. The sign-in and "Lupa kata sandi" field is now "Nomor WhatsApp atau email". Registration still asks for the KK, so "one account per KK" and the reuse of children's records are unchanged.
+  - Only family accounts take part: accounts holding a `kk_hmac` that are not brokered staff identities (`keluarga_source=staff_broker` or any identity-provider link). A staff parent never gains a local kata sandi through a number or email, so offboarding still ends their access.
+  - A number is matched against `wa_numbers`, an email against the account email, case-insensitively. When any family account **proved** it (number in `wa_verified`, email verified), only those accounts take part. A number or email nobody proved names an account only when exactly one account holds it. So an account registered with somebody else's number never competes with that person's own account. Neither value is stored anywhere new, and neither goes into events or logs.
+  - **One proved number on several accounts** (a parent with children on two KKs) is allowed, as before. On sign-in the kata sandi chooses the account. Every account with a kata sandi is checked, locked ones too, so the right kata sandi for a locked account is never charged to the others. A wrong kata sandi counts as a brute-force failure on every account that took part. If two accounts have the same kata sandi, or several accounts hold a number nobody proved, the page asks for the KK. On "Lupa kata sandi" a shared number or email always asks for the KK. More than five accounts behind one proved number or email find nothing.
+  - **"Lupa kata sandi" with a number or email** sends the code straight to that number or email and never shows the account's other numbers or email. A typed number the account may not use for reset gets the same "kode dikirim jika terdaftar" page as an unknown one. Turnstile is always required on this page in `sq-keluarga`.
+  - **The nomor KK is still accepted** in the same field without being offered. Families who learned "masuk dengan KK" in the first SPMB days, and the shared-number cases above, keep a way in.
+  - **Migrated families** sign in with the number on record. They have no kata sandi yet, so the page sends them to "Lupa kata sandi", as with the KK before.
+  - **Code limit:** codes are limited per typed identifier and per account (five an hour each), so a family that can type a KK, two numbers and an email still gets at most five codes an hour.
+  - **Accepted risk:** whoever knows a phone number can still tell whether it belongs to a family account (code page versus the generic page, "belum punya kata sandi" for migrated families, and the shared-number message), behind Turnstile and the code limits. Before, the same needed the 16-digit KK. Response time also grows slightly with the number of accounts sharing a number.
+  - Karir SQ is unchanged: it signs in with NIK.
 
 No open questions remain.
 
