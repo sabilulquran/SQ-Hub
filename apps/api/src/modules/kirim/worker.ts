@@ -12,6 +12,7 @@ import {
   setDeviceStatus,
   transitionOutbox,
   withTransaction,
+  type Queryable,
 } from "./repository.js";
 import type { KirimService } from "./service.js";
 
@@ -163,6 +164,9 @@ export class KirimSendWorker {
     let result: SendResult;
     if (row.groupId) {
       const jid = await groupJid(this.pool, this.crypto, row.groupId);
+      // Tag @anggota (KIRIM-IMPL-004 §9.8): "@<number>" in the text of a member of this group becomes a WhatsApp mention.
+      const mentions = await groupMentions(this.pool, this.crypto, row.groupId, body);
+      if (mentions.length) options.mentions = mentions;
       result = await provider.sendGroup(device, jid, file ? { file, caption: body } : { text: body ?? "" }, idempotencyKey, options);
     } else {
       const to = recipientFromContact(await conversationContact(this.pool, this.crypto, row.conversationId!));
@@ -238,4 +242,22 @@ export function mediaFile(mediaId: string, mime: string, data: () => Promise<Buf
   // A WebP goes to the engine as a sticker (JalurPesan sends it as a WhatsApp sticker, never with a caption).
   const kind = mime === "image/webp" ? "sticker" : mime.startsWith("image/") ? "image" : "document";
   return { mediaId, mime, filename: `${mediaId}.${EXTENSION_BY_MIME[mime] ?? "bin"}`, kind, data };
+}
+
+/**
+ * §9.8: the members of `groupId` named as "@<digits>" in `body`, as JIDs to mention (at most 50). A number that is not a
+ * member stays plain text, as WhatsApp would show it; a LID member is matched by its LID digits.
+ */
+export async function groupMentions(pool: Queryable, crypto: KirimCrypto, groupId: string, body: string | null): Promise<string[]> {
+  if (!body || !body.includes("@")) return [];
+  const tokens = [...new Set([...body.matchAll(/@(\d{8,15})(?!\d)/g)].map((m) => m[1]!))].slice(0, 50);
+  if (!tokens.length) return [];
+  const candidates = tokens.flatMap((d) => [{ jid: `${d}@s.whatsapp.net`, hmac: crypto.lookup(`pn:+${d}`) }, { jid: `${d}@lid`, hmac: crypto.lookup(`lid:${d}@lid`) }]);
+  const found = await pool.query<{ memberHmac: string; altHmac: string | null }>(
+    `SELECT member_hmac AS "memberHmac", member_alt_hmac AS "altHmac" FROM kirim_group_members
+      WHERE group_id = $1 AND (member_hmac = ANY($2::text[]) OR member_alt_hmac = ANY($2::text[]))`,
+    [groupId, candidates.map((c) => c.hmac)],
+  );
+  const present = new Set(found.rows.flatMap((r) => [r.memberHmac, r.altHmac ?? ""]));
+  return candidates.filter((c) => present.has(c.hmac)).map((c) => c.jid);
 }

@@ -648,7 +648,8 @@ function sendExtras(options: SendOptions | undefined): Record<string, unknown> {
         ...(options.quoted.messageType ? { messageType: options.quoted.messageType } : {}),
       }
     : null;
-  return { ...(quoted ? { quoted } : {}), ...(options.forwarded ? { forwarded: true } : {}) };
+  return { ...(quoted ? { quoted } : {}), ...(options.forwarded ? { forwarded: true } : {}),
+    ...(options.mentions?.length ? { mentions: options.mentions } : {}) };
 }
 
 /** K3.2 §B: exactly one of `to`, `toJid`, `groupJid`. */
