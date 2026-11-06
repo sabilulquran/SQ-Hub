@@ -53,6 +53,8 @@ class KeluargaIdentityIT {
 
     private KarirKeycloak keycloak;
     private final List<String> kks = new ArrayList<>();
+    /** Numbers and emails typed into the forms; none may reach the server log. */
+    private final List<String> contacts = new ArrayList<>();
 
     @BeforeAll
     void startKeycloak() throws Exception {
@@ -143,6 +145,7 @@ class KeluargaIdentityIT {
     void signInWithEmailIgnoresCase() throws Exception {
         String kk = kk();
         String id = createFamily(kk, List.of(e164(waLocal())), true, "Sandi-Email-2026", "Ortu.Uji@Contoh.test");
+        contacts.add("ortu.uji@contoh.test");
         Browser browser = browser();
         String verifier = verifier();
         Browser.Page login = page(browser, authUrl(verifier, "auth", "keluarga-web", keycloak.publicBaseUrl), "#kc-form-login");
@@ -186,6 +189,83 @@ class KeluargaIdentityIT {
     }
 
     @Test
+    @Order(18)
+    void resetByNumberSendsOnlyToThatNumberAndShowsNoOtherContact() throws Exception {
+        String father = waLocal();
+        String mother = waLocal();
+        createFamily(kk(), List.of(e164(father), e164(mother)), true, "Sandi-Lama-2026", "ibu.uji@contoh.test");
+        Browser browser = browser();
+        String verifier = verifier();
+        Browser.Page form = resetForm(browser, verifier);
+        Browser.Page codePage = browser.submit(form, "#kc-reset-password-form",
+                fields("identifier", mother, "cf-turnstile-response", FakeServices.TURNSTILE_PASS));
+        assertTrue(codePage.has("#kc-otp-code-form"), codePage.text());
+        assertFalse(codePage.text().contains(maskWa(father)), "the other parent's number is not shown");
+        assertFalse(codePage.text().contains("i•••••@contoh.test"), "the email is not shown");
+        assertTrue(keycloak.fakes.deliveriesTo(e164(father)).isEmpty(), "nothing to the other number");
+        FakeServices.Delivery delivery = keycloak.fakes.lastDeliveryTo(e164(mother)).orElseThrow();
+        Browser.Page update = browser.follow(browser.submit(codePage, "#kc-otp-code-form", fields("code", delivery.code())), keycloak.baseUrl);
+        Browser.Page done = browser.follow(browser.submit(update, "#kc-passwd-update-form",
+                fields("password-new", "Sandi-Baru-2026", "password-confirm", "Sandi-Baru-2026")), keycloak.baseUrl);
+        assertNotNull(callbackCode(done, keycloak.publicBaseUrl));
+
+        // Reset without Turnstile is refused in this realm, even on the first attempt from an IP.
+        Browser fresh = browser();
+        Browser.Page noTurnstile = fresh.submit(resetForm(fresh, verifier()), "#kc-reset-password-form",
+                fields("identifier", mother));
+        assertFalse(noTurnstile.has("#kc-otp-code-form"), noTurnstile.text());
+    }
+
+    @Test
+    @Order(19)
+    void anAccountRegisteredWithSomeoneElsesNumberNeverCompetes() throws Exception {
+        String wa = waLocal();
+        String owner = createFamily(kk(), List.of(e164(wa)), true, "Sandi-Pemilik-2026", null);
+        // Registered with the owner's number but never verified (the code went to the owner).
+        createFamily(kk(), List.of(e164(wa)), false, "Sandi-Penyusup-2026", null);
+        assertEquals(owner, signInSubject(wa, "Sandi-Pemilik-2026"));
+        Browser browser = browser();
+        Browser.Page login = page(browser, authUrl(verifier(), "auth", "keluarga-web", keycloak.publicBaseUrl), "#kc-form-login");
+        Browser.Page refused = browser.submit(login, "#kc-form-login", fields("identifier", wa, "password", "Sandi-Penyusup-2026"));
+        assertTrue(refused.text().contains(MSG_INVALID), refused.text());
+
+        // Two accounts holding a number neither proved: only the KK chooses, never a kata sandi.
+        String unproved = waLocal();
+        createFamily(kk(), List.of(e164(unproved)), false, "Sandi-Satu-2026", null);
+        createFamily(kk(), List.of(e164(unproved)), false, "Sandi-Dua-2026", null);
+        Browser other = browser();
+        Browser.Page asked = other.submit(page(other, authUrl(verifier(), "auth", "keluarga-web", keycloak.publicBaseUrl),
+                "#kc-form-login"), "#kc-form-login", fields("identifier", unproved, "password", "Sandi-Satu-2026"));
+        assertTrue(asked.text().contains(MSG_SHARED), asked.text());
+    }
+
+    @Test
+    @Order(20)
+    void brokeredStaffIdentityIsNeverFoundByEmail() throws Exception {
+        String email = "pegawai.uji@contoh.test";
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("username", "s_" + verifier().substring(0, 20).toLowerCase());
+        body.put("enabled", true);
+        body.put("firstName", "Pegawai Uji Sintetis");
+        body.put("email", email);
+        body.put("emailVerified", true);
+        body.put("attributes", Map.of("keluarga_source", List.of("staff_broker")));
+        KarirKeycloak.Response response = keycloak.admin("POST", "/admin/realms/" + REALM + "/users", JSON.writeValueAsString(body));
+        assertEquals(201, response.status(), response.body());
+
+        Browser browser = browser();
+        Browser.Page login = page(browser, authUrl(verifier(), "auth", "keluarga-web", keycloak.publicBaseUrl), "#kc-form-login");
+        Browser.Page result = browser.submit(login, "#kc-form-login", fields("identifier", email, "password", "apa-saja-2026"));
+        assertTrue(result.text().contains(MSG_INVALID), result.text());
+        assertFalse(result.text().contains(MSG_NO_PASSWORD), result.text());
+
+        Browser reset = browser();
+        Browser.Page decoy = reset.submit(resetForm(reset, verifier()), "#kc-reset-password-form",
+                fields("identifier", email, "cf-turnstile-response", FakeServices.TURNSTILE_PASS));
+        assertTrue(decoy.text().contains("Jika akun ini terdaftar"), decoy.text());
+    }
+
+    @Test
     @Order(17)
     void migratedFamilySigningInWithItsNumberIsSentToReset() throws Exception {
         String wa = waLocal();
@@ -222,7 +302,7 @@ class KeluargaIdentityIT {
 
         Browser browser = browser();
         String verifier = verifier();
-        Browser.Page channels = startReset(browser, verifier, mother);
+        Browser.Page channels = startReset(browser, verifier, kk);
         List<String> ids = channelIds(channels);
         assertEquals(List.of("whatsapp", "whatsapp-2"), ids, channels.text());
         assertTrue(channels.text().contains(maskWa(father)) && channels.text().contains(maskWa(mother)), channels.text());
@@ -265,6 +345,9 @@ class KeluargaIdentityIT {
             assertFalse(log.contains(kk), "the server log contains a KK");
         }
         assertFalse(log.contains("NIK-like value"), "the event listener reported an identifier-like value");
+        for (String contact : contacts) {
+            assertFalse(log.contains(contact), "the server log contains a typed number or email");
+        }
     }
 
     // ------------------------------------------------------------------------------------------------------------
@@ -333,11 +416,13 @@ class KeluargaIdentityIT {
         return kk;
     }
 
-    private static String waLocal() {
+    private String waLocal() {
         StringBuilder digits = new StringBuilder("0857");
         for (int i = 0; i < 8; i++) {
             digits.append(RANDOM.nextInt(10));
         }
+        contacts.add(digits.toString());
+        contacts.add("62" + digits.substring(1));
         return digits.toString();
     }
 
@@ -429,6 +514,7 @@ class KeluargaIdentityIT {
         body.put("firstName", "Keluarga Uji Sintetis");
         if (email != null) {
             body.put("email", email);
+            body.put("emailVerified", true);
         }
         body.put("attributes", attributes);
         body.put("credentials", List.of(Map.of("type", "password", "value", password, "temporary", false)));

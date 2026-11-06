@@ -44,6 +44,8 @@ final class ResetByCodeAuthenticator implements Authenticator {
     private static final String NOTE_USER = "karir.reset.user";
     private static final String NOTE_NIK_HMAC = "karir.reset.nikHmac";
     private static final String NOTE_DECOY = "karir.reset.decoy";
+    /** Set when a number or email was typed: the only channel this reset may use, so no other contact is shown. */
+    private static final String NOTE_ONLY_CHANNEL = "karir.reset.onlyChannel";
     private static final String STEP_CHANNEL = "channel";
     private static final String STEP_CODE = "code";
     private static final Logger LOG = Logger.getLogger(ResetByCodeAuthenticator.class);
@@ -98,8 +100,10 @@ final class ResetByCodeAuthenticator implements Authenticator {
         String pepper = runtime.config().nikPepper();
         AuthenticationSessionModel authSession = context.getAuthenticationSession();
         authSession.setAuthNote(NOTE_NIK_HMAC, identifier.hmac(profile, pepper));
-        List<UserModel> accounts = identifier.findAccounts(context.getSession(), context.getRealm(), profile, pepper);
-        if (accounts.size() > 1) {
+        authSession.removeAuthNote(NOTE_ONLY_CHANNEL);
+        LoginIdentifier.Match match = identifier.findAccounts(context.getSession(), context.getRealm(), profile, pepper);
+        List<UserModel> accounts = match.accounts();
+        if (match.ambiguous() || accounts.size() > 1) {
             // One parent's number on two KKs (sq-keluarga): a code to that number could open either, so ask for the KK.
             context.getEvent().error(KarirEvents.SHARED_CONTACT);
             context.forceChallenge(nikPage(context, KarirForms.SHARED_CONTACT));
@@ -108,6 +112,10 @@ final class ResetByCodeAuthenticator implements Authenticator {
         UserModel user = accounts.isEmpty() ? null : accounts.get(0);
         if (user == null || !user.isEnabled()) {
             startDecoy(context, runtime, user);
+            return;
+        }
+        if (identifier.isContact()) {
+            sendToTypedContact(context, runtime, user, identifier);
             return;
         }
         if (availableChannels(profile, user).isEmpty()) {
@@ -120,6 +128,56 @@ final class ResetByCodeAuthenticator implements Authenticator {
         context.challenge(channelPage(context, runtime, user, null));
     }
 
+    /**
+     * A number or email was typed: the code goes straight to it, and the account's other numbers and email are never
+     * shown. A typed contact the account may not use for reset (a number not yet verified while others are) gets the
+     * same "code sent if registered" page as an unknown one.
+     */
+    private void sendToTypedContact(AuthenticationFlowContext context, KarirRuntime runtime, UserModel user,
+                                    LoginIdentifier identifier) {
+        String channelId = null;
+        for (Map.Entry<String, Channel> entry : availableChannels(runtime.profile(), user).entrySet()) {
+            Channel channel = entry.getValue();
+            boolean typed = identifier.kind() == LoginIdentifier.Kind.WHATSAPP
+                    ? identifier.value().equals(channel.waDigits())
+                    : CHANNEL_EMAIL.equals(entry.getKey()) && identifier.value().equalsIgnoreCase(user.getEmail());
+            if (typed) {
+                channelId = entry.getKey();
+                break;
+            }
+        }
+        if (channelId == null) {
+            startDecoy(context, runtime, null);
+            return;
+        }
+        AuthenticationSessionModel authSession = context.getAuthenticationSession();
+        authSession.setAuthNote(NOTE_USER, user.getId());
+        authSession.setAuthNote(NOTE_ONLY_CHANNEL, channelId);
+        String failure = send(context, runtime, user, channelId);
+        if (failure != null) {
+            authSession.removeAuthNote(NOTE_USER);
+            authSession.removeAuthNote(NOTE_ONLY_CHANNEL);
+            context.forceChallenge(nikPage(context, failure));
+            return;
+        }
+        authSession.setAuthNote(NOTE_STEP, STEP_CODE);
+        context.challenge(codePage(context, runtime, user, KarirForms.CODE_SENT, true));
+    }
+
+    /** The channels this reset may use: all of the account's, or only the typed one. */
+    private static Map<String, Channel> channels(AuthenticationFlowContext context, IdentityProfile profile, UserModel user) {
+        Map<String, Channel> all = availableChannels(profile, user);
+        String only = context.getAuthenticationSession().getAuthNote(NOTE_ONLY_CHANNEL);
+        if (only == null) {
+            return all;
+        }
+        Map<String, Channel> one = new LinkedHashMap<>();
+        if (all.containsKey(only)) {
+            one.put(only, all.get(only));
+        }
+        return one;
+    }
+
     private void chooseChannel(AuthenticationFlowContext context) {
         KarirRuntime runtime = KarirRuntime.forRealm(context.getRealm());
         UserModel user = currentUser(context);
@@ -128,7 +186,7 @@ final class ResetByCodeAuthenticator implements Authenticator {
             return;
         }
         String channel = context.getHttpRequest().getDecodedFormParameters().getFirst(FIELD_CHANNEL);
-        if (channel == null || !availableChannels(runtime.profile(), user).containsKey(channel)) {
+        if (channel == null || !channels(context, runtime.profile(), user).containsKey(channel)) {
             context.challenge(channelPage(context, runtime, user, KarirForms.CHOOSE_CHANNEL));
             return;
         }
@@ -154,7 +212,8 @@ final class ResetByCodeAuthenticator implements Authenticator {
             return;
         }
 
-        if (!decoy && input.containsKey(CodeForms.ACTION_CHANGE_CHANNEL)) {
+        if (!decoy && authSession.getAuthNote(NOTE_ONLY_CHANNEL) == null
+                && input.containsKey(CodeForms.ACTION_CHANGE_CHANNEL)) {
             authSession.setAuthNote(NOTE_STEP, STEP_CHANNEL);
             context.challenge(channelPage(context, runtime, user, null));
             return;
@@ -201,7 +260,7 @@ final class ResetByCodeAuthenticator implements Authenticator {
             return;
         }
 
-        Channel channel = availableChannels(profile, user).get(channelId);
+        Channel channel = channels(context, profile, user).get(channelId);
         EventBuilder event = context.getEvent().user(user).detail(KarirEvents.DETAIL_CHANNEL, kind(channelId));
         if (channel != null && channel.waDigits() != null) {
             profile.markVerified(user, channel.waDigits());
@@ -239,7 +298,7 @@ final class ResetByCodeAuthenticator implements Authenticator {
     /** Sends a code on the channel; returns a message key on failure, {@code null} when sent. */
     private String send(AuthenticationFlowContext context, KarirRuntime runtime, UserModel user, String channelId) {
         AuthenticationSessionModel authSession = context.getAuthenticationSession();
-        Channel channel = availableChannels(runtime.profile(), user).get(channelId);
+        Channel channel = channels(context, runtime.profile(), user).get(channelId);
         EventBuilder event = context.getEvent().clone()
                 .event(EventType.SEND_RESET_PASSWORD)
                 .user(user)
@@ -315,19 +374,20 @@ final class ResetByCodeAuthenticator implements Authenticator {
         return channelId != null && channelId.startsWith(CHANNEL_WHATSAPP) ? CHANNEL_WHATSAPP : channelId;
     }
 
-    private static String destination(IdentityProfile profile, UserModel user, String channelId) {
+    private static String destination(AuthenticationFlowContext context, IdentityProfile profile, UserModel user,
+                                      String channelId) {
         if (user == null || channelId == null) {
             return null;
         }
-        Channel channel = availableChannels(profile, user).get(channelId);
+        Channel channel = channels(context, profile, user).get(channelId);
         return channel == null ? null : channel.destination();
     }
 
     private Response nikPage(AuthenticationFlowContext context, String error) {
         KarirRuntime runtime = KarirRuntime.forRealm(context.getRealm());
         LoginFormsProvider form = context.form();
-        KarirForms.turnstile(form, runtime.config(), runtime.abuseGuard()
-                .turnstileRequired(AbuseGuard.NikForm.RESET, KarirForms.clientIp(context.getConnection())));
+        KarirForms.turnstile(form, runtime.config(),
+                KarirForms.turnstileRequired(runtime, AbuseGuard.NikForm.RESET, KarirForms.clientIp(context.getConnection())));
         if (error != null) {
             form.addError(new FormMessage(runtime.profile().loginField(), error));
         }
@@ -337,7 +397,7 @@ final class ResetByCodeAuthenticator implements Authenticator {
     private Response channelPage(AuthenticationFlowContext context, KarirRuntime runtime, UserModel user, String error) {
         LoginFormsProvider form = context.form();
         List<Map<String, String>> options = new ArrayList<>();
-        availableChannels(runtime.profile(), user).forEach((id, channel) ->
+        channels(context, runtime.profile(), user).forEach((id, channel) ->
                 options.add(Map.of("id", id, "kind", channel.kind(), "destination", channel.destination())));
         form.setAttribute("karirChannels", options);
         if (error != null) {
@@ -349,7 +409,7 @@ final class ResetByCodeAuthenticator implements Authenticator {
     private Response codePage(AuthenticationFlowContext context, KarirRuntime runtime, UserModel user, String message,
                               boolean success, FormMessage... extraErrors) {
         OtpState otp = CodeForms.state(context.getAuthenticationSession(), runtime);
-        String destination = destination(runtime.profile(), user, otp.channel());
+        String destination = destination(context, runtime.profile(), user, otp.channel());
         LoginFormsProvider form = context.form();
         boolean dryRun = CodeForms.dryRun(context.getAuthenticationSession());
         if (message != null) {
@@ -366,7 +426,9 @@ final class ResetByCodeAuthenticator implements Authenticator {
             form.addError(extra);
         }
         CodeForms.dryRunNotice(form, dryRun);
-        return CodeForms.codePage(form, PURPOSE, destination, otp, user != null).createForm(CodeForms.TEMPLATE);
+        boolean canChangeChannel = user != null
+                && context.getAuthenticationSession().getAuthNote(NOTE_ONLY_CHANNEL) == null;
+        return CodeForms.codePage(form, PURPOSE, destination, otp, canChangeChannel).createForm(CodeForms.TEMPLATE);
     }
 
     private static void clearState(AuthenticationFlowContext context) {
@@ -375,6 +437,7 @@ final class ResetByCodeAuthenticator implements Authenticator {
         authSession.removeAuthNote(NOTE_USER);
         authSession.removeAuthNote(NOTE_NIK_HMAC);
         authSession.removeAuthNote(NOTE_DECOY);
+        authSession.removeAuthNote(NOTE_ONLY_CHANNEL);
         CodeForms.state(authSession, KarirRuntime.forRealm(context.getRealm())).clear();
     }
 

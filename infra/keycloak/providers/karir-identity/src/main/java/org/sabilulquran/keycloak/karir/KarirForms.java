@@ -57,6 +57,16 @@ final class KarirForms {
     }
 
     /**
+     * Whether this submit needs Turnstile. Besides the per-IP rules of {@link AbuseGuard}, "Lupa kata sandi" always
+     * asks for it in a realm that takes a WhatsApp number or email, because any phone number can be typed there
+     * (ADR-0010 as amended 2026-11-06).
+     */
+    static boolean turnstileRequired(KarirRuntime runtime, AbuseGuard.NikForm form, String ip) {
+        return (form == AbuseGuard.NikForm.RESET && runtime.profile().contactLogin())
+                || runtime.abuseGuard().turnstileRequired(form, ip);
+    }
+
+    /**
      * Applies the per-IP rules for one submit of a NIK form. Returns the message key to show, or {@code null} when
      * the submit may continue.
      */
@@ -65,7 +75,7 @@ final class KarirForms {
         if (guard.isBlocked(ip)) {
             return IP_BLOCKED;
         }
-        boolean turnstileRequired = guard.turnstileRequired(form, ip);
+        boolean turnstileRequired = turnstileRequired(runtime, form, ip);
         guard.recordAttempt(ip);
         if (turnstileRequired && !runtime.turnstile().verify(turnstileToken, ip)) {
             guard.turnstileFailed(ip);

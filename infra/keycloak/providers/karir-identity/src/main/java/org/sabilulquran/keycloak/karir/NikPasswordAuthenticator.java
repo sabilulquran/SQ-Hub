@@ -61,8 +61,16 @@ final class NikPasswordAuthenticator implements Authenticator {
 
         LoginIdentifier identifier = LoginIdentifier.parse(profile, input.getFirst(profile.loginField()));
         String password = input.getFirst(KarirForms.FIELD_PASSWORD);
-        List<UserModel> accounts = identifier == null ? List.of()
+        LoginIdentifier.Match match = identifier == null ? LoginIdentifier.Match.NONE
                 : identifier.findAccounts(context.getSession(), context.getRealm(), profile, runtime.config().nikPepper());
+        List<UserModel> accounts = match.accounts();
+        if (match.ambiguous()) {
+            // Several accounts hold a number or email none of them proved: only the KK may choose.
+            AuthenticatorUtils.dummyHash(context);
+            context.getEvent().error(KarirEvents.SHARED_CONTACT);
+            context.forceChallenge(render(context, KarirForms.SHARED_CONTACT_SAME_PASSWORD));
+            return;
+        }
         if (accounts.isEmpty()) {
             AuthenticatorUtils.dummyHash(context);
             context.getEvent().error(Errors.USER_NOT_FOUND);
@@ -114,34 +122,32 @@ final class NikPasswordAuthenticator implements Authenticator {
     }
 
     /**
-     * Several family accounts share the WhatsApp number or email (sq-keluarga only): the kata sandi picks the one.
-     * Locked, disabled and password-less accounts take no part. A wrong kata sandi counts as a failure on every
-     * account that took part, so sharing a number never buys extra guesses.
+     * Several family accounts proved the same WhatsApp number or email (sq-keluarga only): the kata sandi picks the
+     * one. Every account with a kata sandi is checked, locked and disabled ones too, so the right kata sandi for a
+     * locked account is never charged to the others; a locked or disabled account still cannot sign in. A wrong kata
+     * sandi counts as a failure on every account that took part, so sharing a number never buys extra guesses.
      */
     private void signInSharedContact(AuthenticationFlowContext context, List<UserModel> accounts, String password) {
-        List<UserModel> usable = new ArrayList<>();
+        List<UserModel> withPassword = new ArrayList<>();
         boolean anyWithoutPassword = false;
         for (UserModel user : accounts) {
-            if (!user.isEnabled() || AuthenticatorUtils.getDisabledByBruteForceEventError(context, user) != null) {
-                continue;
-            }
             if (Candidates.hasPassword(user)) {
-                usable.add(user);
-            } else {
+                withPassword.add(user);
+            } else if (user.isEnabled()) {
                 anyWithoutPassword = true;
             }
         }
+        if (withPassword.isEmpty()) {
+            AuthenticatorUtils.dummyHash(context);
+            context.getEvent().error(anyWithoutPassword ? KarirEvents.PASSWORD_NOT_SET : Errors.USER_DISABLED);
+            context.forceChallenge(render(context, anyWithoutPassword ? KarirForms.NO_PASSWORD : KarirForms.ACCOUNT_DISABLED));
+            return;
+        }
         List<UserModel> matched = new ArrayList<>();
-        for (UserModel user : usable) {
+        for (UserModel user : withPassword) {
             if (passwordMatches(user, password)) {
                 matched.add(user);
             }
-        }
-        if (matched.size() == 1) {
-            UserModel user = matched.get(0);
-            context.getAuthenticationSession().setAuthNote(AbstractUsernameFormAuthenticator.ATTEMPTED_USERNAME, user.getUsername());
-            succeed(context, user);
-            return;
         }
         if (matched.size() > 1) {
             // The same kata sandi on two accounts of one number: only the KK can tell them apart.
@@ -149,25 +155,32 @@ final class NikPasswordAuthenticator implements Authenticator {
             context.forceChallenge(render(context, KarirForms.SHARED_CONTACT_SAME_PASSWORD));
             return;
         }
-        if (usable.isEmpty()) {
-            AuthenticatorUtils.dummyHash(context);
-            if (anyWithoutPassword) {
-                context.getEvent().error(KarirEvents.PASSWORD_NOT_SET);
-                context.forceChallenge(render(context, KarirForms.NO_PASSWORD));
-            } else {
-                context.getEvent().error(Errors.INVALID_USER_CREDENTIALS);
+        if (matched.size() == 1) {
+            UserModel user = matched.get(0);
+            context.getAuthenticationSession().setAuthNote(AbstractUsernameFormAuthenticator.ATTEMPTED_USERNAME, user.getUsername());
+            String bruteForceError = AuthenticatorUtils.getDisabledByBruteForceEventError(context, user);
+            if (bruteForceError != null) {
+                context.getEvent().user(user).error(bruteForceError);
                 context.forceChallenge(render(context, KarirForms.INVALID_CREDENTIALS));
+                return;
             }
+            if (!user.isEnabled()) {
+                context.getEvent().user(user).error(Errors.USER_DISABLED);
+                context.forceChallenge(render(context, KarirForms.ACCOUNT_DISABLED));
+                return;
+            }
+            succeed(context, user);
             return;
         }
         // Keycloak records the failure for the attempted username; the other accounts are recorded here.
         if (context.getRealm().isBruteForceProtected()) {
             BruteForceProtector protector = context.getSession().getProvider(BruteForceProtector.class);
-            for (UserModel user : usable.subList(1, usable.size())) {
+            for (UserModel user : withPassword.subList(1, withPassword.size())) {
                 protector.failedLogin(context.getRealm(), user, context.getConnection(), context.getUriInfo(), null);
             }
         }
-        context.getAuthenticationSession().setAuthNote(AbstractUsernameFormAuthenticator.ATTEMPTED_USERNAME, usable.get(0).getUsername());
+        context.getAuthenticationSession().setAuthNote(AbstractUsernameFormAuthenticator.ATTEMPTED_USERNAME,
+                withPassword.get(0).getUsername());
         context.getEvent().error(Errors.INVALID_USER_CREDENTIALS);
         context.failureChallenge(AuthenticationFlowError.INVALID_CREDENTIALS, render(context, KarirForms.INVALID_CREDENTIALS));
     }
