@@ -805,8 +805,11 @@ describe("WhatsApp Business: balasan cepat dan katalog (§11)", () => {
       .toBe("shortcut_invalid");
     expect((await call("POST", "/devices/spmb/balasan-cepat/1730000000/hapus", { payload: { atas_nama: OFFICER } })).statusCode).toBe(200);
     expect(stub.quickReplies.get("spmb")!.find((q) => q.waId === "1730000000")!.deleted).toBe(true);
+    // Read again from the phone: once, then skipped by the engine's five-minute limit (no audit for a skip).
+    expect((await call("POST", "/devices/spmb/balasan-cepat/baca-ulang", { payload: { atas_nama: OFFICER } })).json()).toEqual({ dibaca_ulang: true });
+    expect((await call("POST", "/devices/spmb/balasan-cepat/baca-ulang", { payload: { atas_nama: OFFICER } })).json()).toEqual({ dibaca_ulang: false });
     const audit = (await pool.query<{ aksi: string; metadata: unknown }>("SELECT aksi, metadata FROM kirim_audit WHERE objek_jenis = 'balasan_cepat'")).rows;
-    expect(audit.map((r) => r.aksi).sort()).toEqual(["balasan_cepat.hapus", "balasan_cepat.tambah"]);
+    expect(audit.map((r) => r.aksi).sort()).toEqual(["balasan_cepat.baca_ulang", "balasan_cepat.hapus", "balasan_cepat.tambah"]);
     expect(JSON.stringify(audit)).not.toContain("Assalamualaikum");
     // Another module's number: refused.
     expect((await call("GET", "/devices/spmb/balasan-cepat", { client: "hcis-api" })).statusCode).toBe(403);

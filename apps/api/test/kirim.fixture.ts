@@ -41,6 +41,7 @@ export class JalurPesanStub {
   /** §9.7: the next settings change is refused as WhatsApp does for a number that is not admin. */
   refuseNextSetting = false;
   /** §11: WhatsApp Business quick replies and catalog per tenant. */
+  quickReplyResyncs = 0;
   readonly quickReplies = new Map<string, Array<{ waId: string; shortcut: string; message: string; deleted: boolean; updatedAt: string }>>();
   readonly catalog = new Map<string, Array<Record<string, unknown>>>();
   readonly sendsByKey = new Map<string, number>();
@@ -277,6 +278,10 @@ export class JalurPesanStub {
     }
     if (path === "/quick-replies" && request.method === "GET") {
       return { status: 200, body: { success: true, quickReplies: this.quickReplies.get(tenantId) ?? [] } };
+    }
+    if (path === "/quick-replies/resync" && request.method === "POST") {
+      this.quickReplyResyncs += 1;
+      return { status: 200, body: { success: true, resynced: this.quickReplyResyncs === 1 } };
     }
     const qr = /^\/quick-replies\/([^/]+)$/.exec(path);
     if (qr) {

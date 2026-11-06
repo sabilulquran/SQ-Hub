@@ -391,6 +391,9 @@ function registerConversationRoutes(
       atasNamaFromHeaders(request.headers);
       return business.quickReplies(consumer, params.kode!);
     });
+    write("/devices/:kode/balasan-cepat/baca-ulang", quickReplyRemoveSchema, async (consumer, params, body, _request, reply) =>
+      reply.send(await business.resyncQuickReplies(consumer, params.kode!, body.atas_nama)),
+    );
     write("/devices/:kode/balasan-cepat/:waId", quickReplySchema, async (consumer, params, body, _request, reply) =>
       reply.send(await business.saveQuickReply(consumer, params.kode!, params.waId!, body)),
     "PATCH");

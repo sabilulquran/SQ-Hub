@@ -280,6 +280,8 @@ export interface KirimProvider {
   listQuickReplies(device: DeviceRef): Promise<ProviderQuickReply[]>;
   upsertQuickReply(device: DeviceRef, waId: string | null, shortcut: string, message: string): Promise<string>;
   removeQuickReply(device: DeviceRef, waId: string): Promise<void>;
+  /** Reads the phone's quick replies again (those made before the engine listened); false when skipped (rate limit). */
+  resyncQuickReplies(device: DeviceRef): Promise<boolean>;
   listCatalog(device: DeviceRef, cursor: string | null): Promise<{ products: ProviderCatalogProduct[]; nextCursor: string | null }>;
   setGroupSubject(device: DeviceRef, groupJid: string, subject: string): Promise<void>;
   setGroupDescription(device: DeviceRef, groupJid: string, description: string): Promise<void>;
