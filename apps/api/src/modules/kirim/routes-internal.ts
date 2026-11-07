@@ -407,7 +407,7 @@ function registerConversationRoutes(
     write("/devices/:kode/balasan-cepat/:waId/hapus", quickReplyRemoveSchema, async (consumer, params, body, _request, reply) =>
       reply.send(await business.removeQuickReply(consumer, params.kode!, params.waId!, body.atas_nama)),
     );
-    // §11.3–§11.4: service hours on the WhatsApp Business profile, and the module's labels on one chat.
+    // KIRIM-IMPL-004 §17.1–§17.2: service hours on the WhatsApp Business profile, and the module's labels on one chat.
     write("/devices/:kode/jam-kerja", businessHoursSchema, async (consumer, params, body, _request, reply) =>
       reply.send(await business.setBusinessHours(consumer, params.kode!, body)),
     "PUT");

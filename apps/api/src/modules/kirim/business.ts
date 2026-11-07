@@ -29,20 +29,28 @@ function minutes(value: string): number {
   return value === "24:00" ? 1440 : Number(value.slice(0, 2)) * 60 + Number(value.slice(3));
 }
 
-function validTimeZone(zone: string): boolean {
+/**
+ * A real IANA zone written as its canonical name: Intl also accepts "asia/jakarta" and aliases such as "EST", which
+ * WhatsApp would then show or keep as written.
+ */
+function canonicalTimeZone(zone: string): boolean {
   try {
-    new Intl.DateTimeFormat("en", { timeZone: zone });
-    return true;
+    return new Intl.DateTimeFormat("en", { timeZone: zone }).resolvedOptions().timeZone === zone;
   } catch {
     return false;
   }
 }
 
-/** §11.3: ISO days (1 = Senin … 7 = Minggu), each with its open ranges; a day left out is closed. */
+/** Label names compare without case or repeated spaces, as the engine does. */
+function labelKey(name: string): string {
+  return name.trim().replace(/\s+/g, " ").toLowerCase();
+}
+
+/** KIRIM-IMPL-004 §17.1: ISO days (1 = Senin … 7 = Minggu), each with its open ranges; a day left out is closed. */
 export const businessHoursSchema = z
   .object({
     atas_nama: atasNamaSchema,
-    zona: z.string().trim().min(3).max(64).regex(/^[A-Za-z][A-Za-z0-9_+\-/]+$/).refine(validTimeZone, "zona tidak dikenal"),
+    zona: z.string().trim().min(3).max(64).regex(/^[A-Za-z][A-Za-z0-9_+\-/]+$/).refine(canonicalTimeZone, "zona tidak dikenal"),
     hari: z
       .array(
         z
@@ -76,7 +84,7 @@ const labelName = z
   .min(1)
   .max(25)
   .refine((name) => ![...name].some((c) => c.charCodeAt(0) < 0x20 || c.charCodeAt(0) === 0x7f), "tanpa karakter kendali");
-/** §11.4: every label the module manages, and the subset this chat carries; names compare without case. */
+/** KIRIM-IMPL-004 §17.2: every label the module manages, and the subset this chat carries; names compare without case. */
 export const chatLabelSchema = z
   .object({
     atas_nama: atasNamaSchema,
@@ -85,7 +93,7 @@ export const chatLabelSchema = z
   })
   .strict()
   .superRefine((input, ctx) => {
-    const key = (name: string) => name.replace(/\s+/g, " ").toLowerCase();
+    const key = labelKey;
     const managed = input.dikelola.map(key);
     if (new Set(managed).size !== managed.length) ctx.addIssue({ code: "custom", path: ["dikelola"], message: "nama ganda" });
     const wanted = input.label.map(key);
@@ -107,7 +115,7 @@ export function engineBusinessHours(input: z.infer<typeof businessHoursSchema>):
       const close = Math.max(...day.rentang.map((r) => minutes(r.tutup)));
       const name = ISO_DAYS[day.hari - 1]!;
       return open === 0 && close === 1440
-        ?{ day: name, mode: "open_24h" as const }
+        ? { day: name, mode: "open_24h" as const }
         : { day: name, mode: "specific_hours" as const, openMinutes: open, closeMinutes: close };
     }),
   };
@@ -187,7 +195,7 @@ export class KirimBusiness {
   }
 
   /**
-   * §11.3: the number's service hours on its WhatsApp Business profile, replaced whole. Audit `jam_kerja.ubah` with
+   * KIRIM-IMPL-004 §17.1: the number's service hours on its WhatsApp Business profile, replaced whole. Audit `jam_kerja.ubah` with
    * the hours as sent to WhatsApp (no personal data in them).
    */
   async setBusinessHours(consumer: ConsumerRow, kode: string, input: z.infer<typeof businessHoursSchema>) {
@@ -213,7 +221,7 @@ export class KirimBusiness {
   }
 
   /**
-   * §11.4: the module's WhatsApp Business labels on one private chat. Labels it does not manage are never touched.
+   * KIRIM-IMPL-004 §17.2: the module's WhatsApp Business labels on one private chat. Labels it does not manage are never touched.
    * Audit `percakapan.label` with the label names (status and program, no personal data).
    */
   async setConversationLabels(consumer: ConsumerRow, conversationId: string, input: z.infer<typeof chatLabelSchema>) {
@@ -227,6 +235,9 @@ export class KirimBusiness {
     } catch (error) {
       throw engineError(error);
     }
+    // Only the module's own names ever leave here (the phone's other labels may carry personal names).
+    const managed = new Map(input.dikelola.map((name) => [labelKey(name), name]));
+    now = [...new Set(now.map(labelKey))].flatMap((key) => (managed.has(key) ? [managed.get(key)!] : []));
     await writeAudit(this.pool, {
       actorKind: "service",
       actorRef: consumer.clientId,

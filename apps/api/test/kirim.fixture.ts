@@ -42,7 +42,7 @@ export class JalurPesanStub {
   refuseNextSetting = false;
   /** §11: WhatsApp Business quick replies and catalog per tenant. */
   quickReplyResyncs = 0;
-  /** §11.3–§11.4: what reached the engine's business-hours and chat-labels routes, per tenant. */
+  /** §17.1–§17.2: what reached the engine's business-hours and chat-labels routes, per tenant. */
   readonly businessHours = new Map<string, unknown>();
   readonly chatLabelCalls: Array<{ tenantId: string; body: Record<string, unknown> }> = [];
   /** Labels on each chat (by JID) as the engine would keep them. */

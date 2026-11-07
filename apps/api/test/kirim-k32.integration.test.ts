@@ -830,7 +830,7 @@ describe("WhatsApp Business: balasan cepat dan katalog (§11)", () => {
   });
 });
 
-describe("WhatsApp Business: jam kerja dan label (§11.3–§11.4)", () => {
+describe("WhatsApp Business: jam kerja dan label (§17.1–§17.2)", () => {
   const HOURS = {
     atas_nama: OFFICER,
     zona: "Asia/Jakarta",
@@ -864,6 +864,8 @@ describe("WhatsApp Business: jam kerja dan label (§11.3–§11.4)", () => {
   it("refuses hours that are not strictly valid, and maps the engine's refusals", async () => {
     const bad: unknown[] = [
       { ...HOURS, zona: "Asia/Atlantis" },
+      { ...HOURS, zona: "asia/jakarta" },
+      { ...HOURS, zona: "EST" },
       { ...HOURS, hari: [] },
       { ...HOURS, hari: [{ hari: 8, rentang: [{ buka: "07:00", tutup: "12:00" }] }] },
       { ...HOURS, hari: [{ hari: 1, rentang: [] }] },
@@ -910,6 +912,14 @@ describe("WhatsApp Business: jam kerja dan label (§11.3–§11.4)", () => {
     const byLid = await inbound("halo", {}, "998877665544@lid");
     await call("PUT", `/conversations/${byLid.conversationId}/label`, { payload: { atas_nama: OFFICER, dikelola: DIKELOLA, label: [] } });
     expect(stub.chatLabelCalls[1]!.body).toMatchObject({ chatJid: "998877665544@lid", labels: [] });
+    // A name given in other case counts as the managed one, answered (and audited) as the module spells it.
+    const cased = await call("PUT", `/conversations/${byNumber.conversationId}/label`, { payload: { atas_nama: OFFICER, dikelola: DIKELOLA, label: ["  sdit "] } });
+    expect(cased.json()).toEqual({ label: ["SDIT"] });
+    // A number made inactive: refused before the engine.
+    await pool.query("UPDATE kirim_devices SET status = 'nonaktif' WHERE kode = 'spmb'");
+    const inactive = await call("PUT", `/conversations/${byNumber.conversationId}/label`, { payload: { atas_nama: OFFICER, dikelola: DIKELOLA, label: [] } });
+    expect([inactive.statusCode, inactive.json().error.code]).toEqual([422, "device_inactive"]);
+    expect(stub.chatLabelCalls).toHaveLength(3);
 
     const audit = (await pool.query<{ aksi: string; objekRef: string; metadata: { label: string[] } }>(
       `SELECT aksi, objek_ref AS "objekRef", metadata FROM kirim_audit WHERE aksi = 'percakapan.label' ORDER BY occurred_at`,
@@ -917,6 +927,7 @@ describe("WhatsApp Business: jam kerja dan label (§11.3–§11.4)", () => {
     expect(audit.map((row) => [row.objekRef, row.metadata.label])).toEqual([
       [byNumber.conversationId, ["Ditangani", "SDIT"]],
       [byLid.conversationId, []],
+      [byNumber.conversationId, ["SDIT"]],
     ]);
     expect(JSON.stringify(audit)).not.toContain("6281234567890");
   });
