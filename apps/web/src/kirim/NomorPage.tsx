@@ -1,4 +1,4 @@
-import { AlertTriangle, History, Link2, Merge, Pause, Play, Plus, PlugZap, Power, QrCode, RefreshCw, RotateCcw, Settings2, Unplug } from "lucide-react";
+import { AlertTriangle, History, Link2, Merge, Pause, Play, Plus, PlugZap, Power, QrCode, RefreshCw, RotateCcw, Settings2, Smartphone, Unplug } from "lucide-react";
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 
 import { applicationAppearance } from "@/components/applicationAppearance";
@@ -28,6 +28,8 @@ type Dialog =
   | { kind: "edit"; device: KirimDevice }
   | { kind: "pair"; device: KirimDevice }
   | { kind: "sambung-ulang"; device: KirimDevice }
+  | { kind: "ganti-nomor"; device: KirimDevice; modul: string }
+  | { kind: "pakai-lagi"; card: KirimModuleCard; device: KirimDevice }
   | { kind: "gabung"; device: KirimDevice; ke: { kode: string; label: string } }
   | { kind: "tambah"; card: KirimModuleCard }
   | { kind: "ubah-pemakai"; card: KirimModuleCard }
@@ -93,19 +95,28 @@ export function NomorPage({ preview }: { preview?: NomorState }) {
     setError(null);
   };
 
-  const shared = (device: KirimDevice) =>
-    state.status === "ready" ? state.list.modules.find((card) => card.peran === "pemilik" && card.nomor?.kode === device.kode)?.dipakai_juga_oleh ?? [] : [];
+  const ownerCard = (device: KirimDevice) =>
+    state.status === "ready" ? state.list.modules.find((card) => card.peran === "pemilik" && card.nomor?.kode === device.kode) ?? null : null;
+  const shared = (device: KirimDevice) => ownerCard(device)?.dipakai_juga_oleh ?? [];
+  /** §12: a module's own number moves to another WhatsApp with Ganti nomor, never through Nonaktifkan. */
+  const ganti = (device: KirimDevice) => {
+    const card = ownerCard(device);
+    return card && canReconnect(device) ? () => { setError(null); setDialog({ kind: "ganti-nomor", device, modul: card.nama }); } : undefined;
+  };
 
   return (
     <>
       <NomorView state={state} onOpen={(next) => { setError(null); setDialog(next); }} onRetry={() => { setState({ status: "loading" }); void load(); }} />
       {dialog?.kind === "disconnect" ? (
         <ReasonDialog title={`Putuskan ${dialog.device.label}?`} body={sharedBody(shared(dialog.device), "Sesi WhatsApp di mesin dilepas. Nomor perlu dipasang ulang sebelum bisa mengirim lagi.")} confirmLabel="Putuskan" danger busy={busy} error={error} onClose={close}
-          onConfirm={(alasan) => void run(() => kirimFetch(`/devices/${dialog.device.kode}/disconnect`, { method: "POST", body: { alasan } }))} />
+          onConfirm={(alasan) => void run(() => kirimFetch(`/devices/${dialog.device.kode}/disconnect`, { method: "POST", body: { alasan } }))}>
+          <GantiHint onGanti={ganti(dialog.device)} />
+        </ReasonDialog>
       ) : null}
       {dialog?.kind === "deactivate" ? (
         <DeactivateDialog device={dialog.device} sharers={shared(dialog.device)} busy={busy} error={error} onClose={close}
           onReconnect={canReconnect(dialog.device) ? () => { setError(null); setDialog({ kind: "sambung-ulang", device: dialog.device }); } : undefined}
+          onGanti={ganti(dialog.device)}
           onConfirm={(alasan) => void run(() => kirimFetch(`/devices/${dialog.device.kode}/deactivate`, { method: "POST", body: { alasan, konfirmasi: true } }))} />
       ) : null}
       {dialog?.kind === "gabung" ? (
@@ -146,7 +157,7 @@ export function NomorPage({ preview }: { preview?: NomorState }) {
         />
       ) : null}
       {dialog?.kind === "edit" && state.status === "ready" ? (
-        <EditDeviceDialog device={dialog.device} consumers={state.consumers} busy={busy} error={error} onClose={close}
+        <EditDeviceDialog device={dialog.device} consumers={state.consumers} busy={busy} error={error} onClose={close} onGanti={ganti(dialog.device)}
           onSave={(body) => void run(() => kirimFetch(`/devices/${dialog.device.kode}`, { method: "PATCH", body }))} />
       ) : null}
       {(dialog?.kind === "tambah" || dialog?.kind === "ubah-pemakai") && state.status === "ready" ? (
@@ -171,10 +182,26 @@ export function NomorPage({ preview }: { preview?: NomorState }) {
           onUseNumber={(device, kodeVerifikasi) => void run(() => kirimFetch(`/modules/${dialog.card.application_key}/pakai-nomor`, { method: "POST", body: { device, kode_verifikasi: kodeVerifikasi } }))}
         />
       ) : null}
-      {dialog?.kind === "pair" || dialog?.kind === "sambung-ulang" ? (
+      {dialog?.kind === "pakai-lagi" ? (
+        <ReasonDialog
+          title={`Pakai lagi ${dialog.device.label} untuk ${dialog.card.nama}?`}
+          body={`Kartu ${dialog.card.nama} kembali ke ${dialog.device.label} dengan percakapan dan rutenya seperti semula.${dialog.card.peran === "pemakai" && dialog.card.nomor ? ` ${dialog.card.nama} berhenti memakai ${dialog.card.nomor.label}.` : ""} Sesudahnya pindai QR lewat Sambungkan ulang, dari HP yang sama atau dari HP dengan nomor WhatsApp yang baru. Sampai tersambung, ${dialog.card.nama} belum bisa mengirim.`}
+          confirmLabel="Pakai lagi"
+          busy={busy}
+          error={error}
+          reasonRequired={false}
+          onClose={close}
+          onConfirm={() => void run(
+            () => kirimFetch<KirimModuleCard>(`/modules/${dialog.card.application_key}/pakai-nomor-lama`, { method: "POST", body: { device: dialog.device.kode } }),
+            (card) => (card.nomor && card.nomor.status !== "tersambung" && canReconnect(card.nomor) ? { kind: "sambung-ulang", device: card.nomor } : null),
+          )}
+        />
+      ) : null}
+      {dialog?.kind === "pair" || dialog?.kind === "sambung-ulang" || dialog?.kind === "ganti-nomor" ? (
         <PairingDialog
           device={dialog.device}
-          reconnect={dialog.kind === "sambung-ulang"}
+          reconnect={dialog.kind !== "pair"}
+          ganti={dialog.kind === "ganti-nomor" ? dialog.modul : undefined}
           onDuplicate={(ke) => { setError(null); setDialog({ kind: "gabung", device: dialog.device, ke }); void load(); }}
           onClose={() => { close(); void load(); }}
         />
@@ -193,7 +220,7 @@ function sharedBody(sharers: string[], body: string): string {
  * KIRIM-IMPL-003 §11.2: Nonaktifkan names every card and route still using the number, points to
  * Sambungkan ulang for a WhatsApp that only came loose, and needs a ticked acknowledgement.
  */
-export function DeactivateDialog({ device, sharers, busy, error, onClose, onConfirm, onReconnect }: {
+export function DeactivateDialog({ device, sharers, busy, error, onClose, onConfirm, onReconnect, onGanti }: {
   device: KirimDevice;
   sharers: string[];
   busy: boolean;
@@ -201,6 +228,7 @@ export function DeactivateDialog({ device, sharers, busy, error, onClose, onConf
   onClose: () => void;
   onConfirm: (alasan: string) => void;
   onReconnect?: () => void;
+  onGanti?: (() => void) | undefined;
 }) {
   const [usage, setUsage] = useState<DeviceUsage | null>(null);
   const [paham, setPaham] = useState(false);
@@ -221,17 +249,18 @@ export function DeactivateDialog({ device, sharers, busy, error, onClose, onConf
       onClose={onClose}
       onConfirm={onConfirm}
     >
-      <DeactivateWarning device={device} usage={usage} paham={paham} onPaham={setPaham} onReconnect={onReconnect} />
+      <DeactivateWarning device={device} usage={usage} paham={paham} onPaham={setPaham} onReconnect={onReconnect} onGanti={onGanti} />
     </ReasonDialog>
   );
 }
 
-export function DeactivateWarning({ device, usage, paham, onPaham, onReconnect }: {
+export function DeactivateWarning({ device, usage, paham, onPaham, onReconnect, onGanti }: {
   device: KirimDevice;
   usage: DeviceUsage | null;
   paham: boolean;
   onPaham: (value: boolean) => void;
   onReconnect?: () => void;
+  onGanti?: (() => void) | undefined;
 }) {
   const routes = usage?.rute.map((route) => `${route.modul} (${route.jenis === "kode" ? "kode verifikasi" : "notifikasi"})`) ?? [];
   return (
@@ -243,6 +272,7 @@ export function DeactivateWarning({ device, usage, paham, onPaham, onReconnect }
         {usage && usage.kartu.length === 0 && routes.length === 0 ? <p>Tidak ada kartu atau rute yang memakai nomor ini.</p> : null}
         <p className="mt-1">Percakapan tetap tersimpan di {device.label}. Jangan membuat nomor baru untuk WhatsApp yang sama.</p>
       </div>
+      <GantiHint onGanti={onGanti} />
       {onReconnect ? (
         <p className="rounded-xl bg-info-soft px-3 py-2 text-info-ink">
           WhatsApp-nya hanya terlepas atau gagal dipindai? <button type="button" className="font-bold underline" onClick={onReconnect}>Sambungkan ulang</button> saja, nomor dan kartunya tetap.
@@ -253,6 +283,16 @@ export function DeactivateWarning({ device, usage, paham, onPaham, onReconnect }
         <span>Saya paham {device.label} dinonaktifkan dan modul di atas berhenti mengirim lewat nomor ini.</span>
       </label>
     </div>
+  );
+}
+
+/** KIRIM-IMPL-003 §12: points a module's admin who wants another WhatsApp away from Putuskan/Nonaktifkan. */
+export function GantiHint({ onGanti }: { onGanti?: (() => void) | undefined }) {
+  if (!onGanti) return null;
+  return (
+    <p className="mt-3 rounded-xl bg-info-soft px-3 py-2 text-sm text-info-ink">
+      Mau memakai nomor WhatsApp lain untuk modul ini? <button type="button" className="font-bold underline" onClick={onGanti}>Ganti nomor WhatsApp</button> saja: kartu, percakapan, dan rutenya tetap.
+    </p>
   );
 }
 
@@ -291,7 +331,10 @@ export function NomorView({ state, onOpen, onRetry }: { state: NomorState; onOpe
                 <h2 id="nomor-lain" className="font-display text-lg font-bold text-brand-heading">Nomor tanpa kartu modul</h2>
                 <ul className="mt-3 grid gap-4 lg:grid-cols-2">
                   {others.map((device) => (
-                    <li key={device.kode}><DeviceCard device={device} onOpen={onOpen} /></li>
+                    <li key={device.kode}>
+                      <DeviceCard device={device} onOpen={onOpen}
+                        pakaiLagi={state.list.modules.find((card) => card.peran !== "pemilik" && (card.nomor_lama ?? []).some((own) => own.kode === device.kode))} />
+                    </li>
                   ))}
                 </ul>
               </section>
@@ -365,7 +408,7 @@ export function ModuleCard({ card, onOpen }: { card: KirimModuleCard; onOpen: (d
       </dl>
       <div className="mt-4 flex flex-wrap gap-2">
         {owner ? (
-          <OwnerActions device={device} inactive={inactive} onOpen={onOpen} />
+          <OwnerActions device={device} modul={card.nama} inactive={inactive} onOpen={onOpen} />
         ) : (
           <>
             <button type="button" className={secondaryButton} onClick={() => onOpen({ kind: "ubah-pemakai", card })}><Settings2 className="h-4 w-4" aria-hidden="true" /> Ubah</button>
@@ -398,10 +441,13 @@ function PairActions({ device, inactive, onOpen }: { device: KirimDevice; inacti
   return <button type="button" className={secondaryButton} onClick={() => onOpen({ kind: "sambung-ulang", device })}><RotateCcw className="h-4 w-4" aria-hidden="true" /> Sambungkan ulang</button>;
 }
 
-function OwnerActions({ device, inactive, onOpen }: { device: KirimDevice; inactive: boolean; onOpen: (dialog: Dialog) => void }) {
+function OwnerActions({ device, modul, inactive, onOpen }: { device: KirimDevice; modul: string; inactive: boolean; onOpen: (dialog: Dialog) => void }) {
   return (
     <>
       <PairActions device={device} inactive={inactive} onOpen={onOpen} />
+      {!inactive && canReconnect(device) ? (
+        <button type="button" className={secondaryButton} onClick={() => onOpen({ kind: "ganti-nomor", device, modul })}><Smartphone className="h-4 w-4" aria-hidden="true" /> Ganti nomor WhatsApp</button>
+      ) : null}
       <button type="button" className={secondaryButton} onClick={() => onOpen({ kind: "edit", device })}><Settings2 className="h-4 w-4" aria-hidden="true" /> Ubah</button>
       {!inactive ? (
         <a className={secondaryButton} href={`/impor?nomor=${encodeURIComponent(device.kode)}`}><History className="h-4 w-4" aria-hidden="true" /> Impor riwayat</a>
@@ -440,13 +486,17 @@ export function TambahDialog({ card, numbers, owners = {}, editing, busy, error,
   onUseNumber: (device: string, kodeVerifikasi: boolean) => void;
   onUseOwnNumber?: (device: string) => void;
 }) {
-  const own = editing ? [] : card.nomor_lama ?? [];
+  // §12: Ubah on a card using another module's number can also go back to the module's own number.
+  const own = card.nomor_lama ?? [];
+  const ownKodes = new Set(own.map((item) => item.kode));
+  const others = numbers.filter((item) => !ownKodes.has(item.kode));
   const [mode, setMode] = useState<"lama" | "baru" | "pakai">(editing ? "pakai" : own.length > 0 ? "lama" : "baru");
-  const [device, setDevice] = useState(editing ? card.nomor?.kode ?? "" : numbers[0]?.kode ?? "");
+  const [device, setDevice] = useState(editing ? card.nomor?.kode ?? "" : others[0]?.kode ?? "");
   const [lama, setLama] = useState(own[own.length - 1]?.kode ?? "");
   const [berbeda, setBerbeda] = useState(false);
   const [kode, setKode] = useState(editing ? card.jenis.includes("kode") : false);
-  const choices = editing && card.nomor ? [card.nomor] : numbers;
+  // Editing: the number in use first, then any other active number (§12 moves the card in one step).
+  const choices = editing && card.nomor ? [card.nomor, ...others] : others;
   const option = "flex gap-3 rounded-xl border p-3 text-sm";
   const ownLabels = own.map((item) => item.label).join(", ");
   return (
@@ -456,7 +506,7 @@ export function TambahDialog({ card, numbers, owners = {}, editing, busy, error,
         {own.length > 0 ? (
           <label className={`${option} ${mode === "lama" ? "border-brand-primary bg-brand-primary-pale/40" : "border-border"}`}>
             <input type="radio" name="cara" className="mt-1" checked={mode === "lama"} onChange={() => setMode("lama")} />
-            <span><strong>Pakai nomor lama {card.nama}</strong><br /><span className="text-muted-foreground">Nomor, percakapan, dan rutenya kembali seperti semula. Bila WhatsApp-nya terlepas, pindai QR lewat Sambungkan ulang.</span></span>
+            <span><strong>Pakai nomor lama {card.nama}</strong><br /><span className="text-muted-foreground">Nomor, percakapan, dan rutenya kembali seperti semula{editing && card.nomor ? `, dan ${card.nama} berhenti memakai ${card.nomor.label}` : ""}. Bila belum tersambung, pindai QR lewat Sambungkan ulang, dari HP yang sama atau HP dengan nomor WhatsApp yang baru.</span></span>
           </label>
         ) : null}
         {mode === "lama" && own.length > 0 ? (
@@ -484,8 +534,14 @@ export function TambahDialog({ card, numbers, owners = {}, editing, busy, error,
         ) : null}
         {!editing ? (
           <label className={`${option} ${mode === "pakai" ? "border-brand-primary bg-brand-primary-pale/40" : "border-border"}`}>
-            <input type="radio" name="cara" className="mt-1" checked={mode === "pakai"} disabled={numbers.length === 0} onChange={() => setMode("pakai")} />
-            <span><strong>Pakai nomor yang sudah aktif</strong><br /><span className="text-muted-foreground">{numbers.length === 0 ? "Belum ada nomor aktif." : `${card.nama} ikut mengirim lewat nomor modul lain. Balasan tetap masuk ke pemilik nomor.`}</span></span>
+            <input type="radio" name="cara" className="mt-1" checked={mode === "pakai"} disabled={others.length === 0} onChange={() => setMode("pakai")} />
+            <span><strong>Pakai nomor yang sudah aktif</strong><br /><span className="text-muted-foreground">{others.length === 0 ? "Belum ada nomor aktif." : `${card.nama} ikut mengirim lewat nomor modul lain. Balasan tetap masuk ke pemilik nomor.`}</span></span>
+          </label>
+        ) : null}
+        {editing && own.length > 0 ? (
+          <label className={`${option} ${mode === "pakai" ? "border-brand-primary bg-brand-primary-pale/40" : "border-border"}`}>
+            <input type="radio" name="cara" className="mt-1" checked={mode === "pakai"} onChange={() => setMode("pakai")} />
+            <span><strong>Tetap memakai nomor modul lain</strong><br /><span className="text-muted-foreground">Pilih nomornya di bawah. Balasan masuk ke pemilik nomor.</span></span>
           </label>
         ) : null}
         {mode === "pakai" && choices.length > 0 ? (
@@ -493,7 +549,7 @@ export function TambahDialog({ card, numbers, owners = {}, editing, busy, error,
             <legend className="px-1 text-xs font-bold text-brand-heading">Nomor aktif</legend>
             {choices.map((item) => (
               <label key={item.kode} className="flex items-center gap-2">
-                <input type="radio" name="nomor" checked={device === item.kode} disabled={editing} onChange={() => setDevice(item.kode)} />
+                <input type="radio" name="nomor" checked={device === item.kode} onChange={() => setDevice(item.kode)} />
                 <span>{item.label} · {item.nomor_tersamar ?? deviceStatusLabel[item.status]} · milik {owners[item.kode] ?? item.pemilik}</span>
               </label>
             ))}
@@ -535,7 +591,8 @@ function Warnings({ list }: { list: KirimDeviceList }) {
   );
 }
 
-export function DeviceCard({ device, onOpen }: { device: KirimDevice; onOpen: (dialog: Dialog) => void }) {
+/** `pakaiLagi`: the module that owns this number while its card is empty or on another module's number (§12). */
+export function DeviceCard({ device, onOpen, pakaiLagi }: { device: KirimDevice; onOpen: (dialog: Dialog) => void; pakaiLagi?: KirimModuleCard | undefined }) {
   const inactive = device.status === "nonaktif";
   return (
     <Panel className="h-full">
@@ -562,7 +619,13 @@ export function DeviceCard({ device, onOpen }: { device: KirimDevice; onOpen: (d
         <div className="col-span-2"><dt className="text-xs text-muted-foreground">Status berubah</dt><dd>{formatTime(device.status_berubah_at)}</dd></div>
       </dl>
       <DuplicateWarning device={device} onOpen={onOpen} />
+      {pakaiLagi ? (
+        <p className="mt-3 rounded-xl bg-info-soft px-3 py-2 text-sm text-info-ink">Nomor milik <strong>{pakaiLagi.nama}</strong>{pakaiLagi.nomor ? `, yang sekarang memakai ${pakaiLagi.nomor.label}` : ", yang kartunya kosong"}.</p>
+      ) : null}
       <div className="mt-4 flex flex-wrap gap-2">
+        {pakaiLagi ? (
+          <button type="button" className={primaryButton} onClick={() => onOpen({ kind: "pakai-lagi", card: pakaiLagi, device })}><RotateCcw className="h-4 w-4" aria-hidden="true" /> Pakai lagi untuk {pakaiLagi.nama}</button>
+        ) : null}
         <PairActions device={device} inactive={inactive} onOpen={onOpen} />
         <button type="button" className={secondaryButton} onClick={() => onOpen({ kind: "edit", device })}><Settings2 className="h-4 w-4" aria-hidden="true" /> Ubah</button>
         {!inactive ? (
@@ -596,7 +659,7 @@ function DialogFrame({ title, children }: { title: string; children: ReactNode }
   );
 }
 
-function EditDeviceDialog({ device, consumers, busy, error, onClose, onSave }: { device: KirimDevice; consumers: KirimConsumer[]; busy: boolean; error: string | null; onClose: () => void; onSave: (body: Record<string, unknown>) => void }) {
+function EditDeviceDialog({ device, consumers, busy, error, onClose, onSave, onGanti }: { device: KirimDevice; consumers: KirimConsumer[]; busy: boolean; error: string | null; onClose: () => void; onSave: (body: Record<string, unknown>) => void; onGanti?: (() => void) | undefined }) {
   const [form, setForm] = useState({
     label: device.label,
     pemilik: device.pemilik,
@@ -613,6 +676,7 @@ function EditDeviceDialog({ device, consumers, busy, error, onClose, onSave }: {
     && (!providerChanged || (form.alasan.trim() && (form.provider === "log" || form.provider_ref.trim())));
   return (
     <DialogFrame title={`Ubah ${device.label}`}>
+      <GantiHint onGanti={onGanti} />
       <div className="mt-3 space-y-3">
         <Field label="Label"><input className="sq-admin-input" value={form.label} onChange={(event) => setForm({ ...form, label: event.target.value })} /></Field>
         <Field label="Modul pemilik">
@@ -673,15 +737,17 @@ type ReconnectResult = PairingResult & { nomor: KirimDevice };
  * `reconnect` (KIRIM-IMPL-003 §11.1) resets the session of this same number instead of preparing
  * it; while the engine restarts the request is tried again on its own a few times.
  */
-function PairingDialog({ device, reconnect = false, onClose, onDuplicate }: {
+function PairingDialog({ device, reconnect = false, ganti, onClose, onDuplicate }: {
   device: KirimDevice;
   reconnect?: boolean;
+  /** KIRIM-IMPL-003 §12: the module moving this number to another WhatsApp. */
+  ganti?: string | undefined;
   onClose: () => void;
   onDuplicate: (ke: { kode: string; label: string }) => void;
 }) {
   const [view, setView] = useState<PairingView>({ step: "choose" });
   const [phone, setPhone] = useState("");
-  const [alasan, setAlasan] = useState("");
+  const [alasan, setAlasan] = useState(ganti ? "Ganti nomor WhatsApp" : "");
   const [perangkatBaru, setPerangkatBaru] = useState(false);
   const timer = useRef<number | null>(null);
   const retryTimer = useRef<number | null>(null);
@@ -722,7 +788,7 @@ function PairingDialog({ device, reconnect = false, onClose, onDuplicate }: {
     if (reconnect) {
       return kirimFetch<ReconnectResult>(`/devices/${device.kode}/sambung-ulang`, {
         method: "POST",
-        body: { mode, ...(mode === "kode" ? { phone } : {}), alasan: alasan.trim(), perangkat_baru: perangkatBaru },
+        body: { mode, ...(mode === "kode" ? { phone } : {}), alasan: alasan.trim(), perangkat_baru: perangkatBaru, ...(ganti ? { ganti_nomor: true } : {}) },
       });
     }
     await kirimFetch(`/devices/${device.kode}/provision`, { method: "POST", body: {} });
@@ -763,13 +829,13 @@ function PairingDialog({ device, reconnect = false, onClose, onDuplicate }: {
   };
 
   return (
-    <DialogFrame title={reconnect ? `Sambungkan ulang ${device.label}` : `Pasang ${device.label}`}>
+    <DialogFrame title={ganti ? `Ganti nomor WhatsApp ${ganti}` : reconnect ? `Sambungkan ulang ${device.label}` : `Pasang ${device.label}`}>
       <PairingContent
         view={view}
         phone={phone}
         onPhone={setPhone}
         onStart={(mode) => void start(mode)}
-        reconnect={reconnect ? { device, alasan, onAlasan: setAlasan, perangkatBaru, onPerangkatBaru: setPerangkatBaru } : undefined}
+        reconnect={reconnect ? { device, alasan, onAlasan: setAlasan, perangkatBaru, onPerangkatBaru: setPerangkatBaru, ganti } : undefined}
         onRetry={() => void start(lastMode.current)}
         onDuplicate={(ke) => { stop(); onDuplicate(ke); }}
       />
@@ -785,19 +851,26 @@ export function PairingContent({ view, phone, onPhone, onStart, reconnect, onRet
   phone: string;
   onPhone: (value: string) => void;
   onStart: (mode: "qr" | "kode") => void;
-  reconnect?: { device: KirimDevice; alasan: string; onAlasan: (value: string) => void; perangkatBaru: boolean; onPerangkatBaru: (value: boolean) => void };
+  reconnect?: { device: KirimDevice; alasan: string; onAlasan: (value: string) => void; perangkatBaru: boolean; onPerangkatBaru: (value: boolean) => void; ganti?: string | undefined };
   onRetry?: () => void;
   onDuplicate?: (ke: { kode: string; label: string }) => void;
 }) {
-  const instructions = <p className="mt-3 rounded-xl bg-muted px-3 py-2 text-sm">Di HP nomor ini buka <strong>WhatsApp → Perangkat tertaut → Tautkan perangkat</strong>.</p>;
+  const instructions = <p className="mt-3 rounded-xl bg-muted px-3 py-2 text-sm">Di HP {reconnect?.ganti ? "dengan nomor WhatsApp yang baru" : "nomor ini"} buka <strong>WhatsApp → Perangkat tertaut → Tautkan perangkat</strong>.</p>;
   if (view.step === "choose") {
     const blocked = Boolean(reconnect && !reconnect.alasan.trim());
     return (
       <div className="mt-3 space-y-3">
         {reconnect ? (
           <>
-            <p className="text-sm text-muted-foreground">Sesi WhatsApp lama di mesin diulang lalu QR baru dibuat untuk <strong>{reconnect.device.label}</strong>. Kode nomor, percakapan, kartu modul, dan rute tetap sama. Tidak ada nomor baru yang dibuat.</p>
-            {reconnect.device.status === "tersambung" ? (
+            {reconnect.ganti ? (
+              <>
+                <p className="text-sm text-muted-foreground">Pindai QR dari HP dengan <strong>nomor WhatsApp yang baru</strong>. {reconnect.ganti} tetap memakai kartu, kode nomor <strong>{reconnect.device.label}</strong>, riwayat percakapan, rute, dan antrean yang sama.</p>
+                <p role="alert" className="rounded-xl bg-warning-soft px-3 py-2 text-sm text-warning-ink">WhatsApp lama dilepas dari Kirim SQ, dan sampai QR dipindai pesan tidak terkirim. Pesan ke nomor lama tidak masuk lagi. Nomor di brosur, situs, dan tautan wa.me perlu diganti sendiri.</p>
+              </>
+            ) : (
+              <p className="text-sm text-muted-foreground">Sesi WhatsApp lama di mesin diulang lalu QR baru dibuat untuk <strong>{reconnect.device.label}</strong>. Kode nomor, percakapan, kartu modul, dan rute tetap sama. Tidak ada nomor baru yang dibuat. Memindai dari HP lain berarti mengganti nomor WhatsApp-nya.</p>
+            )}
+            {reconnect.device.status === "tersambung" && !reconnect.ganti ? (
               <p role="alert" className="rounded-xl bg-warning-soft px-3 py-2 text-sm text-warning-ink">Nomor ini sedang tersambung. Sesi yang berjalan dilepas, dan pesan tidak terkirim sampai QR dipindai lagi.</p>
             ) : null}
             <p className="text-sm text-muted-foreground">Setelah tersambung, hapus perangkat tertaut lama di HP (WhatsApp → Perangkat tertaut) bila masih tercantum.</p>

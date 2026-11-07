@@ -125,9 +125,8 @@ export class KirimModuleCards {
     return this.change(applicationKey, async (client, application, consumer) => {
       const device = await findDevice(client, input.device, true);
       if (!device || device.pemilikConsumerId !== consumer.id) throw new KirimApiError(422, "nomor_bukan_milik_modul", "Nomor ini bukan milik modul ini.");
-      if (consumer.nomorDeviceId && consumer.nomorDeviceId !== device.id) {
-        throw new KirimApiError(409, "kartu_sudah_tersambung", "Modul ini sudah tersambung. Putuskan dulu sebelum memakai nomor lain.");
-      }
+      // §12: a card sending through another module's number lets go of it here, without Putuskan first.
+      const dilepas = await releaseBorrowed(client, consumer, device.id);
       const diaktifkan = device.status === "nonaktif";
       if (diaktifkan) {
         await setDeviceStatus(client, this.crypto, device.id, device.provider === "log" ? "tersambung" : "terputus", { allowFromNonaktif: true });
@@ -135,7 +134,7 @@ export class KirimModuleCards {
       await client.query("UPDATE kirim_consumers SET nomor_device_id = $2, updated_at = now() WHERE id = $1", [consumer.id, device.id]);
       await writeAudit(client, {
         actorKind: "human", actorRef: actor.ref, aksi: "kartu.pakai_nomor_lama", objekJenis: "modul", objekRef: application.applicationKey,
-        metadata: { device: device.kode, diaktifkan },
+        metadata: { device: device.kode, diaktifkan, ...(dilepas ? { dilepas } : {}) },
       });
     });
   }
@@ -146,9 +145,8 @@ export class KirimModuleCards {
       const device = await findDevice(client, input.device, true);
       if (!device || device.status === "nonaktif") throw new KirimApiError(422, "device_inactive", "Nomor tidak aktif.");
       if (device.pemilikConsumerId === consumer.id) throw new KirimApiError(409, "nomor_milik_sendiri", "Nomor ini sudah milik modul ini.");
-      if (consumer.nomorDeviceId && consumer.nomorDeviceId !== device.id) {
-        throw new KirimApiError(409, "kartu_sudah_tersambung", "Modul ini sudah tersambung. Putuskan dulu sebelum memakai nomor lain.");
-      }
+      // §12: Ubah on a card using another module's number may move it to a third one in one step.
+      const dilepas = await releaseBorrowed(client, consumer, device.id);
       await client.query(
         `INSERT INTO kirim_routes (consumer_id, device_id, jenis) VALUES ($1, $2, 'notifikasi') ON CONFLICT DO NOTHING`,
         [consumer.id, device.id],
@@ -161,7 +159,7 @@ export class KirimModuleCards {
       await client.query("UPDATE kirim_consumers SET nomor_device_id = $2, updated_at = now() WHERE id = $1", [consumer.id, device.id]);
       await writeAudit(client, {
         actorKind: "human", actorRef: actor.ref, aksi: "kartu.pakai_nomor", objekJenis: "modul", objekRef: application.applicationKey,
-        metadata: { device: device.kode, kode_verifikasi: input.kode_verifikasi },
+        metadata: { device: device.kode, kode_verifikasi: input.kode_verifikasi, ...(dilepas ? { dilepas } : {}) },
       });
     });
   }
@@ -322,6 +320,23 @@ async function findLinkedConsumer(db: Queryable, application: RegistryApplicatio
     [application.applicationKey, application.machineClientId],
   );
   return result.rows[0] ? findConsumerById(db, result.rows[0].id) : null;
+}
+
+/**
+ * KIRIM-IMPL-003 §12: before a card takes `targetId`, the number it borrows from another module (if
+ * any) loses this module's routes. A card on a number it owns is never released here: that number
+ * changes WhatsApp through Ganti nomor, or is let go with Putuskan/Nonaktifkan. Returns the
+ * released number's code.
+ */
+async function releaseBorrowed(db: Queryable, consumer: ConsumerRow, targetId: string): Promise<string | null> {
+  if (!consumer.nomorDeviceId || consumer.nomorDeviceId === targetId) return null;
+  const current = await findDeviceById(db, consumer.nomorDeviceId);
+  if (!current) return null;
+  if (current.pemilikConsumerId === consumer.id) {
+    throw new KirimApiError(409, "kartu_sudah_tersambung", "Modul ini sudah memakai nomornya sendiri. Untuk WhatsApp lain pakai Ganti nomor WhatsApp di kartunya.");
+  }
+  await db.query("DELETE FROM kirim_routes WHERE consumer_id = $1 AND device_id = $2", [consumer.id, current.id]);
+  return current.kode;
 }
 
 async function allowedJenis(db: Queryable, consumerId: string, device: DeviceRow): Promise<Jenis[]> {

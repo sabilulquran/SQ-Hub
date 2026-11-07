@@ -70,6 +70,8 @@ export const reconnectSchema = z
     mode: z.enum(["qr", "kode"]),
     phone: z.string().trim().min(8).max(20).optional(),
     perangkat_baru: z.boolean().default(false),
+    /** KIRIM-IMPL-003 §12: the admin is moving the number to another WhatsApp (audit only; the work is the same). */
+    ganti_nomor: z.boolean().default(false),
     alasan: reasonSchema,
   })
   .strict()
@@ -342,7 +344,7 @@ export class KirimAdminService {
     } catch (error) {
       await writeAudit(this.pool, {
         actorKind: "human", actorRef: actor.ref, aksi: "nomor.sambung_ulang", objekJenis: "device", objekRef: kode, hasil: "gagal",
-        metadata: { mode: input.mode, perangkat_baru: input.perangkat_baru, alasan: input.alasan, code: providerCode(error) },
+        metadata: { mode: input.mode, perangkat_baru: input.perangkat_baru, ganti_nomor: input.ganti_nomor, alasan: input.alasan, code: providerCode(error) },
       });
       throw providerError(error);
     }
@@ -362,6 +364,7 @@ export class KirimAdminService {
         metadata: {
           mode: input.mode,
           perangkat_baru: input.perangkat_baru,
+          ganti_nomor: input.ganti_nomor,
           alasan: input.alasan,
           status_sebelumnya: device.status,
           ...(tenantBaru ? { tenant_lama: device.providerRef, tenant_baru: tenantBaru } : {}),

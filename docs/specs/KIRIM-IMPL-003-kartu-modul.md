@@ -199,6 +199,45 @@ Data (migration `0015_kirim_device_nomor_hmac.sql`, aditif): kolom `kirim_device
 
 **Recovery plan:** dump database Hub sebelum migrasi (runbook rilis). Migration 0015 aditif dan berjalan dalam satu transaksi; rollback aplikasi ke rilis sebelumnya aman karena kode lama tidak membaca `nomor_hmac`. Nomor yang sedang ditahan pada rilis ini kembali ditarik normal oleh kode lama (perilaku sebelum addendum).
 
+## 12. Addendum 2026-11-07: Ganti nomor WhatsApp dari kartu modul
+
+**Status:** ACCEPTED (permintaan owner 2026-11-07, "kan kartu modul, bukan kartu nomor"). Keputusan agent dicatat di §12.4.
+
+### Kejadian yang memicu (2026-11-07 12.12–12.13 WIB)
+
+Owner ingin SPMB memakai nomor WhatsApp lain. Kartu SPMB tidak punya jalan untuk itu, jadi owner menempuh Putuskan Keluarga → Putuskan nomor SPMB (keluar dari WhatsApp) → Nonaktifkan → kartu kosong → **Pakai nomor yang sudah aktif** (satu-satunya nomor aktif: HCIS) untuk SPMB dan Keluarga. Akibatnya nomor SPMB nonaktif tanpa kartu, **Sambungkan ulang** hilang karena nomornya nonaktif, kotak masuk SPMB (yang membaca nomor `spmb`) tuli, dan kode SPMB keluar dari nomor HCIS. Ops mengembalikan `spmb` ke `terputus` (audit `nomor.aktif_lagi`) tanpa memindah kartu.
+
+Akar masalah: layar memperlakukan pergantian WhatsApp sebagai pergantian **nomor Kirim**, padahal modul (dan kotak masuk SPMB yang memakai kode nomor tetap) membutuhkan nomor Kirim yang sama dengan WhatsApp yang berbeda. Mesin sudah bisa melakukannya lewat Sambungkan ulang (§11.1), tetapi tidak ditawarkan sebagai "ganti nomor".
+
+### 12.1 Ganti nomor WhatsApp
+
+- Kartu pemilik dengan nomor `jalurpesan` berstatus `terputus`, `menunggu_pairing`, atau `tersambung` menampilkan **Ganti nomor WhatsApp**.
+- Tombol itu membuka dialog Sambungkan ulang dalam mode ganti: judul "Ganti nomor WhatsApp <modul>", alasan terisi "Ganti nomor WhatsApp" (boleh diubah), penjelasan bahwa kartu, kode nomor, riwayat percakapan, rute, dan antrean tetap, peringatan bahwa WhatsApp lama dilepas, pesan ke nomor lama tidak masuk lagi, dan nomor di brosur/situs/tautan wa.me diganti sendiri. Petunjuk pindai menyebut "HP dengan nomor WhatsApp yang baru".
+- API tetap `POST /devices/:kode/sambung-ulang`, dengan field tambahan `ganti_nomor?: false` yang hanya dicatat di audit `nomor.sambung_ulang` (berhasil dan gagal). Pekerjaan mesinnya sama dengan Sambungkan ulang.
+- Dialog Putuskan, Nonaktifkan, dan Ubah pada nomor milik sebuah kartu menampilkan "Mau memakai nomor WhatsApp lain untuk modul ini? **Ganti nomor WhatsApp** saja: kartu, percakapan, dan rutenya tetap."
+- Teks Sambungkan ulang biasa menambahkan "Memindai dari HP lain berarti mengganti nomor WhatsApp-nya."
+
+### 12.2 Kembali ke nomor sendiri dan pindah nomor pinjaman tanpa Putuskan
+
+- `POST /modules/:app/pakai-nomor-lama` dan `POST /modules/:app/pakai-nomor`: bila kartu sedang memakai nomor **modul lain**, nomor itu dilepas dalam transaksi yang sama (rute modul ini ke nomor itu dihapus), lalu kartu menautkan nomor tujuan. Audit `kartu.pakai_nomor_lama` / `kartu.pakai_nomor` mencatat `dilepas: <kode>`. Kartu yang memakai nomornya **sendiri** tetap ditolak `409 kartu_sudah_tersambung`, dengan pesan yang menunjuk ke Ganti nomor WhatsApp.
+- **Ubah** pada kartu pemakai menawarkan **Pakai nomor lama <modul>** (bila modul punya nomor) dan **Tetap memakai nomor modul lain** dengan pilihan semua nomor aktif yang bukan milik modul itu, nomor yang sedang dipakai di urutan pertama.
+- Di "Nomor tanpa kartu modul", nomor yang dimiliki modul yang kartunya kosong atau sedang meminjam nomor lain menampilkan "Nomor milik <modul> …" dan **Pakai lagi untuk <modul>** (`pakai-nomor-lama`); dialognya menjelaskan modul belum bisa mengirim sampai dipindai, lalu Sambungkan ulang terbuka langsung bila nomor belum tersambung.
+
+### 12.3 Uji
+
+- Web: tombol Ganti nomor WhatsApp hanya pada kartu pemilik dengan status yang bisa disambung ulang; teks dialog mode ganti; petunjuk Ganti nomor di peringatan Nonaktifkan; Pakai lagi di daftar nomor tanpa kartu; Ubah kartu pemakai menawarkan nomor lama dan nomor aktif lain.
+- API: kartu pemakai pindah ke nomor ketiga lalu kembali ke nomornya sendiri yang nonaktif tanpa Putuskan, rute nomor pinjaman terhapus, audit `dilepas`; kartu pemilik tetap ditolak; Sambungkan ulang dengan `ganti_nomor` mempertahankan kode, kartu, dan rute serta mencatat `ganti_nomor` di audit.
+
+### 12.4 Keputusan
+
+| # | Topik | Status | Keputusan |
+| --- | --- | --- | --- |
+| K-11 | Ganti WhatsApp sebuah modul | DIPUTUSKAN (agent, atas keluhan owner) | Memakai nomor Kirim yang sama (Sambungkan ulang), bukan nomor baru, supaya kode nomor yang dibaca modul (misalnya kotak masuk SPMB) dan riwayat percakapan tetap. Percakapan dari nomor lama dan nomor baru tercampur per kontak di nomor Kirim yang sama |
+| K-12 | Nomor pinjaman saat kartu pindah | DIPUTUSKAN (agent) | Dilepas otomatis dalam satu transaksi; nomor milik sendiri tidak pernah dilepas otomatis |
+| K-13 | Nomor publik modul (brosur, situs, tautan wa.me) setelah ganti | DRAFT | Diganti sendiri oleh admin modul; Kirim SQ hanya mengingatkan di dialog |
+
+**Recovery plan:** tidak ada migration. Rollback aplikasi ke rilis sebelumnya aman: field `ganti_nomor` ditolak kode lama hanya bila layar baru masih terbuka (muat ulang halaman).
+
 ## Riwayat
 
 | Tanggal | Perubahan |
@@ -207,3 +246,4 @@ Data (migration `0015_kirim_device_nomor_hmac.sql`, aditif): kolom `kirim_device
 | 2026-11-03 | Review independen: token service account wajib, client mengikuti registry, kartu kosong saat nomor nonaktif, path webhook mandiri dibatasi |
 | 2026-11-05 | §11: Sambungkan ulang, konfirmasi Nonaktifkan, satu nomor per WhatsApp (kejadian SPMB 5 November) |
 | 2026-11-05 | Review independen §11: cursor event per tenant (`kirim_events.provider_ref`), penahanan hanya untuk nomor tanpa pesan masuk, cek `provider_ref` bersamaan di Sambungkan ulang, batas gabung dicatat di K-8 |
+| 2026-11-07 | §12: Ganti nomor WhatsApp dari kartu modul, kembali ke nomor sendiri dan pindah nomor pinjaman tanpa Putuskan (kejadian SPMB 7 November) |
