@@ -112,6 +112,15 @@ export interface ProviderCatalogProduct {
   imageUrl: string | null;
 }
 
+/** WhatsApp Business hours: one entry per open day (JalurPesan business-hours); a day left out is closed. */
+export interface ProviderBusinessHours {
+  timezone: string;
+  days: Array<
+    | { day: "sun" | "mon" | "tue" | "wed" | "thu" | "fri" | "sat"; mode: "specific_hours"; openMinutes: number; closeMinutes: number }
+    | { day: "sun" | "mon" | "tue" | "wed" | "thu" | "fri" | "sat"; mode: "open_24h" }
+  >;
+}
+
 /** A request to join a group that waits for an admin. */
 export interface ProviderJoinRequest {
   jid: string;
@@ -282,6 +291,13 @@ export interface KirimProvider {
   removeQuickReply(device: DeviceRef, waId: string): Promise<void>;
   /** Reads the phone's quick replies again (those made before the engine listened); false when skipped (rate limit). */
   resyncQuickReplies(device: DeviceRef): Promise<boolean>;
+  /** Replaces the hours on the number's WhatsApp Business profile; `verified` from reading it back (null: not possible). */
+  setBusinessHours(device: DeviceRef, hours: ProviderBusinessHours): Promise<{ verified: boolean | null }>;
+  /**
+   * Puts the module's labels (`managed`) on or off one private chat so it carries exactly `labels` of them; other labels
+   * on the phone are never touched. Returns the managed labels now on the chat.
+   */
+  setChatLabels(device: DeviceRef, chat: { jid: string; altJid: string | null }, managed: string[], labels: string[]): Promise<string[]>;
   listCatalog(device: DeviceRef, cursor: string | null): Promise<{ products: ProviderCatalogProduct[]; nextCursor: string | null }>;
   setGroupSubject(device: DeviceRef, groupJid: string, subject: string): Promise<void>;
   setGroupDescription(device: DeviceRef, groupJid: string, description: string): Promise<void>;

@@ -194,6 +194,14 @@ export class LogProvider implements KirimProvider {
     throw new ProviderOperationError("engine_rejected", "log provider has no WhatsApp Business");
   }
 
+  async setBusinessHours(): Promise<{ verified: boolean | null }> {
+    throw new ProviderOperationError("engine_rejected", "log provider has no WhatsApp Business");
+  }
+
+  async setChatLabels(): Promise<string[]> {
+    throw new ProviderOperationError("engine_rejected", "log provider has no WhatsApp Business");
+  }
+
   async listCatalog(): Promise<{ products: ProviderCatalogProduct[]; nextCursor: string | null }> {
     throw new ProviderOperationError("engine_rejected", "log provider has no WhatsApp Business");
   }

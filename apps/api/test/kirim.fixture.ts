@@ -42,6 +42,13 @@ export class JalurPesanStub {
   refuseNextSetting = false;
   /** §11: WhatsApp Business quick replies and catalog per tenant. */
   quickReplyResyncs = 0;
+  /** §11.3–§11.4: what reached the engine's business-hours and chat-labels routes, per tenant. */
+  readonly businessHours = new Map<string, unknown>();
+  readonly chatLabelCalls: Array<{ tenantId: string; body: Record<string, unknown> }> = [];
+  /** Labels on each chat (by JID) as the engine would keep them. */
+  readonly chatLabels = new Map<string, string[]>();
+  /** The next business change answers this status (e.g. 422 for a number that is not WhatsApp Business). */
+  refuseNextBusiness: number | null = null;
   readonly quickReplies = new Map<string, Array<{ waId: string; shortcut: string; message: string; deleted: boolean; updatedAt: string }>>();
   readonly catalog = new Map<string, Array<Record<string, unknown>>>();
   readonly sendsByKey = new Map<string, number>();
@@ -143,6 +150,10 @@ export class JalurPesanStub {
     this.groupCalls.length = 0;
     this.onEventsRead = null;
     this.uploads = 0;
+    this.businessHours.clear();
+    this.chatLabelCalls.length = 0;
+    this.chatLabels.clear();
+    this.refuseNextBusiness = null;
     this.sendQueue = [];
     this.provisionResponse = null;
     this.resetQueue = [];
@@ -278,6 +289,24 @@ export class JalurPesanStub {
     }
     if (path === "/quick-replies" && request.method === "GET") {
       return { status: 200, body: { success: true, quickReplies: this.quickReplies.get(tenantId) ?? [] } };
+    }
+    if ((path === "/business-hours" || path === "/chat-labels") && request.method === "PUT") {
+      if (this.refuseNextBusiness !== null) {
+        const status = this.refuseNextBusiness;
+        this.refuseNextBusiness = null;
+        return { status, body: { success: false, error: "refused", code: status === 422 ? "whatsapp_rejected" : "labels_unread" } };
+      }
+      const body = JSON.parse(raw.toString("utf8")) as Record<string, unknown>;
+      if (path === "/business-hours") {
+        this.businessHours.set(tenantId, body);
+        return { status: 200, body: { success: true, applied: true, verified: true } };
+      }
+      this.chatLabelCalls.push({ tenantId, body });
+      const managed = new Set((body.managed as string[]).map((n) => n.toLowerCase()));
+      const chat = String(body.chatJid);
+      const kept = (this.chatLabels.get(chat) ?? []).filter((n) => !managed.has(n.toLowerCase()));
+      this.chatLabels.set(chat, [...kept, ...(body.labels as string[])]);
+      return { status: 200, body: { success: true, labels: body.labels } };
     }
     if (path === "/quick-replies/resync" && request.method === "POST") {
       this.quickReplyResyncs += 1;

@@ -60,7 +60,7 @@ async function token(azp: string) {
 }
 
 async function call(
-  method: "GET" | "POST" | "PATCH",
+  method: "GET" | "POST" | "PATCH" | "PUT",
   url: string,
   options: { client?: string; payload?: unknown; key?: string; headers?: Record<string, string> } = {},
 ) {
@@ -827,6 +827,130 @@ describe("WhatsApp Business: balasan cepat dan katalog (§11)", () => {
     expect(page.items[0].tautan).toMatch(/^https:\/\/wa\.me\/p\/p-1\/\d+$/);
     expect((await call("GET", "/devices/spmb/katalog/p-3/gambar")).statusCode).toBe(404);
     expect((await call("GET", "/devices/spmb/katalog/tidak-ada/gambar")).statusCode).toBe(404);
+  });
+});
+
+describe("WhatsApp Business: jam kerja dan label (§11.3–§11.4)", () => {
+  const HOURS = {
+    atas_nama: OFFICER,
+    zona: "Asia/Jakarta",
+    hari: [
+      { hari: 1, rentang: [{ buka: "07:00", tutup: "12:00" }, { buka: "13:00", tutup: "16:00" }] },
+      { hari: 6, rentang: [{ buka: "08:00", tutup: "11:30" }] },
+      { hari: 7, rentang: [{ buka: "00:00", tutup: "24:00" }] },
+    ],
+  };
+
+  it("puts the service hours on the profile: one range per day, 00:00–24:00 as open 24 hours, audited", async () => {
+    const set = await call("PUT", "/devices/spmb/jam-kerja", { payload: HOURS });
+    expect(set.statusCode).toBe(200);
+    expect(set.json()).toEqual({ diterapkan: true });
+    // WhatsApp keeps one range per day: Monday becomes 07:00 → 16:00. A day left out is closed.
+    expect(stub.businessHours.get("spmb")).toEqual({
+      timezone: "Asia/Jakarta",
+      days: [
+        { day: "mon", mode: "specific_hours", openMinutes: 420, closeMinutes: 960 },
+        { day: "sat", mode: "specific_hours", openMinutes: 480, closeMinutes: 690 },
+        { day: "sun", mode: "open_24h" },
+      ],
+    });
+    const audit = (await pool.query<{ aksi: string; objekRef: string; atasNama: unknown }>(
+      `SELECT aksi, objek_ref AS "objekRef", atas_nama AS "atasNama" FROM kirim_audit WHERE objek_jenis = 'jam_kerja'`,
+    )).rows;
+    expect(audit).toMatchObject([{ aksi: "jam_kerja.ubah", objekRef: "spmb" }]);
+    expect(audit[0]!.atasNama).toBeTruthy();
+  });
+
+  it("refuses hours that are not strictly valid, and maps the engine's refusals", async () => {
+    const bad: unknown[] = [
+      { ...HOURS, zona: "Asia/Atlantis" },
+      { ...HOURS, hari: [] },
+      { ...HOURS, hari: [{ hari: 8, rentang: [{ buka: "07:00", tutup: "12:00" }] }] },
+      { ...HOURS, hari: [{ hari: 1, rentang: [] }] },
+      { ...HOURS, hari: [{ hari: 1, rentang: [{ buka: "12:00", tutup: "07:00" }] }] },
+      { ...HOURS, hari: [{ hari: 1, rentang: [{ buka: "24:00", tutup: "24:00" }] }] },
+      { ...HOURS, hari: [{ hari: 1, rentang: [{ buka: "7:00", tutup: "12:00" }] }] },
+      { ...HOURS, hari: [{ hari: 1, rentang: [{ buka: "07:00", tutup: "12:00" }, { buka: "11:00", tutup: "13:00" }] }] },
+      { ...HOURS, hari: [{ hari: 1, rentang: [{ buka: "07:00", tutup: "12:00" }] }, { hari: 1, rentang: [{ buka: "13:00", tutup: "14:00" }] }] },
+      { ...HOURS, catatan: "x" },
+    ];
+    for (const payload of bad) {
+      const response = await call("PUT", "/devices/spmb/jam-kerja", { payload });
+      expect(response.statusCode, JSON.stringify(payload)).toBe(400);
+      expect(response.json().error.code).toBe("invalid_request");
+    }
+    const noOfficer = { zona: HOURS.zona, hari: HOURS.hari };
+    expect((await call("PUT", "/devices/spmb/jam-kerja", { payload: noOfficer })).json().error.code).toBe("atas_nama_required");
+    expect(stub.businessHours.size).toBe(0);
+    // Not WhatsApp Business: the engine answers 422; engine trouble 503.
+    stub.refuseNextBusiness = 422;
+    expect((await call("PUT", "/devices/spmb/jam-kerja", { payload: HOURS })).json().error.code).toBe("engine_rejected");
+    stub.refuseNextBusiness = 503;
+    expect((await call("PUT", "/devices/spmb/jam-kerja", { payload: HOURS })).json().error.code).toBe("engine_unavailable");
+    expect((await call("PUT", "/devices/spmb/jam-kerja", { client: "hcis-api", payload: HOURS })).statusCode).toBe(403);
+    expect((await pool.query("SELECT 1 FROM kirim_audit WHERE objek_jenis = 'jam_kerja'")).rowCount).toBe(0);
+  });
+
+  it("sets the module's labels on a chat by its number and LID, never others, and audits the names", async () => {
+    const byNumber = await inbound();
+    const DIKELOLA = ["Baru", "Ditangani", "Menunggu", "Selesai", "Taman Tahfizh", "SDIT"];
+    stub.chatLabels.set(CONTACT_JID, ["VIP", "Baru"]);
+    const set = await call("PUT", `/conversations/${byNumber.conversationId}/label`, {
+      payload: { atas_nama: OFFICER, dikelola: DIKELOLA, label: ["Ditangani", "SDIT"] },
+    });
+    expect(set.statusCode).toBe(200);
+    expect(set.json()).toEqual({ label: ["Ditangani", "SDIT"] });
+    expect(stub.chatLabelCalls[0]).toEqual({
+      tenantId: "spmb",
+      body: { chatJid: CONTACT_JID, altJid: null, managed: DIKELOLA, labels: ["Ditangani", "SDIT"] },
+    });
+    // The phone's own label stays; the managed one SPMB no longer wants is gone.
+    expect(stub.chatLabels.get(CONTACT_JID)).toEqual(["VIP", "Ditangani", "SDIT"]);
+    // A chat known by its LID goes to the engine by that JID.
+    const byLid = await inbound("halo", {}, "998877665544@lid");
+    await call("PUT", `/conversations/${byLid.conversationId}/label`, { payload: { atas_nama: OFFICER, dikelola: DIKELOLA, label: [] } });
+    expect(stub.chatLabelCalls[1]!.body).toMatchObject({ chatJid: "998877665544@lid", labels: [] });
+
+    const audit = (await pool.query<{ aksi: string; objekRef: string; metadata: { label: string[] } }>(
+      `SELECT aksi, objek_ref AS "objekRef", metadata FROM kirim_audit WHERE aksi = 'percakapan.label' ORDER BY occurred_at`,
+    )).rows;
+    expect(audit.map((row) => [row.objekRef, row.metadata.label])).toEqual([
+      [byNumber.conversationId, ["Ditangani", "SDIT"]],
+      [byLid.conversationId, []],
+    ]);
+    expect(JSON.stringify(audit)).not.toContain("6281234567890");
+  });
+
+  it("refuses label requests that are not strictly valid, and keeps other modules out", async () => {
+    const { conversationId } = await inbound();
+    const url = `/conversations/${conversationId}/label`;
+    const bad: unknown[] = [
+      { atas_nama: OFFICER, dikelola: ["Baru"], label: ["Lain"] },
+      { atas_nama: OFFICER, dikelola: [], label: [] },
+      { atas_nama: OFFICER, dikelola: ["Baru", "baru"], label: [] },
+      { atas_nama: OFFICER, dikelola: ["Baru"], label: ["Baru", "BARU"] },
+      { atas_nama: OFFICER, dikelola: ["x".repeat(26)], label: [] },
+      { atas_nama: OFFICER, dikelola: [" "], label: [] },
+      { atas_nama: OFFICER, dikelola: Array.from({ length: 51 }, (_, i) => `L${i}`), label: [] },
+      { atas_nama: OFFICER, dikelola: ["Baru"] },
+      { atas_nama: OFFICER, dikelola: ["Baru"], label: [], warna: 1 },
+    ];
+    for (const payload of bad) {
+      expect((await call("PUT", url, { payload })).statusCode, JSON.stringify(payload)).toBe(400);
+    }
+    expect((await call("PUT", url, { payload: { dikelola: ["Baru"], label: [] } })).json().error.code).toBe("atas_nama_required");
+    expect(stub.chatLabelCalls).toHaveLength(0);
+    // Another module's conversation is 404 like one that does not exist.
+    expect((await call("PUT", url, { client: "hcis-api", payload: { atas_nama: OFFICER, dikelola: ["Baru"], label: [] } })).statusCode).toBe(404);
+    expect((await call("PUT", `/conversations/${randomUUID()}/label`, { payload: { atas_nama: OFFICER, dikelola: ["Baru"], label: [] } })).statusCode).toBe(404);
+    // Labels not read yet on the phone (engine 503) and a number that is not WhatsApp Business (engine 422).
+    stub.refuseNextBusiness = 503;
+    const wait = await call("PUT", url, { payload: { atas_nama: OFFICER, dikelola: ["Baru"], label: ["Baru"] } });
+    expect([wait.statusCode, wait.json().error.code]).toEqual([503, "engine_unavailable"]);
+    stub.refuseNextBusiness = 422;
+    const refused = await call("PUT", url, { payload: { atas_nama: OFFICER, dikelola: ["Baru"], label: ["Baru"] } });
+    expect([refused.statusCode, refused.json().error.code]).toEqual([422, "engine_rejected"]);
+    expect((await pool.query("SELECT 1 FROM kirim_audit WHERE aksi = 'percakapan.label'")).rowCount).toBe(0);
   });
 });
 

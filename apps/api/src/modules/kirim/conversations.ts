@@ -5,6 +5,7 @@ import { z } from "zod";
 
 import { columnAad, InvalidNumberError, normalizePhone, phoneCanonical, type KirimCrypto } from "./crypto.js";
 import { changedByItem, reactionAad, type StoredReaction } from "./message-state.js";
+import { jidFromCanonical } from "./message-refs.js";
 import type { KirimLog } from "./providers/log.js";
 import { ProviderOperationError, type KirimProvider, type ProviderName, type ReadReceiptKey } from "./providers/types.js";
 import {
@@ -215,6 +216,15 @@ export class KirimConversations {
     const row = result.rows[0];
     if (!row) throw new KirimApiError(404, "not_found", "Percakapan tidak ditemukan.");
     return row;
+  }
+
+  /** The WhatsApp JIDs of a private conversation: the one it was first known by, and the other identity when known. */
+  chatJids(row: ConversationRow): { jid: string; altJid: string | null } | null {
+    const own = this.crypto.open(row.kontakEnc, columnAad("kirim_conversations", "kontak_enc", row.id));
+    const alt = row.kontakAltEnc ? this.crypto.open(row.kontakAltEnc, columnAad("kirim_conversations", "kontak_alt_enc", row.id)) : null;
+    const jid = jidFromCanonical(own);
+    if (!jid) return null;
+    return { jid, altJid: alt ? jidFromCanonical(alt) : null };
   }
 
   async ownedGroup(db: Queryable, consumer: ConsumerRow, id: string, lock = false) {

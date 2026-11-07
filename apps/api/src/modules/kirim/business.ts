@@ -5,7 +5,7 @@ import { atasNamaRef, atasNamaSchema, type AtasNama, type KirimConversations } f
 import { KirimApiError } from "./errors.js";
 import type { KirimIngest } from "./ingest.js";
 import type { KirimLog } from "./providers/log.js";
-import { ProviderOperationError, type KirimProvider, type ProviderName } from "./providers/types.js";
+import { ProviderOperationError, type KirimProvider, type ProviderBusinessHours, type ProviderName } from "./providers/types.js";
 import { writeAudit, type ConsumerRow, type DeviceRow } from "./repository.js";
 
 /**
@@ -22,6 +22,96 @@ export const quickReplySchema = z
   .strict();
 export const quickReplyRemoveSchema = z.object({ atas_nama: atasNamaSchema }).strict();
 export const catalogQuerySchema = z.object({ setelah: z.string().max(500).optional() }).strict();
+
+const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/;
+/** Minutes from midnight; "24:00" is the midnight after. */
+function minutes(value: string): number {
+  return value === "24:00" ? 1440 : Number(value.slice(0, 2)) * 60 + Number(value.slice(3));
+}
+
+function validTimeZone(zone: string): boolean {
+  try {
+    new Intl.DateTimeFormat("en", { timeZone: zone });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** §11.3: ISO days (1 = Senin … 7 = Minggu), each with its open ranges; a day left out is closed. */
+export const businessHoursSchema = z
+  .object({
+    atas_nama: atasNamaSchema,
+    zona: z.string().trim().min(3).max(64).regex(/^[A-Za-z][A-Za-z0-9_+\-/]+$/).refine(validTimeZone, "zona tidak dikenal"),
+    hari: z
+      .array(
+        z
+          .object({
+            hari: z.number().int().min(1).max(7),
+            rentang: z
+              .array(
+                z
+                  .object({ buka: z.string().regex(HHMM), tutup: z.string().refine((v) => v === "24:00" || HHMM.test(v), "jam HH:MM") })
+                  .strict()
+                  .refine((r) => minutes(r.buka) < minutes(r.tutup), { message: "buka harus sebelum tutup", path: ["tutup"] }),
+              )
+              .min(1)
+              .max(6)
+              .refine((ranges) => {
+                const sorted = [...ranges].sort((a, b) => minutes(a.buka) - minutes(b.buka));
+                return sorted.every((r, i) => i === 0 || minutes(sorted[i - 1]!.tutup) <= minutes(r.buka));
+              }, "rentang tumpang tindih"),
+          })
+          .strict(),
+      )
+      .min(1)
+      .max(7)
+      .refine((days) => new Set(days.map((d) => d.hari)).size === days.length, "hari ganda"),
+  })
+  .strict();
+
+const labelName = z
+  .string()
+  .trim()
+  .min(1)
+  .max(25)
+  .refine((name) => ![...name].some((c) => c.charCodeAt(0) < 0x20 || c.charCodeAt(0) === 0x7f), "tanpa karakter kendali");
+/** §11.4: every label the module manages, and the subset this chat carries; names compare without case. */
+export const chatLabelSchema = z
+  .object({
+    atas_nama: atasNamaSchema,
+    dikelola: z.array(labelName).min(1).max(50),
+    label: z.array(labelName).max(50),
+  })
+  .strict()
+  .superRefine((input, ctx) => {
+    const key = (name: string) => name.replace(/\s+/g, " ").toLowerCase();
+    const managed = input.dikelola.map(key);
+    if (new Set(managed).size !== managed.length) ctx.addIssue({ code: "custom", path: ["dikelola"], message: "nama ganda" });
+    const wanted = input.label.map(key);
+    if (new Set(wanted).size !== wanted.length) ctx.addIssue({ code: "custom", path: ["label"], message: "nama ganda" });
+    if (wanted.some((name) => !managed.includes(name))) ctx.addIssue({ code: "custom", path: ["label"], message: "label harus bagian dari dikelola" });
+  });
+
+const ISO_DAYS = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"] as const;
+
+/**
+ * WhatsApp Business keeps one range per day: the day's ranges become first open → last close. A day from 00:00 to
+ * 24:00 is "open 24 hours".
+ */
+export function engineBusinessHours(input: z.infer<typeof businessHoursSchema>): ProviderBusinessHours {
+  return {
+    timezone: input.zona,
+    days: [...input.hari].sort((a, b) => a.hari - b.hari).map((day) => {
+      const open = Math.min(...day.rentang.map((r) => minutes(r.buka)));
+      const close = Math.max(...day.rentang.map((r) => minutes(r.tutup)));
+      const name = ISO_DAYS[day.hari - 1]!;
+      return open === 0 && close === 1440
+        ?{ day: name, mode: "open_24h" as const }
+        : { day: name, mode: "specific_hours" as const, openMinutes: open, closeMinutes: close };
+    }),
+  };
+}
 
 const MAX_IMAGE_BYTES = 2 * 1024 * 1024;
 /** Product images come from WhatsApp's own CDN only. */
@@ -94,6 +184,59 @@ export class KirimBusiness {
     }
     if (done) await this.audit(consumer, device, "balasan_cepat.baca_ulang", "semua", atasNama);
     return { dibaca_ulang: done };
+  }
+
+  /**
+   * §11.3: the number's service hours on its WhatsApp Business profile, replaced whole. Audit `jam_kerja.ubah` with
+   * the hours as sent to WhatsApp (no personal data in them).
+   */
+  async setBusinessHours(consumer: ConsumerRow, kode: string, input: z.infer<typeof businessHoursSchema>) {
+    const device = await this.engineDevice(consumer, kode);
+    const hours = engineBusinessHours(input);
+    let verified: boolean | null;
+    try {
+      ({ verified } = await this.provider(device).setBusinessHours(device, hours));
+    } catch (error) {
+      throw engineError(error);
+    }
+    if (verified === false) this.options.log?.({ event: "kirim.jam_kerja.beda", device: device.kode }, "WhatsApp kept other business hours than sent");
+    await writeAudit(this.pool, {
+      actorKind: "service",
+      actorRef: consumer.clientId,
+      aksi: "jam_kerja.ubah",
+      objekJenis: "jam_kerja",
+      objekRef: device.kode,
+      metadata: { device: device.kode, zona: hours.timezone, hari: hours.days, terbaca_ulang: verified },
+      atasNama: atasNamaRef(input.atas_nama),
+    });
+    return { diterapkan: true as const };
+  }
+
+  /**
+   * §11.4: the module's WhatsApp Business labels on one private chat. Labels it does not manage are never touched.
+   * Audit `percakapan.label` with the label names (status and program, no personal data).
+   */
+  async setConversationLabels(consumer: ConsumerRow, conversationId: string, input: z.infer<typeof chatLabelSchema>) {
+    const conversation = await this.conversations.ownedConversation(this.pool, consumer, conversationId);
+    const device = await this.engineDevice(consumer, conversation.kode);
+    const chat = this.conversations.chatJids(conversation);
+    if (!chat) throw new KirimApiError(422, "engine_rejected", "Percakapan ini tidak punya alamat WhatsApp yang bisa diberi label.");
+    let now: string[];
+    try {
+      now = await this.provider(device).setChatLabels(device, chat, input.dikelola, input.label);
+    } catch (error) {
+      throw engineError(error);
+    }
+    await writeAudit(this.pool, {
+      actorKind: "service",
+      actorRef: consumer.clientId,
+      aksi: "percakapan.label",
+      objekJenis: "percakapan",
+      objekRef: conversation.id,
+      metadata: { device: device.kode, label: now },
+      atasNama: atasNamaRef(input.atas_nama),
+    });
+    return { label: now };
   }
 
   /** One page of the catalog; hidden products are left out (WhatsApp Business hides them from customers too). */
