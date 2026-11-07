@@ -330,12 +330,9 @@ export type WebhookEventType =
   | "call.logged";
 
 /**
- * Queues one signed event for a consumer, in the caller's transaction. Consumers without a
- * webhook URL simply have nothing queued; they can still poll `GET /internal/kirim/messages/:id`.
- */
-/**
  * KIRIM-IMPL-003 §14 (owner, 2026-11-08, option A): a module whose card is on a number uses it like
  * its owner, as one shared phone: its conversations, media, groups, labels and quick replies.
+ * `consumer` is one `requireConsumer` already found active; the SQL form checks `aktif` itself.
  */
 export function usesNumber(consumer: Pick<ConsumerRow, "id" | "nomorDeviceId">, device: Pick<DeviceRow, "id" | "pemilikConsumerId">): boolean {
   return device.pemilikConsumerId === consumer.id || consumer.nomorDeviceId === device.id;
@@ -346,10 +343,18 @@ export function usesNumberSql(param: string): string {
   return `(d.pemilik_consumer_id = ${param} OR d.id = (SELECT nomor_device_id FROM kirim_consumers WHERE id = ${param} AND aktif))`;
 }
 
-/** Everyone {@link usesNumber} lets use the number: its owner and every active module whose card is on it. */
+/**
+ * Everyone {@link usesNumber} lets use the number: its owner and every module whose card is on it and that
+ * `requireConsumer` would let in (active, and its registry application active and WhatsApp-capable).
+ */
 export async function deviceListeners(db: Queryable, device: Pick<DeviceRow, "id" | "pemilikConsumerId">): Promise<string[]> {
   const result = await db.query<{ id: string }>(
-    `SELECT $2::uuid AS id UNION SELECT id FROM kirim_consumers WHERE nomor_device_id = $1 AND aktif`,
+    `SELECT $2::uuid AS id
+     UNION
+     SELECT c.id FROM kirim_consumers c
+      WHERE c.nomor_device_id = $1 AND c.aktif
+        AND (c.application_key IS NULL OR EXISTS (
+              SELECT 1 FROM applications a WHERE a.application_key = c.application_key AND a.whatsapp_capable AND a.status = 'active'))`,
     [device.id, device.pemilikConsumerId],
   );
   return result.rows.map((row) => row.id).sort();
@@ -369,6 +374,10 @@ export async function enqueueDeviceWebhook(
   }
 }
 
+/**
+ * Queues one signed event for a consumer, in the caller's transaction. Consumers without a
+ * webhook URL simply have nothing queued; they can still poll `GET /internal/kirim/messages/:id`.
+ */
 export async function enqueueWebhook(
   db: Queryable,
   crypto: KirimCrypto,
