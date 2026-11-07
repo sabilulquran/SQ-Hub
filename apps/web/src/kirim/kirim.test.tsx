@@ -210,6 +210,11 @@ describe("WhatsApp modul screen (KIRIM-IMPL-003)", () => {
         reconnect={{ device, alasan: "x", onAlasan: noop, perangkatBaru: false, onPerangkatBaru: noop, ganti: "SPMB SQ" }} />,
     );
     expect(qr).toContain("Di HP dengan nomor WhatsApp yang baru buka");
+    const shared = renderToStaticMarkup(
+      <PairingContent view={{ step: "choose" }} phone="" onPhone={noop} onStart={noop}
+        reconnect={{ device, alasan: "x", onAlasan: noop, perangkatBaru: false, onPerangkatBaru: noop, ganti: "SPMB SQ", sharers: ["Keluarga"] }} />,
+    );
+    expect(shared).toContain("Keluarga ikut mengirim lewat nomor ini, jadi ikut pindah ke WhatsApp yang baru");
 
     // Putuskan / Nonaktifkan on a module's own number point to Ganti nomor instead.
     const warn = renderToStaticMarkup(<DeactivateWarning device={device} usage={{ kartu: ["SPMB SQ"], rute: [] }} paham={false} onPaham={noop} onGanti={noop} />);

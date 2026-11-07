@@ -1303,7 +1303,15 @@ describe("Module cards (KIRIM-IMPL-003)", () => {
     await adminAs("admin-session");
     // The owner's 7 November path: own number deactivated, card parked on another module's number.
     await admin("POST", "/devices/hcis/deactivate", { payload: { alasan: "ganti nomor", konfirmasi: true } });
+    // A route left behind on a number this card no longer uses (e.g. after that number was deactivated).
+    const stale = randomUUID();
+    await pool.query(
+      `INSERT INTO kirim_devices (id, kode, label, pemilik_consumer_id, provider, provider_ref, status)
+       VALUES ($1, 'lama', 'Nomor lama', (SELECT id FROM kirim_consumers WHERE nama = 'keluarga'), 'log', NULL, 'nonaktif')`, [stale]);
+    await pool.query(`INSERT INTO kirim_routes (consumer_id, device_id, jenis) VALUES ((SELECT id FROM kirim_consumers WHERE nama = 'hcis'), $1, 'kode')`, [stale]);
     expect((await admin("POST", "/modules/hcis/pakai-nomor", { payload: { device: "spmb", kode_verifikasi: true } })).statusCode).toBe(200);
+    const firstAudit = await pool.query<{ metadata: Record<string, unknown> }>("SELECT metadata FROM kirim_audit WHERE aksi = 'kartu.pakai_nomor' AND metadata->>'device' = 'spmb'");
+    expect(firstAudit.rows[0]!.metadata).toEqual({ device: "spmb", kode_verifikasi: true, rute_lama: ["lama"] });
     const routes = async () =>
       (await pool.query<{ kode: string; jenis: string }>(
         `SELECT d.kode, r.jenis FROM kirim_routes r JOIN kirim_consumers c ON c.id = r.consumer_id JOIN kirim_devices d ON d.id = r.device_id

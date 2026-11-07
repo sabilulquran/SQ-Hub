@@ -134,7 +134,7 @@ export class KirimModuleCards {
       await client.query("UPDATE kirim_consumers SET nomor_device_id = $2, updated_at = now() WHERE id = $1", [consumer.id, device.id]);
       await writeAudit(client, {
         actorKind: "human", actorRef: actor.ref, aksi: "kartu.pakai_nomor_lama", objekJenis: "modul", objekRef: application.applicationKey,
-        metadata: { device: device.kode, diaktifkan, ...(dilepas ? { dilepas } : {}) },
+        metadata: { device: device.kode, diaktifkan, ...dilepas },
       });
     });
   }
@@ -159,7 +159,7 @@ export class KirimModuleCards {
       await client.query("UPDATE kirim_consumers SET nomor_device_id = $2, updated_at = now() WHERE id = $1", [consumer.id, device.id]);
       await writeAudit(client, {
         actorKind: "human", actorRef: actor.ref, aksi: "kartu.pakai_nomor", objekJenis: "modul", objekRef: application.applicationKey,
-        metadata: { device: device.kode, kode_verifikasi: input.kode_verifikasi, ...(dilepas ? { dilepas } : {}) },
+        metadata: { device: device.kode, kode_verifikasi: input.kode_verifikasi, ...dilepas },
       });
     });
   }
@@ -250,7 +250,11 @@ export class KirimModuleCards {
     const application = await this.requireApplication(this.pool, applicationKey);
     await withTransaction(this.pool, async (client) => {
       await client.query("SELECT pg_advisory_xact_lock(hashtext('kirim_consumers'))");
-      const consumer = await ensureApplicationConsumer(client, application);
+      const found = await ensureApplicationConsumer(client, application);
+      // The card's number under a row lock: a merge (§11.3 butir 4) moving this card at the same moment waits or is seen.
+      const locked = await client.query<{ nomorDeviceId: string | null }>(
+        `SELECT nomor_device_id AS "nomorDeviceId" FROM kirim_consumers WHERE id = $1 FOR UPDATE`, [found.id]);
+      const consumer: ConsumerRow = { ...found, nomorDeviceId: locked.rows[0]?.nomorDeviceId ?? null };
       if (!consumer.aktif) throw new KirimApiError(409, "pemakai_nonaktif", "Pemakai modul ini dinonaktifkan operator.");
       await work(client, application, consumer);
     });
@@ -323,20 +327,27 @@ async function findLinkedConsumer(db: Queryable, application: RegistryApplicatio
 }
 
 /**
- * KIRIM-IMPL-003 §12: before a card takes `targetId`, the number it borrows from another module (if
- * any) loses this module's routes. A card on a number it owns is never released here: that number
- * changes WhatsApp through Ganti nomor, or is let go with Putuskan/Nonaktifkan. Returns the
- * released number's code.
+ * KIRIM-IMPL-003 §12: before a card takes `targetId`, every route of this module to a number it
+ * neither owns nor takes now is removed: the number its card borrows (`dilepas`) and any route left
+ * behind on another module's number, e.g. after that number was deactivated (`rute_lama`). A card on a
+ * number it owns is never released here: that number changes WhatsApp through Ganti nomor, or is let
+ * go with Putuskan/Nonaktifkan. Returns the audit fields.
  */
-async function releaseBorrowed(db: Queryable, consumer: ConsumerRow, targetId: string): Promise<string | null> {
-  if (!consumer.nomorDeviceId || consumer.nomorDeviceId === targetId) return null;
-  const current = await findDeviceById(db, consumer.nomorDeviceId);
-  if (!current) return null;
-  if (current.pemilikConsumerId === consumer.id) {
+async function releaseBorrowed(db: Queryable, consumer: ConsumerRow, targetId: string): Promise<{ dilepas?: string; rute_lama?: string[] }> {
+  const current = consumer.nomorDeviceId && consumer.nomorDeviceId !== targetId ? await findDeviceById(db, consumer.nomorDeviceId) : null;
+  if (current && current.pemilikConsumerId === consumer.id) {
     throw new KirimApiError(409, "kartu_sudah_tersambung", "Modul ini sudah memakai nomornya sendiri. Untuk WhatsApp lain pakai Ganti nomor WhatsApp di kartunya.");
   }
-  await db.query("DELETE FROM kirim_routes WHERE consumer_id = $1 AND device_id = $2", [consumer.id, current.id]);
-  return current.kode;
+  const removed = await db.query<{ kode: string }>(
+    `WITH gone AS (
+       DELETE FROM kirim_routes r USING kirim_devices d
+        WHERE r.consumer_id = $1 AND r.device_id = d.id AND d.id <> $2 AND d.pemilik_consumer_id IS DISTINCT FROM $1
+        RETURNING d.kode)
+     SELECT DISTINCT kode FROM gone ORDER BY kode`,
+    [consumer.id, targetId],
+  );
+  const lama = removed.rows.map((row) => row.kode).filter((kode) => kode !== current?.kode);
+  return { ...(current ? { dilepas: current.kode } : {}), ...(lama.length > 0 ? { rute_lama: lama } : {}) };
 }
 
 async function allowedJenis(db: Queryable, consumerId: string, device: DeviceRow): Promise<Jenis[]> {

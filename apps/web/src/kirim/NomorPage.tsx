@@ -185,7 +185,7 @@ export function NomorPage({ preview }: { preview?: NomorState }) {
       {dialog?.kind === "pakai-lagi" ? (
         <ReasonDialog
           title={`Pakai lagi ${dialog.device.label} untuk ${dialog.card.nama}?`}
-          body={`Kartu ${dialog.card.nama} kembali ke ${dialog.device.label} dengan percakapan dan rutenya seperti semula.${dialog.card.peran === "pemakai" && dialog.card.nomor ? ` ${dialog.card.nama} berhenti memakai ${dialog.card.nomor.label}.` : ""} Sesudahnya pindai QR lewat Sambungkan ulang, dari HP yang sama atau dari HP dengan nomor WhatsApp yang baru. Sampai tersambung, ${dialog.card.nama} belum bisa mengirim.`}
+          body={`Kartu ${dialog.card.nama} kembali ke ${dialog.device.label} dengan percakapan dan rutenya seperti semula.${dialog.card.peran === "pemakai" && dialog.card.nomor ? ` ${dialog.card.nama} berhenti memakai ${dialog.card.nomor.label}.` : ""}${dialog.device.provider === "jalurpesan" && dialog.device.status !== "tersambung" && dialog.device.status !== "belum_dipasang" ? ` Sesudahnya pindai QR lewat Sambungkan ulang, dari HP yang sama atau dari HP dengan nomor WhatsApp yang baru. Sampai tersambung, ${dialog.card.nama} belum bisa mengirim.` : ""}`}
           confirmLabel="Pakai lagi"
           busy={busy}
           error={error}
@@ -202,6 +202,7 @@ export function NomorPage({ preview }: { preview?: NomorState }) {
           device={dialog.device}
           reconnect={dialog.kind !== "pair"}
           ganti={dialog.kind === "ganti-nomor" ? dialog.modul : undefined}
+          sharers={dialog.kind === "ganti-nomor" ? shared(dialog.device) : []}
           onDuplicate={(ke) => { setError(null); setDialog({ kind: "gabung", device: dialog.device, ke }); void load(); }}
           onClose={() => { close(); void load(); }}
         />
@@ -737,9 +738,11 @@ type ReconnectResult = PairingResult & { nomor: KirimDevice };
  * `reconnect` (KIRIM-IMPL-003 §11.1) resets the session of this same number instead of preparing
  * it; while the engine restarts the request is tried again on its own a few times.
  */
-function PairingDialog({ device, reconnect = false, ganti, onClose, onDuplicate }: {
+function PairingDialog({ device, reconnect = false, ganti, sharers = [], onClose, onDuplicate }: {
   device: KirimDevice;
   reconnect?: boolean;
+  /** Other modules sending through this number: they move to the new WhatsApp too. */
+  sharers?: string[];
   /** KIRIM-IMPL-003 §12: the module moving this number to another WhatsApp. */
   ganti?: string | undefined;
   onClose: () => void;
@@ -835,7 +838,7 @@ function PairingDialog({ device, reconnect = false, ganti, onClose, onDuplicate 
         phone={phone}
         onPhone={setPhone}
         onStart={(mode) => void start(mode)}
-        reconnect={reconnect ? { device, alasan, onAlasan: setAlasan, perangkatBaru, onPerangkatBaru: setPerangkatBaru, ganti } : undefined}
+        reconnect={reconnect ? { device, alasan, onAlasan: setAlasan, perangkatBaru, onPerangkatBaru: setPerangkatBaru, ganti, sharers } : undefined}
         onRetry={() => void start(lastMode.current)}
         onDuplicate={(ke) => { stop(); onDuplicate(ke); }}
       />
@@ -851,7 +854,7 @@ export function PairingContent({ view, phone, onPhone, onStart, reconnect, onRet
   phone: string;
   onPhone: (value: string) => void;
   onStart: (mode: "qr" | "kode") => void;
-  reconnect?: { device: KirimDevice; alasan: string; onAlasan: (value: string) => void; perangkatBaru: boolean; onPerangkatBaru: (value: boolean) => void; ganti?: string | undefined };
+  reconnect?: { device: KirimDevice; alasan: string; onAlasan: (value: string) => void; perangkatBaru: boolean; onPerangkatBaru: (value: boolean) => void; ganti?: string | undefined; sharers?: string[] | undefined };
   onRetry?: () => void;
   onDuplicate?: (ke: { kode: string; label: string }) => void;
 }) {
@@ -866,6 +869,9 @@ export function PairingContent({ view, phone, onPhone, onStart, reconnect, onRet
               <>
                 <p className="text-sm text-muted-foreground">Pindai QR dari HP dengan <strong>nomor WhatsApp yang baru</strong>. {reconnect.ganti} tetap memakai kartu, kode nomor <strong>{reconnect.device.label}</strong>, riwayat percakapan, rute, dan antrean yang sama.</p>
                 <p role="alert" className="rounded-xl bg-warning-soft px-3 py-2 text-sm text-warning-ink">WhatsApp lama dilepas dari Kirim SQ, dan sampai QR dipindai pesan tidak terkirim. Pesan ke nomor lama tidak masuk lagi. Nomor di brosur, situs, dan tautan wa.me perlu diganti sendiri.</p>
+                {reconnect.sharers && reconnect.sharers.length > 0 ? (
+                  <p className="rounded-xl bg-info-soft px-3 py-2 text-sm text-info-ink">{reconnect.sharers.join(", ")} ikut mengirim lewat nomor ini, jadi ikut pindah ke WhatsApp yang baru.</p>
+                ) : null}
               </>
             ) : (
               <p className="text-sm text-muted-foreground">Sesi WhatsApp lama di mesin diulang lalu QR baru dibuat untuk <strong>{reconnect.device.label}</strong>. Kode nomor, percakapan, kartu modul, dan rute tetap sama. Tidak ada nomor baru yang dibuat. Memindai dari HP lain berarti mengganti nomor WhatsApp-nya.</p>

@@ -212,6 +212,7 @@ Akar masalah: layar memperlakukan pergantian WhatsApp sebagai pergantian **nomor
 ### 12.1 Ganti nomor WhatsApp
 
 - Kartu pemilik dengan nomor `jalurpesan` berstatus `terputus`, `menunggu_pairing`, atau `tersambung` menampilkan **Ganti nomor WhatsApp**.
+- Bila modul lain ikut mengirim lewat nomor itu, dialog menyebutnya: mereka ikut pindah ke WhatsApp yang baru.
 - Tombol itu membuka dialog Sambungkan ulang dalam mode ganti: judul "Ganti nomor WhatsApp <modul>", alasan terisi "Ganti nomor WhatsApp" (boleh diubah), penjelasan bahwa kartu, kode nomor, riwayat percakapan, rute, dan antrean tetap, peringatan bahwa WhatsApp lama dilepas, pesan ke nomor lama tidak masuk lagi, dan nomor di brosur/situs/tautan wa.me diganti sendiri. Petunjuk pindai menyebut "HP dengan nomor WhatsApp yang baru".
 - API tetap `POST /devices/:kode/sambung-ulang`, dengan field tambahan `ganti_nomor?: false` yang hanya dicatat di audit `nomor.sambung_ulang` (berhasil dan gagal). Pekerjaan mesinnya sama dengan Sambungkan ulang.
 - Dialog Putuskan, Nonaktifkan, dan Ubah pada nomor milik sebuah kartu menampilkan "Mau memakai nomor WhatsApp lain untuk modul ini? **Ganti nomor WhatsApp** saja: kartu, percakapan, dan rutenya tetap."
@@ -219,7 +220,7 @@ Akar masalah: layar memperlakukan pergantian WhatsApp sebagai pergantian **nomor
 
 ### 12.2 Kembali ke nomor sendiri dan pindah nomor pinjaman tanpa Putuskan
 
-- `POST /modules/:app/pakai-nomor-lama` dan `POST /modules/:app/pakai-nomor`: bila kartu sedang memakai nomor **modul lain**, nomor itu dilepas dalam transaksi yang sama (rute modul ini ke nomor itu dihapus), lalu kartu menautkan nomor tujuan. Audit `kartu.pakai_nomor_lama` / `kartu.pakai_nomor` mencatat `dilepas: <kode>`. Kartu yang memakai nomornya **sendiri** tetap ditolak `409 kartu_sudah_tersambung`, dengan pesan yang menunjuk ke Ganti nomor WhatsApp.
+- `POST /modules/:app/pakai-nomor-lama` dan `POST /modules/:app/pakai-nomor`: bila kartu sedang memakai nomor **modul lain**, nomor itu dilepas dalam transaksi yang sama (rute modul ini ke nomor itu dihapus), lalu kartu menautkan nomor tujuan. Audit `kartu.pakai_nomor_lama` / `kartu.pakai_nomor` mencatat `dilepas: <kode>`. Kartu yang memakai nomornya **sendiri** tetap ditolak `409 kartu_sudah_tersambung`, dengan pesan yang menunjuk ke Ganti nomor WhatsApp. Pada langkah yang sama, rute modul ini ke nomor lain yang bukan miliknya dan bukan nomor tujuan (misalnya sisa rute ke nomor yang dinonaktifkan) ikut dihapus; audit mencatatnya sebagai `rute_lama: [kode]`. Nomor kartu dibaca ulang dengan kunci baris (`FOR UPDATE`) di dalam transaksi, supaya penggabungan nomor ganda (§11.3 butir 4) yang berjalan bersamaan tidak meninggalkan rute ke nomor yang tidak lagi dipakai. Pesan yang sudah antre di nomor yang dilepas tetap dikirim dari nomor itu (sama dengan Putuskan, K-3).
 - **Ubah** pada kartu pemakai menawarkan **Pakai nomor lama <modul>** (bila modul punya nomor) dan **Tetap memakai nomor modul lain** dengan pilihan semua nomor aktif yang bukan milik modul itu, nomor yang sedang dipakai di urutan pertama.
 - Di "Nomor tanpa kartu modul", nomor yang dimiliki modul yang kartunya kosong atau sedang meminjam nomor lain menampilkan "Nomor milik <modul> …" dan **Pakai lagi untuk <modul>** (`pakai-nomor-lama`); dialognya menjelaskan modul belum bisa mengirim sampai dipindai, lalu Sambungkan ulang terbuka langsung bila nomor belum tersambung.
 
@@ -247,3 +248,4 @@ Akar masalah: layar memperlakukan pergantian WhatsApp sebagai pergantian **nomor
 | 2026-11-05 | §11: Sambungkan ulang, konfirmasi Nonaktifkan, satu nomor per WhatsApp (kejadian SPMB 5 November) |
 | 2026-11-05 | Review independen §11: cursor event per tenant (`kirim_events.provider_ref`), penahanan hanya untuk nomor tanpa pesan masuk, cek `provider_ref` bersamaan di Sambungkan ulang, batas gabung dicatat di K-8 |
 | 2026-11-07 | §12: Ganti nomor WhatsApp dari kartu modul, kembali ke nomor sendiri dan pindah nomor pinjaman tanpa Putuskan (kejadian SPMB 7 November) |
+| 2026-11-07 | Review independen §12: kunci baris kartu, hapus sisa rute ke nomor lain (`rute_lama`), sebut modul yang ikut pindah saat ganti nomor, teks Pakai lagi sesuai status nomor |
