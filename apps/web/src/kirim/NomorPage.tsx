@@ -8,13 +8,12 @@ import {
   type DeviceUsage,
   type KirimConsumer,
   type KirimDevice,
-  type KirimDeviceList,
   type KirimModuleCard,
   type KirimModuleList,
   type LiveStatus,
   type PairingResult,
 } from "@/kirim/api";
-import { deviceStatusLabel, deviceStatusTone, formatTime } from "@/kirim/labels";
+import { deviceStatusLabel, deviceStatusTone } from "@/kirim/labels";
 import { dangerButton, Field, Panel, primaryButton, ReasonDialog, secondaryButton, StateCard } from "@/kirim/KirimShell";
 
 export type NomorState =
@@ -29,7 +28,6 @@ type Dialog =
   | { kind: "pair"; device: KirimDevice }
   | { kind: "sambung-ulang"; device: KirimDevice }
   | { kind: "ganti-nomor"; device: KirimDevice; modul: string }
-  | { kind: "pakai-lagi"; card: KirimModuleCard; device: KirimDevice }
   | { kind: "gabung"; device: KirimDevice; ke: { kode: string; label: string } }
   | { kind: "tambah"; card: KirimModuleCard }
   | { kind: "ubah-pemakai"; card: KirimModuleCard }
@@ -182,21 +180,6 @@ export function NomorPage({ preview }: { preview?: NomorState }) {
           onUseNumber={(device, kodeVerifikasi) => void run(() => kirimFetch(`/modules/${dialog.card.application_key}/pakai-nomor`, { method: "POST", body: { device, kode_verifikasi: kodeVerifikasi } }))}
         />
       ) : null}
-      {dialog?.kind === "pakai-lagi" ? (
-        <ReasonDialog
-          title={`Pakai lagi ${dialog.device.label} untuk ${dialog.card.nama}?`}
-          body={`Kartu ${dialog.card.nama} kembali ke ${dialog.device.label} dengan percakapan dan rutenya seperti semula.${dialog.card.peran === "pemakai" && dialog.card.nomor ? ` ${dialog.card.nama} berhenti memakai ${dialog.card.nomor.label}.` : ""}${dialog.device.provider === "jalurpesan" && dialog.device.status !== "tersambung" && dialog.device.status !== "belum_dipasang" ? ` Sesudahnya pindai QR lewat Sambungkan ulang, dari HP yang sama atau dari HP dengan nomor WhatsApp yang baru. Sampai tersambung, ${dialog.card.nama} belum bisa mengirim.` : ""}`}
-          confirmLabel="Pakai lagi"
-          busy={busy}
-          error={error}
-          reasonRequired={false}
-          onClose={close}
-          onConfirm={() => void run(
-            () => kirimFetch<KirimModuleCard>(`/modules/${dialog.card.application_key}/pakai-nomor-lama`, { method: "POST", body: { device: dialog.device.kode } }),
-            (card) => (card.nomor && card.nomor.status !== "tersambung" && canReconnect(card.nomor) ? { kind: "sambung-ulang", device: card.nomor } : null),
-          )}
-        />
-      ) : null}
       {dialog?.kind === "pair" || dialog?.kind === "sambung-ulang" || dialog?.kind === "ganti-nomor" ? (
         <PairingDialog
           device={dialog.device}
@@ -298,10 +281,6 @@ export function GantiHint({ onGanti }: { onGanti?: (() => void) | undefined }) {
 }
 
 export function NomorView({ state, onOpen, onRetry }: { state: NomorState; onOpen: (dialog: Dialog) => void; onRetry: () => void }) {
-  const cardNumbers = state.status === "ready"
-    ? new Set(state.list.modules.filter((card) => card.peran === "pemilik").map((card) => card.nomor?.kode))
-    : new Set<string | undefined>();
-  const others = state.status === "ready" ? state.list.devices.filter((device) => !cardNumbers.has(device.kode)) : [];
   return (
     <>
       <div>
@@ -327,19 +306,6 @@ export function NomorView({ state, onOpen, onRetry }: { state: NomorState; onOpe
                 ))}
               </ul>
             )}
-            {others.length > 0 ? (
-              <section aria-labelledby="nomor-lain" className="pt-2">
-                <h2 id="nomor-lain" className="font-display text-lg font-bold text-brand-heading">Nomor tanpa kartu modul</h2>
-                <ul className="mt-3 grid gap-4 lg:grid-cols-2">
-                  {others.map((device) => (
-                    <li key={device.kode}>
-                      <DeviceCard device={device} onOpen={onOpen}
-                        pakaiLagi={state.list.modules.find((card) => card.peran !== "pemilik" && (card.nomor_lama ?? []).some((own) => own.kode === device.kode))} />
-                    </li>
-                  ))}
-                </ul>
-              </section>
-            ) : null}
           </>
         ) : null}
       </div>
@@ -576,76 +542,21 @@ export function TambahDialog({ card, numbers, owners = {}, editing, busy, error,
   );
 }
 
-function Warnings({ list }: { list: KirimDeviceList }) {
-
-  const ganda = list.peringatan.nomor_ganda ?? [];
-  if (list.peringatan.terputus.length === 0 && list.peringatan.webhook_habis === 0 && ganda.length === 0) return null;
+/** Only numbers a module card shows: the screen has module cards, not number cards (§13). */
+function Warnings({ list }: { list: KirimModuleList }) {
+  const onCards = new Set(list.modules.flatMap((card) => (card.nomor ? [card.nomor.kode] : [])));
+  const terputus = list.peringatan.terputus.filter((kode) => onCards.has(kode));
+  const ganda = (list.peringatan.nomor_ganda ?? []).filter((kode) => onCards.has(kode));
+  if (terputus.length === 0 && list.peringatan.webhook_habis === 0 && ganda.length === 0) return null;
   return (
     <div role="status" className="flex gap-3 rounded-2xl border border-warning-ink/20 bg-warning-soft p-4 text-sm text-warning-ink">
       <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0" aria-hidden="true" />
       <div className="space-y-1">
-        {list.peringatan.terputus.length > 0 ? <p><strong>Nomor terputus:</strong> {list.peringatan.terputus.join(", ")}. Antreannya berhenti sampai tersambung lagi. Pakai <strong>Sambungkan ulang</strong> di kartunya.</p> : null}
+        {terputus.length > 0 ? <p><strong>Nomor terputus:</strong> {terputus.join(", ")}. Antreannya berhenti sampai tersambung lagi. Pakai <strong>Sambungkan ulang</strong> di kartunya.</p> : null}
         {ganda.length > 0 ? <p><strong>Nomor ganda:</strong> {ganda.join(", ")} tertaut ke WhatsApp yang sudah punya nomor. Pesan masuknya ditahan sampai digabung lewat <strong>Pakai nomor yang ada</strong>.</p> : null}
         {list.peringatan.webhook_habis > 0 ? <p><strong>{list.peringatan.webhook_habis} event</strong> gagal dikirim ke modul pemakai setelah 8 percobaan.</p> : null}
       </div>
     </div>
-  );
-}
-
-/** `pakaiLagi`: the module that owns this number while its card is empty or on another module's number (§12). */
-export function DeviceCard({ device, onOpen, pakaiLagi }: { device: KirimDevice; onOpen: (dialog: Dialog) => void; pakaiLagi?: KirimModuleCard | undefined }) {
-  const inactive = device.status === "nonaktif";
-  return (
-    <Panel className="h-full">
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <h2 className="truncate font-display text-lg font-bold text-brand-heading">{device.label}</h2>
-          <p className="mt-0.5 text-xs text-muted-foreground">
-            <code>{device.kode}</code> · milik {device.pemilik}
-          </p>
-        </div>
-        <span className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-bold ${deviceStatusTone[device.status]}`}>{deviceStatusLabel[device.status]}</span>
-      </div>
-      <dl className="mt-3 grid grid-cols-2 gap-x-3 gap-y-2 text-sm">
-        <div><dt className="text-xs text-muted-foreground">Nomor</dt><dd className="font-semibold">{device.nomor_tersamar ?? "—"}</dd></div>
-        <div>
-          <dt className="text-xs text-muted-foreground">Provider</dt>
-          <dd className="flex flex-wrap items-center gap-1.5 font-semibold">
-            {device.provider}
-            {device.provider === "log" ? <span className="rounded-full bg-warning-soft px-2 py-0.5 text-[11px] font-bold text-warning-ink">Uji — tidak mengirim</span> : null}
-          </dd>
-        </div>
-        <div><dt className="text-xs text-muted-foreground">Antrean</dt><dd className="font-semibold">{device.antrean?.antre ?? 0} antre · {device.antrean?.gagal_hari_ini ?? 0} gagal hari ini{device.antrean_dijeda ? " · dijeda" : ""}</dd></div>
-        <div><dt className="text-xs text-muted-foreground">Jam kirim · laju</dt><dd className="font-semibold">{device.jam_kirim_mulai}–{device.jam_kirim_selesai} WIB · {device.rate_per_menit}/menit</dd></div>
-        <div className="col-span-2"><dt className="text-xs text-muted-foreground">Status berubah</dt><dd>{formatTime(device.status_berubah_at)}</dd></div>
-      </dl>
-      <DuplicateWarning device={device} onOpen={onOpen} />
-      {pakaiLagi ? (
-        <p className="mt-3 rounded-xl bg-info-soft px-3 py-2 text-sm text-info-ink">Nomor milik <strong>{pakaiLagi.nama}</strong>{pakaiLagi.nomor ? `, yang sekarang memakai ${pakaiLagi.nomor.label}` : ", yang kartunya kosong"}.</p>
-      ) : null}
-      <div className="mt-4 flex flex-wrap gap-2">
-        {pakaiLagi ? (
-          <button type="button" className={primaryButton} onClick={() => onOpen({ kind: "pakai-lagi", card: pakaiLagi, device })}><RotateCcw className="h-4 w-4" aria-hidden="true" /> Pakai lagi untuk {pakaiLagi.nama}</button>
-        ) : null}
-        <PairActions device={device} inactive={inactive} onOpen={onOpen} />
-        <button type="button" className={secondaryButton} onClick={() => onOpen({ kind: "edit", device })}><Settings2 className="h-4 w-4" aria-hidden="true" /> Ubah</button>
-        {!inactive ? (
-          <a className={secondaryButton} href={`/impor?nomor=${encodeURIComponent(device.kode)}`}><History className="h-4 w-4" aria-hidden="true" /> Impor riwayat</a>
-        ) : null}
-        {!inactive ? (
-          <button type="button" className={secondaryButton} onClick={() => onOpen({ kind: device.antrean_dijeda ? "resume" : "pause", device })}>
-            {device.antrean_dijeda ? <Play className="h-4 w-4" aria-hidden="true" /> : <Pause className="h-4 w-4" aria-hidden="true" />}
-            {device.antrean_dijeda ? "Lanjutkan antrean" : "Jeda antrean"}
-          </button>
-        ) : null}
-        {device.provider === "jalurpesan" && !inactive && device.status !== "belum_dipasang" ? (
-          <button type="button" className={dangerButton} onClick={() => onOpen({ kind: "disconnect", device })}><Unplug className="h-4 w-4" aria-hidden="true" /> Putuskan</button>
-        ) : null}
-        {!inactive ? (
-          <button type="button" className={dangerButton} onClick={() => onOpen({ kind: "deactivate", device })}><Power className="h-4 w-4" aria-hidden="true" /> Nonaktifkan</button>
-        ) : null}
-      </div>
-    </Panel>
   );
 }
 

@@ -69,9 +69,9 @@ describe("WhatsApp modul screen (KIRIM-IMPL-003)", () => {
     expect(html).toContain("Memakai nomor milik HCIS");
     expect(html).toContain("Putuskan dari Karir SQ");
     expect(html).toContain("notifikasi, kode verifikasi");
-    // A number no card owns stays visible below the cards.
-    expect(html).toContain("Nomor tanpa kartu modul");
-    expect(html).toContain("Nomor uji");
+    // Module cards only: a number no card shows is not listed (§13).
+    expect(html).not.toContain("Nomor tanpa kartu modul");
+    expect(html).not.toContain("Nomor uji");
     expect(html).not.toContain("Tambah nomor");
   });
 
@@ -180,9 +180,9 @@ describe("WhatsApp modul screen (KIRIM-IMPL-003)", () => {
     const done = renderToStaticMarkup(<PairingContent view={{ step: "connected", nomor: "+62 812-••••-7890", sama: { kode: "spmb", label: "SPMB resmi" } }} phone="" onPhone={noop} onStart={noop} onDuplicate={noop} />);
     expect(done).toContain("WhatsApp ini sudah punya nomor di Kirim SQ: <strong>SPMB resmi</strong>");
     const warn = renderToStaticMarkup(
-      <NomorView state={{ ...kirimNomorFixture, list: { ...kirimNomorFixture.list, peringatan: { terputus: [], webhook_habis: 0, nomor_ganda: ["spmb-2"] } } }} onOpen={noop} onRetry={noop} />,
+      <NomorView state={{ ...kirimNomorFixture, list: { ...kirimNomorFixture.list, peringatan: { terputus: [], webhook_habis: 0, nomor_ganda: ["spmb", "lepas"] } } }} onOpen={noop} onRetry={noop} />,
     );
-    expect(warn).toContain("<strong>Nomor ganda:</strong> spmb-2");
+    expect(warn).toContain("<strong>Nomor ganda:</strong> spmb tertaut");
   });
 
   it("lets a module change its WhatsApp number on the same Kirim number (§12)", () => {
@@ -222,7 +222,7 @@ describe("WhatsApp modul screen (KIRIM-IMPL-003)", () => {
     expect(renderToStaticMarkup(<GantiHint />)).toBe("");
   });
 
-  it("brings an emptied or borrowing card back to its own number from the number list and from Ubah (§12)", () => {
+  it("keeps a card on another module's number as it is, and offers its own number back from Ubah (§12, §13)", () => {
     if (kirimNomorFixture.status !== "ready") throw new Error("fixture");
     const hcis = kirimNomorFixture.list.devices.find((item) => item.kode === "hcis")!;
     const spmbDevice = { ...kirimNomorFixture.list.devices.find((item) => item.kode === "spmb")!, status: "nonaktif" as const };
@@ -240,9 +240,13 @@ describe("WhatsApp modul screen (KIRIM-IMPL-003)", () => {
       },
     };
     const html = renderToStaticMarkup(<NomorView state={state} onOpen={noop} onRetry={noop} />);
-    expect(html).toContain("Nomor tanpa kartu modul");
-    expect(html).toContain("Pakai lagi untuk SPMB SQ");
-    expect(html).toContain("Nomor milik <strong>SPMB SQ</strong>, yang sekarang memakai HCIS");
+    // The card shows the number it sends through; its own deactivated number gets no card and no warning.
+    expect(html).toContain("Memakai nomor milik HCIS");
+    expect(html).not.toContain("Nomor tanpa kartu modul");
+    expect(html).not.toContain("Pakai lagi");
+    expect(html).not.toContain("SPMB resmi");
+    const loose = renderToStaticMarkup(<NomorView state={{ ...state, list: { ...state.list, devices: state.list.devices.map((item) => (item.kode === "spmb" ? { ...item, status: "terputus" as const } : item)) } }} onOpen={noop} onRetry={noop} />);
+    expect(loose).not.toContain("Nomor terputus:");
 
     const ubah = renderToStaticMarkup(
       <TambahDialog card={spmbCard} numbers={[kirimNomorFixture.list.devices.find((item) => item.kode === "uji")!]} editing busy={false} error={null}
