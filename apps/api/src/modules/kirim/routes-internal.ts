@@ -27,7 +27,14 @@ import {
   updateGroupSchema,
   type KirimGroupAdmin,
 } from "./groups-admin.js";
-import { catalogQuerySchema, quickReplyRemoveSchema, quickReplySchema, type KirimBusiness } from "./business.js";
+import {
+  businessHoursSchema,
+  catalogQuerySchema,
+  chatLabelSchema,
+  quickReplyRemoveSchema,
+  quickReplySchema,
+  type KirimBusiness,
+} from "./business.js";
 import { PHOTO_CACHE_SECONDS, type KirimProfilePhotos } from "./photos.js";
 import { verifyJalurPesanSignature } from "./crypto.js";
 import type { KirimIngest } from "./ingest.js";
@@ -300,7 +307,7 @@ function registerConversationRoutes(
     path: string,
     body: B,
     handler: (consumer: ConsumerRow, params: Record<string, string>, body: z.infer<B>, request: FastifyRequest, reply: FastifyReply) => Promise<unknown>,
-    method: "POST" | "PATCH" = "POST",
+    method: "POST" | "PATCH" | "PUT" = "POST",
     options: { bodyLimit?: number } = {},
   ) {
     scope.route<Params>({ method, url: path, ...options, handler: async (request, reply) => {
@@ -400,6 +407,13 @@ function registerConversationRoutes(
     write("/devices/:kode/balasan-cepat/:waId/hapus", quickReplyRemoveSchema, async (consumer, params, body, _request, reply) =>
       reply.send(await business.removeQuickReply(consumer, params.kode!, params.waId!, body.atas_nama)),
     );
+    // KIRIM-IMPL-004 §17.1–§17.2: service hours on the WhatsApp Business profile, and the module's labels on one chat.
+    write("/devices/:kode/jam-kerja", businessHoursSchema, async (consumer, params, body, _request, reply) =>
+      reply.send(await business.setBusinessHours(consumer, params.kode!, body)),
+    "PUT");
+    write("/conversations/:id/label", chatLabelSchema, async (consumer, params, body, _request, reply) =>
+      reply.send(await business.setConversationLabels(consumer, params.id!, body)),
+    "PUT");
     read("/devices/:kode/katalog", catalogQuerySchema, async (consumer, params, query, request) => {
       atasNamaFromHeaders(request.headers);
       return business.catalog(consumer, params.kode!, query.setelah ?? null);

@@ -26,6 +26,7 @@ import {
   type ProviderJoinRequest,
   type ProviderQuickReply,
   type ProviderCatalogProduct,
+  type ProviderBusinessHours,
 } from "./types.js";
 
 /** Cache of engine `mediaId` per Kirim media and number, so a retry never uploads again (§3.2). */
@@ -373,6 +374,18 @@ export class JalurPesanProvider implements KirimProvider {
     const response = await this.lifecycle("POST", device, "/quick-replies/resync");
     if (response.status !== 200) throw this.lifecycleError(response);
     return response.body.resynced === true;
+  }
+
+  async setBusinessHours(device: DeviceRef, hours: ProviderBusinessHours): Promise<{ verified: boolean | null }> {
+    const response = await this.lifecycle("PUT", device, "/business-hours", hours);
+    if (response.status !== 200 || response.body.applied !== true) throw this.lifecycleError(response);
+    return { verified: typeof response.body.verified === "boolean" ? response.body.verified : null };
+  }
+
+  async setChatLabels(device: DeviceRef, chat: { jid: string; altJid: string | null }, managed: string[], labels: string[]): Promise<string[]> {
+    const response = await this.lifecycle("PUT", device, "/chat-labels", { chatJid: chat.jid, altJid: chat.altJid, managed, labels });
+    if (response.status !== 200 || !Array.isArray(response.body.labels)) throw this.lifecycleError(response);
+    return (response.body.labels as unknown[]).filter((name): name is string => typeof name === "string");
   }
 
   async listCatalog(device: DeviceRef, cursor: string | null): Promise<{ products: ProviderCatalogProduct[]; nextCursor: string | null }> {

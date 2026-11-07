@@ -443,12 +443,30 @@ Keputusan owner 2026-11-06: balasan cepat disinkronkan dua arah dengan WhatsApp 
 | `PATCH /devices/:kode/balasan-cepat/:waId` | `waId` bernilai `baru` untuk menambah. Body `shortcut` (1–25 karakter tanpa spasi, `/` di depan dibuang), `pesan` (1–4096), `atas_nama`. Jawaban `{ wa_id }`. Audit `balasan_cepat.tambah`/`ubah` |
 | `POST /devices/:kode/balasan-cepat/:waId/hapus` | Body `atas_nama`. Audit `balasan_cepat.hapus` |
 | `POST /devices/:kode/balasan-cepat/baca-ulang` | Body `atas_nama`. Mesin membaca ulang seluruh balasan cepat dari WhatsApp (snapshot app-state `regular`), karena WhatsApp hanya mengirim perubahan sehingga balasan yang dibuat sebelum mesin mendengar tidak pernah terbaca. Paling sering sekali per 5 menit per nomor. Jawaban `{ dibaca_ulang }` (`false` bila dilewati). Audit `balasan_cepat.baca_ulang` |
+| `PUT /devices/:kode/jam-kerja` | Jam layanan di profil WhatsApp Business, diganti utuh. Body `atas_nama`, `zona` (nama zona IANA baku, mis. `Asia/Jakarta`; tulisan lain seperti `asia/jakarta` atau alias `EST` ditolak), `hari[]` (1–7 entri, tanpa hari ganda): `{ hari: 1–7 (ISO, 1 = Senin), rentang: [{ buka: "HH:MM", tutup: "HH:MM" }] }` (1–6 rentang, `buka` < `tutup`, tidak tumpang tindih; `tutup` boleh `24:00`). Hari yang tidak disebut berarti tutup. Jawaban `{ diterapkan: true }`. Audit `jam_kerja.ubah` (zona dan jam, bukan data pribadi). Lihat §17.1 |
+| `PUT /conversations/:id/label` | Label WhatsApp Business pada satu chat pribadi, satu arah modul → HP. Body `atas_nama`, `dikelola[]` (semua label yang dikelola modul, 1–50 nama, tiap nama 1–25 karakter), `label[]` (bagian dari `dikelola` yang harus ada di chat ini, boleh kosong). Nama dibandingkan tanpa beda huruf besar/kecil dan tidak boleh ganda. Tiap nama di `label` dibuat di HP bila belum ada, lalu dipasang; tiap nama di `dikelola` yang tidak ada di `label` dilepas bila terpasang. Label lain di HP tidak pernah disentuh. Jawaban `{ label: string[] }` (label kelolaan yang kini ada di chat). Audit `percakapan.label` (nama label). Lihat §17.2 |
 | `GET /devices/:kode/katalog?setelah=` | Satu halaman, maks. 100 produk. Produk tersembunyi tidak ikut. Tiap produk berisi `id`, `nama`, `deskripsi`, `harga` (satuan mata uang), `mata_uang`, `url`, `ada_gambar`, `tautan` (`https://wa.me/p/<id>/<nomor sendiri>`). Ada juga kursor `setelah` |
 | `GET /devices/:kode/katalog/:id/gambar` | Gambar pertama produk yang sudah tercantum di daftar. Hanya https dari CDN WhatsApp (`whatsapp.net`, `fbcdn.net`, `fbsbx.com`), tanpa redirect, maks. 2 MiB, `image/*`. Selain itu `404`. URL tidak pernah diambil dari pemanggil |
 
 Semua rute hanya untuk nomor milik modul pemanggil (`403` bagi modul lain). Nomor nonaktif mendapat `422 device_inactive`. Bila WhatsApp atau mesin menolak (misalnya nomor bukan WhatsApp Business), jawabannya `422 engine_rejected`. Bila mesin tidak tersambung, `503`.
 
 **Privasi.** Audit memuat kode nomor dan `wa_id` saja, tanpa pintasan atau isi. Log tidak memuat isi.
+
+### 17.1 Jam kerja (adendum 2026-11-07)
+
+SPMB memegang jam layanan CS dan mendorongnya ke profil WhatsApp Business agar keluarga melihatnya. Mesin: `PUT /api/v1/platform/tenants/:id/business-hours` → Baileys `updateBussinesProfile({ hours })`, lalu dibaca balik dengan `getBusinessProfile` (beda hasil dicatat ke log `kirim.jam_kerja.beda`, tidak menggagalkan).
+
+- **Satu rentang per hari.** WhatsApp Business menyimpan satu `business_hours_config` per hari (`specific_hours` dengan menit buka/tutup, `open_24h`, `appointment_only`). Rentang yang lebih dari satu digabung menjadi buka pertama → tutup terakhir; jeda istirahat tidak tampil di WhatsApp.
+- Satu hari 00:00–24:00 dikirim sebagai `open_24h`.
+- Mesin menolak dengan IQ error 4xx (misalnya nomor bukan WhatsApp Business) → `422 engine_rejected`. Mesin atau koneksi bermasalah → `503 engine_unavailable`.
+
+### 17.2 Label chat (adendum 2026-11-07)
+
+SPMB memasang label WhatsApp Business pada chat untuk mencerminkan status penanganan dan program (mis. Baru, Ditangani, Menunggu, Selesai, Taman Tahfizh, SDIT). Arahnya satu: SPMB → HP.
+
+- **Mesin (JalurPesan, migration v24).** Label (`labels.edit`) dan label pada chat (`labels.association`, `label_jid`) disimpan per perangkat. `clearIdentity` menghapusnya. Rute `PUT /api/v1/platform/tenants/:id/chat-labels` dengan body `{ chatJid, altJid, managed, labels }`. Label baru dibuat dengan `addLabel` (id = id terbesar yang pernah ada + 1, warna 0–19 dari nama), lalu dipasang dan dilepas dengan `addChatLabel`/`removeChatLabel`. Perubahan berjalan berurutan per nomor, dalam antrean yang sama dengan balasan cepat.
+- **Kelengkapan.** Sebelum perubahan pertama, mesin membaca koleksi app-state `regular` secara utuh (snapshot di bawah kunci app-state Baileys) agar label yang sudah ada di HP dikenal dan tidak dibuat kembar. Label yang tidak muncul lagi di snapshot ditandai terhapus, dan id-nya tidak dipakai ulang. Sebelum tiap perubahan berikutnya, perubahan terbaru dibaca dulu. Bila snapshot gagal, mesin menjawab `503 labels_unread` (Kirim: `503 engine_unavailable`) dan tidak mencoba lagi dalam satu menit.
+- **Alamat chat.** Kirim mengirim JID percakapan (nomor atau LID) beserta identitas lainnya bila diketahui. Mesin juga melengkapinya dari pemetaan LID↔nomor. Label baru dipasang pada alamat yang sudah dipakai HP untuk label lain di chat itu. Bila belum ada, dipasang pada JID percakapan.
 
 **Mengirim produk.** Modul mengirim `tautan` sebagai pesan teks biasa, dan WhatsApp menampilkannya sebagai kartu produk. Tidak ada jenis pesan baru.
 
@@ -468,6 +486,8 @@ Semua rute hanya untuk nomor milik modul pemanggil (`403` bagi modul lain). Nomo
 | A-10 | Foto profil | Hanya chat aktif 30 hari, 25+25 per nomor per jam, cache modul 1 hari |
 | A-11 | Katalog | Hanya dibaca. Produk dikelola di aplikasi WhatsApp Business dan dikirim sebagai tautan `wa.me/p` (§17) |
 | A-12 | Balasan cepat dari HP sebelum mesin v23 | Belum diketahui mesin sampai HP mengubahnya lagi atau sinkron app-state ulang. Tidak ada impor paksa |
+| A-13 | Jam kerja lebih dari satu rentang per hari | Digabung menjadi buka pertama → tutup terakhir, karena WhatsApp Business hanya menyimpan satu rentang per hari (§17.1). `hari` minimal satu entri |
+| A-14 | Nama label | Dibandingkan tanpa beda huruf besar/kecil. Label HP bernama sama (mis. `baru`) dianggap label kelolaan `Baru`. Warna label baru dipilih tetap dari namanya (§17.2) |
 
 ## Riwayat
 
