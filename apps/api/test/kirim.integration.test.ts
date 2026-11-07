@@ -1298,6 +1298,66 @@ describe("Module cards (KIRIM-IMPL-003)", () => {
     expect(audit.rows[0]!.metadata).toEqual({ device: "hcis", diaktifkan: true });
   });
 
+  it("§12 a card on another module's number moves to a third one or back to its own number without Putuskan", async () => {
+    await registry();
+    await adminAs("admin-session");
+    // The owner's 7 November path: own number deactivated, card parked on another module's number.
+    await admin("POST", "/devices/hcis/deactivate", { payload: { alasan: "ganti nomor", konfirmasi: true } });
+    // A route left behind on a number this card no longer uses (e.g. after that number was deactivated).
+    const stale = randomUUID();
+    await pool.query(
+      `INSERT INTO kirim_devices (id, kode, label, pemilik_consumer_id, provider, provider_ref, status)
+       VALUES ($1, 'lama', 'Nomor lama', (SELECT id FROM kirim_consumers WHERE nama = 'keluarga'), 'log', NULL, 'nonaktif')`, [stale]);
+    await pool.query(`INSERT INTO kirim_routes (consumer_id, device_id, jenis) VALUES ((SELECT id FROM kirim_consumers WHERE nama = 'hcis'), $1, 'kode')`, [stale]);
+    expect((await admin("POST", "/modules/hcis/pakai-nomor", { payload: { device: "spmb", kode_verifikasi: true } })).statusCode).toBe(200);
+    const firstAudit = await pool.query<{ metadata: Record<string, unknown> }>("SELECT metadata FROM kirim_audit WHERE aksi = 'kartu.pakai_nomor' AND metadata->>'device' = 'spmb'");
+    expect(firstAudit.rows[0]!.metadata).toEqual({ device: "spmb", kode_verifikasi: true, rute_lama: ["lama"] });
+    const routes = async () =>
+      (await pool.query<{ kode: string; jenis: string }>(
+        `SELECT d.kode, r.jenis FROM kirim_routes r JOIN kirim_consumers c ON c.id = r.consumer_id JOIN kirim_devices d ON d.id = r.device_id
+          WHERE c.nama = 'hcis' ORDER BY 1, 2`,
+      )).rows;
+    expect(await routes()).toEqual([{ kode: "spmb", jenis: "kode" }, { kode: "spmb", jenis: "notifikasi" }]);
+
+    // Ubah: straight to a third active number; the borrowed one keeps no route of this module.
+    await pool.query(
+      `INSERT INTO kirim_devices (id, kode, label, pemilik_consumer_id, provider, provider_ref, status)
+       VALUES ($1, 'uji', 'Nomor uji', (SELECT id FROM kirim_consumers WHERE nama = 'keluarga'), 'log', NULL, 'tersambung')`,
+      [randomUUID()],
+    );
+    const moved = await admin("POST", "/modules/hcis/pakai-nomor", { payload: { device: "uji" } });
+    expect(moved.json()).toMatchObject({ peran: "pemakai", nomor: { kode: "uji" }, jenis: ["notifikasi"] });
+    expect(await routes()).toEqual([{ kode: "uji", jenis: "notifikasi" }]);
+    const usedAudit = await pool.query<{ metadata: Record<string, unknown> }>("SELECT metadata FROM kirim_audit WHERE aksi = 'kartu.pakai_nomor' ORDER BY occurred_at DESC, id LIMIT 1");
+    expect(usedAudit.rows[0]!.metadata).toEqual({ device: "uji", kode_verifikasi: false, dilepas: "spmb" });
+
+    // Back to its own deactivated number in one step.
+    const back = await admin("POST", "/modules/hcis/pakai-nomor-lama", { payload: { device: "hcis" } });
+    expect(back.json()).toMatchObject({ peran: "pemilik", nomor: { kode: "hcis", status: "tersambung" } });
+    expect(await routes()).toEqual([]);
+    const ownAudit = await pool.query<{ metadata: Record<string, unknown> }>("SELECT metadata FROM kirim_audit WHERE aksi = 'kartu.pakai_nomor_lama'");
+    expect(ownAudit.rows[0]!.metadata).toEqual({ device: "hcis", diaktifkan: true, dilepas: "uji" });
+
+    // A card on its own number is never moved this way: that number changes WhatsApp with Ganti nomor.
+    const refused = await admin("POST", "/modules/hcis/pakai-nomor", { payload: { device: "uji" } });
+    expect(refused.statusCode).toBe(409);
+    expect(refused.json().error).toMatchObject({ code: "kartu_sudah_tersambung" });
+    expect(refused.json().error.message).toContain("Ganti nomor WhatsApp");
+    expect(await routes()).toEqual([]);
+  });
+
+  it("§12 Ganti nomor WhatsApp re-pairs the same number and says so in the audit", async () => {
+    await registry();
+    await adminAs("admin-session");
+    const response = await admin("POST", "/devices/spmb/sambung-ulang", { payload: { mode: "qr", alasan: "Ganti nomor WhatsApp", ganti_nomor: true } });
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({ nomor: { kode: "spmb", status: "menunggu_pairing" } });
+    const audit = await pool.query<{ metadata: Record<string, unknown> }>("SELECT metadata FROM kirim_audit WHERE aksi = 'nomor.sambung_ulang'");
+    expect(audit.rows[0]!.metadata).toMatchObject({ ganti_nomor: true, perangkat_baru: false, alasan: "Ganti nomor WhatsApp", status_sebelumnya: "tersambung" });
+    const card = (await admin("GET", "/modules")).json().modules.find((item: { application_key: string }) => item.application_key === "spmb-sq");
+    expect(card).toMatchObject({ peran: "pemilik", nomor: { kode: "spmb" }, dipakai_juga_oleh: ["keluarga"] });
+  });
+
   it("§11.3 holds a second number paired to the same WhatsApp and merges it into the older number", async () => {
     await registry();
     await adminAs("admin-session");

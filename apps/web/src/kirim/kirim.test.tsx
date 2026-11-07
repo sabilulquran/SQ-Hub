@@ -13,7 +13,7 @@ import { JanganHubungiView, type JanganHubungiState, type OptoutFilter } from "@
 import { KirimAppView } from "@/kirim/KirimApp";
 import { KirimShell } from "@/kirim/KirimShell";
 import type { KirimDevice } from "@/kirim/api";
-import { DeactivateDialog, DeactivateWarning, ModuleCard, NomorView, PairingContent, TambahDialog } from "@/kirim/NomorPage";
+import { DeactivateDialog, DeactivateWarning, GantiHint, ModuleCard, NomorView, PairingContent, TambahDialog } from "@/kirim/NomorPage";
 import { isKirimHost, resolveKirimRoute } from "@/kirim/routes";
 
 const noop = () => undefined;
@@ -183,6 +183,78 @@ describe("WhatsApp modul screen (KIRIM-IMPL-003)", () => {
       <NomorView state={{ ...kirimNomorFixture, list: { ...kirimNomorFixture.list, peringatan: { terputus: [], webhook_habis: 0, nomor_ganda: ["spmb-2"] } } }} onOpen={noop} onRetry={noop} />,
     );
     expect(warn).toContain("<strong>Nomor ganda:</strong> spmb-2");
+  });
+
+  it("lets a module change its WhatsApp number on the same Kirim number (§12)", () => {
+    if (kirimNomorFixture.status !== "ready") throw new Error("fixture");
+    const spmb = kirimNomorFixture.list.modules.find((item) => item.application_key === "spmb-sq")!;
+    const card = renderToStaticMarkup(<ModuleCard card={spmb} onOpen={noop} />);
+    expect(card).toContain("Ganti nomor WhatsApp");
+    expect(renderToStaticMarkup(<ModuleCard card={{ ...spmb, nomor: { ...spmb.nomor!, status: "nonaktif" } }} onOpen={noop} />)).not.toContain("Ganti nomor WhatsApp");
+    expect(renderToStaticMarkup(<ModuleCard card={{ ...spmb, nomor: { ...spmb.nomor!, status: "belum_dipasang" } }} onOpen={noop} />)).not.toContain("Ganti nomor WhatsApp");
+    // A module using another module's number changes it with Ubah, not here.
+    const karir = kirimNomorFixture.list.modules.find((item) => item.application_key === "karir-sq")!;
+    expect(renderToStaticMarkup(<ModuleCard card={karir} onOpen={noop} />)).not.toContain("Ganti nomor WhatsApp");
+
+    const device = kirimNomorFixture.list.devices.find((item) => item.kode === "spmb")!;
+    const choose = renderToStaticMarkup(
+      <PairingContent view={{ step: "choose" }} phone="" onPhone={noop} onStart={noop}
+        reconnect={{ device: { ...device, status: "tersambung" }, alasan: "Ganti nomor WhatsApp", onAlasan: noop, perangkatBaru: false, onPerangkatBaru: noop, ganti: "SPMB SQ" }} />,
+    );
+    expect(choose).toContain("nomor WhatsApp yang baru");
+    expect(choose).toContain("riwayat percakapan, rute, dan antrean yang sama");
+    expect(choose).toContain("Pesan ke nomor lama tidak masuk lagi");
+    expect(choose).not.toMatch(/<button[^>]*disabled=""[^>]*>.*Pindai kode QR/);
+    const qr = renderToStaticMarkup(
+      <PairingContent view={{ step: "qr", qr: null, secondsLeft: 100 }} phone="" onPhone={noop} onStart={noop}
+        reconnect={{ device, alasan: "x", onAlasan: noop, perangkatBaru: false, onPerangkatBaru: noop, ganti: "SPMB SQ" }} />,
+    );
+    expect(qr).toContain("Di HP dengan nomor WhatsApp yang baru buka");
+    const shared = renderToStaticMarkup(
+      <PairingContent view={{ step: "choose" }} phone="" onPhone={noop} onStart={noop}
+        reconnect={{ device, alasan: "x", onAlasan: noop, perangkatBaru: false, onPerangkatBaru: noop, ganti: "SPMB SQ", sharers: ["Keluarga"] }} />,
+    );
+    expect(shared).toContain("Keluarga ikut mengirim lewat nomor ini, jadi ikut pindah ke WhatsApp yang baru");
+
+    // Putuskan / Nonaktifkan on a module's own number point to Ganti nomor instead.
+    const warn = renderToStaticMarkup(<DeactivateWarning device={device} usage={{ kartu: ["SPMB SQ"], rute: [] }} paham={false} onPaham={noop} onGanti={noop} />);
+    expect(warn).toContain("Ganti nomor WhatsApp</button> saja");
+    expect(renderToStaticMarkup(<GantiHint />)).toBe("");
+  });
+
+  it("brings an emptied or borrowing card back to its own number from the number list and from Ubah (§12)", () => {
+    if (kirimNomorFixture.status !== "ready") throw new Error("fixture");
+    const hcis = kirimNomorFixture.list.devices.find((item) => item.kode === "hcis")!;
+    const spmbDevice = { ...kirimNomorFixture.list.devices.find((item) => item.kode === "spmb")!, status: "nonaktif" as const };
+    const spmbCard = {
+      ...kirimNomorFixture.list.modules.find((item) => item.application_key === "spmb-sq")!,
+      peran: "pemakai" as const, nomor: hcis, pemilik_nomor: "HCIS",
+      nomor_lama: [{ kode: "spmb", label: spmbDevice.label, status: "nonaktif" as const, nomor_tersamar: spmbDevice.nomor_tersamar }],
+    };
+    const state = {
+      ...kirimNomorFixture,
+      list: {
+        ...kirimNomorFixture.list,
+        modules: kirimNomorFixture.list.modules.map((item) => (item.application_key === "spmb-sq" ? spmbCard : item)),
+        devices: kirimNomorFixture.list.devices.map((item) => (item.kode === "spmb" ? spmbDevice : item)),
+      },
+    };
+    const html = renderToStaticMarkup(<NomorView state={state} onOpen={noop} onRetry={noop} />);
+    expect(html).toContain("Nomor tanpa kartu modul");
+    expect(html).toContain("Pakai lagi untuk SPMB SQ");
+    expect(html).toContain("Nomor milik <strong>SPMB SQ</strong>, yang sekarang memakai HCIS");
+
+    const ubah = renderToStaticMarkup(
+      <TambahDialog card={spmbCard} numbers={[kirimNomorFixture.list.devices.find((item) => item.kode === "uji")!]} editing busy={false} error={null}
+        onClose={noop} onNewNumber={noop} onUseNumber={noop} />,
+    );
+    expect(ubah).toContain("Pakai nomor lama SPMB SQ");
+    expect(ubah).toContain("SPMB SQ berhenti memakai HCIS");
+    expect(ubah).toContain("Tetap memakai nomor modul lain");
+    // The number in use and another active one can both be picked.
+    expect(ubah).toContain("HCIS · ");
+    expect(ubah).toContain("Nomor uji · ");
+    expect(ubah).not.toMatch(/name="nomor"[^>]*disabled/);
   });
 
   it("shows a QR with the linking instruction and a pairing code, and confirms the connection", () => {
