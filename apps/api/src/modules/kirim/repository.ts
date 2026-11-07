@@ -333,6 +333,42 @@ export type WebhookEventType =
  * Queues one signed event for a consumer, in the caller's transaction. Consumers without a
  * webhook URL simply have nothing queued; they can still poll `GET /internal/kirim/messages/:id`.
  */
+/**
+ * KIRIM-IMPL-003 §14 (owner, 2026-11-08, option A): a module whose card is on a number uses it like
+ * its owner, as one shared phone: its conversations, media, groups, labels and quick replies.
+ */
+export function usesNumber(consumer: Pick<ConsumerRow, "id" | "nomorDeviceId">, device: Pick<DeviceRow, "id" | "pemilikConsumerId">): boolean {
+  return device.pemilikConsumerId === consumer.id || consumer.nomorDeviceId === device.id;
+}
+
+/** SQL form of {@link usesNumber} for a query joining `kirim_devices d`; `param` is the consumer id placeholder. */
+export function usesNumberSql(param: string): string {
+  return `(d.pemilik_consumer_id = ${param} OR d.id = (SELECT nomor_device_id FROM kirim_consumers WHERE id = ${param} AND aktif))`;
+}
+
+/** Everyone {@link usesNumber} lets use the number: its owner and every active module whose card is on it. */
+export async function deviceListeners(db: Queryable, device: Pick<DeviceRow, "id" | "pemilikConsumerId">): Promise<string[]> {
+  const result = await db.query<{ id: string }>(
+    `SELECT $2::uuid AS id UNION SELECT id FROM kirim_consumers WHERE nomor_device_id = $1 AND aktif`,
+    [device.id, device.pemilikConsumerId],
+  );
+  return result.rows.map((row) => row.id).sort();
+}
+
+/** A number's event for each of its {@link deviceListeners}, except `except` (the module that caused it). */
+export async function enqueueDeviceWebhook(
+  db: Queryable,
+  crypto: KirimCrypto,
+  device: Pick<DeviceRow, "id" | "pemilikConsumerId">,
+  type: WebhookEventType,
+  data: Record<string, unknown>,
+  except?: string,
+): Promise<void> {
+  for (const consumerId of await deviceListeners(db, device)) {
+    if (consumerId !== except) await enqueueWebhook(db, crypto, consumerId, type, data);
+  }
+}
+
 export async function enqueueWebhook(
   db: Queryable,
   crypto: KirimCrypto,
@@ -443,8 +479,12 @@ export interface OutboxStatusChange {
   status: string;
   errorCode: KirimErrorCode | null;
   dryRun: boolean;
-  /** KIRIM-IMPL-002 §7: the number's owner also learns the status of every outbound message. */
+  /**
+   * KIRIM-IMPL-002 §7: the number's owner also learns the status of every outbound message, and so does
+   * every module whose card is on the number (KIRIM-IMPL-003 §14).
+   */
   ownerConsumerId?: string;
+  deviceId?: string;
   conversationId?: string | null;
   groupId?: string | null;
 }
@@ -457,7 +497,9 @@ export async function enqueueMessageStatus(db: Queryable, crypto: KirimCrypto, c
   const where = change.groupId ? { group_id: change.groupId } : change.conversationId ? { conversation_id: change.conversationId } : {};
   const data = { id: change.messageId, status: change.status, error_code: change.errorCode, dry_run: change.dryRun, ...where };
   await enqueueWebhook(db, crypto, change.consumerId, "message.status", { ...data, ref: change.ref });
-  if (change.ownerConsumerId && change.ownerConsumerId !== change.consumerId) {
+  if (change.ownerConsumerId && change.deviceId) {
+    await enqueueDeviceWebhook(db, crypto, { id: change.deviceId, pemilikConsumerId: change.ownerConsumerId }, "message.status", { ...data, ref: null }, change.consumerId);
+  } else if (change.ownerConsumerId && change.ownerConsumerId !== change.consumerId) {
     await enqueueWebhook(db, crypto, change.ownerConsumerId, "message.status", { ...data, ref: null });
   }
 }
@@ -503,7 +545,7 @@ export async function transitionOutbox(
   const row = updated.rows[0];
   if (!row) return null;
   // A JalurPesan send answers with the WhatsApp id, which is also the read-receipt and import key.
-  const message = await db.query<{ dryRun: boolean; conversationId: string | null; groupId: string | null; ownerConsumerId: string }>(
+  const message = await db.query<{ dryRun: boolean; conversationId: string | null; groupId: string | null; ownerConsumerId: string; deviceId: string }>(
     `UPDATE kirim_messages m SET
        status = $2,
        provider_message_id = COALESCE($3, m.provider_message_id),
@@ -514,7 +556,7 @@ export async function transitionOutbox(
        updated_at = now()
      FROM kirim_devices d
      WHERE m.id = $1 AND d.id = m.device_id
-     RETURNING m.dry_run AS "dryRun", m.conversation_id AS "conversationId", m.group_id AS "groupId", d.pemilik_consumer_id AS "ownerConsumerId"`,
+     RETURNING m.dry_run AS "dryRun", m.conversation_id AS "conversationId", m.group_id AS "groupId", d.pemilik_consumer_id AS "ownerConsumerId", d.id AS "deviceId"`,
     [row.messageId, input.status, input.provider?.messageId ?? null, input.provider?.dryRun ?? null, input.provider?.provider ?? null],
   );
   const change: OutboxStatusChange = {
@@ -526,7 +568,7 @@ export async function transitionOutbox(
     errorCode: input.errorCode ?? null,
     dryRun: message.rows[0]?.dryRun ?? false,
     ...(message.rows[0]
-      ? { ownerConsumerId: message.rows[0].ownerConsumerId, conversationId: message.rows[0].conversationId, groupId: message.rows[0].groupId }
+      ? { ownerConsumerId: message.rows[0].ownerConsumerId, deviceId: message.rows[0].deviceId, conversationId: message.rows[0].conversationId, groupId: message.rows[0].groupId }
       : {}),
   };
   await enqueueMessageStatus(db, crypto, change);

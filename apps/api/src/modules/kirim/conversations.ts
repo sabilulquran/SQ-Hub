@@ -17,6 +17,8 @@ import {
   type ConsumerRow,
   type DeviceRow,
   type Queryable,
+  usesNumber,
+  usesNumberSql,
 } from "./repository.js";
 import { canonicalJson, KirimApiError, OUTBOUND_MEDIA_MIMES, type KirimService } from "./service.js";
 
@@ -198,10 +200,13 @@ export class KirimConversations {
 
   // ---------------------------------------------------------------------------------- access
 
-  /** Every §6 call: the number must belong to the calling consumer (KIRIM-001 §3.3). */
+  /**
+   * Every §6 call: the number must belong to the calling consumer (KIRIM-001 §3.3) or be the number on its
+   * card (KIRIM-IMPL-003 §14).
+   */
   async ownedDevice(consumer: ConsumerRow, kode: string): Promise<DeviceRow> {
     const device = await findDevice(this.pool, kode);
-    if (!device || device.pemilikConsumerId !== consumer.id) throw new KirimApiError(403, "not_owner", "Hanya modul pemilik nomor yang boleh memakai ini.");
+    if (!device || !usesNumber(consumer, device)) throw new KirimApiError(403, "not_owner", "Hanya modul yang kartunya memakai nomor ini yang boleh memakai ini.");
     return device;
   }
 
@@ -210,7 +215,7 @@ export class KirimConversations {
     if (!z.guid().safeParse(id).success) throw new KirimApiError(404, "not_found", "Percakapan tidak ditemukan.");
     const result = await db.query<ConversationRow>(
       `SELECT ${CONVERSATION_COLUMNS} FROM kirim_conversations c JOIN kirim_devices d ON d.id = c.device_id
-       WHERE c.id = $1 AND d.pemilik_consumer_id = $2 ${lock ? "FOR UPDATE OF c" : ""}`,
+       WHERE c.id = $1 AND ${usesNumberSql("$2")} ${lock ? "FOR UPDATE OF c" : ""}`,
       [id, consumer.id],
     );
     const row = result.rows[0];
@@ -231,7 +236,7 @@ export class KirimConversations {
     if (!z.guid().safeParse(id).success) throw new KirimApiError(404, "not_found", "Grup tidak ditemukan.");
     const result = await db.query<GroupRow>(
       `SELECT ${GROUP_COLUMNS} FROM kirim_groups g JOIN kirim_devices d ON d.id = g.device_id
-       WHERE g.id = $1 AND d.pemilik_consumer_id = $2 AND g.keluar_at IS NULL ${lock ? "FOR UPDATE OF g" : ""}`,
+       WHERE g.id = $1 AND ${usesNumberSql("$2")} AND g.keluar_at IS NULL ${lock ? "FOR UPDATE OF g" : ""}`,
       [id, consumer.id],
     );
     const row = result.rows[0];
@@ -401,7 +406,7 @@ export class KirimConversations {
     if (!z.guid().safeParse(id).success) throw new KirimApiError(404, "not_found", "Media tidak ditemukan.");
     const result = await this.pool.query<{ id: string; mime: string; path: string | null; tidakDisalin: string | null; kode: string }>(
       `SELECT md.id, md.mime, md.path, md.tidak_disalin AS "tidakDisalin", d.kode
-       FROM kirim_media md JOIN kirim_devices d ON d.id = md.device_id WHERE md.id = $1 AND d.pemilik_consumer_id = $2`,
+       FROM kirim_media md JOIN kirim_devices d ON d.id = md.device_id WHERE md.id = $1 AND ${usesNumberSql("$2")}`,
       [id, consumer.id],
     );
     const row = result.rows[0];

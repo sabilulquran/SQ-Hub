@@ -251,6 +251,24 @@ Owner (8 November): yang diminta adalah kartu koneksi WhatsApp per modul yang pu
 |---|---|---|---|
 | K-14 | Isi layar Kirim | DIPUTUSKAN (owner) | Kartu per modul saja; tidak ada kartu nomor |
 
+## 14. Addendum 2026-11-08: modul memakai nomor di kartunya seperti pemiliknya
+
+Kejadian: kartu SPMB dipindah ke nomor HCIS untuk uji (7 November). Kotak masuk CS SPMB tetap membaca nomor `spmb` yang sudah keluar dari WhatsApp, jadi tidak menerima pesan sama sekali. Pesan ke nomor HCIS (26 pesan sampai 8 November) tidak terlihat di CS SPMB, karena hanya pemilik nomor yang boleh membaca percakapan (KIRIM-001 §3.3).
+
+Keputusan owner (opsi A): nomor yang dipakai bersama diperlakukan seperti **satu HP yang dipakai bersama**. Modul yang kartunya ada di sebuah nomor melihat semua chat di nomor itu.
+
+- Aturan akses: modul boleh memakai nomor bila ia pemiliknya **atau** nomor itu ada di kartunya (`kirim_consumers.nomor_device_id`). Aturan ini dipakai untuk semua jalur §6 di KIRIM-IMPL-002, yaitu daftar dan isi percakapan, balas, buka percakapan, media, grup, label chat, balasan cepat, jam usaha, katalog, tindakan pesan, foto profil, dan jangan-hubungi bercakupan nomor. Modul yang hanya punya rute (tanpa kartu di nomor itu) tetap `403 not_owner`.
+- Webhook: event nomor (`message.received`, `group.message.received`, `message.sent`, `message.edited`, `message.deleted`, `message.reaction`, `call.logged`) dikirim ke pemilik dan ke setiap modul aktif yang kartunya di nomor itu. `message.status` untuk pesan modul lain juga dikirim ke mereka, tanpa `ref`.
+- Akses ikut kartu. Begitu kartu pindah, akses ke percakapan nomor lama hilang (`403`/`404`), dan percakapannya tetap tersimpan di nomor itu.
+- Balasan petugas dari modul pemakai tercatat atas nama modul itu. Modul lain di nomor yang sama melihatnya dari `message.status` dan daftar pesan, tidak dari `message.sent`.
+- SPMB membaca nomor kartunya dari `GET /internal/kirim/sambungan` setiap menit (`KIRIM_DEVICE_SPMB` hanya nilai awal). Kotak masuk, notifikasi, kode, dan jangan-hubungi mengikuti nomor itu. Sinkron WhatsApp Business (balasan cepat, label, jam di profil) hanya berjalan saat SPMB memakai nomornya sendiri.
+
+| No | Keputusan | Status | Isi |
+|---|---|---|---|
+| K-15 | Siapa melihat chat di nomor bersama | DIPUTUSKAN (owner, opsi A) | Semua modul yang kartunya di nomor itu melihat semua chat nomor itu |
+| K-16 | Sinkron WhatsApp Business saat SPMB menumpang | DRAFT | Tidak berjalan. Id balasan cepat dan label milik HP masing-masing, jadi menyinkronkan ke HP lain bisa menggandakan atau menimpa |
+| K-17 | Jangan-hubungi dari modul pemakai | DRAFT | Berlaku di nomor yang dipakai, sehingga juga menahan pesan modul lain lewat nomor itu ke kontak tersebut. Persetujuan penerima lebih penting daripada pemisahan modul |
+
 ## Riwayat
 
 | Tanggal | Perubahan |
@@ -262,3 +280,4 @@ Owner (8 November): yang diminta adalah kartu koneksi WhatsApp per modul yang pu
 | 2026-11-07 | §12: Ganti nomor WhatsApp dari kartu modul, kembali ke nomor sendiri dan pindah nomor pinjaman tanpa Putuskan (kejadian SPMB 7 November) |
 | 2026-11-07 | Review independen §12: kunci baris kartu, hapus sisa rute ke nomor lain (`rute_lama`), sebut modul yang ikut pindah saat ganti nomor, teks Pakai lagi sesuai status nomor |
 | 2026-11-08 | §13: daftar "Nomor tanpa kartu modul" dihapus atas koreksi owner; layar hanya kartu modul |
+| 2026-11-08 | §14: modul memakai nomor di kartunya seperti pemiliknya (opsi A owner); event nomor ke semua modul di nomor itu |

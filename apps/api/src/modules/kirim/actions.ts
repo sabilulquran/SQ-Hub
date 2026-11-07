@@ -16,7 +16,7 @@ import {
 } from "./message-state.js";
 import type { KirimLog } from "./providers/log.js";
 import type { ActionChat, ActionResult, KirimProvider, ProviderName } from "./providers/types.js";
-import { conversationContact, dbNow, findDevice, groupJid, withTransaction, writeAudit, type ConsumerRow, type DeviceRow, type Queryable } from "./repository.js";
+import { conversationContact, dbNow, findDevice, groupJid, usesNumberSql, withTransaction, writeAudit, type ConsumerRow, type DeviceRow, type Queryable } from "./repository.js";
 import { canonicalJson, OUTBOUND_MEDIA_MIMES, type KirimService } from "./service.js";
 import { recipientFromContact } from "./worker.js";
 
@@ -241,7 +241,7 @@ export class KirimMessageActions {
     if (!z.guid().safeParse(id).success) throw new KirimApiError(404, "not_found", "Pesan tidak ditemukan.");
     const owner = await this.pool.query<{ kode: string; mediaId: string | null }>(
       `SELECT d.kode, m.media_id AS "mediaId" FROM kirim_messages m JOIN kirim_devices d ON d.id = m.device_id
-        WHERE m.id = $1 AND d.pemilik_consumer_id = $2`,
+        WHERE m.id = $1 AND ${usesNumberSql("$2")}`,
       [id, consumer.id],
     );
     const found = owner.rows[0];

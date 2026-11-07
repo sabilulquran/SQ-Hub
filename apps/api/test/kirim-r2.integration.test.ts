@@ -228,6 +228,35 @@ describe("access (§3, §11)", () => {
     const replyWithoutOfficer = await call("POST", `/conversations/${id}/messages`, { key: "k", payload: { text: "x" } });
     expect(replyWithoutOfficer.json().error.code).toBe("atas_nama_required");
   });
+
+  it("lets a module whose card is on the number use it like the owner, until the card moves (KIRIM-IMPL-003 §14)", async () => {
+    const id = await inbound();
+    // Keluarga's card is put on SPMB's number (owner decision 2026-11-08, option A: one shared phone).
+    await pool.query("UPDATE kirim_consumers SET nomor_device_id = $1 WHERE nama = 'keluarga'", [spmbDeviceId]);
+    const list = await call("GET", "/devices/spmb/conversations", { client: "keluarga-api" });
+    expect(list.statusCode).toBe(200);
+    expect(list.json().items.map((item: { id: string }) => item.id)).toEqual([id]);
+    expect((await call("GET", `/conversations/${id}/messages`, { client: "keluarga-api" })).statusCode).toBe(200);
+    await allDay();
+    const reply = await call("POST", `/conversations/${id}/messages`, { client: "keluarga-api", key: "balas-1", payload: { text: "Wa'alaikumussalam", atas_nama: OFFICER } });
+    expect(reply.statusCode).toBe(202);
+    // Inbound events go to the owner and to every module whose card is on the number.
+    await pool.query("TRUNCATE kirim_webhook_deliveries");
+    stub.addEvent("spmb", "message.received", receivedPayload({ body: "baru" }));
+    await pull();
+    expect((await webhookPayloads("message.received")).map((event) => event.consumer).sort()).toEqual(["keluarga", "spmb"]);
+    // A module with no card on the number still cannot read it.
+    expect((await call("GET", "/devices/spmb/conversations", { client: "hcis-api" })).statusCode).toBe(403);
+
+    // The card moves away: the access goes with it.
+    await pool.query("UPDATE kirim_consumers SET nomor_device_id = NULL WHERE nama = 'keluarga'");
+    expect((await call("GET", "/devices/spmb/conversations", { client: "keluarga-api" })).statusCode).toBe(403);
+    expect((await call("GET", `/conversations/${id}/messages`, { client: "keluarga-api" })).statusCode).toBe(404);
+    await pool.query("TRUNCATE kirim_webhook_deliveries");
+    stub.addEvent("spmb", "message.received", receivedPayload({ body: "lagi" }));
+    await pull();
+    expect((await webhookPayloads("message.received")).map((event) => event.consumer)).toEqual(["spmb"]);
+  });
 });
 
 describe("reading conversations (§6.1)", () => {
