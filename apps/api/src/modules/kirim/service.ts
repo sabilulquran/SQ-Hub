@@ -10,7 +10,6 @@ import { KirimApiError } from "./errors.js";
 import { wibDayStart } from "./policy.js";
 import {
   dbNow,
-  enqueueWebhook,
   ensureConversation,
   ensureApplicationConsumer,
   findConsumerByClientId,
@@ -23,6 +22,8 @@ import {
   type ConsumerRow,
   type DeviceRow,
   type Queryable,
+  enqueueDeviceWebhook,
+  usesNumber,
 } from "./repository.js";
 
 /** KIRIM-IMPL-001 §5.1 and §6.1: accepting messages, media and opt-outs from consumer modules. */
@@ -226,9 +227,10 @@ export class KirimService {
           ],
         );
         await client.query("UPDATE kirim_conversations SET pesan_terakhir_at = now() WHERE id = $1", [conversationId]);
-        // KIRIM-IMPL-002 §7: the number's owner sees another module's message in its inbox.
-        if (device.pemilikConsumerId !== consumer.id) {
-          await enqueueWebhook(client, this.crypto, device.pemilikConsumerId, "message.sent", {
+        // KIRIM-IMPL-002 §7: the number's owner, and every module whose card is on it (KIRIM-IMPL-003 §14),
+        // sees another module's message in its inbox.
+        {
+          await enqueueDeviceWebhook(client, this.crypto, device, "message.sent", {
             device: device.kode,
             conversation_id: conversationId,
             message_id: messageId,
@@ -239,7 +241,7 @@ export class KirimService {
             disamarkan: input.jenis === "kode",
             status: "antre",
             waktu: (await dbNow(client)).toISOString(),
-          });
+          }, consumer.id);
         }
         return { id: messageId, status: "antre" };
       });
@@ -342,10 +344,10 @@ export class KirimService {
     }
   }
 
-  /** The number's owner only (KIRIM-001 §3.3); anyone else gets `403 not_owner`. */
+  /** The number's owner (KIRIM-001 §3.3) or a module whose card is on it (KIRIM-IMPL-003 §14); anyone else gets `403 not_owner`. */
   async ownedDeviceId(consumer: ConsumerRow, kode: string): Promise<string> {
     const device = await findDevice(this.pool, kode);
-    if (!device || device.pemilikConsumerId !== consumer.id) throw new KirimApiError(403, "not_owner", "Hanya modul pemilik nomor yang boleh memakai ini.");
+    if (!device || !usesNumber(consumer, device)) throw new KirimApiError(403, "not_owner", "Hanya modul yang kartunya memakai nomor ini yang boleh memakai ini.");
     return device.id;
   }
 

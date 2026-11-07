@@ -27,13 +27,13 @@ import {
 } from "./providers/types.js";
 import {
   dbNow,
-  enqueueWebhook,
   ensureConversation,
   HELD_DEVICE_SQL,
   setDeviceStatus,
   transitionOutbox,
   withTransaction,
   type Queryable,
+  enqueueDeviceWebhook,
 } from "./repository.js";
 import type { KirimService } from "./service.js";
 
@@ -289,7 +289,7 @@ export class KirimIngest {
           [conversationId, message.receivedAt],
         );
         const from = await this.phoneOf(client, conversationId, contact);
-        await enqueueWebhook(client, this.crypto, device.pemilikConsumerId, "message.received", {
+        await enqueueDeviceWebhook(client, this.crypto, device, "message.received", {
           device: device.kode,
           conversation_id: conversationId,
           message_id: messageId,
@@ -507,7 +507,7 @@ export class KirimIngest {
       [group.id, message.receivedAt],
     );
     const ownPhone = await this.ownPhone(client, device.id);
-    await enqueueWebhook(client, this.crypto, device.pemilikConsumerId, "group.message.received", {
+    await enqueueDeviceWebhook(client, this.crypto, device, "group.message.received", {
       device: device.kode,
       group_id: group.id,
       message_id: messageId,
@@ -585,7 +585,7 @@ export class KirimIngest {
         [groupId, message.receivedAt],
       );
     }
-    await enqueueWebhook(client, this.crypto, device.pemilikConsumerId, "message.sent", {
+    await enqueueDeviceWebhook(client, this.crypto, device, "message.sent", {
       device: device.kode,
       ...(conversationId ? { conversation_id: conversationId } : { group_id: groupId }),
       message_id: messageId,
@@ -622,7 +622,7 @@ export class KirimIngest {
     if (author !== "author") return this.refuseChange(device, "edit");
     const by = change.fromMe ? BY_PHONE : BY_SENDER;
     if (!(await recordEdit(client, this.crypto, target, { body: change.body, at: change.at, by }))) return;
-    await enqueueWebhook(client, this.crypto, device.pemilikConsumerId, "message.edited", {
+    await enqueueDeviceWebhook(client, this.crypto, device, "message.edited", {
       device: device.kode,
       ...where(target),
       message_id: target.id,
@@ -642,7 +642,7 @@ export class KirimIngest {
     if (author === "other") return this.refuseChange(device, "delete");
     const by = change.fromMe ? BY_PHONE : author === "group_admin" ? BY_GROUP_ADMIN : BY_SENDER;
     if (!(await recordDelete(client, target, { at: change.at, by }))) return;
-    await enqueueWebhook(client, this.crypto, device.pemilikConsumerId, "message.deleted", {
+    await enqueueDeviceWebhook(client, this.crypto, device, "message.deleted", {
       device: device.kode,
       ...where(target),
       message_id: target.id,
@@ -709,7 +709,7 @@ export class KirimIngest {
     });
     if (!next.changed) return;
     await saveReactions(client, target.id, next.reactions);
-    await enqueueWebhook(client, this.crypto, device.pemilikConsumerId, "message.reaction", {
+    await enqueueDeviceWebhook(client, this.crypto, device, "message.reaction", {
       device: device.kode,
       ...where(target),
       message_id: target.id,
@@ -786,7 +786,7 @@ export class KirimIngest {
         [conversationId, call.startedAt, unanswered],
       );
     }
-    await enqueueWebhook(client, this.crypto, device.pemilikConsumerId, "call.logged", {
+    await enqueueDeviceWebhook(client, this.crypto, device, "call.logged", {
       device: device.kode,
       conversation_id: conversationId,
       message_id: messageId,
