@@ -66,7 +66,7 @@ Tidak ada baris yang dihapus dan tidak ada rute yang diubah, jadi pengiriman Kar
 
 | Method + path | Fungsi |
 | --- | --- |
-| `GET /modules` | `modules[]`: `application_key`, `nama`, `peran` (`kosong`, `pemilik`, `pemakai`), `nomor` (bentuk `GET /devices`) bila tersambung, `jenis` yang diizinkan, `antrean` modul ini, `dipakai_juga_oleh[]`, `pemilik_nomor`. Ditambah `devices` dan `peringatan` seperti `GET /devices`; layar memakainya untuk pilihan "Pakai nomor yang sudah aktif" dan daftar "Nomor tanpa kartu modul" |
+| `GET /modules` | `modules[]`: `application_key`, `nama`, `peran` (`kosong`, `pemilik`, `pemakai`), `nomor` (bentuk `GET /devices`) bila tersambung, `jenis` yang diizinkan, `antrean` modul ini, `dipakai_juga_oleh[]`, `pemilik_nomor`. Ditambah `devices` dan `peringatan` seperti `GET /devices`; layar memakainya untuk pilihan "Pakai nomor yang sudah aktif" |
 | `POST /modules/:app/nomor-baru` | Hanya untuk kartu kosong. Membuat/menautkan pemakai, membuat nomor dengan kode otomatis (`application_key` tanpa `-sq`; bila terpakai `-2`, `-3`, …), label "Nomor <nama aplikasi>", provider `jalurpesan` bila mesin terkonfigurasi (tenant = kode) atau `log` bila tidak. Mengisi `nomor_device_id`. Jawaban: kartu |
 | `POST /modules/:app/pakai-nomor` | `{ device, kode_verifikasi }`. Nomor harus aktif dan bukan milik modul ini. Membuat rute `notifikasi` (dan `kode` bila dicentang; dicabut bila tidak), mengisi `nomor_device_id`. Dipakai juga oleh Ubah pada kartu pemakai |
 | `POST /modules/:app/putuskan` | `{ alasan }`. **Pemakai:** rute modul ini ke nomor itu dihapus dan `nomor_device_id` dikosongkan; nomor tetap tersambung untuk pemiliknya. **Pemilik:** ditolak `409 nomor_dipakai_modul_lain` bila modul lain masih memakai nomor itu; bila tidak, sesi WhatsApp dilepas seperti `POST /devices/:kode/disconnect` dan kartu menampilkan "Pasang" lagi |
@@ -75,7 +75,7 @@ Perubahan perilaku endpoint lama:
 
 - Menonaktifkan nomor mengosongkan kartu pemiliknya, sehingga "+ Tambah WhatsApp" muncul lagi.
 - `POST /devices/:kode/disconnect` dan `/deactivate` ditolak `409 nomor_dipakai_modul_lain` bila nomor dipakai modul selain pemiliknya (rute atau `nomor_device_id`). Menghentikan semua pengiriman darurat tetap bisa lewat **Jeda antrean**, yang berlaku untuk semua modul di nomor itu dan bisa dibatalkan.
-- `POST /devices` tetap ada untuk uji dan pemulihan, tetapi layar tidak lagi menampilkan form "Tambah nomor". Nomor yang tidak dipegang kartu mana pun tetap tampil di bawah kartu sebagai "Nomor tanpa kartu modul".
+- `POST /devices` tetap ada untuk uji dan pemulihan, tetapi layar tidak lagi menampilkan form "Tambah nomor". Nomor yang tidak dipegang kartu mana pun tidak tampil (§13).
 - Mengganti pemilik nomor lewat Ubah memindahkan kartu: kartu pemilik baru menampilkan nomor itu, kartu pemilik lama dikosongkan kecuali ia masih punya rute ke nomor itu.
 
 Setiap perubahan menulis `kirim_audit` (`kartu.nomor_baru`, `kartu.pakai_nomor`, `kartu.putuskan`).
@@ -163,7 +163,7 @@ Akar masalah: layar tidak punya cara memindai ulang nomor yang sudah ada, **Pasa
 - `perangkat_baru: true` (pilihan lanjutan, "bila Sambungkan ulang biasa tetap gagal"): Kirim SQ memilih tenant `<kode>-2`, `-3`, … yang tidak dipakai nomor lain dan belum dikenal mesin, menyiapkannya, lalu mengganti `provider_ref` nomor yang sama di akhir transaksi, persis seperti perbaikan manual 5 November. Tenant lama dibiarkan di mesin (dibersihkan operator bila perlu).
 - Mesin restart (`engine_unavailable`): server mencoba lagi dua kali (jeda 1,5 dan 3 detik); layar lalu mencoba lagi sendiri tiga kali dengan hitung mundur 15 detik dan teks "Mesin WhatsApp sedang dinyalakan ulang … Jangan Nonaktifkan nomor ini", lalu tombol **Coba lagi**. Pesan galat `engine_unavailable` di admin API menjadi "Mesin WhatsApp sedang tidak tersedia, mungkin sedang dinyalakan ulang. Tunggu sekitar satu menit lalu coba lagi." dan `session_reset_required` menunjuk ke Sambungkan ulang.
 - Audit `nomor.sambung_ulang` (berhasil/gagal) dengan `mode`, `perangkat_baru`, `alasan`, `status_sebelumnya`, dan `tenant_lama`/`tenant_baru` bila berganti tenant.
-- Layar: kartu pemilik dan "Nomor tanpa kartu modul" menampilkan **Pasang** hanya untuk `belum_dipasang`, dan **Sambungkan ulang** untuk tiga status di atas. Dialog menjelaskan bahwa tidak ada nomor baru yang dibuat dan memperingatkan bila nomor sedang tersambung.
+- Layar: kartu pemilik menampilkan **Pasang** hanya untuk `belum_dipasang`, dan **Sambungkan ulang** untuk tiga status di atas. Dialog menjelaskan bahwa tidak ada nomor baru yang dibuat dan memperingatkan bila nomor sedang tersambung.
 
 ### 11.2 Nonaktifkan memperingatkan dan meminta konfirmasi
 
@@ -222,7 +222,7 @@ Akar masalah: layar memperlakukan pergantian WhatsApp sebagai pergantian **nomor
 
 - `POST /modules/:app/pakai-nomor-lama` dan `POST /modules/:app/pakai-nomor`: bila kartu sedang memakai nomor **modul lain**, nomor itu dilepas dalam transaksi yang sama (rute modul ini ke nomor itu dihapus), lalu kartu menautkan nomor tujuan. Audit `kartu.pakai_nomor_lama` / `kartu.pakai_nomor` mencatat `dilepas: <kode>`. Kartu yang memakai nomornya **sendiri** tetap ditolak `409 kartu_sudah_tersambung`, dengan pesan yang menunjuk ke Ganti nomor WhatsApp. Pada langkah yang sama, rute modul ini ke nomor lain yang bukan miliknya dan bukan nomor tujuan (misalnya sisa rute ke nomor yang dinonaktifkan) ikut dihapus; audit mencatatnya sebagai `rute_lama: [kode]`. Nomor kartu dibaca ulang dengan kunci baris (`FOR UPDATE`) di dalam transaksi, supaya penggabungan nomor ganda (§11.3 butir 4) yang berjalan bersamaan tidak meninggalkan rute ke nomor yang tidak lagi dipakai. Pesan yang sudah antre di nomor yang dilepas tetap dikirim dari nomor itu (sama dengan Putuskan, K-3).
 - **Ubah** pada kartu pemakai menawarkan **Pakai nomor lama <modul>** (bila modul punya nomor) dan **Tetap memakai nomor modul lain** dengan pilihan semua nomor aktif yang bukan milik modul itu, nomor yang sedang dipakai di urutan pertama.
-- Di "Nomor tanpa kartu modul", nomor yang dimiliki modul yang kartunya kosong atau sedang meminjam nomor lain menampilkan "Nomor milik <modul> …" dan **Pakai lagi untuk <modul>** (`pakai-nomor-lama`); dialognya menjelaskan modul belum bisa mengirim sampai dipindai, lalu Sambungkan ulang terbuka langsung bila nomor belum tersambung.
+- ~~Di "Nomor tanpa kartu modul", nomor yang dimiliki modul yang kartunya kosong atau sedang meminjam nomor lain menampilkan "Nomor milik <modul> …" dan **Pakai lagi untuk <modul>** (`pakai-nomor-lama`); dialognya menjelaskan modul belum bisa mengirim sampai dipindai, lalu Sambungkan ulang terbuka langsung bila nomor belum tersambung.~~ Dihapus di §13; kembali ke nomor sendiri lewat **Ubah** atau **Tambah WhatsApp** di kartu modul (pilihan "Pakai nomor lama").
 
 ### 12.3 Uji
 
@@ -239,6 +239,18 @@ Akar masalah: layar memperlakukan pergantian WhatsApp sebagai pergantian **nomor
 
 **Recovery plan:** tidak ada migration. Rollback aplikasi ke rilis sebelumnya aman: field `ganti_nomor` ditolak kode lama hanya bila layar baru masih terbuka (muat ulang halaman).
 
+## 13. Addendum 2026-11-08: layar hanya berisi kartu modul
+
+Owner (8 November): yang diminta adalah kartu koneksi WhatsApp per modul yang punya fitur WhatsApp, yang menunjukkan apakah fitur WhatsApp modul itu terhubung ke nomor aktif. Daftar "Nomor tanpa kartu modul" tidak pernah diminta; itu keputusan agent di versi pertama dokumen ini (§4). Nomor mana yang dipakai sebuah modul, termasuk menumpang nomor modul lain untuk pengujian, adalah pilihan admin dan tidak dianggap masalah.
+
+- Layar Kirim hanya menampilkan kartu modul. Daftar "Nomor tanpa kartu modul", kartu nomornya, dan tombol **Pakai lagi untuk <modul>** dihapus.
+- Peringatan di atas kartu (nomor terputus, nomor ganda) hanya menyebut nomor yang dipakai sebuah kartu.
+- Nomor yang tidak dipegang kartu tetap ada di data dan tetap bisa dipilih lewat **Pakai nomor yang sudah aktif** (bila aktif) atau **Pakai nomor lama** (milik modul itu). API tidak berubah.
+
+| No | Keputusan | Status | Isi |
+|---|---|---|---|
+| K-14 | Isi layar Kirim | DIPUTUSKAN (owner) | Kartu per modul saja; tidak ada kartu nomor |
+
 ## Riwayat
 
 | Tanggal | Perubahan |
@@ -249,3 +261,4 @@ Akar masalah: layar memperlakukan pergantian WhatsApp sebagai pergantian **nomor
 | 2026-11-05 | Review independen §11: cursor event per tenant (`kirim_events.provider_ref`), penahanan hanya untuk nomor tanpa pesan masuk, cek `provider_ref` bersamaan di Sambungkan ulang, batas gabung dicatat di K-8 |
 | 2026-11-07 | §12: Ganti nomor WhatsApp dari kartu modul, kembali ke nomor sendiri dan pindah nomor pinjaman tanpa Putuskan (kejadian SPMB 7 November) |
 | 2026-11-07 | Review independen §12: kunci baris kartu, hapus sisa rute ke nomor lain (`rute_lama`), sebut modul yang ikut pindah saat ganti nomor, teks Pakai lagi sesuai status nomor |
+| 2026-11-08 | §13: daftar "Nomor tanpa kartu modul" dihapus atas koreksi owner; layar hanya kartu modul |
