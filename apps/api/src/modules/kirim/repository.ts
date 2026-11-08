@@ -348,9 +348,26 @@ export function usesNumberSql(param: string): string {
  * to (`kirim_kartu_riwayat`), so its chat history stays with the module after a number change. Read only: sending,
  * events and every other change stay with {@link usesNumberSql}.
  */
-export function readsNumberSql(param: string): string {
+export function readsNumberSql(param: string, createdAt?: string): string {
+  const until = createdAt ? ` AND (r.sampai IS NULL OR ${createdAt} <= r.sampai)` : "";
   return `(${usesNumberSql(param)} OR EXISTS (SELECT 1 FROM kirim_kartu_riwayat r JOIN kirim_consumers rc ON rc.id = r.consumer_id AND rc.aktif
-    WHERE r.consumer_id = ${param} AND r.device_id = d.id))`;
+    WHERE r.consumer_id = ${param} AND r.device_id = d.id${until}))`;
+}
+
+/**
+ * Up to when a module may read a number's messages: null while it may use the number (§14), else the moment its card
+ * left the number (§15). Undefined: never on its card.
+ */
+export async function readUntil(db: Queryable, consumerId: string, deviceId: string): Promise<Date | null | undefined> {
+  const result = await db.query<{ pakai: boolean; sampai: Date | null; ada: boolean }>(
+    `SELECT ${usesNumberSql("$1")} AS pakai, r.sampai, r.device_id IS NOT NULL AS ada
+     FROM kirim_devices d LEFT JOIN kirim_kartu_riwayat r ON r.consumer_id = $1 AND r.device_id = d.id WHERE d.id = $2`,
+    [consumerId, deviceId],
+  );
+  const row = result.rows[0];
+  if (!row) return undefined;
+  if (row.pakai) return null;
+  return row.ada ? row.sampai : undefined;
 }
 
 /**

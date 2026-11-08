@@ -19,6 +19,7 @@ import {
   type Queryable,
   usesNumber,
   readsNumberSql,
+  readUntil,
   usesNumberSql,
 } from "./repository.js";
 import { canonicalJson, KirimApiError, OUTBOUND_MEDIA_MIMES, type KirimService } from "./service.js";
@@ -279,12 +280,19 @@ export class KirimConversations {
 
   async getConversation(consumer: ConsumerRow, id: string) {
     const row = await this.ownedConversation(this.pool, consumer, id, false, true);
-    return (await this.conversationItems(consumer, row.deviceId, [row]))[0]!;
+    const item = (await this.conversationItems(consumer, row.deviceId, [row]))[0]!;
+    // §15: a number the card has left shows nothing that came after.
+    const until = await readUntil(this.pool, consumer.id, row.deviceId);
+    if (until && item.pesan_terakhir_at && new Date(item.pesan_terakhir_at) > until) {
+      return { ...item, pesan_terakhir: null, pesan_terakhir_at: null, belum_dibaca: 0 };
+    }
+    return item;
   }
 
   async listMessages(consumer: ConsumerRow, id: string, query: z.infer<typeof messageListQuerySchema>, atasNama: AtasNama) {
     const conversation = await this.ownedConversation(this.pool, consumer, id, false, true);
-    const page = await this.messagePage("m.conversation_id", conversation.id, query);
+    const until = await readUntil(this.pool, consumer.id, conversation.deviceId);
+    const page = await this.messagePage("m.conversation_id", conversation.id, query, until ?? null);
     await this.auditRead(consumer, conversation.id, atasNama);
     return page;
   }
@@ -410,7 +418,7 @@ export class KirimConversations {
     if (!z.guid().safeParse(id).success) throw new KirimApiError(404, "not_found", "Media tidak ditemukan.");
     const result = await this.pool.query<{ id: string; mime: string; path: string | null; tidakDisalin: string | null; kode: string }>(
       `SELECT md.id, md.mime, md.path, md.tidak_disalin AS "tidakDisalin", d.kode
-       FROM kirim_media md JOIN kirim_devices d ON d.id = md.device_id WHERE md.id = $1 AND ${readsNumberSql("$2")}`,
+       FROM kirim_media md JOIN kirim_devices d ON d.id = md.device_id WHERE md.id = $1 AND ${readsNumberSql("$2", "md.created_at")}`,
       [id, consumer.id],
     );
     const row = result.rows[0];
@@ -600,11 +608,16 @@ export class KirimConversations {
     }
   }
 
-  private async messagePage(column: "m.conversation_id" | "m.group_id", id: string, query: z.infer<typeof messageListQuerySchema>) {
+  /** `until`: nothing after it (a number the card has left, §15). */
+  private async messagePage(column: "m.conversation_id" | "m.group_id", id: string, query: z.infer<typeof messageListQuerySchema>, until: Date | null = null) {
     const cursor = decodeCursor(query.sebelum);
     const params: unknown[] = [id, query.batas + 1];
-    const filter = cursor ? ` AND (m.created_at, m.id) < ($3::timestamptz, $4::uuid)` : "";
+    let filter = cursor ? ` AND (m.created_at, m.id) < ($3::timestamptz, $4::uuid)` : "";
     if (cursor) params.push(cursor.at, cursor.id);
+    if (until) {
+      params.push(until);
+      filter += ` AND m.created_at <= $${params.length}::timestamptz`;
+    }
     const rows = await this.pool.query<MessageRow>(
       `SELECT ${MESSAGE_COLUMNS} FROM kirim_messages m ${MESSAGE_JOINS}
        WHERE ${column} = $1 ${filter} ORDER BY m.created_at DESC, m.id DESC LIMIT $2`,

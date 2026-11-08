@@ -258,6 +258,18 @@ describe("access (§3, §11)", () => {
     const again = await call("POST", `/conversations/${id}/messages`, { client: "keluarga-api", key: "balas-2", payload: { text: "lagi", atas_nama: OFFICER } });
     expect(again.statusCode).toBe(404);
     expect((await call("POST", "/devices/spmb/conversations", { client: "keluarga-api", payload: { to: PHONE, atas_nama: OFFICER } })).statusCode).toBe(403);
+    // What comes after the card left is not keluarga's to read (§15).
+    stub.addEvent("spmb", "message.received", receivedPayload({ body: "setelah pindah" }));
+    await pull();
+    const after = await call("GET", `/conversations/${id}/messages`, { client: "keluarga-api" });
+    expect(after.json().items.map((message: { isi: string | null }) => message.isi)).not.toContain("setelah pindah");
+    expect((await call("GET", `/conversations/${id}/messages`)).json().items.map((message: { isi: string | null }) => message.isi)).toContain("setelah pindah");
+    expect((await call("GET", `/conversations/${id}`, { client: "keluarga-api" })).json().pesan_terakhir).toBeNull();
+    // Back on the number: everything again.
+    await pool.query("UPDATE kirim_consumers SET nomor_device_id = $1 WHERE nama = 'keluarga'", [spmbDeviceId]);
+    expect((await call("GET", `/conversations/${id}/messages`, { client: "keluarga-api" })).json().items.map((message: { isi: string | null }) => message.isi))
+      .toContain("setelah pindah");
+    await pool.query("UPDATE kirim_consumers SET nomor_device_id = NULL WHERE nama = 'keluarga'");
     // Never on the card: no history either; a switched-off module reads nothing.
     expect((await call("GET", `/conversations/${id}/messages`, { client: "hcis-api" })).statusCode).toBe(404);
     await pool.query("UPDATE kirim_consumers SET aktif = false WHERE nama = 'keluarga'");
