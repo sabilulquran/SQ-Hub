@@ -229,7 +229,7 @@ describe("access (§3, §11)", () => {
     expect(replyWithoutOfficer.json().error.code).toBe("atas_nama_required");
   });
 
-  it("lets a module whose card is on the number use it like the owner, until the card moves (KIRIM-IMPL-003 §14)", async () => {
+  it("lets a module whose card is on the number use it like the owner, until the card moves, then only read its history (KIRIM-IMPL-003 §14, §15)", async () => {
     const id = await inbound();
     // Keluarga's card is put on SPMB's number (owner decision 2026-11-08, option A: one shared phone).
     await pool.query("UPDATE kirim_consumers SET nomor_device_id = $1 WHERE nama = 'keluarga'", [spmbDeviceId]);
@@ -248,10 +248,21 @@ describe("access (§3, §11)", () => {
     // A module with no card on the number still cannot read it.
     expect((await call("GET", "/devices/spmb/conversations", { client: "hcis-api" })).statusCode).toBe(403);
 
-    // The card moves away: the access goes with it.
+    // The card moves away: using the number goes with it, the chat history stays readable (§15).
     await pool.query("UPDATE kirim_consumers SET nomor_device_id = NULL WHERE nama = 'keluarga'");
     expect((await call("GET", "/devices/spmb/conversations", { client: "keluarga-api" })).statusCode).toBe(403);
-    expect((await call("GET", `/conversations/${id}/messages`, { client: "keluarga-api" })).statusCode).toBe(404);
+    expect((await call("GET", `/conversations/${id}/messages`, { client: "keluarga-api" })).statusCode).toBe(200);
+    const old = await call("GET", `/conversations/${id}`, { client: "keluarga-api" });
+    expect(old.statusCode).toBe(200);
+    expect(old.json()).toMatchObject({ id, device: "spmb", kontak: { nomor: PHONE } });
+    const again = await call("POST", `/conversations/${id}/messages`, { client: "keluarga-api", key: "balas-2", payload: { text: "lagi", atas_nama: OFFICER } });
+    expect(again.statusCode).toBe(404);
+    expect((await call("POST", "/devices/spmb/conversations", { client: "keluarga-api", payload: { to: PHONE, atas_nama: OFFICER } })).statusCode).toBe(403);
+    // Never on the card: no history either; a switched-off module reads nothing.
+    expect((await call("GET", `/conversations/${id}/messages`, { client: "hcis-api" })).statusCode).toBe(404);
+    await pool.query("UPDATE kirim_consumers SET aktif = false WHERE nama = 'keluarga'");
+    expect((await call("GET", `/conversations/${id}/messages`, { client: "keluarga-api" })).statusCode).toBe(403);
+    await pool.query("UPDATE kirim_consumers SET aktif = true WHERE nama = 'keluarga'");
     await pool.query("TRUNCATE kirim_webhook_deliveries");
     stub.addEvent("spmb", "message.received", receivedPayload({ body: "lagi" }));
     await pull();

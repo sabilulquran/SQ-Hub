@@ -259,19 +259,44 @@ Keputusan owner (opsi A): nomor yang dipakai bersama diperlakukan seperti **satu
 
 - Aturan akses: modul boleh memakai nomor bila ia pemiliknya **atau** nomor itu ada di kartunya (`kirim_consumers.nomor_device_id`). Aturan ini dipakai untuk semua jalur §6 di KIRIM-IMPL-002, yaitu daftar dan isi percakapan, balas, buka percakapan, media, grup, label chat, balasan cepat, jam usaha, katalog, tindakan pesan, foto profil, dan jangan-hubungi bercakupan nomor. Modul yang hanya punya rute (tanpa kartu di nomor itu) tetap `403 not_owner`.
 - Webhook: event nomor (`message.received`, `group.message.received`, `message.sent`, `message.edited`, `message.deleted`, `message.reaction`, `call.logged`) dikirim ke pemilik dan ke setiap modul aktif yang kartunya di nomor itu. `message.status` untuk pesan modul lain juga dikirim ke mereka, tanpa `ref`.
-- Akses ikut kartu. Begitu kartu pindah, akses ke percakapan nomor lama hilang (`403`/`404`), dan percakapannya tetap tersimpan di nomor itu. Balasan yang sudah lolos pemeriksaan tepat saat kartu dipindah masih bisa masuk antrean (jendela sangat singkat, diterima).
+- Akses ikut kartu. Begitu kartu pindah, modul tidak bisa lagi memakai nomor lama (`403`/`404`). Sejak §15, riwayat chat nomor lama tetap bisa dibaca. Balasan yang sudah lolos pemeriksaan tepat saat kartu dipindah masih bisa masuk antrean (jendela sangat singkat, diterima).
 - Event hanya dikirim ke modul yang juga lolos `requireConsumer`: aktif, dan aplikasinya di registry aktif dan boleh memakai WhatsApp.
 - Sebelum rilis, kartu yang menunjuk nomor milik modul lain diperiksa di production: migrasi 0013 dan pemindahan pemilik bisa meninggalkan kartu seperti itu, dan sejak §14 kartu itu berarti akses baca.
 - Balasan petugas dari modul pemakai tercatat atas nama modul itu. Modul lain di nomor yang sama melihatnya dari `message.status` dan daftar pesan, tidak dari `message.sent`.
-- SPMB membaca nomor kartunya dari `GET /internal/kirim/sambungan` setiap menit (`KIRIM_DEVICE_SPMB` hanya nilai awal). Kotak masuk, notifikasi, kode, dan jangan-hubungi mengikuti nomor itu. Sinkron WhatsApp Business (balasan cepat, label, jam di profil) hanya berjalan saat SPMB memakai nomornya sendiri. Event dari nomor lain membuat SPMB membaca kartunya lagi sebelum dibuang, supaya event pertama setelah kartu pindah tidak hilang; selama kartu belum pernah terbaca, event itu dijawab 5xx agar Kirim SQ mengirim ulang. Saat kartu pindah, semua jangan-hubungi dikirim ulang ke nomor yang baru.
+- SPMB membaca nomor kartunya dari `GET /internal/kirim/sambungan` setiap menit (`KIRIM_DEVICE_SPMB` hanya nilai awal). Kotak masuk, notifikasi, kode, dan jangan-hubungi mengikuti nomor itu. Sejak §15, sinkron WhatsApp Business juga berjalan di nomor mana pun. Event dari nomor lain membuat SPMB membaca kartunya lagi sebelum dibuang, supaya event pertama setelah kartu pindah tidak hilang; selama kartu belum pernah terbaca, event itu dijawab 5xx agar Kirim SQ mengirim ulang. Saat kartu pindah, semua jangan-hubungi dikirim ulang ke nomor yang baru.
 
 | No | Keputusan | Status | Isi |
 |---|---|---|---|
 | K-15 | Siapa melihat chat di nomor bersama | DIPUTUSKAN (owner, opsi A) | Semua modul yang kartunya di nomor itu melihat semua chat nomor itu |
-| K-16 | Sinkron WhatsApp Business saat SPMB menumpang | DRAFT | Tidak berjalan. Id balasan cepat dan label milik HP masing-masing, jadi menyinkronkan ke HP lain bisa menggandakan atau menimpa |
+| K-16 | Sinkron WhatsApp Business saat SPMB menumpang | DIGANTI §15 (G-1, G-6) | Tidak berjalan. Id balasan cepat dan label milik HP masing-masing, jadi menyinkronkan ke HP lain bisa menggandakan atau menimpa |
 | K-17 | Jangan-hubungi dari modul pemakai | DRAFT | Berlaku di nomor yang dipakai, sehingga juga menahan pesan modul lain lewat nomor itu ke kontak tersebut. Persetujuan penerima lebih penting daripada pemisahan modul |
-| K-18 | Chat masuk saat SPMB menumpang nomor modul lain | DRAFT | Tampil di kotak masuk CS SPMB, tetapi tidak menjadi peminat baru dan tidak mendapat sapaan atau balasan di luar jam otomatis. Kontak nomor itu bukan kontak SPMB |
-| K-19 | Chat dari nomor yang sudah tidak dipakai SPMB | DRAFT | Tetap tampil sebagai riwayat dan bisa dibaca. Membalas ditolak (`OLD_NUMBER`) karena akan keluar lewat HP yang bukan milik SPMB lagi atau tidak tersambung. Petugas memulai chat baru ke kontak itu. Ganti nomor WhatsApp pada kode yang sama (§12) tidak terkena |
+| K-18 | Chat masuk saat SPMB menumpang nomor modul lain | DIGANTI §15 (G-1) | Tampil di kotak masuk CS SPMB, tetapi tidak menjadi peminat baru dan tidak mendapat sapaan atau balasan di luar jam otomatis. Kontak nomor itu bukan kontak SPMB |
+| K-19 | Chat dari nomor yang sudah tidak dipakai SPMB | DIGANTI §15 (G-4) | Tetap tampil sebagai riwayat dan bisa dibaca. Membalas ditolak (`OLD_NUMBER`) karena akan keluar lewat HP yang bukan milik SPMB lagi atau tidak tersambung. Petugas memulai chat baru ke kontak itu. Ganti nomor WhatsApp pada kode yang sama (§12) tidak terkena |
+
+## 15. Addendum 2026-11-08: aturan ganti nomor, netral nomor
+
+Koreksi owner: sistem tidak perlu tahu apakah sebuah nomor "nomor SPMB" atau nomor modul lain. Semua nomor diperlakukan sama, dan yang diatur adalah aturan saat nomor diganti. Untuk data aplikasi, polanya mengikuti WhatsApp saat ganti nomor: chat dan datanya tetap ada, lalu dilanjutkan dari nomor yang baru.
+
+**Aturan**
+
+| No | Aturan |
+|---|---|
+| G-1 | Kartu modul satu-satunya penentu. Modul mengirim, menerima, dan menyinkronkan hanya lewat nomor di kartunya sekarang, dan berperilaku sama di nomor mana pun: peminat baru, sapaan, balasan di luar jam, balasan cepat, label, jam di profil, dan jangan-hubungi. Modul tidak membaca `peran` dari `/sambungan` untuk menentukan perilaku. |
+| G-2 | Ada dua cara mengganti nomor, dan hasilnya sama. Pertama, **Ganti nomor WhatsApp**: HP atau nomor baru dipasang pada kode yang sama (§12). Kedua, **pindah kartu**: kartu modul diarahkan ke nomor lain. Modul mengikuti perubahan itu dalam satu menit, dan juga saat dinyalakan ulang. |
+| G-3 | Data aplikasi ikut modul, bukan ikut nomor. Peminat, pemegang chat, status, catatan internal, label, pesan terjadwal, pengaturan pribadi petugas, dan jejak penanganan tidak hilang dan tidak berubah karena ganti nomor. |
+| G-4 | Riwayat pesan nomor lama tetap bisa dibaca modul. Hub mencatat setiap nomor yang pernah ada di kartu modul (`kirim_kartu_riwayat`) dan memberi akses **baca saja** ke percakapan, pesan, media, dan fotonya. Mengirim, membuka chat, dan menerima event tetap hanya lewat nomor di kartu sekarang. |
+| G-5 | Satu kontak satu chat. Chat kontak di nomor lama dilanjutkan ke chat kontak itu di nomor baru, dan riwayat nomor lama tampil di bawah pesan nomor baru. Penggabungan terjadi saat (a) petugas membalas chat lama, sehingga pesan keluar dari nomor baru; (b) kontak menulis ke nomor baru; atau (c) kartu pindah, ketika chat yang sudah ada di nomor baru ditarik otomatis. Alamat chat lama tetap membuka chat yang sama. |
+| G-6 | Isi HP bukan data aplikasi. Id balasan cepat dan label WhatsApp Business milik satu HP, jadi tautannya dicatat per nomor (`<kode>:<id>`). Di HP nomor baru, balasan cepat aplikasi dipasang sebagai balasan baru. Balasan cepat yang ada di HP nomor baru ikut masuk ke aplikasi, karena nomor yang dipakai bersama diperlakukan sebagai satu HP (K-15). |
+| G-7 | Jangan-hubungi dikirim ulang ke nomor baru (§14). |
+| G-8 | Kontak yang hanya dikenal lewat LID WhatsApp, tanpa nomor telepon, tidak bisa dilanjutkan otomatis. Balasan ditolak dengan `NO_NUMBER`, dan petugas memulai chat baru. Pesan terjadwal ke kontak seperti itu dibatalkan dengan alasan yang sama. |
+| G-9 | Pesan yang masuk ke nomor lama setelah kartu pindah tidak masuk ke modul, kecuali kartu kembali ke nomor itu. Pesannya tetap tersimpan di Hub. |
+
+**Pelaksanaan**
+
+- Hub (migrasi 0017): `kirim_kartu_riwayat` diisi pemicu setiap kali `nomor_device_id` berubah, dan diisi awal dari kartu yang ada. Akses baca memakai `readsNumberSql`; akses lain tetap memakai `usesNumberSql` (§14).
+- SPMB (migrasi 0036): kolom `wa_conversations.contact_hmac`, tabel `wa_conversation_previous`, dan kunci asing ke `wa_conversations` diubah menjadi `ON UPDATE CASCADE`. Melanjutkan chat dilakukan dalam satu transaksi: baris diganti nama, atau digabung ke baris yang sudah ada di nomor baru (pengaturan dan label yang bentrok memakai milik chat baru). Tautan peminat ikut pindah. Setiap kelanjutan dicatat sebagai audit `wa.conversation_continued`.
+- `inbox:backfill` berjalan otomatis saat kartu pindah dan saat SPMB mulai. Perintah ini menarik chat nomor kartu, menggabungkan kontak yang sama, dan melengkapi `contact_hmac` chat lama dari Hub. Menjalankannya lagi tidak mengubah apa pun.
+- Keterbatasan: pada Ganti nomor WhatsApp di kode yang sama (G-2, cara pertama), tautan balasan cepat di HP lama masih dianggap milik HP baru. Penanganannya menunggu Hub memberi tanda HP per kode.
 
 ## Riwayat
 
@@ -285,3 +310,4 @@ Keputusan owner (opsi A): nomor yang dipakai bersama diperlakukan seperti **satu
 | 2026-11-07 | Review independen §12: kunci baris kartu, hapus sisa rute ke nomor lain (`rute_lama`), sebut modul yang ikut pindah saat ganti nomor, teks Pakai lagi sesuai status nomor |
 | 2026-11-08 | §13: daftar "Nomor tanpa kartu modul" dihapus atas koreksi owner; layar hanya kartu modul |
 | 2026-11-08 | §14: modul memakai nomor di kartunya seperti pemiliknya (opsi A owner); event nomor ke semua modul di nomor itu |
+| 2026-11-08 | §15: aturan ganti nomor yang netral nomor; data aplikasi ikut modul, riwayat nomor lama tetap terbaca, satu kontak satu chat; K-16, K-18, K-19 diganti |

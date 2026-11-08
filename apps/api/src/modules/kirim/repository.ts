@@ -344,6 +344,16 @@ export function usesNumberSql(param: string): string {
 }
 
 /**
+ * KIRIM-IMPL-003 §15: what a module may read. Besides {@link usesNumberSql}, every number its card has ever pointed
+ * to (`kirim_kartu_riwayat`), so its chat history stays with the module after a number change. Read only: sending,
+ * events and every other change stay with {@link usesNumberSql}.
+ */
+export function readsNumberSql(param: string): string {
+  return `(${usesNumberSql(param)} OR EXISTS (SELECT 1 FROM kirim_kartu_riwayat r JOIN kirim_consumers rc ON rc.id = r.consumer_id AND rc.aktif
+    WHERE r.consumer_id = ${param} AND r.device_id = d.id))`;
+}
+
+/**
  * Everyone {@link usesNumber} lets use the number: its owner and every module whose card is on it and that
  * `requireConsumer` would let in (active, and its registry application active and WhatsApp-capable).
  */

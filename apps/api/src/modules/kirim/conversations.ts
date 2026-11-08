@@ -18,6 +18,7 @@ import {
   type DeviceRow,
   type Queryable,
   usesNumber,
+  readsNumberSql,
   usesNumberSql,
 } from "./repository.js";
 import { canonicalJson, KirimApiError, OUTBOUND_MEDIA_MIMES, type KirimService } from "./service.js";
@@ -210,12 +211,15 @@ export class KirimConversations {
     return device;
   }
 
-  /** A conversation on another consumer's number answers 404, like one that does not exist. */
-  async ownedConversation(db: Queryable, consumer: ConsumerRow, id: string, lock = false): Promise<ConversationRow> {
+  /**
+   * A conversation on another consumer's number answers 404, like one that does not exist. `baca`: reading only, which
+   * a number the module's card used before also allows (KIRIM-IMPL-003 §15).
+   */
+  async ownedConversation(db: Queryable, consumer: ConsumerRow, id: string, lock = false, baca = false): Promise<ConversationRow> {
     if (!z.guid().safeParse(id).success) throw new KirimApiError(404, "not_found", "Percakapan tidak ditemukan.");
     const result = await db.query<ConversationRow>(
       `SELECT ${CONVERSATION_COLUMNS} FROM kirim_conversations c JOIN kirim_devices d ON d.id = c.device_id
-       WHERE c.id = $1 AND ${usesNumberSql("$2")} ${lock ? "FOR UPDATE OF c" : ""}`,
+       WHERE c.id = $1 AND ${baca ? readsNumberSql("$2") : usesNumberSql("$2")} ${lock ? "FOR UPDATE OF c" : ""}`,
       [id, consumer.id],
     );
     const row = result.rows[0];
@@ -274,12 +278,12 @@ export class KirimConversations {
   }
 
   async getConversation(consumer: ConsumerRow, id: string) {
-    const row = await this.ownedConversation(this.pool, consumer, id);
+    const row = await this.ownedConversation(this.pool, consumer, id, false, true);
     return (await this.conversationItems(consumer, row.deviceId, [row]))[0]!;
   }
 
   async listMessages(consumer: ConsumerRow, id: string, query: z.infer<typeof messageListQuerySchema>, atasNama: AtasNama) {
-    const conversation = await this.ownedConversation(this.pool, consumer, id);
+    const conversation = await this.ownedConversation(this.pool, consumer, id, false, true);
     const page = await this.messagePage("m.conversation_id", conversation.id, query);
     await this.auditRead(consumer, conversation.id, atasNama);
     return page;
@@ -406,7 +410,7 @@ export class KirimConversations {
     if (!z.guid().safeParse(id).success) throw new KirimApiError(404, "not_found", "Media tidak ditemukan.");
     const result = await this.pool.query<{ id: string; mime: string; path: string | null; tidakDisalin: string | null; kode: string }>(
       `SELECT md.id, md.mime, md.path, md.tidak_disalin AS "tidakDisalin", d.kode
-       FROM kirim_media md JOIN kirim_devices d ON d.id = md.device_id WHERE md.id = $1 AND ${usesNumberSql("$2")}`,
+       FROM kirim_media md JOIN kirim_devices d ON d.id = md.device_id WHERE md.id = $1 AND ${readsNumberSql("$2")}`,
       [id, consumer.id],
     );
     const row = result.rows[0];
