@@ -204,7 +204,7 @@ export class KirimProfilePhotos {
   /** §8: the photo for the module's own conversation or group, or 404 `foto_tidak_ada`. */
   async read(consumer: ConsumerRow, kind: "conversation" | "group", id: string): Promise<{ data: Buffer; etag: string }> {
     const owned = kind === "conversation"
-      ? await this.conversations.ownedConversation(this.pool, consumer, id)
+      ? await this.conversations.ownedConversation(this.pool, consumer, id, false, true)
       : await this.conversations.ownedGroup(this.pool, consumer, id);
     const column = kind === "conversation" ? "conversation_id" : "group_id";
     const select = () => this.pool.query<{ fileId: string | null; path: string | null; sha256: string | null; tersedia: boolean }>(
