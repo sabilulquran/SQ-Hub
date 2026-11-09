@@ -51,6 +51,19 @@ export class JalurPesanStub {
   refuseNextBusiness: number | null = null;
   readonly quickReplies = new Map<string, Array<{ waId: string; shortcut: string; message: string; deleted: boolean; updatedAt: string }>>();
   readonly catalog = new Map<string, Array<Record<string, unknown>>>();
+  /** §17.3–§17.4: the engine's business profile per tenant, and every write that reached the profile/catalog routes. */
+  readonly businessProfiles = new Map<string, Record<string, unknown>>();
+  readonly businessWrites: Array<{ tenantId: string; method: string; path: string; query: string; body: Record<string, unknown> }> = [];
+  /** When false the profile and catalog-write routes answer a bare 404, like an engine before them. */
+  businessWriteRoutes = true;
+  /** The next product create is made, but answered 502 whatsapp_outcome_unknown (WhatsApp did not confirm it). */
+  createThenUnknown = false;
+  /** The next profile/catalog write never answers (the adapter times out). */
+  hangNextBusiness = false;
+  /** How long each profile/catalog write takes, and the most of them that were at the engine at once. */
+  businessDelayMs = 0;
+  businessMaxInFlight = 0;
+  private businessInFlight = 0;
   readonly sendsByKey = new Map<string, number>();
   readonly messageIdByKey = new Map<string, string>();
   readonly requests: Array<{ method: string; path: string; idempotencyKey: string | null; body: string }> = [];
@@ -154,6 +167,15 @@ export class JalurPesanStub {
     this.chatLabelCalls.length = 0;
     this.chatLabels.clear();
     this.refuseNextBusiness = null;
+    this.catalog.clear();
+    this.businessProfiles.clear();
+    this.businessWrites.length = 0;
+    this.businessWriteRoutes = true;
+    this.createThenUnknown = false;
+    this.hangNextBusiness = false;
+    this.businessDelayMs = 0;
+    this.businessMaxInFlight = 0;
+    this.businessInFlight = 0;
     this.sendQueue = [];
     this.provisionResponse = null;
     this.resetQueue = [];
@@ -181,6 +203,71 @@ export class JalurPesanStub {
 
   totalSends(): number {
     return [...this.sendsByKey.values()].reduce((sum, count) => sum + count, 0);
+  }
+
+  /** §17.3–§17.4: the engine's WhatsApp Business profile and catalog-write routes. */
+  private business(tenantId: string, method: string, path: string, url: URL, raw: Buffer): { status: number; body: unknown } {
+    if (!this.businessWriteRoutes) return { status: 404, body: {} };
+    if (this.refuseNextBusiness !== null) {
+      const status = this.refuseNextBusiness;
+      this.refuseNextBusiness = null;
+      const code = status === 422 ? "whatsapp_rejected" : status === 502 ? "whatsapp_outcome_unknown" : "whatsapp_unavailable";
+      return { status, body: { success: false, error: "refused", code } };
+    }
+    const body = raw.length ? (JSON.parse(raw.toString("utf8")) as Record<string, unknown>) : {};
+    if (method !== "GET") this.businessWrites.push({ tenantId, method, path, query: url.search, body });
+    const profile = this.businessProfiles.get(tenantId) ?? {
+      jid: "6281200001111@s.whatsapp.net", name: "SPMB Sabilul Quran", description: "", address: null, email: null,
+      websites: [], categories: [], hours: null, profilePictureUrl: null, coverPhoto: null,
+    };
+    this.businessProfiles.set(tenantId, profile);
+    if (path === "/business-profile" && method === "GET") return { status: 200, body: { success: true, profile } };
+    if (path === "/business-profile" && method === "PATCH") {
+      Object.assign(profile, body);
+      return { status: 200, body: { success: true, applied: true, verified: true, profile } };
+    }
+    if (path === "/business-profile/picture") {
+      profile.profilePictureUrl = method === "PUT" ? "https://pps.whatsapp.net/v/own.jpg" : null;
+      return { status: 200, body: { success: true, applied: true, verified: true } };
+    }
+    if (path === "/business-profile/cover-photo" && method === "PUT") {
+      profile.coverPhoto = { id: "5550001", url: null };
+      return { status: 200, body: { success: true, applied: true, id: "5550001", verified: true } };
+    }
+    if (path === "/business-profile/cover-photo" && method === "DELETE") {
+      const id = url.searchParams.get("id") ?? (profile.coverPhoto as { id?: string } | null)?.id;
+      if (!id) return { status: 409, body: { success: false, code: "cover_photo_unknown" } };
+      profile.coverPhoto = null;
+      return { status: 200, body: { success: true, id } };
+    }
+    const list = this.catalog.get(tenantId) ?? [];
+    this.catalog.set(tenantId, list);
+    const fields = (target: Record<string, unknown>) => {
+      for (const key of ["name", "description", "price", "currency", "url", "retailerId", "hidden"]) target[key] = body[key];
+      if (Array.isArray(body.images)) target.imageUrl = body.images.length ? "https://mmg.whatsapp.net/baru.jpg" : null;
+      return target;
+    };
+    if (path === "/catalog/products" && method === "POST") {
+      const product = fields({ id: `p-${list.length + 1}`, imageUrl: null, reviewStatus: "PENDING" });
+      list.push(product);
+      if (this.createThenUnknown) {
+        this.createThenUnknown = false;
+        return { status: 502, body: { success: false, code: "whatsapp_outcome_unknown" } };
+      }
+      return { status: 200, body: { success: true, product, verified: true } };
+    }
+    const one = /^\/catalog\/products\/([^/]+)$/.exec(path);
+    const found = one ? list.find((p) => p.id === decodeURIComponent(one[1]!)) : undefined;
+    if (one && method === "PUT") {
+      if (!found) return { status: 422, body: { success: false, code: "whatsapp_rejected" } };
+      fields(found).reviewStatus = "APPROVED";
+      return { status: 200, body: { success: true, product: found, verified: true } };
+    }
+    if (one && method === "DELETE") {
+      if (found) list.splice(list.indexOf(found), 1);
+      return { status: 200, body: { success: true, deleted: found ? 1 : 0 } };
+    }
+    return { status: 404, body: {} };
   }
 
   private async handle(request: IncomingMessage): Promise<{ status: number; body?: unknown; raw?: Buffer | string; headers?: Record<string, string> } | "hang"> {
@@ -328,6 +415,20 @@ export class JalurPesanStub {
       if (request.method === "DELETE") {
         if (found) Object.assign(found, { deleted: true, updatedAt: now });
         return { status: 200, body: { success: true } };
+      }
+    }
+    if (path === "/business-profile" || path.startsWith("/business-profile/") || path.startsWith("/catalog/products")) {
+      if (this.hangNextBusiness && request.method !== "GET") {
+        this.hangNextBusiness = false;
+        return "hang";
+      }
+      this.businessInFlight += 1;
+      this.businessMaxInFlight = Math.max(this.businessMaxInFlight, this.businessInFlight);
+      try {
+        if (this.businessDelayMs > 0) await new Promise((resolve) => setTimeout(resolve, this.businessDelayMs));
+        return this.business(tenantId, request.method ?? "", path, url, raw);
+      } finally {
+        this.businessInFlight -= 1;
       }
     }
     if (path === "/catalog" && request.method === "GET") {

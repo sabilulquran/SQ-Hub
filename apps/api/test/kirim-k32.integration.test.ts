@@ -174,7 +174,7 @@ beforeEach(async () => {
   };
   providers = {
     log: new LogProvider(),
-    jalurpesan: new JalurPesanProvider({ baseUrl: stub.baseUrl, platformKey: "platform-key", timeoutMs: 500 }, pgEngineMediaRefs(pool)),
+    jalurpesan: new JalurPesanProvider({ baseUrl: stub.baseUrl, platformKey: "platform-key", timeoutMs: 500, imageWriteTimeoutMs: 800 }, pgEngineMediaRefs(pool)),
   };
   kirim = createKirimModule({ pool, config, keycloakIssuer: issuer, access: accessService, providers, webhookTransport: async () => ({ status: 200 }) });
   await app?.close();
@@ -962,6 +962,270 @@ describe("WhatsApp Business: jam kerja dan label (§17.1–§17.2)", () => {
     const refused = await call("PUT", url, { payload: { atas_nama: OFFICER, dikelola: ["Baru"], label: ["Baru"] } });
     expect([refused.statusCode, refused.json().error.code]).toEqual([422, "engine_rejected"]);
     expect((await pool.query("SELECT 1 FROM kirim_audit WHERE aksi = 'percakapan.label'")).rowCount).toBe(0);
+  });
+});
+
+describe("WhatsApp Business: profil dan katalog ditulis modul (§17.3–§17.4)", () => {
+  const PNG = Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), Buffer.from("gambar produk")]);
+
+  it("reads the profile whole and changes its texts, never the name; audits the field names only", async () => {
+    stub.businessProfiles.set("spmb", {
+      jid: "6281200001111@s.whatsapp.net", name: "SPMB Sabilul Quran", description: "Lama", address: "Bogor", email: null,
+      websites: ["https://sabilulquran.or.id"], categories: [{ id: "1", name: "Sekolah" }, { id: "2", name: "Pendidikan" }],
+      hours: { timezone: "Asia/Jakarta", days: [
+        { day: "sun", mode: "open_24h", openMinutes: null, closeMinutes: null },
+        { day: "mon", mode: "specific_hours", openMinutes: 420, closeMinutes: 960 },
+        { day: "sat", mode: "appointment_only", openMinutes: null, closeMinutes: null },
+      ] },
+      profilePictureUrl: "https://pps.whatsapp.net/v/own.jpg", coverPhoto: { id: "4242", url: null },
+    });
+    const read = await call("GET", "/devices/spmb/profil-bisnis");
+    expect(read.statusCode).toBe(200);
+    expect(read.json()).toEqual({
+      nama: "SPMB Sabilul Quran",
+      deskripsi: "Lama",
+      alamat: "Bogor",
+      email: null,
+      situs: ["https://sabilulquran.or.id"],
+      kategori: [{ id: "1", nama: "Sekolah" }, { id: "2", nama: "Pendidikan" }],
+      jam_kerja: { zona: "Asia/Jakarta", hari: [
+        { hari: 1, rentang: [{ buka: "07:00", tutup: "16:00" }], janji_temu: false },
+        { hari: 6, rentang: [], janji_temu: true },
+        { hari: 7, rentang: [{ buka: "00:00", tutup: "24:00" }], janji_temu: false },
+      ] },
+      ada_foto: true,
+      sampul_id: "4242",
+    });
+
+    const set = await call("PATCH", "/devices/spmb/profil-bisnis", {
+      payload: { atas_nama: OFFICER, deskripsi: "  Sekolah Islam Terpadu\nBogor ", email: "spmb@sabilulquran.or.id", situs: ["https://spmb.sabilulquran.or.id", "https://sabilulquran.or.id"] },
+    });
+    expect(set.statusCode).toBe(200);
+    expect(set.json()).toMatchObject({ diterapkan: true, terbaca_ulang: true, profil: { deskripsi: "Sekolah Islam Terpadu\nBogor", email: "spmb@sabilulquran.or.id" } });
+    expect(stub.businessWrites).toEqual([{
+      tenantId: "spmb", method: "PATCH", path: "/business-profile", query: "",
+      body: { description: "Sekolah Islam Terpadu\nBogor", email: "spmb@sabilulquran.or.id", websites: ["https://spmb.sabilulquran.or.id", "https://sabilulquran.or.id"] },
+    }]);
+    const bad: unknown[] = [
+      { atas_nama: OFFICER },
+      { atas_nama: OFFICER, nama: "Nama baru" },
+      { atas_nama: OFFICER, deskripsi: "x".repeat(513) },
+      { atas_nama: OFFICER, alamat: "Jalan\nBaru" },
+      { atas_nama: OFFICER, email: "bukan-email" },
+      { atas_nama: OFFICER, email: "spmb@sabilulquran.or.id\u0007" },
+      { atas_nama: OFFICER, situs: ["https://a.id", "https://b.id", "https://c.id"] },
+      { atas_nama: OFFICER, situs: ["https://a.id", "https://a.id"] },
+      { atas_nama: OFFICER, situs: ["javascript:alert(1)"] },
+    ];
+    for (const payload of bad) {
+      expect((await call("PATCH", "/devices/spmb/profil-bisnis", { payload })).statusCode, JSON.stringify(payload)).toBe(400);
+    }
+    expect((await call("PATCH", "/devices/spmb/profil-bisnis", { payload: { alamat: "Bogor" } })).json().error.code).toBe("atas_nama_required");
+    expect(stub.businessWrites).toHaveLength(1);
+
+    const audit = (await pool.query<{ aksi: string; objekRef: string; metadata: unknown }>(
+      `SELECT aksi, objek_ref AS "objekRef", metadata FROM kirim_audit WHERE objek_jenis = 'profil_bisnis'`,
+    )).rows;
+    expect(audit).toEqual([{ aksi: "profil_bisnis.ubah", objekRef: "spmb", metadata: { device: "spmb", kolom: ["deskripsi", "email", "situs"], terbaca_ulang: true } }]);
+    expect(JSON.stringify(audit)).not.toContain("spmb@sabilulquran.or.id");
+    // Another module's number, and an engine without these routes.
+    expect((await call("GET", "/devices/spmb/profil-bisnis", { client: "hcis-api" })).statusCode).toBe(403);
+    expect((await call("PATCH", "/devices/spmb/profil-bisnis", { client: "hcis-api", payload: { atas_nama: OFFICER, alamat: "x" } })).statusCode).toBe(403);
+    stub.businessWriteRoutes = false;
+    const old = await call("GET", "/devices/spmb/profil-bisnis");
+    expect([old.statusCode, old.json().error.code]).toEqual([422, "engine_rejected"]);
+  });
+
+  it("sets and removes the profile photo and the cover photo (JPEG only), serves the own photo, and audits", async () => {
+    const photo = await call("POST", "/devices/spmb/profil-bisnis/foto", { payload: { atas_nama: OFFICER, gambar: JPEG.toString("base64") } });
+    expect(photo.statusCode).toBe(200);
+    expect(photo.json()).toEqual({ diterapkan: true, terbaca_ulang: true });
+    expect(stub.businessWrites[0]).toMatchObject({ method: "PUT", path: "/business-profile/picture", body: { image: JPEG.toString("base64") } });
+    const png = await call("POST", "/devices/spmb/profil-bisnis/foto", { payload: { atas_nama: OFFICER, gambar: PNG.toString("base64") } });
+    expect([png.statusCode, png.json().error.code]).toEqual([422, "gambar_invalid"]);
+    expect((await call("POST", "/devices/spmb/profil-bisnis/foto/hapus", { payload: { atas_nama: OFFICER } })).statusCode).toBe(200);
+    expect(stub.businessWrites[1]).toMatchObject({ method: "DELETE", path: "/business-profile/picture" });
+
+    // The own photo, fetched through the engine's profile-picture route by the number's own JID (404 when none is
+    // there; kept five minutes either way, so the photo is put there before the first read).
+    stub.profilePictures.set("6281200001111@s.whatsapp.net", JPEG);
+    const own = await call("GET", "/devices/spmb/profil-bisnis/foto");
+    expect([own.statusCode, own.headers["content-type"]]).toEqual([200, "image/jpeg"]);
+    expect(own.rawPayload.equals(JPEG)).toBe(true);
+    expect((await call("GET", "/devices/spmb/profil-bisnis/foto", { client: "hcis-api" })).statusCode).toBe(403);
+
+    const cover = await call("POST", "/devices/spmb/profil-bisnis/sampul", { payload: { atas_nama: OFFICER, gambar: JPEG.toString("base64") } });
+    expect(cover.json()).toEqual({ diterapkan: true, sampul_id: "5550001", terbaca_ulang: true });
+    expect((await call("POST", "/devices/spmb/profil-bisnis/sampul/hapus", { payload: { atas_nama: OFFICER } })).json()).toEqual({ dihapus: true, sampul_id: "5550001" });
+    const unknown = await call("POST", "/devices/spmb/profil-bisnis/sampul/hapus", { payload: { atas_nama: OFFICER } });
+    expect([unknown.statusCode, unknown.json().error.code]).toEqual([409, "sampul_tidak_dikenal"]);
+    expect((await call("POST", "/devices/spmb/profil-bisnis/sampul/hapus", { payload: { atas_nama: OFFICER, sampul_id: "777" } })).json().sampul_id).toBe("777");
+    expect(stub.businessWrites.at(-1)).toMatchObject({ method: "DELETE", path: "/business-profile/cover-photo", query: "?id=777" });
+    expect((await call("POST", "/devices/spmb/profil-bisnis/sampul/hapus", { payload: { atas_nama: OFFICER, sampul_id: "abc" } })).statusCode).toBe(400);
+
+    const audit = (await pool.query<{ aksi: string }>(`SELECT aksi FROM kirim_audit WHERE objek_jenis = 'profil_bisnis' ORDER BY occurred_at`)).rows;
+    expect(audit.map((row) => row.aksi)).toEqual([
+      "profil_bisnis.foto_ganti", "profil_bisnis.foto_hapus", "profil_bisnis.sampul_ganti", "profil_bisnis.sampul_hapus", "profil_bisnis.sampul_hapus",
+    ]);
+  });
+
+  it("adds, changes and deletes catalog products with images, lists hidden ones on request, and audits", async () => {
+    const made = await call("POST", "/devices/spmb/katalog", {
+      key: "produk-1",
+      payload: {
+        atas_nama: OFFICER, nama: "Seragam SDIT", deskripsi: "Satu set", harga: 350000, url: "https://spmb.sabilulquran.or.id/seragam",
+        sku: "SRG-01", tersembunyi: true, gambar: [JPEG.toString("base64"), PNG.toString("base64")],
+      },
+    });
+    expect(made.statusCode).toBe(201);
+    expect(made.json()).toMatchObject({
+      produk: { id: "p-1", nama: "Seragam SDIT", harga: 350000, mata_uang: "IDR", sku: "SRG-01", tersembunyi: true, status_tinjauan: "PENDING", ada_gambar: true },
+      terbaca_ulang: true,
+    });
+    expect(made.json().produk.tautan).toMatch(/^https:\/\/wa\.me\/p\/p-1\/\d+$/);
+    expect(stub.businessWrites[0]!.body).toEqual({
+      name: "Seragam SDIT", description: "Satu set", price: 350000000, currency: "IDR", url: "https://spmb.sabilulquran.or.id/seragam",
+      retailerId: "SRG-01", hidden: true, images: [JPEG.toString("base64"), PNG.toString("base64")],
+    });
+    // Hidden products only with `semua=1`.
+    expect((await call("GET", "/devices/spmb/katalog")).json().items).toEqual([]);
+    expect((await call("GET", "/devices/spmb/katalog?semua=1")).json().items.map((p: { id: string }) => p.id)).toEqual(["p-1"]);
+
+    // A partial change: only the name changes, every other field keeps WhatsApp's value, and the images stay.
+    const changed = await call("PATCH", "/devices/spmb/katalog/p-1", { payload: { atas_nama: OFFICER, nama: "Seragam SDIT (baru)" } });
+    expect(changed.statusCode).toBe(200);
+    expect(changed.json().produk).toMatchObject({ nama: "Seragam SDIT (baru)", harga: 350000, tersembunyi: true, sku: "SRG-01", status_tinjauan: "APPROVED" });
+    expect(stub.businessWrites[1]).toMatchObject({ method: "PUT", path: "/catalog/products/p-1" });
+    expect(stub.businessWrites[1]!.body).toEqual({
+      name: "Seragam SDIT (baru)", description: "Satu set", price: 350000000, currency: "IDR", url: "https://spmb.sabilulquran.or.id/seragam",
+      retailerId: "SRG-01", hidden: true,
+    });
+    // Clearing: `null` takes the price (and so the currency) and the link off.
+    await call("PATCH", "/devices/spmb/katalog/p-1", { payload: { atas_nama: OFFICER, harga: null, url: null, tersembunyi: false } });
+    expect(stub.businessWrites[2]!.body).toMatchObject({ price: null, currency: null, url: null, hidden: false, retailerId: "SRG-01" });
+
+    const bad: unknown[] = [
+      { atas_nama: OFFICER },
+      { atas_nama: OFFICER, nama: "" },
+      { atas_nama: OFFICER, nama: "A", mata_uang: "IDR" },
+      { atas_nama: OFFICER, nama: "A", harga: 1.5 },
+      { atas_nama: OFFICER, nama: "A", harga: -1 },
+      { atas_nama: OFFICER, nama: "A", url: "ftp://x.id" },
+      { atas_nama: OFFICER, nama: "A", stok: 3 },
+    ];
+    for (const payload of bad) {
+      expect((await call("POST", "/devices/spmb/katalog", { key: `bad-${randomUUID()}`, payload })).statusCode, JSON.stringify(payload).slice(0, 80)).toBe(400);
+    }
+    expect((await call("PATCH", "/devices/spmb/katalog/p-1", { payload: { atas_nama: OFFICER } })).statusCode).toBe(400);
+    // A currency for a product that has no price (any more).
+    expect((await call("PATCH", "/devices/spmb/katalog/p-1", { payload: { atas_nama: OFFICER, mata_uang: "USD" } })).statusCode).toBe(400);
+    // Images: not JPEG/PNG, more than five, or an empty list on a change (images cannot be emptied): 422, nothing sent.
+    const imageRefusals: Array<["POST" | "PATCH", string, Record<string, unknown>]> = [
+      ["POST", "/devices/spmb/katalog", { atas_nama: OFFICER, nama: "A", gambar: [Buffer.from("GIF89a-gambar").toString("base64")] }],
+      ["POST", "/devices/spmb/katalog", { atas_nama: OFFICER, nama: "A", gambar: Array.from({ length: 6 }, () => JPEG.toString("base64")) }],
+      ["PATCH", "/devices/spmb/katalog/p-1", { atas_nama: OFFICER, gambar: [] }],
+    ];
+    for (const [method, url, payload] of imageRefusals) {
+      const response = await call(method, url, { key: `img-${randomUUID()}`, payload });
+      expect([response.statusCode, response.json().error.code]).toEqual([422, "gambar_invalid"]);
+    }
+    // An id the catalog does not have.
+    for (const url of ["/devices/spmb/katalog/p-99", "/devices/spmb/katalog/p%2F1"]) {
+      const missing = await call("PATCH", url, { payload: { atas_nama: OFFICER, nama: "A" } });
+      expect([missing.statusCode, missing.json().error.code]).toEqual([404, "produk_tidak_ada"]);
+    }
+    const gone = await call("POST", "/devices/spmb/katalog/p-99/hapus", { payload: { atas_nama: OFFICER } });
+    expect([gone.statusCode, gone.json().error.code]).toEqual([404, "produk_tidak_ada"]);
+    expect(stub.businessWrites).toHaveLength(3);
+
+    expect((await call("POST", "/devices/spmb/katalog/p-1/hapus", { payload: { atas_nama: OFFICER } })).json()).toEqual({ dihapus: 1 });
+    expect((await call("POST", "/devices/spmb/katalog", { client: "hcis-api", key: "k-hcis", payload: { atas_nama: OFFICER, nama: "A" } })).statusCode).toBe(403);
+    // WhatsApp refusing (e.g. not WhatsApp Business) and an engine without the routes: nothing made, the key is free again.
+    stub.refuseNextBusiness = 422;
+    expect((await call("POST", "/devices/spmb/katalog", { key: "k-refused", payload: { atas_nama: OFFICER, nama: "A" } })).json().error.code).toBe("engine_rejected");
+    stub.businessWriteRoutes = false;
+    expect((await call("POST", "/devices/spmb/katalog", { key: "k-refused", payload: { atas_nama: OFFICER, nama: "A" } })).json().error.code).toBe("engine_rejected");
+
+    const audit = (await pool.query<{ aksi: string; objekRef: string; metadata: Record<string, unknown> }>(
+      `SELECT aksi, objek_ref AS "objekRef", metadata FROM kirim_audit WHERE objek_jenis = 'katalog' ORDER BY occurred_at`,
+    )).rows;
+    expect(audit.map((row) => [row.aksi, row.objekRef])).toEqual([
+      ["katalog.tambah", "spmb:p-1"], ["katalog.ubah", "spmb:p-1"], ["katalog.ubah", "spmb:p-1"], ["katalog.hapus", "spmb:p-1"],
+    ]);
+    expect(audit[0]!.metadata).toMatchObject({ nama: "Seragam SDIT", harga: 350000, tersembunyi: true, gambar: 2, status_tinjauan: "PENDING", terbaca_ulang: true });
+    expect(audit[1]!.metadata).toMatchObject({ kolom: ["nama"], gambar: null, harga: 350000 });
+  });
+
+  it("makes a product once per Idempotency-Key: replays the answer, and never retries an unknown outcome", async () => {
+    const payload = { atas_nama: OFFICER, nama: "Formulir", harga: 250000 };
+    const noKey = await call("POST", "/devices/spmb/katalog", { payload });
+    expect([noKey.statusCode, noKey.json().error.code]).toEqual([400, "idempotency_key_required"]);
+
+    const first = await call("POST", "/devices/spmb/katalog", { key: "k-1", payload });
+    expect(first.statusCode).toBe(201);
+    const again = await call("POST", "/devices/spmb/katalog", { key: "k-1", payload });
+    expect(again.statusCode).toBe(200);
+    expect(again.json()).toMatchObject({ produk: { id: first.json().produk.id, tautan: first.json().produk.tautan }, ulangan: true });
+    const other = await call("POST", "/devices/spmb/katalog", { key: "k-1", payload: { ...payload, harga: 1 } });
+    expect([other.statusCode, other.json().error.code]).toEqual([409, "idempotency_key_conflict"]);
+    expect(stub.catalog.get("spmb")).toHaveLength(1);
+
+    // WhatsApp made it but did not confirm: the module is told the outcome is unknown, the attempt is audited, and a
+    // retry with the key is refused instead of making a second product.
+    stub.createThenUnknown = true;
+    const unknown = await call("POST", "/devices/spmb/katalog", { key: "k-2", payload: { ...payload, nama: "Brosur" } });
+    expect([unknown.statusCode, unknown.json().error.code]).toEqual([503, "engine_outcome_unknown"]);
+    const retry = await call("POST", "/devices/spmb/katalog", { key: "k-2", payload: { ...payload, nama: "Brosur" } });
+    expect([retry.statusCode, retry.json().error.code]).toEqual([409, "hasil_tidak_pasti"]);
+    // The engine never answering (time-out) is an unknown outcome too.
+    stub.hangNextBusiness = true;
+    const timedOut = await call("POST", "/devices/spmb/katalog", { key: "k-3", payload: { ...payload, nama: "Sampul" } });
+    expect([timedOut.statusCode, timedOut.json().error.code]).toEqual([503, "engine_outcome_unknown"]);
+    expect(stub.catalog.get("spmb")).toHaveLength(2);
+
+    const audit = (await pool.query<{ objekRef: string; metadata: Record<string, unknown> }>(
+      `SELECT objek_ref AS "objekRef", metadata FROM kirim_audit WHERE aksi = 'katalog.tambah' ORDER BY occurred_at`,
+    )).rows;
+    expect(audit.map((row) => [row.objekRef, row.metadata.hasil ?? "berhasil"])).toEqual([
+      ["spmb:p-1", "berhasil"], ["spmb:baru", "tidak_pasti"], ["spmb:baru", "tidak_pasti"],
+    ]);
+    const rows = (await pool.query<{ key: string; status: string }>(`SELECT idempotency_key AS key, status FROM kirim_catalog_writes ORDER BY idempotency_key`)).rows;
+    expect(rows).toEqual([{ key: "k-1", status: "selesai" }, { key: "k-2", status: "tidak_pasti" }, { key: "k-3", status: "tidak_pasti" }]);
+  });
+
+  it("answers oversize images 422 gambar_invalid (also over the body limit), one image write at a time, own photo cached", async () => {
+    // Under the body limit but over 2 MB, and over the body limit itself: the same answer.
+    const big = Buffer.concat([JPEG, Buffer.alloc(2 * 1024 * 1024)]).toString("base64");
+    const huge = Buffer.concat([JPEG, Buffer.alloc(5 * 1024 * 1024)]).toString("base64");
+    for (const [url, gambar] of [["/devices/spmb/profil-bisnis/foto", big], ["/devices/spmb/profil-bisnis/foto", huge], ["/devices/spmb/profil-bisnis/sampul", huge]] as const) {
+      const response = await call("POST", url, { payload: { atas_nama: OFFICER, gambar } });
+      expect([response.statusCode, response.json().error.code], url).toEqual([422, "gambar_invalid"]);
+    }
+    const product = await call("POST", "/devices/spmb/katalog", { key: "big", payload: { atas_nama: OFFICER, nama: "A", gambar: [big] } });
+    expect([product.statusCode, product.json().error.code]).toEqual([422, "gambar_invalid"]);
+    // A non-image route over its body limit answers in Kirim's shape.
+    const long = await call("PATCH", "/devices/spmb/profil-bisnis", { payload: { atas_nama: OFFICER, deskripsi: "x".repeat(1024 * 1024 + 10) } });
+    expect([long.statusCode, long.json().error.code]).toEqual([413, "body_too_large"]);
+    expect(stub.businessWrites).toHaveLength(0);
+
+    // Two image writes at once reach the engine one after the other.
+    stub.businessDelayMs = 60;
+    const [photo, cover] = await Promise.all([
+      call("POST", "/devices/spmb/profil-bisnis/foto", { payload: { atas_nama: OFFICER, gambar: JPEG.toString("base64") } }),
+      call("POST", "/devices/spmb/profil-bisnis/sampul", { payload: { atas_nama: OFFICER, gambar: JPEG.toString("base64") } }),
+    ]);
+    expect([photo.statusCode, cover.statusCode]).toEqual([200, 200]);
+    expect(stub.businessMaxInFlight).toBe(1);
+
+    // The own photo is asked of the engine once, then served from memory; setting a new one forgets it.
+    stub.profilePictures.set("6281200001111@s.whatsapp.net", JPEG);
+    const asked = () => stub.requests.filter((r) => r.path.endsWith("/profile-picture")).length;
+    expect((await call("GET", "/devices/spmb/profil-bisnis/foto")).statusCode).toBe(200);
+    expect((await call("GET", "/devices/spmb/profil-bisnis/foto")).statusCode).toBe(200);
+    expect(asked()).toBe(1);
+    await call("POST", "/devices/spmb/profil-bisnis/foto/hapus", { payload: { atas_nama: OFFICER } });
+    await call("GET", "/devices/spmb/profil-bisnis/foto");
+    expect(asked()).toBe(2);
   });
 });
 

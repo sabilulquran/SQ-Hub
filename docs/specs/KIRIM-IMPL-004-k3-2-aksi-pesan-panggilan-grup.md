@@ -445,7 +445,7 @@ Keputusan owner 2026-11-06: balasan cepat disinkronkan dua arah dengan WhatsApp 
 | `POST /devices/:kode/balasan-cepat/baca-ulang` | Body `atas_nama`. Mesin membaca ulang seluruh balasan cepat dari WhatsApp (snapshot app-state `regular`), karena WhatsApp hanya mengirim perubahan sehingga balasan yang dibuat sebelum mesin mendengar tidak pernah terbaca. Paling sering sekali per 5 menit per nomor. Jawaban `{ dibaca_ulang }` (`false` bila dilewati). Audit `balasan_cepat.baca_ulang` |
 | `PUT /devices/:kode/jam-kerja` | Jam layanan di profil WhatsApp Business, diganti utuh. Body `atas_nama`, `zona` (nama zona IANA baku, mis. `Asia/Jakarta`; tulisan lain seperti `asia/jakarta` atau alias `EST` ditolak), `hari[]` (1–7 entri, tanpa hari ganda): `{ hari: 1–7 (ISO, 1 = Senin), rentang: [{ buka: "HH:MM", tutup: "HH:MM" }] }` (1–6 rentang, `buka` < `tutup`, tidak tumpang tindih; `tutup` boleh `24:00`). Hari yang tidak disebut berarti tutup. Jawaban `{ diterapkan: true }`. Audit `jam_kerja.ubah` (zona dan jam, bukan data pribadi). Lihat §17.1 |
 | `PUT /conversations/:id/label` | Label WhatsApp Business pada satu chat pribadi, satu arah modul → HP. Body `atas_nama`, `dikelola[]` (semua label yang dikelola modul, 1–50 nama, tiap nama 1–25 karakter), `label[]` (bagian dari `dikelola` yang harus ada di chat ini, boleh kosong). Nama dibandingkan tanpa beda huruf besar/kecil dan tidak boleh ganda. Tiap nama di `label` dibuat di HP bila belum ada, lalu dipasang; tiap nama di `dikelola` yang tidak ada di `label` dilepas bila terpasang. Label lain di HP tidak pernah disentuh. Jawaban `{ label: string[] }` (label kelolaan yang kini ada di chat). Audit `percakapan.label` (nama label). Lihat §17.2 |
-| `GET /devices/:kode/katalog?setelah=` | Satu halaman, maks. 100 produk. Produk tersembunyi tidak ikut. Tiap produk berisi `id`, `nama`, `deskripsi`, `harga` (satuan mata uang), `mata_uang`, `url`, `ada_gambar`, `tautan` (`https://wa.me/p/<id>/<nomor sendiri>`). Ada juga kursor `setelah` |
+| `GET /devices/:kode/katalog?setelah=&semua=1` | Satu halaman, maks. 100 produk. Produk tersembunyi tidak ikut, kecuali dengan `semua=1` (untuk modul yang mengelola katalog, §17.4). Tiap produk berisi `id`, `nama`, `deskripsi`, `harga` (satuan mata uang), `mata_uang`, `url`, `sku`, `tersembunyi`, `status_tinjauan`, `ada_gambar`, `tautan` (`https://wa.me/p/<id>/<nomor sendiri>`). Ada juga kursor `setelah` |
 | `GET /devices/:kode/katalog/:id/gambar` | Gambar pertama produk yang sudah tercantum di daftar. Hanya https dari CDN WhatsApp (`whatsapp.net`, `fbcdn.net`, `fbsbx.com`), tanpa redirect, maks. 2 MiB, `image/*`. Selain itu `404`. URL tidak pernah diambil dari pemanggil |
 
 Semua rute hanya untuk nomor milik modul pemanggil (`403` bagi modul lain). Nomor nonaktif mendapat `422 device_inactive`. Bila WhatsApp atau mesin menolak (misalnya nomor bukan WhatsApp Business), jawabannya `422 engine_rejected`. Bila mesin tidak tersambung, `503`.
@@ -468,6 +468,58 @@ SPMB memasang label WhatsApp Business pada chat untuk mencerminkan status penang
 - **Kelengkapan.** Sebelum perubahan pertama, mesin membaca koleksi app-state `regular` secara utuh (snapshot di bawah kunci app-state Baileys) agar label yang sudah ada di HP dikenal dan tidak dibuat kembar. Label yang tidak muncul lagi di snapshot ditandai terhapus, dan id-nya tidak dipakai ulang. Sebelum tiap perubahan berikutnya, perubahan terbaru dibaca dulu. Bila snapshot gagal, mesin menjawab `503 labels_unread` (Kirim: `503 engine_unavailable`) dan tidak mencoba lagi dalam satu menit.
 - **Alamat chat.** Kirim mengirim JID percakapan (nomor atau LID) beserta identitas lainnya bila diketahui. Mesin juga melengkapinya dari pemetaan LID↔nomor. Label baru dipasang pada alamat yang sudah dipakai HP untuk label lain di chat itu. Bila belum ada, dipasang pada JID percakapan.
 
+### 17.3 Profil bisnis (adendum 2026-11-09)
+
+SPMB mengelola profil WhatsApp Business nomornya sendiri: dibaca utuh, lalu deskripsi, alamat, e-mail, situs, foto profil, dan foto sampul bisa diubah. **Nama bisnis tidak pernah ditulis** (keputusan owner, `DRAFT`): mengganti nama bisa membuat nomor ditinjau ulang oleh WhatsApp.
+
+**Mesin (JalurPesan PR #27, tanpa migrasi).** Rute platform baru:
+
+| Rute mesin | Isi |
+| --- | --- |
+| `GET …/business-profile` | IQ `w:biz` `business_profile` dibaca sendiri, karena `getBusinessProfile` Baileys hanya menyimpan situs dan kategori pertama. Isinya `jid`, `name` (dari sesi, hanya baca), `description`, `address`, `email`, `websites[]`, `categories[{id,name}]`, `hours`, `profilePictureUrl`, `coverPhoto{id,url}` |
+| `PATCH …/business-profile` | `{ description?, address?, email?, websites? }` (minimal satu) → `updateBussinesProfile` (delta), lalu dibaca balik: `verified` true/false/null |
+| `PUT`/`DELETE …/business-profile/picture` | `updateProfilePicture`/`removeProfilePicture` untuk nomor sendiri. Tanpa sharp/jimp, JPEG dikirim apa adanya |
+| `PUT …/business-profile/cover-photo` | `updateCoverPhoto` → `{ id, verified }` |
+| `DELETE …/business-profile/cover-photo[?id=]` | `removeCoverPhoto(id)`. Tanpa `id`, dipakai id dari profil, lalu id yang terakhir dipasang mesin itu. Bila tidak ada, `409 cover_photo_unknown` |
+
+**Kirim SQ.**
+
+| Rute | Isi |
+| --- | --- |
+| `GET /devices/:kode/profil-bisnis` | `{ nama, deskripsi, alamat, email, situs[], kategori[{id,nama}], jam_kerja, ada_foto, sampul_id }`. `jam_kerja` berbentuk sama dengan body `PUT …/jam-kerja` (`{ zona, hari: [{ hari, rentang[], janji_temu }] }`). Hari "dengan janji temu" berisi `rentang: []` dan `janji_temu: true` |
+| `PATCH /devices/:kode/profil-bisnis` | Body `atas_nama` dan minimal satu dari `deskripsi` (≤ 512, boleh baris baru), `alamat` (≤ 256), `email` (≤ 128, tanpa karakter kendali, `""` mengosongkan), dan `situs[]` (≤ 2 tautan http(s) berbeda, ≤ 256). Isian yang tidak disebut tetap. Tidak ada `nama`. Jawaban `{ diterapkan: true, terbaca_ulang, profil }`. Audit `profil_bisnis.ubah` (nama kolom saja) |
+| `GET /devices/:kode/profil-bisnis/foto` | Foto profil nomor sendiri (ukuran pratinjau WhatsApp, `image/jpeg`), lewat rute foto profil mesin. `404` bila tidak ada. Disimpan di memori 5 menit per nomor (juga "tidak ada"), agar modul yang memeriksanya berulang tidak menghabiskan jatah foto profil nomor itu. Mengganti atau menghapus foto lewat Kirim membuang simpanan itu |
+| `POST /devices/:kode/profil-bisnis/foto` | Body `atas_nama`, `gambar` (base64 JPEG ≤ 2 MB). Jawaban `{ diterapkan: true, terbaca_ulang }`. Audit `profil_bisnis.foto_ganti` |
+| `POST /devices/:kode/profil-bisnis/foto/hapus` | Body `atas_nama`. Audit `profil_bisnis.foto_hapus` |
+| `POST /devices/:kode/profil-bisnis/sampul` | Body `atas_nama`, `gambar` (base64 JPEG ≤ 4 MB). Jawaban `{ diterapkan: true, sampul_id, terbaca_ulang }`. Audit `profil_bisnis.sampul_ganti` |
+| `POST /devices/:kode/profil-bisnis/sampul/hapus` | Body `atas_nama`, `sampul_id?` (angka). Jawaban `{ dihapus: true, sampul_id }`, atau `409 sampul_tidak_dikenal` bila tidak ada foto sampul yang diketahui. Audit `profil_bisnis.sampul_hapus` |
+
+`terbaca_ulang`: `true` berarti WhatsApp menyimpan persis yang dikirim. `false` berarti yang tersimpan berbeda (dicatat ke log `kirim.profil_bisnis.beda`, tidak menggagalkan). `null` berarti tidak bisa dibaca balik.
+
+**Gambar.** Gambar yang bukan JPEG (produk: JPEG/PNG), terlalu besar, atau terlalu banyak ditolak dengan `422 gambar_invalid` sebelum sampai ke mesin, termasuk body yang melebihi batas rute (Fastify `413` diubah menjadi `422 gambar_invalid` pada rute bergambar, dan `413 body_too_large` dalam bentuk galat Kirim pada rute lain). Per nomor hanya satu tulisan bergambar (produk, foto profil, foto sampul) yang berjalan sekaligus di proses Kirim. Tulisan bergambar menunggu mesin sampai 120 detik, karena mesin mengunggah tiap gambar ke WhatsApp (sampai 30 detik per gambar) sebelum mengirim perubahannya.
+
+**Hasil tak pasti.** Bila mesin tidak menjawab tepat waktu, koneksi terputus, atau mesin menjawab `502 whatsapp_outcome_unknown` (WhatsApp tidak mengonfirmasi, mesin PR #28), perubahan itu mungkin sudah terjadi. Kirim menjawab `503 engine_outcome_unknown` dan tetap mencatat audit aksinya dengan `hasil: "tidak_pasti"`, sehingga tidak ada perubahan di WhatsApp yang tidak teraudit. Modul sebaiknya membaca ulang profil atau katalog sebelum mencoba lagi. Hanya koneksi yang ditolak mesin yang dianggap pasti tidak terjadi (`503 engine_unavailable`).
+
+### 17.4 Menulis katalog (adendum 2026-11-09)
+
+Katalog tidak lagi hanya dibaca: modul pemilik nomor bisa menambah, mengubah, dan menghapus produk. Produk bisa ditinjau WhatsApp sebelum tampil ke pelanggan, dan statusnya terlihat di `status_tinjauan` (mis. `PENDING`, `APPROVED`, `REJECTED`, sesuai jawaban WhatsApp).
+
+**Mesin.** `POST …/catalog/products`, `PUT …/catalog/products/:id`, dan `DELETE …/catalog/products/:id`. IQ `w:biz:catalog` (`product_catalog_add`/`_edit`) ditulis sendiri, karena `productCreate`/`productUpdate` Baileys membuang tautan (`url`) dan mewajibkan harga. Gambar (JPEG/PNG, ≤ 10, 4 MB per gambar, 10 MB total) diunggah ke server media WhatsApp dari byte, tidak pernah diambil dari URL. Produk baru ditandai `COUNTRY_ORIGIN_EXEMPT` kecuali `originCountryCode` diisi. Jawaban WhatsApp dibaca balik (`verified`) beserta `reviewStatus`. Hapus memakai `productDelete` → `{ deleted }`.
+
+**Kirim SQ.**
+
+| Rute | Isi |
+| --- | --- |
+| `POST /devices/:kode/katalog` | Header `Idempotency-Key` wajib (1–200). Body `atas_nama`, `nama` (1–200), `deskripsi?` (≤ 2000), `harga?` (bilangan bulat satuan mata uang, mis. rupiah; `null` = tanpa harga), `mata_uang?` (ISO 4217, hanya bersama `harga`, bawaan `IDR`), `url?` (http(s), ≤ 500), `sku?` (≤ 100), `tersembunyi?` (bawaan `false`), `gambar?` (≤ 5 base64 JPEG/PNG, ≤ 2 MB per gambar, ≤ 6 MB seluruhnya). Jawaban `201 { produk, terbaca_ulang }` dengan `produk` berbentuk sama seperti di daftar katalog. Audit `katalog.tambah`. Lihat "Sekali per kunci" di bawah |
+| `PATCH /devices/:kode/katalog/:id` | Ubah sebagian: body `atas_nama` dan minimal satu isian yang sama. Isian yang tidak disebut tetap seperti di WhatsApp sekarang. `null` mengosongkan `harga` (beserta mata uangnya), `url`, atau `sku`. `gambar` yang disebut mengganti semua gambar dan harus berisi minimal satu (`gambar: []` → `422 gambar_invalid`, gambar tetap). `gambar` yang tidak disebut berarti gambar tetap. `mata_uang` untuk produk tanpa harga → `400`. Id yang tidak ada di katalog → `404 produk_tidak_ada`. Audit `katalog.ubah` dengan `kolom` yang diubah |
+| `POST /devices/:kode/katalog/:id/hapus` | Body `atas_nama`. Jawaban `{ dihapus: n }`. Id yang tidak ada di katalog → `404 produk_tidak_ada`. Audit `katalog.hapus` |
+
+**Sekali per kunci (migration `0018_kirim_katalog_tulis.sql`).** Sebelum mesin ditanya, Kirim menyimpan baris `kirim_catalog_writes` (`consumer_id`, `idempotency_key`, hash body, `status`). Setelah berhasil, statusnya `selesai` dan jawabannya disimpan (data katalog saja, tanpa nomor). Permintaan ulang dengan kunci dan body yang sama mendapat jawaban itu lagi (`200`, `ulangan: true`) tanpa membuat produk kedua. Kunci yang sama dengan body lain → `409 idempotency_key_conflict`. Kunci yang masih berjalan → `409 idempotency_request_in_progress`. Bila hasilnya tak pasti (atau masih `berjalan` setelah 10 menit), statusnya `tidak_pasti`, dan percobaan ulang dengan kunci itu ditolak `409 hasil_tidak_pasti`. Modul memeriksa katalog (`semua=1`), lalu memakai kunci baru bila produknya memang belum ada. Bila mesin atau WhatsApp jelas menolak, barisnya dihapus agar kunci bisa dipakai lagi.
+
+Audit katalog memuat id (`<kode>:baru` untuk penambahan yang hasilnya tak pasti), nama, harga, `tersembunyi`, jumlah gambar, `status_tinjauan`, dan `terbaca_ulang`, atau `hasil: "tidak_pasti"`. Isinya data katalog, bukan data pribadi.
+
+**Kompatibilitas mesin.** Kirim tidak memeriksa versi mesin. Mesin sebelum PR #27 tidak punya rute ini dan menjawab `404`, yang oleh Kirim diteruskan sebagai `422 engine_rejected`, sama seperti balasan cepat pada mesin sebelum v23. Semua rute §17.3–§17.4 mengikuti aturan §17: hanya nomor milik modul pemanggil (`403`), nomor nonaktif `422 device_inactive`, dan mesin tidak tersedia `503 engine_unavailable`.
+
 **Mengirim produk.** Modul mengirim `tautan` sebagai pesan teks biasa, dan WhatsApp menampilkannya sebagai kartu produk. Tidak ada jenis pesan baru.
 
 ## 15. Keputusan yang diambil agent (`DRAFT`, dilaporkan ke owner)
@@ -484,10 +536,19 @@ SPMB memasang label WhatsApp Business pada chat untuk mencerminkan status penang
 | A-8 | Batas penambahan | Menghitung setiap nomor yang ditawarkan ke WhatsApp, termasuk yang ditolak privasi; permintaan yang melebihi sisa ditolak utuh (`429`) dengan `sisa` |
 | A-9 | Keluarkan anggota | `POST …/participants/keluarkan` dengan body, bukan nomor di path |
 | A-10 | Foto profil | Hanya chat aktif 30 hari, 25+25 per nomor per jam, cache modul 1 hari |
-| A-11 | Katalog | Hanya dibaca. Produk dikelola di aplikasi WhatsApp Business dan dikirim sebagai tautan `wa.me/p` (§17) |
+| A-11 | Katalog | Sejak 2026-11-09 dibaca dan ditulis modul pemilik nomor (§17.4). Produk dikirim sebagai tautan `wa.me/p` (§17) |
 | A-12 | Balasan cepat dari HP sebelum mesin v23 | Belum diketahui mesin sampai HP mengubahnya lagi atau sinkron app-state ulang. Tidak ada impor paksa |
 | A-13 | Jam kerja lebih dari satu rentang per hari | Digabung menjadi buka pertama → tutup terakhir, karena WhatsApp Business hanya menyimpan satu rentang per hari (§17.1). `hari` minimal satu entri |
 | A-14 | Nama label | Dibandingkan tanpa beda huruf besar/kecil. Label HP bernama sama (mis. `baru`) dianggap label kelolaan `Baru`. Warna label baru dipilih tetap dari namanya (§17.2) |
+| A-15 | Nama bisnis | Tidak bisa ditulis lewat Kirim, karena mengganti nama bisa memicu peninjauan WhatsApp. Ubah nama dilakukan di aplikasi WhatsApp Business (§17.3) |
+| A-16 | Batas profil | Deskripsi 512, alamat 256, e-mail 128, situs maks. 2 (seperti aplikasi WhatsApp Business). Foto profil JPEG ≤ 2 MB, foto sampul JPEG ≤ 4 MB |
+| A-17 | Mengosongkan isian profil dan produk | E-mail/alamat/deskripsi `""` dikirim apa adanya. `situs: []`, serta tautan atau SKU yang dihapus dari produk, belum terbukti dikosongkan oleh WhatsApp, jadi lihat `terbaca_ulang` |
+| A-18 | Ubah produk | Ubah sebagian: isian yang tidak disebut tetap, diambil dari katalog WhatsApp saat itu (maks. 20 halaman × 100 produk). `gambar: []` ditolak (`422`) dan gambar tetap, karena mengosongkan gambar produk belum terbukti didukung WhatsApp |
+| A-19 | Gambar produk | Maks. 5 per produk di Kirim (WhatsApp mengizinkan 10), 2 MB per gambar, 6 MB seluruhnya, agar body tetap di bawah 9 MB. Produk tanpa gambar boleh dicoba. Bila WhatsApp menolaknya, jawabannya `422 engine_rejected` |
+| A-20 | Asal negara produk | Tidak diisi Kirim: produk baru ditandai bebas asal negara (`COUNTRY_ORIGIN_EXEMPT`), karena isinya layanan pendidikan |
+| A-21 | Hapus foto sampul tanpa id | Id diambil dari profil, lalu dari foto sampul yang terakhir dipasang mesin (hanya di memori, hilang saat mesin dimulai ulang). Selain itu `409 sampul_tidak_dikenal` |
+| A-22 | Hasil tak pasti | Penambahan produk tidak dicoba ulang otomatis dan tidak dicocokkan otomatis dengan katalog (nama bisa kembar); modul yang memeriksa. Batas waktu tulisan bergambar 120 detik, antrean tulisan bergambar per nomor hanya di dalam satu proses Kirim |
+| A-23 | Simpanan foto profil sendiri | 5 menit di memori per nomor, termasuk jawaban "tidak ada foto" |
 
 ## Riwayat
 
@@ -497,3 +558,5 @@ SPMB memasang label WhatsApp Business pada chat untuk mencerminkan status penang
 | 2026-11-05 | Review independen: audit dan petugas tetap tercatat bila pantulan mesin datang lebih dulu (§5.6). Tindak lanjut `TBD`: kunci idempotensi buat grup saat mesin timeout, kutipan/reaksi masuk dicocokkan per chat (bukan per nomor), ganti nama+deskripsi sebagian gagal, berkas foto yatim bila transaksi gagal |
 | 2026-11-05 | `durasi_detik` boleh `null` (panggilan diangkat di HP) |
 | 2026-11-06 | §17 balasan cepat dua arah dan katalog WhatsApp Business |
+| 2026-11-09 | §17.3 profil bisnis (baca utuh, tulis deskripsi/alamat/e-mail/situs/foto/sampul, tanpa nama) dan §17.4 katalog ditulis modul; mesin JalurPesan PR #27 |
+| 2026-11-09 | Review independen #195: `Idempotency-Key` untuk tambah produk (migration 0018), hasil tak pasti (`engine_outcome_unknown`, audit `tidak_pasti`, mesin PR #28), batas waktu 120 detik dan satu tulisan bergambar per nomor, gambar kebesaran `422 gambar_invalid` (termasuk 413), foto profil sendiri disimpan 5 menit, ubah produk sebagian, `404 produk_tidak_ada` |

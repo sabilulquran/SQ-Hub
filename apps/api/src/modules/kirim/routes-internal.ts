@@ -29,7 +29,13 @@ import {
 } from "./groups-admin.js";
 import {
   businessHoursSchema,
+  businessProfileSchema,
   catalogQuerySchema,
+  coverPhotoRemoveSchema,
+  coverPhotoSchema,
+  productPatchSchema,
+  productSchema,
+  profilePictureSchema,
   chatLabelSchema,
   quickReplyRemoveSchema,
   quickReplySchema,
@@ -124,6 +130,17 @@ export function registerKirimInternalRoutes(
   }
 
   void app.register(async (scope) => {
+    // §17.3–§17.4: a body over a route's limit is answered in Kirim's error shape; on an image route it is an image
+    // too large, like one the decoder refuses (422 gambar_invalid).
+    scope.setErrorHandler((error, request, reply) => {
+      if ((error as { statusCode?: unknown }).statusCode === 413) {
+        if (IMAGE_WRITE_PATH.test(request.url)) {
+          return sendKirimError(reply, 422, "gambar_invalid", "Gambar terlalu besar.");
+        }
+        return sendKirimError(reply, 413, "body_too_large", "Permintaan terlalu besar.");
+      }
+      throw error;
+    });
     await scope.register(multipart, {
       limits: { fileSize: MEDIA_MAX_BYTES, files: 1, fields: 2, fieldSize: 100, parts: 3, headerPairs: 50 },
     });
@@ -416,8 +433,52 @@ function registerConversationRoutes(
     "PUT");
     read("/devices/:kode/katalog", catalogQuerySchema, async (consumer, params, query, request) => {
       atasNamaFromHeaders(request.headers);
-      return business.catalog(consumer, params.kode!, query.setelah ?? null);
+      return business.catalog(consumer, params.kode!, query.setelah ?? null, query.semua === "1");
     });
+    // KIRIM-IMPL-004 §17.4: catalog products written by the module. Five 2 MB images are about 13.4 MB as base64, but
+    // together they may be 6 MB (about 8 MB as base64).
+    write("/devices/:kode/katalog", productSchema, async (consumer, params, body, request, reply) => {
+      const result = await business.createProduct(consumer, params.kode!, idempotencyKey(request), body);
+      return reply.status(result.status).send(result.body);
+    }, "POST", { bodyLimit: 9 * 1024 * 1024 });
+    write("/devices/:kode/katalog/:id", productPatchSchema, async (consumer, params, body, _request, reply) =>
+      reply.send(await business.updateProduct(consumer, params.kode!, params.id!, body)),
+    "PATCH", { bodyLimit: 9 * 1024 * 1024 });
+    write("/devices/:kode/katalog/:id/hapus", quickReplyRemoveSchema, async (consumer, params, body, _request, reply) =>
+      reply.send(await business.removeProduct(consumer, params.kode!, params.id!, body.atas_nama)),
+    );
+    // §17.3: the WhatsApp Business profile: read whole; texts, profile photo and cover photo written. Never the name.
+    read("/devices/:kode/profil-bisnis", null, async (consumer, params, _query, request) => {
+      atasNamaFromHeaders(request.headers);
+      return business.businessProfile(consumer, params.kode!);
+    });
+    write("/devices/:kode/profil-bisnis", businessProfileSchema, async (consumer, params, body, _request, reply) =>
+      reply.send(await business.updateBusinessProfile(consumer, params.kode!, body)),
+    "PATCH");
+    scope.get<Params>("/devices/:kode/profil-bisnis/foto", async (request, reply) => {
+      const consumer = await authenticate(request, reply);
+      if (!consumer) return reply;
+      try {
+        const photo = await business.profilePicture(consumer, request.params.kode!);
+        return reply.header("content-type", "image/jpeg").header("x-content-type-options", "nosniff")
+          .header("cache-control", "private, max-age=300").send(photo);
+      } catch (error) {
+        return handleKirimError(reply, error);
+      }
+    });
+    // A 2 MB JPEG is about 2.7 MB as base64; a 4 MB cover photo about 5.4 MB.
+    write("/devices/:kode/profil-bisnis/foto", profilePictureSchema, async (consumer, params, body, _request, reply) =>
+      reply.send(await business.setProfilePicture(consumer, params.kode!, body)),
+    "POST", { bodyLimit: 3 * 1024 * 1024 });
+    write("/devices/:kode/profil-bisnis/foto/hapus", quickReplyRemoveSchema, async (consumer, params, body, _request, reply) =>
+      reply.send(await business.setProfilePicture(consumer, params.kode!, { gambar: null, atas_nama: body.atas_nama })),
+    );
+    write("/devices/:kode/profil-bisnis/sampul", coverPhotoSchema, async (consumer, params, body, _request, reply) =>
+      reply.send(await business.setCoverPhoto(consumer, params.kode!, body)),
+    "POST", { bodyLimit: 6 * 1024 * 1024 });
+    write("/devices/:kode/profil-bisnis/sampul/hapus", coverPhotoRemoveSchema, async (consumer, params, body, _request, reply) =>
+      reply.send(await business.removeCoverPhoto(consumer, params.kode!, body)),
+    );
     scope.get<Params>("/devices/:kode/katalog/:id/gambar", async (request, reply) => {
       const consumer = await authenticate(request, reply);
       if (!consumer) return reply;
@@ -533,6 +594,9 @@ function registerConversationRoutes(
     );
   }
 }
+
+/** Kirim routes whose body carries images (§17.3–§17.4). */
+const IMAGE_WRITE_PATH = /\/devices\/[^/]+\/(katalog(\/[^/?]+)?|profil-bisnis\/(foto|sampul))(\?|$)/;
 
 function headerValue(value: string | string[] | undefined): string | undefined {
   return Array.isArray(value) ? value[0] : value;
