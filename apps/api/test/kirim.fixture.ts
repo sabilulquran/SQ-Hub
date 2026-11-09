@@ -58,6 +58,8 @@ export class JalurPesanStub {
   businessWriteRoutes = true;
   /** The next product create is made, but answered 502 whatsapp_outcome_unknown (WhatsApp did not confirm it). */
   createThenUnknown = false;
+  /** The next product create is made, but answered 200 without a product. */
+  createWithoutProduct = false;
   /** The next profile/catalog write never answers (the adapter times out). */
   hangNextBusiness = false;
   /** How long each profile/catalog write takes, and the most of them that were at the engine at once. */
@@ -172,6 +174,7 @@ export class JalurPesanStub {
     this.businessWrites.length = 0;
     this.businessWriteRoutes = true;
     this.createThenUnknown = false;
+    this.createWithoutProduct = false;
     this.hangNextBusiness = false;
     this.businessDelayMs = 0;
     this.businessMaxInFlight = 0;
@@ -243,13 +246,17 @@ export class JalurPesanStub {
     const list = this.catalog.get(tenantId) ?? [];
     this.catalog.set(tenantId, list);
     const fields = (target: Record<string, unknown>) => {
-      for (const key of ["name", "description", "price", "currency", "url", "retailerId", "hidden"]) target[key] = body[key];
+      for (const key of ["name", "description", "price", "currency", "url", "retailerId", "hidden"]) if (key in body) target[key] = body[key];
       if (Array.isArray(body.images)) target.imageUrl = body.images.length ? "https://mmg.whatsapp.net/baru.jpg" : null;
       return target;
     };
     if (path === "/catalog/products" && method === "POST") {
       const product = fields({ id: `p-${list.length + 1}`, imageUrl: null, reviewStatus: "PENDING" });
       list.push(product);
+      if (this.createWithoutProduct) {
+        this.createWithoutProduct = false;
+        return { status: 200, body: { success: true, verified: true } };
+      }
       if (this.createThenUnknown) {
         this.createThenUnknown = false;
         return { status: 502, body: { success: false, code: "whatsapp_outcome_unknown" } };

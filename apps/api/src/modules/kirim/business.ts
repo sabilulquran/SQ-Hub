@@ -297,6 +297,8 @@ export class KirimBusiness {
   private readonly imageUrls = new Map<string, { url: string; deviceId: string }>();
   /** §17.3–§17.4: one image write at a time per number (each one uploads to WhatsApp for up to two minutes). */
   private readonly imageWrites = new Map<string, Promise<unknown>>();
+  /** Image writes per number that are queued or running; at most [MAX_IMAGE_QUEUE]. */
+  private readonly imageQueueDepth = new Map<string, number>();
   /** §17.3: the own profile photo per number for five minutes, so a module polling it does not use the photo budget. */
   private readonly ownPhotos = new Map<string, { at: number; photo: Buffer | null }>();
 
@@ -453,7 +455,7 @@ export class KirimBusiness {
     const images = productImages(input.gambar ?? []);
     const requestHash = createHash("sha256").update(`katalog-tambah:${device.id}:${canonicalJson(input)}`).digest("hex");
     const known = await this.pool.query<{ requestHash: string; status: string; hasil: StoredProduct | null; basi: boolean }>(
-      `SELECT request_hash AS "requestHash", status, hasil, created_at < now() - interval '10 minutes' AS basi
+      `SELECT request_hash AS "requestHash", status, hasil, updated_at < now() - interval '10 minutes' AS basi
          FROM kirim_catalog_writes WHERE consumer_id = $1 AND idempotency_key = $2`,
       [consumer.id, idempotencyKey],
     );
@@ -490,7 +492,11 @@ export class KirimBusiness {
     const audit = { device: device.kode, nama: product.name, harga: input.harga ?? null, tersembunyi: product.hidden, gambar: images.length };
     let saved: { product: ProviderCatalogProduct; verified: boolean };
     try {
-      saved = await this.oneImageWrite(device, () => this.provider(device).createProduct(device, product));
+      saved = await this.oneImageWrite(device, async () => {
+        // The ten minutes before a `berjalan` row counts as stale start when the write leaves the queue.
+        await this.pool.query("UPDATE kirim_catalog_writes SET updated_at = now() WHERE id = $1", [reservation]);
+        return this.provider(device).createProduct(device, product);
+      });
     } catch (error) {
       if (outcomeUnknown(error)) {
         await this.pool.query(`UPDATE kirim_catalog_writes SET status = 'tidak_pasti', updated_at = now() WHERE id = $1`, [reservation]);
@@ -523,31 +529,36 @@ export class KirimBusiness {
       throw new KirimApiError(422, "gambar_invalid", "Gambar produk tidak bisa dikosongkan; kirim minimal satu gambar, atau jangan sebut gambar agar gambar tetap.");
     }
     const images = input.gambar === undefined ? null : productImages(input.gambar);
-    const current = await this.findProduct(device, productId);
-    const price = input.harga === undefined ? current.price : input.harga === null ? null : input.harga * 1000;
-    if (input.mata_uang !== undefined && price === null) throw new KirimApiError(400, "invalid_request", "mata_uang hanya bersama harga.", { fields: ["mata_uang"] });
-    const product: ProviderProductInput = {
-      name: input.nama ?? current.name,
-      description: input.deskripsi ?? current.description,
-      price,
-      currency: price === null ? null : (input.mata_uang ?? current.currency ?? "IDR"),
-      url: input.url === undefined ? current.url : input.url,
-      retailerId: input.sku === undefined ? (current.retailerId ?? null) : input.sku,
-      hidden: input.tersembunyi ?? current.hidden,
-      images,
-    };
     const kolom = (["nama", "deskripsi", "harga", "mata_uang", "url", "sku", "tersembunyi", "gambar"] as const).filter((key) => input[key] !== undefined);
-    const audit = { device: device.kode, kolom, nama: product.name, harga: price === null ? null : price / 1000, tersembunyi: product.hidden, gambar: images === null ? null : images.length };
+    let audit: Record<string, unknown> | null = null;
     let saved: { product: ProviderCatalogProduct; verified: boolean };
     try {
-      saved = await this.oneImageWrite(device, () => this.provider(device).updateProduct(device, productId, product));
+      // Read and merged inside the queued step, so a write queued before this one is already in what is read.
+      saved = await this.oneImageWrite(device, async () => {
+        const current = await this.findProduct(device, productId);
+        const price = input.harga === undefined ? current.price : input.harga === null ? null : input.harga * 1000;
+        if (input.mata_uang !== undefined && price === null) throw new KirimApiError(400, "invalid_request", "mata_uang hanya bersama harga.", { fields: ["mata_uang"] });
+        const product: ProviderProductInput = {
+          name: input.nama ?? current.name,
+          // The engine's listing cuts descriptions at 2000 characters: a cut copy is never written back (null keeps it).
+          description: input.deskripsi ?? (current.description.length >= LISTED_DESCRIPTION_MAX ? null : current.description),
+          price,
+          currency: price === null ? null : (input.mata_uang ?? current.currency ?? "IDR"),
+          url: input.url === undefined ? current.url : input.url,
+          retailerId: input.sku === undefined ? (current.retailerId ?? null) : input.sku,
+          hidden: input.tersembunyi ?? current.hidden,
+          images,
+        };
+        audit = { device: device.kode, kolom, nama: product.name, harga: price === null ? null : price / 1000, tersembunyi: product.hidden, gambar: images === null ? null : images.length };
+        return this.provider(device).updateProduct(device, productId, product);
+      });
     } catch (error) {
-      if (outcomeUnknown(error)) await this.catalogAudit(consumer, device, "katalog.ubah", productId, { ...audit, hasil: "tidak_pasti" }, input.atas_nama);
+      if (outcomeUnknown(error) && audit) await this.catalogAudit(consumer, device, "katalog.ubah", productId, { ...(audit as Record<string, unknown>), hasil: "tidak_pasti" }, input.atas_nama);
       throw engineError(error);
     }
     this.rememberImage(device, saved.product);
     await this.catalogAudit(consumer, device, "katalog.ubah", saved.product.id, {
-      ...audit, status_tinjauan: saved.product.reviewStatus ?? null, terbaca_ulang: saved.verified,
+      ...(audit as Record<string, unknown> | null), status_tinjauan: saved.product.reviewStatus ?? null, terbaca_ulang: saved.verified,
     }, input.atas_nama);
     const own = this.ingest ? await this.ingest.ownPhone(this.pool, device.id) : null;
     return { produk: withLink(productItem(saved.product), own), terbaca_ulang: saved.verified };
@@ -604,13 +615,24 @@ export class KirimBusiness {
     });
   }
 
-  /** Image writes of one number run one after another (in this process). */
-  private oneImageWrite<T>(device: DeviceRow, work: () => Promise<T>): Promise<T> {
+  /**
+   * Image writes of one number run one after another (in this process). At most [MAX_IMAGE_QUEUE] queued or running;
+   * one more is `429 antrean_penuh`, before anything is sent.
+   */
+  private async oneImageWrite<T>(device: DeviceRow, work: () => Promise<T>): Promise<T> {
+    const depth = this.imageQueueDepth.get(device.id) ?? 0;
+    if (depth >= MAX_IMAGE_QUEUE) {
+      throw new KirimApiError(429, "antrean_penuh", "Masih ada beberapa perubahan bergambar untuk nomor ini; coba lagi sebentar lagi.", { retry_after_detik: 30 });
+    }
+    this.imageQueueDepth.set(device.id, depth + 1);
     const previous = this.imageWrites.get(device.id) ?? Promise.resolve();
     const next = previous.catch(() => undefined).then(work);
     const tail = next.catch(() => undefined);
     this.imageWrites.set(device.id, tail);
     void tail.then(() => {
+      const left = (this.imageQueueDepth.get(device.id) ?? 1) - 1;
+      if (left > 0) this.imageQueueDepth.set(device.id, left);
+      else this.imageQueueDepth.delete(device.id);
       if (this.imageWrites.get(device.id) === tail) this.imageWrites.delete(device.id);
     });
     return next;
@@ -839,10 +861,17 @@ function withLink(item: ReturnType<typeof productItem>, own: string | null) {
 
 /** §17.4: product images, at most five JPEG/PNG of 2 MB each and 6 MB together; else `422 gambar_invalid`. */
 function productImages(values: string[]): Buffer[] {
+  const refused = () =>
+    new KirimApiError(422, "gambar_invalid", "Gambar produk harus JPEG atau PNG, paling banyak 5, maksimal 2 MB per gambar dan 6 MB seluruhnya.");
+  // Counted before any is decoded.
+  if (values.length > MAX_PRODUCT_IMAGES) throw refused();
   const images = values.map((value) => decodeImage(value, MAX_PRODUCT_IMAGE_BYTES, true));
   const total = images.reduce((sum, image) => sum + (image?.length ?? 0), 0);
-  if (values.length > MAX_PRODUCT_IMAGES || images.some((image) => image === null) || total > MAX_PRODUCT_IMAGES_TOTAL_BYTES) {
-    throw new KirimApiError(422, "gambar_invalid", "Gambar produk harus JPEG atau PNG, paling banyak 5, maksimal 2 MB per gambar dan 6 MB seluruhnya.");
-  }
+  if (images.some((image) => image === null) || total > MAX_PRODUCT_IMAGES_TOTAL_BYTES) throw refused();
   return images as Buffer[];
 }
+
+/** §17.3–§17.4: image writes per number that may be queued or running at once. */
+const MAX_IMAGE_QUEUE = 3;
+/** The engine's catalog listing cuts descriptions at this length (JalurPesan `listCatalog`). */
+const LISTED_DESCRIPTION_MAX = 2000;

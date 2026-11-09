@@ -490,8 +490,10 @@ export class JalurPesanProvider implements KirimProvider {
   }
 
   private productWrite(response: EngineResponse): { product: ProviderCatalogProduct; verified: boolean } {
-    const product = response.status === 200 ? readProduct(response.body.product) : null;
-    if (!product) throw this.lifecycleError(response);
+    if (response.status !== 200) throw this.lifecycleError(response);
+    const product = readProduct(response.body.product);
+    // The engine answered success but without a product it can name: WhatsApp may have it, so never a sure failure.
+    if (!product) throw new ProviderOperationError("outcome_unknown", "JalurPesan answered without the product");
     return { product, verified: response.body.verified === true };
   }
 
@@ -786,7 +788,7 @@ function readProduct(item: unknown): ProviderCatalogProduct | null {
 function productBody(input: ProviderProductInput): Record<string, unknown> {
   return {
     name: input.name,
-    description: input.description,
+    ...(input.description === null ? {} : { description: input.description }),
     price: input.price,
     currency: input.currency,
     url: input.url,
