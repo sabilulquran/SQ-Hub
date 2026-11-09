@@ -119,7 +119,8 @@ export interface ProviderCatalogProduct {
 /** §17.4: a product as written to the catalog; `price` in thousandths of the currency, images JPEG/PNG (null keeps them). */
 export interface ProviderProductInput {
   name: string;
-  description: string;
+  /** null keeps the product's description (a change only; JalurPesan #29). */
+  description: string | null;
   price: number | null;
   currency: string | null;
   url: string | null;

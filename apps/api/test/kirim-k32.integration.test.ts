@@ -1129,6 +1129,11 @@ describe("WhatsApp Business: profil dan katalog ditulis modul (§17.3–§17.4)"
       const response = await call(method, url, { key: `img-${randomUUID()}`, payload });
       expect([response.statusCode, response.json().error.code]).toEqual([422, "gambar_invalid"]);
     }
+    // A description the listing may have cut (2000 characters) is not written back by a change that leaves it out.
+    stub.catalog.get("spmb")![0]!.description = "d".repeat(2000);
+    await call("PATCH", "/devices/spmb/katalog/p-1", { payload: { atas_nama: OFFICER, sku: "SRG-02" } });
+    expect(stub.businessWrites.at(-1)!.body).not.toHaveProperty("description");
+    expect(stub.businessWrites.at(-1)!.body).toMatchObject({ retailerId: "SRG-02" });
     // An id the catalog does not have.
     for (const url of ["/devices/spmb/katalog/p-99", "/devices/spmb/katalog/p%2F1"]) {
       const missing = await call("PATCH", url, { payload: { atas_nama: OFFICER, nama: "A" } });
@@ -1136,7 +1141,7 @@ describe("WhatsApp Business: profil dan katalog ditulis modul (§17.3–§17.4)"
     }
     const gone = await call("POST", "/devices/spmb/katalog/p-99/hapus", { payload: { atas_nama: OFFICER } });
     expect([gone.statusCode, gone.json().error.code]).toEqual([404, "produk_tidak_ada"]);
-    expect(stub.businessWrites).toHaveLength(3);
+    expect(stub.businessWrites).toHaveLength(4);
 
     expect((await call("POST", "/devices/spmb/katalog/p-1/hapus", { payload: { atas_nama: OFFICER } })).json()).toEqual({ dihapus: 1 });
     expect((await call("POST", "/devices/spmb/katalog", { client: "hcis-api", key: "k-hcis", payload: { atas_nama: OFFICER, nama: "A" } })).statusCode).toBe(403);
@@ -1150,7 +1155,7 @@ describe("WhatsApp Business: profil dan katalog ditulis modul (§17.3–§17.4)"
       `SELECT aksi, objek_ref AS "objekRef", metadata FROM kirim_audit WHERE objek_jenis = 'katalog' ORDER BY occurred_at`,
     )).rows;
     expect(audit.map((row) => [row.aksi, row.objekRef])).toEqual([
-      ["katalog.tambah", "spmb:p-1"], ["katalog.ubah", "spmb:p-1"], ["katalog.ubah", "spmb:p-1"], ["katalog.hapus", "spmb:p-1"],
+      ["katalog.tambah", "spmb:p-1"], ["katalog.ubah", "spmb:p-1"], ["katalog.ubah", "spmb:p-1"], ["katalog.ubah", "spmb:p-1"], ["katalog.hapus", "spmb:p-1"],
     ]);
     expect(audit[0]!.metadata).toMatchObject({ nama: "Seragam SDIT", harga: 350000, tersembunyi: true, gambar: 2, status_tinjauan: "PENDING", terbaca_ulang: true });
     expect(audit[1]!.metadata).toMatchObject({ kolom: ["nama"], gambar: null, harga: 350000 });
@@ -1177,20 +1182,30 @@ describe("WhatsApp Business: profil dan katalog ditulis modul (§17.3–§17.4)"
     expect([unknown.statusCode, unknown.json().error.code]).toEqual([503, "engine_outcome_unknown"]);
     const retry = await call("POST", "/devices/spmb/katalog", { key: "k-2", payload: { ...payload, nama: "Brosur" } });
     expect([retry.statusCode, retry.json().error.code]).toEqual([409, "hasil_tidak_pasti"]);
+    // A success answer without a product it can name is an unknown outcome as well, not a failure.
+    stub.createWithoutProduct = true;
+    const unnamed = await call("POST", "/devices/spmb/katalog", { key: "k-4", payload: { ...payload, nama: "Kalender" } });
+    expect([unnamed.statusCode, unnamed.json().error.code]).toEqual([503, "engine_outcome_unknown"]);
     // The engine never answering (time-out) is an unknown outcome too.
     stub.hangNextBusiness = true;
     const timedOut = await call("POST", "/devices/spmb/katalog", { key: "k-3", payload: { ...payload, nama: "Sampul" } });
     expect([timedOut.statusCode, timedOut.json().error.code]).toEqual([503, "engine_outcome_unknown"]);
-    expect(stub.catalog.get("spmb")).toHaveLength(2);
+    expect(stub.catalog.get("spmb")).toHaveLength(3);
 
     const audit = (await pool.query<{ objekRef: string; metadata: Record<string, unknown> }>(
       `SELECT objek_ref AS "objekRef", metadata FROM kirim_audit WHERE aksi = 'katalog.tambah' ORDER BY occurred_at`,
     )).rows;
     expect(audit.map((row) => [row.objekRef, row.metadata.hasil ?? "berhasil"])).toEqual([
-      ["spmb:p-1", "berhasil"], ["spmb:baru", "tidak_pasti"], ["spmb:baru", "tidak_pasti"],
+      ["spmb:p-1", "berhasil"], ["spmb:baru", "tidak_pasti"], ["spmb:baru", "tidak_pasti"], ["spmb:baru", "tidak_pasti"],
     ]);
-    const rows = (await pool.query<{ key: string; status: string }>(`SELECT idempotency_key AS key, status FROM kirim_catalog_writes ORDER BY idempotency_key`)).rows;
-    expect(rows).toEqual([{ key: "k-1", status: "selesai" }, { key: "k-2", status: "tidak_pasti" }, { key: "k-3", status: "tidak_pasti" }]);
+    const rows = (await pool.query<{ key: string; status: string; started: boolean }>(
+      `SELECT idempotency_key AS key, status, updated_at > created_at AS started FROM kirim_catalog_writes ORDER BY idempotency_key`,
+    )).rows;
+    // Each row's time was moved on when its write left the queue (the stale cutoff counts from then).
+    expect(rows).toEqual([
+      { key: "k-1", status: "selesai", started: true }, { key: "k-2", status: "tidak_pasti", started: true },
+      { key: "k-3", status: "tidak_pasti", started: true }, { key: "k-4", status: "tidak_pasti", started: true },
+    ]);
   });
 
   it("answers oversize images 422 gambar_invalid (also over the body limit), one image write at a time, own photo cached", async () => {
@@ -1208,14 +1223,16 @@ describe("WhatsApp Business: profil dan katalog ditulis modul (§17.3–§17.4)"
     expect([long.statusCode, long.json().error.code]).toEqual([413, "body_too_large"]);
     expect(stub.businessWrites).toHaveLength(0);
 
-    // Two image writes at once reach the engine one after the other.
-    stub.businessDelayMs = 60;
-    const [photo, cover] = await Promise.all([
-      call("POST", "/devices/spmb/profil-bisnis/foto", { payload: { atas_nama: OFFICER, gambar: JPEG.toString("base64") } }),
-      call("POST", "/devices/spmb/profil-bisnis/sampul", { payload: { atas_nama: OFFICER, gambar: JPEG.toString("base64") } }),
-    ]);
-    expect([photo.statusCode, cover.statusCode]).toEqual([200, 200]);
+    // Image writes at once reach the engine one after the other; a fourth waiting one is refused before it is sent.
+    stub.businessDelayMs = 500;
+    const photo = () => call("POST", "/devices/spmb/profil-bisnis/foto", { payload: { atas_nama: OFFICER, gambar: JPEG.toString("base64") } });
+    const answers = await Promise.all([photo(), photo(), call("POST", "/devices/spmb/profil-bisnis/sampul", { payload: { atas_nama: OFFICER, gambar: JPEG.toString("base64") } }), photo()]);
+    expect(answers.map((a) => a.statusCode).sort()).toEqual([200, 200, 200, 429]);
+    const full = answers.find((a) => a.statusCode === 429)!;
+    expect([full.json().error.code, full.headers["retry-after"]]).toEqual(["antrean_penuh", "30"]);
     expect(stub.businessMaxInFlight).toBe(1);
+    expect(stub.businessWrites).toHaveLength(3);
+    stub.businessDelayMs = 0;
 
     // The own photo is asked of the engine once, then served from memory; setting a new one forgets it.
     stub.profilePictures.set("6281200001111@s.whatsapp.net", JPEG);
