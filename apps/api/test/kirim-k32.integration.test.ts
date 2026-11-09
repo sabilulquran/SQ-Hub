@@ -974,7 +974,11 @@ describe("WhatsApp Business: profil dan katalog ditulis modul (§17.3–§17.4)"
       websites: ["https://sabilulquran.or.id"], categories: [{ id: "1", name: "Sekolah" }, { id: "2", name: "Pendidikan" }],
       hours: { timezone: "Asia/Jakarta", days: [
         { day: "sun", mode: "open_24h", openMinutes: null, closeMinutes: null },
-        { day: "mon", mode: "specific_hours", openMinutes: 420, closeMinutes: 960 },
+        // As the phone keeps a day with a break: one entry per range (production, 2026-11-09).
+        { day: "mon", mode: "specific_hours", openMinutes: 780, closeMinutes: 960 },
+        { day: "mon", mode: "specific_hours", openMinutes: 420, closeMinutes: 720 },
+        { day: "tue", mode: "specific_hours", openMinutes: 480, closeMinutes: 720 },
+        { day: "tue", mode: "specific_hours", openMinutes: 480, closeMinutes: 720 },
         { day: "sat", mode: "appointment_only", openMinutes: null, closeMinutes: null },
       ] },
       profilePictureUrl: "https://pps.whatsapp.net/v/own.jpg", coverPhoto: { id: "4242", url: null },
@@ -989,7 +993,8 @@ describe("WhatsApp Business: profil dan katalog ditulis modul (§17.3–§17.4)"
       situs: ["https://sabilulquran.or.id"],
       kategori: [{ id: "1", nama: "Sekolah" }, { id: "2", nama: "Pendidikan" }],
       jam_kerja: { zona: "Asia/Jakarta", hari: [
-        { hari: 1, rentang: [{ buka: "07:00", tutup: "16:00" }], janji_temu: false },
+        { hari: 1, rentang: [{ buka: "07:00", tutup: "12:00" }, { buka: "13:00", tutup: "16:00" }], janji_temu: false },
+        { hari: 2, rentang: [{ buka: "08:00", tutup: "12:00" }], janji_temu: false },
         { hari: 6, rentang: [], janji_temu: true },
         { hari: 7, rentang: [{ buka: "00:00", tutup: "24:00" }], janji_temu: false },
       ] },
@@ -1243,6 +1248,24 @@ describe("WhatsApp Business: profil dan katalog ditulis modul (§17.3–§17.4)"
     await call("POST", "/devices/spmb/profil-bisnis/foto/hapus", { payload: { atas_nama: OFFICER } });
     await call("GET", "/devices/spmb/profil-bisnis/foto");
     expect(asked()).toBe(2);
+  });
+});
+
+describe("WhatsApp Business: nomor tanpa katalog (§17.4)", () => {
+  it("lists an empty catalog marked katalog_ada false, and refuses a first product with 422 katalog_belum_ada", async () => {
+    stub.catalogMissing = true;
+    const list = await call("GET", "/devices/spmb/katalog?semua=1");
+    expect(list.statusCode).toBe(200);
+    expect(list.json()).toEqual({ items: [], setelah: null, katalog_ada: false });
+    const made = await call("POST", "/devices/spmb/katalog", { key: "k-pertama", payload: { atas_nama: OFFICER, nama: "Formulir" } });
+    expect([made.statusCode, made.json().error.code]).toEqual([422, "katalog_belum_ada"]);
+    expect(made.json().error.message).toContain("Katalog");
+    // Nothing was made: no audit, and the key is free again once the catalog exists.
+    expect((await pool.query("SELECT 1 FROM kirim_audit WHERE objek_jenis = 'katalog'")).rowCount).toBe(0);
+    stub.catalogMissing = false;
+    expect((await call("POST", "/devices/spmb/katalog", { key: "k-pertama", payload: { atas_nama: OFFICER, nama: "Formulir" } })).statusCode).toBe(201);
+    // An engine that does not say (before JalurPesan #30): not known.
+    expect((await call("GET", "/devices/spmb/katalog")).json().katalog_ada).toBeNull();
   });
 });
 

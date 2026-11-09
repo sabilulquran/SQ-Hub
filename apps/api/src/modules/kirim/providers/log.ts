@@ -14,6 +14,7 @@ import {
   type ProviderGroupSettings,
   type ProviderJoinRequest,
   type ProviderQuickReply,
+  type ProviderCatalogPage,
   type ProviderCatalogProduct,
   type ProviderBusinessProfile,
 } from "./types.js";
@@ -203,7 +204,7 @@ export class LogProvider implements KirimProvider {
     throw new ProviderOperationError("engine_rejected", "log provider has no WhatsApp Business");
   }
 
-  async listCatalog(): Promise<{ products: ProviderCatalogProduct[]; nextCursor: string | null }> {
+  async listCatalog(): Promise<ProviderCatalogPage> {
     throw new ProviderOperationError("engine_rejected", "log provider has no WhatsApp Business");
   }
 
