@@ -56,6 +56,14 @@ export class JalurPesanStub {
   readonly businessWrites: Array<{ tenantId: string; method: string; path: string; query: string; body: Record<string, unknown> }> = [];
   /** When false the profile and catalog-write routes answer a bare 404, like an engine before them. */
   businessWriteRoutes = true;
+  /** The next product create is made, but answered 502 whatsapp_outcome_unknown (WhatsApp did not confirm it). */
+  createThenUnknown = false;
+  /** The next profile/catalog write never answers (the adapter times out). */
+  hangNextBusiness = false;
+  /** How long each profile/catalog write takes, and the most of them that were at the engine at once. */
+  businessDelayMs = 0;
+  businessMaxInFlight = 0;
+  private businessInFlight = 0;
   readonly sendsByKey = new Map<string, number>();
   readonly messageIdByKey = new Map<string, string>();
   readonly requests: Array<{ method: string; path: string; idempotencyKey: string | null; body: string }> = [];
@@ -163,6 +171,11 @@ export class JalurPesanStub {
     this.businessProfiles.clear();
     this.businessWrites.length = 0;
     this.businessWriteRoutes = true;
+    this.createThenUnknown = false;
+    this.hangNextBusiness = false;
+    this.businessDelayMs = 0;
+    this.businessMaxInFlight = 0;
+    this.businessInFlight = 0;
     this.sendQueue = [];
     this.provisionResponse = null;
     this.resetQueue = [];
@@ -198,7 +211,8 @@ export class JalurPesanStub {
     if (this.refuseNextBusiness !== null) {
       const status = this.refuseNextBusiness;
       this.refuseNextBusiness = null;
-      return { status, body: { success: false, error: "refused", code: status === 422 ? "whatsapp_rejected" : "whatsapp_unavailable" } };
+      const code = status === 422 ? "whatsapp_rejected" : status === 502 ? "whatsapp_outcome_unknown" : "whatsapp_unavailable";
+      return { status, body: { success: false, error: "refused", code } };
     }
     const body = raw.length ? (JSON.parse(raw.toString("utf8")) as Record<string, unknown>) : {};
     if (method !== "GET") this.businessWrites.push({ tenantId, method, path, query: url.search, body });
@@ -236,6 +250,10 @@ export class JalurPesanStub {
     if (path === "/catalog/products" && method === "POST") {
       const product = fields({ id: `p-${list.length + 1}`, imageUrl: null, reviewStatus: "PENDING" });
       list.push(product);
+      if (this.createThenUnknown) {
+        this.createThenUnknown = false;
+        return { status: 502, body: { success: false, code: "whatsapp_outcome_unknown" } };
+      }
       return { status: 200, body: { success: true, product, verified: true } };
     }
     const one = /^\/catalog\/products\/([^/]+)$/.exec(path);
@@ -400,7 +418,18 @@ export class JalurPesanStub {
       }
     }
     if (path === "/business-profile" || path.startsWith("/business-profile/") || path.startsWith("/catalog/products")) {
-      return this.business(tenantId, request.method ?? "", path, url, raw);
+      if (this.hangNextBusiness && request.method !== "GET") {
+        this.hangNextBusiness = false;
+        return "hang";
+      }
+      this.businessInFlight += 1;
+      this.businessMaxInFlight = Math.max(this.businessMaxInFlight, this.businessInFlight);
+      try {
+        if (this.businessDelayMs > 0) await new Promise((resolve) => setTimeout(resolve, this.businessDelayMs));
+        return this.business(tenantId, request.method ?? "", path, url, raw);
+      } finally {
+        this.businessInFlight -= 1;
+      }
     }
     if (path === "/catalog" && request.method === "GET") {
       return { status: 200, body: { success: true, products: this.catalog.get(tenantId) ?? [], nextCursor: null } };

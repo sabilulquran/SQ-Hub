@@ -40,6 +40,11 @@ export interface EngineMediaRefs {
 }
 
 export const JALURPESAN_TIMEOUT_MS = 15_000;
+/**
+ * §17.3–§17.4: writes carrying images. The engine uploads each image to WhatsApp (up to 30 s each) before the IQ, so
+ * the default 15 s would report a failure for a write that then succeeds.
+ */
+export const JALURPESAN_IMAGE_WRITE_TIMEOUT_MS = 120_000;
 const CAPACITY_ERROR = "Configured active device safety cap reached";
 
 export interface EngineResponse {
@@ -47,7 +52,12 @@ export interface EngineResponse {
   body: Record<string, unknown>;
 }
 
-class EngineUnavailable extends Error {}
+class EngineUnavailable extends Error {
+  /** The engine refused the connection, so the request never reached it. */
+  constructor(readonly refused = false) {
+    super("engine request failed");
+  }
+}
 
 /**
  * JalurPesan platform adapter (§3.2), one tenant per Kirim SQ number under platform `sq-core`.
@@ -57,7 +67,7 @@ export class JalurPesanProvider implements KirimProvider {
   readonly name = "jalurpesan" as const;
 
   constructor(
-    private readonly options: { baseUrl: string; platformKey: string; timeoutMs?: number },
+    private readonly options: { baseUrl: string; platformKey: string; timeoutMs?: number; imageWriteTimeoutMs?: number },
     private readonly mediaRefs: EngineMediaRefs,
   ) {}
 
@@ -413,44 +423,70 @@ export class JalurPesanProvider implements KirimProvider {
   }
 
   async updateBusinessProfile(device: DeviceRef, update: ProviderBusinessProfileUpdate): Promise<{ verified: boolean | null; profile: ProviderBusinessProfile | null }> {
-    const response = await this.lifecycle("PATCH", device, "/business-profile", update);
+    const response = await this.businessWrite("PATCH", device, "/business-profile", update, this.timeoutMs);
     if (response.status !== 200 || response.body.applied !== true) throw this.lifecycleError(response);
     return { verified: typeof response.body.verified === "boolean" ? response.body.verified : null, profile: readBusinessProfile(response.body.profile) };
   }
 
   async setOwnProfilePicture(device: DeviceRef, jpeg: Buffer | null): Promise<{ verified: boolean | null }> {
     const response = jpeg
-      ? await this.lifecycle("PUT", device, "/business-profile/picture", { image: jpeg.toString("base64") })
-      : await this.lifecycle("DELETE", device, "/business-profile/picture");
+      ? await this.businessWrite("PUT", device, "/business-profile/picture", { image: jpeg.toString("base64") }, this.imageWriteTimeoutMs)
+      : await this.businessWrite("DELETE", device, "/business-profile/picture", undefined, this.timeoutMs);
     if (response.status !== 200 || response.body.applied !== true) throw this.lifecycleError(response);
     return { verified: typeof response.body.verified === "boolean" ? response.body.verified : null };
   }
 
   async setCoverPhoto(device: DeviceRef, jpeg: Buffer): Promise<{ id: string; verified: boolean | null }> {
-    const response = await this.lifecycle("PUT", device, "/business-profile/cover-photo", { image: jpeg.toString("base64") });
+    const response = await this.businessWrite("PUT", device, "/business-profile/cover-photo", { image: jpeg.toString("base64") }, this.imageWriteTimeoutMs);
     if (response.status !== 200 || typeof response.body.id !== "string") throw this.lifecycleError(response);
     return { id: response.body.id, verified: typeof response.body.verified === "boolean" ? response.body.verified : null };
   }
 
   async removeCoverPhoto(device: DeviceRef, id: string | null): Promise<{ id: string } | null> {
-    const response = await this.lifecycle("DELETE", device, `/business-profile/cover-photo${id ? `?id=${encodeURIComponent(id)}` : ""}`);
+    const response = await this.businessWrite("DELETE", device, `/business-profile/cover-photo${id ? `?id=${encodeURIComponent(id)}` : ""}`, undefined, this.timeoutMs);
     if (response.status === 409 && response.body.code === "cover_photo_unknown") return null;
     if (response.status !== 200 || typeof response.body.id !== "string") throw this.lifecycleError(response);
     return { id: response.body.id };
   }
 
   async createProduct(device: DeviceRef, input: ProviderProductInput): Promise<{ product: ProviderCatalogProduct; verified: boolean }> {
-    return this.productWrite(await this.lifecycle("POST", device, "/catalog/products", productBody(input)));
+    return this.productWrite(await this.businessWrite("POST", device, "/catalog/products", productBody(input), this.imageWriteTimeoutMs));
   }
 
   async updateProduct(device: DeviceRef, productId: string, input: ProviderProductInput): Promise<{ product: ProviderCatalogProduct; verified: boolean }> {
-    return this.productWrite(await this.lifecycle("PUT", device, `/catalog/products/${encodeURIComponent(productId)}`, productBody(input)));
+    return this.productWrite(
+      await this.businessWrite("PUT", device, `/catalog/products/${encodeURIComponent(productId)}`, productBody(input), this.imageWriteTimeoutMs),
+    );
   }
 
   async deleteProduct(device: DeviceRef, productId: string): Promise<number> {
-    const response = await this.lifecycle("DELETE", device, `/catalog/products/${encodeURIComponent(productId)}`);
+    const response = await this.businessWrite("DELETE", device, `/catalog/products/${encodeURIComponent(productId)}`, undefined, this.timeoutMs);
     if (response.status !== 200) throw this.lifecycleError(response);
     return typeof response.body.deleted === "number" ? response.body.deleted : 0;
+  }
+
+  /**
+   * A WhatsApp Business write. No answer in time (or a dropped connection), the engine's 502
+   * `whatsapp_outcome_unknown`, or a gateway time-out mean the change may have happened: `outcome_unknown`, never a
+   * plain failure the caller would retry. Only a refused connection is a sure "not done".
+   */
+  private async businessWrite(method: string, device: DeviceRef, path: string, json: unknown, timeoutMs: number): Promise<EngineResponse> {
+    let response: EngineResponse;
+    try {
+      response = await this.request(method, this.url(device, path), { ...(json === undefined ? {} : { json }), timeoutMs });
+    } catch (error) {
+      if (!(error instanceof EngineUnavailable)) throw error;
+      if (error.refused) throw new ProviderOperationError("engine_unavailable", "JalurPesan is unavailable");
+      throw new ProviderOperationError("outcome_unknown", "JalurPesan did not answer in time");
+    }
+    if ((response.status === 502 && response.body.code === "whatsapp_outcome_unknown") || response.status === 504) {
+      throw new ProviderOperationError("outcome_unknown", "WhatsApp did not confirm the change");
+    }
+    return response;
+  }
+
+  private get imageWriteTimeoutMs(): number {
+    return this.options.imageWriteTimeoutMs ?? JALURPESAN_IMAGE_WRITE_TIMEOUT_MS;
   }
 
   private productWrite(response: EngineResponse): { product: ProviderCatalogProduct; verified: boolean } {
@@ -643,7 +679,7 @@ export class JalurPesanProvider implements KirimProvider {
   private async request(
     method: string,
     url: string,
-    init: { json?: unknown; form?: FormData; headers?: Record<string, string> } = {},
+    init: { json?: unknown; form?: FormData; headers?: Record<string, string>; timeoutMs?: number } = {},
   ): Promise<EngineResponse> {
     try {
       const response = await fetch(url, {
@@ -654,7 +690,7 @@ export class JalurPesanProvider implements KirimProvider {
           ...init.headers,
         },
         ...(init.json !== undefined ? { body: JSON.stringify(init.json) } : init.form ? { body: init.form } : {}),
-        signal: AbortSignal.timeout(this.timeoutMs),
+        signal: AbortSignal.timeout(init.timeoutMs ?? this.timeoutMs),
         redirect: "manual",
       });
       const text = await response.text();
@@ -666,8 +702,8 @@ export class JalurPesanProvider implements KirimProvider {
         body = {};
       }
       return { status: response.status, body };
-    } catch {
-      throw new EngineUnavailable("engine request failed");
+    } catch (error) {
+      throw new EngineUnavailable((error as { cause?: { code?: unknown } } | null)?.cause?.code === "ECONNREFUSED");
     }
   }
 

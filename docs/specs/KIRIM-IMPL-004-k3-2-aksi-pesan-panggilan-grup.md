@@ -487,14 +487,18 @@ SPMB mengelola profil WhatsApp Business nomornya sendiri: dibaca utuh, lalu desk
 | Rute | Isi |
 | --- | --- |
 | `GET /devices/:kode/profil-bisnis` | `{ nama, deskripsi, alamat, email, situs[], kategori[{id,nama}], jam_kerja, ada_foto, sampul_id }`. `jam_kerja` berbentuk sama dengan body `PUT …/jam-kerja` (`{ zona, hari: [{ hari, rentang[], janji_temu }] }`). Hari "dengan janji temu" berisi `rentang: []` dan `janji_temu: true` |
-| `PATCH /devices/:kode/profil-bisnis` | Body `atas_nama` dan minimal satu dari `deskripsi` (≤ 512, boleh baris baru), `alamat` (≤ 256), `email` (≤ 128, `""` mengosongkan), dan `situs[]` (≤ 2 tautan http(s) berbeda, ≤ 256). Isian yang tidak disebut tetap. Tidak ada `nama`. Jawaban `{ diterapkan: true, terbaca_ulang, profil }`. Audit `profil_bisnis.ubah` (nama kolom saja) |
-| `GET /devices/:kode/profil-bisnis/foto` | Foto profil nomor sendiri (ukuran pratinjau WhatsApp, `image/jpeg`), lewat rute foto profil mesin. `404` bila tidak ada |
+| `PATCH /devices/:kode/profil-bisnis` | Body `atas_nama` dan minimal satu dari `deskripsi` (≤ 512, boleh baris baru), `alamat` (≤ 256), `email` (≤ 128, tanpa karakter kendali, `""` mengosongkan), dan `situs[]` (≤ 2 tautan http(s) berbeda, ≤ 256). Isian yang tidak disebut tetap. Tidak ada `nama`. Jawaban `{ diterapkan: true, terbaca_ulang, profil }`. Audit `profil_bisnis.ubah` (nama kolom saja) |
+| `GET /devices/:kode/profil-bisnis/foto` | Foto profil nomor sendiri (ukuran pratinjau WhatsApp, `image/jpeg`), lewat rute foto profil mesin. `404` bila tidak ada. Disimpan di memori 5 menit per nomor (juga "tidak ada"), agar modul yang memeriksanya berulang tidak menghabiskan jatah foto profil nomor itu. Mengganti atau menghapus foto lewat Kirim membuang simpanan itu |
 | `POST /devices/:kode/profil-bisnis/foto` | Body `atas_nama`, `gambar` (base64 JPEG ≤ 2 MB). Jawaban `{ diterapkan: true, terbaca_ulang }`. Audit `profil_bisnis.foto_ganti` |
 | `POST /devices/:kode/profil-bisnis/foto/hapus` | Body `atas_nama`. Audit `profil_bisnis.foto_hapus` |
 | `POST /devices/:kode/profil-bisnis/sampul` | Body `atas_nama`, `gambar` (base64 JPEG ≤ 4 MB). Jawaban `{ diterapkan: true, sampul_id, terbaca_ulang }`. Audit `profil_bisnis.sampul_ganti` |
 | `POST /devices/:kode/profil-bisnis/sampul/hapus` | Body `atas_nama`, `sampul_id?` (angka). Jawaban `{ dihapus: true, sampul_id }`, atau `409 sampul_tidak_dikenal` bila tidak ada foto sampul yang diketahui. Audit `profil_bisnis.sampul_hapus` |
 
-`terbaca_ulang`: `true` berarti WhatsApp menyimpan persis yang dikirim. `false` berarti yang tersimpan berbeda (dicatat ke log `kirim.profil_bisnis.beda`, tidak menggagalkan). `null` berarti tidak bisa dibaca balik. Gambar yang bukan JPEG atau terlalu besar ditolak dengan `422 gambar_invalid` sebelum sampai ke mesin.
+`terbaca_ulang`: `true` berarti WhatsApp menyimpan persis yang dikirim. `false` berarti yang tersimpan berbeda (dicatat ke log `kirim.profil_bisnis.beda`, tidak menggagalkan). `null` berarti tidak bisa dibaca balik.
+
+**Gambar.** Gambar yang bukan JPEG (produk: JPEG/PNG), terlalu besar, atau terlalu banyak ditolak dengan `422 gambar_invalid` sebelum sampai ke mesin, termasuk body yang melebihi batas rute (Fastify `413` diubah menjadi `422 gambar_invalid` pada rute bergambar, dan `413 body_too_large` dalam bentuk galat Kirim pada rute lain). Per nomor hanya satu tulisan bergambar (produk, foto profil, foto sampul) yang berjalan sekaligus di proses Kirim. Tulisan bergambar menunggu mesin sampai 120 detik, karena mesin mengunggah tiap gambar ke WhatsApp (sampai 30 detik per gambar) sebelum mengirim perubahannya.
+
+**Hasil tak pasti.** Bila mesin tidak menjawab tepat waktu, koneksi terputus, atau mesin menjawab `502 whatsapp_outcome_unknown` (WhatsApp tidak mengonfirmasi, mesin PR #28), perubahan itu mungkin sudah terjadi. Kirim menjawab `503 engine_outcome_unknown` dan tetap mencatat audit aksinya dengan `hasil: "tidak_pasti"`, sehingga tidak ada perubahan di WhatsApp yang tidak teraudit. Modul sebaiknya membaca ulang profil atau katalog sebelum mencoba lagi. Hanya koneksi yang ditolak mesin yang dianggap pasti tidak terjadi (`503 engine_unavailable`).
 
 ### 17.4 Menulis katalog (adendum 2026-11-09)
 
@@ -506,11 +510,13 @@ Katalog tidak lagi hanya dibaca: modul pemilik nomor bisa menambah, mengubah, da
 
 | Rute | Isi |
 | --- | --- |
-| `POST /devices/:kode/katalog` | Body `atas_nama`, `nama` (1–200), `deskripsi?` (≤ 2000), `harga?` (bilangan bulat satuan mata uang, mis. rupiah; `null` = tanpa harga), `mata_uang?` (ISO 4217, hanya bersama `harga`, bawaan `IDR`), `url?` (http(s), ≤ 500), `sku?` (≤ 100), `tersembunyi?` (bawaan `false`), `gambar?` (≤ 5 base64 JPEG/PNG, ≤ 2 MB per gambar, ≤ 6 MB seluruhnya). Jawaban `201 { produk, terbaca_ulang }` dengan `produk` berbentuk sama seperti di daftar katalog. Audit `katalog.tambah` |
-| `PATCH /devices/:kode/katalog/:id` | Body sama, dan seluruh isian diganti. `gambar` yang tidak disebut berarti gambar tetap. Audit `katalog.ubah` |
-| `POST /devices/:kode/katalog/:id/hapus` | Body `atas_nama`. Jawaban `{ dihapus: n }`. Audit `katalog.hapus` |
+| `POST /devices/:kode/katalog` | Header `Idempotency-Key` wajib (1–200). Body `atas_nama`, `nama` (1–200), `deskripsi?` (≤ 2000), `harga?` (bilangan bulat satuan mata uang, mis. rupiah; `null` = tanpa harga), `mata_uang?` (ISO 4217, hanya bersama `harga`, bawaan `IDR`), `url?` (http(s), ≤ 500), `sku?` (≤ 100), `tersembunyi?` (bawaan `false`), `gambar?` (≤ 5 base64 JPEG/PNG, ≤ 2 MB per gambar, ≤ 6 MB seluruhnya). Jawaban `201 { produk, terbaca_ulang }` dengan `produk` berbentuk sama seperti di daftar katalog. Audit `katalog.tambah`. Lihat "Sekali per kunci" di bawah |
+| `PATCH /devices/:kode/katalog/:id` | Ubah sebagian: body `atas_nama` dan minimal satu isian yang sama. Isian yang tidak disebut tetap seperti di WhatsApp sekarang. `null` mengosongkan `harga` (beserta mata uangnya), `url`, atau `sku`. `gambar` yang disebut mengganti semua gambar dan harus berisi minimal satu (`gambar: []` → `422 gambar_invalid`, gambar tetap). `gambar` yang tidak disebut berarti gambar tetap. `mata_uang` untuk produk tanpa harga → `400`. Id yang tidak ada di katalog → `404 produk_tidak_ada`. Audit `katalog.ubah` dengan `kolom` yang diubah |
+| `POST /devices/:kode/katalog/:id/hapus` | Body `atas_nama`. Jawaban `{ dihapus: n }`. Id yang tidak ada di katalog → `404 produk_tidak_ada`. Audit `katalog.hapus` |
 
-Audit katalog memuat id, nama, harga, `tersembunyi`, jumlah gambar, `status_tinjauan`, dan `terbaca_ulang`. Isinya data katalog, bukan data pribadi.
+**Sekali per kunci (migration `0018_kirim_katalog_tulis.sql`).** Sebelum mesin ditanya, Kirim menyimpan baris `kirim_catalog_writes` (`consumer_id`, `idempotency_key`, hash body, `status`). Setelah berhasil, statusnya `selesai` dan jawabannya disimpan (data katalog saja, tanpa nomor). Permintaan ulang dengan kunci dan body yang sama mendapat jawaban itu lagi (`200`, `ulangan: true`) tanpa membuat produk kedua. Kunci yang sama dengan body lain → `409 idempotency_key_conflict`. Kunci yang masih berjalan → `409 idempotency_request_in_progress`. Bila hasilnya tak pasti (atau masih `berjalan` setelah 10 menit), statusnya `tidak_pasti`, dan percobaan ulang dengan kunci itu ditolak `409 hasil_tidak_pasti`. Modul memeriksa katalog (`semua=1`), lalu memakai kunci baru bila produknya memang belum ada. Bila mesin atau WhatsApp jelas menolak, barisnya dihapus agar kunci bisa dipakai lagi.
+
+Audit katalog memuat id (`<kode>:baru` untuk penambahan yang hasilnya tak pasti), nama, harga, `tersembunyi`, jumlah gambar, `status_tinjauan`, dan `terbaca_ulang`, atau `hasil: "tidak_pasti"`. Isinya data katalog, bukan data pribadi.
 
 **Kompatibilitas mesin.** Kirim tidak memeriksa versi mesin. Mesin sebelum PR #27 tidak punya rute ini dan menjawab `404`, yang oleh Kirim diteruskan sebagai `422 engine_rejected`, sama seperti balasan cepat pada mesin sebelum v23. Semua rute §17.3–§17.4 mengikuti aturan §17: hanya nomor milik modul pemanggil (`403`), nomor nonaktif `422 device_inactive`, dan mesin tidak tersedia `503 engine_unavailable`.
 
@@ -537,10 +543,12 @@ Audit katalog memuat id, nama, harga, `tersembunyi`, jumlah gambar, `status_tinj
 | A-15 | Nama bisnis | Tidak bisa ditulis lewat Kirim, karena mengganti nama bisa memicu peninjauan WhatsApp. Ubah nama dilakukan di aplikasi WhatsApp Business (§17.3) |
 | A-16 | Batas profil | Deskripsi 512, alamat 256, e-mail 128, situs maks. 2 (seperti aplikasi WhatsApp Business). Foto profil JPEG ≤ 2 MB, foto sampul JPEG ≤ 4 MB |
 | A-17 | Mengosongkan isian profil dan produk | E-mail/alamat/deskripsi `""` dikirim apa adanya. `situs: []`, serta tautan atau SKU yang dihapus dari produk, belum terbukti dikosongkan oleh WhatsApp, jadi lihat `terbaca_ulang` |
-| A-18 | Ubah produk | Seluruh isian diganti (termasuk `tersembunyi` kembali `false` bila tidak disebut), kecuali gambar yang tetap bila `gambar` tidak disebut |
+| A-18 | Ubah produk | Ubah sebagian: isian yang tidak disebut tetap, diambil dari katalog WhatsApp saat itu (maks. 20 halaman × 100 produk). `gambar: []` ditolak (`422`) dan gambar tetap, karena mengosongkan gambar produk belum terbukti didukung WhatsApp |
 | A-19 | Gambar produk | Maks. 5 per produk di Kirim (WhatsApp mengizinkan 10), 2 MB per gambar, 6 MB seluruhnya, agar body tetap di bawah 9 MB. Produk tanpa gambar boleh dicoba. Bila WhatsApp menolaknya, jawabannya `422 engine_rejected` |
 | A-20 | Asal negara produk | Tidak diisi Kirim: produk baru ditandai bebas asal negara (`COUNTRY_ORIGIN_EXEMPT`), karena isinya layanan pendidikan |
 | A-21 | Hapus foto sampul tanpa id | Id diambil dari profil, lalu dari foto sampul yang terakhir dipasang mesin (hanya di memori, hilang saat mesin dimulai ulang). Selain itu `409 sampul_tidak_dikenal` |
+| A-22 | Hasil tak pasti | Penambahan produk tidak dicoba ulang otomatis dan tidak dicocokkan otomatis dengan katalog (nama bisa kembar); modul yang memeriksa. Batas waktu tulisan bergambar 120 detik, antrean tulisan bergambar per nomor hanya di dalam satu proses Kirim |
+| A-23 | Simpanan foto profil sendiri | 5 menit di memori per nomor, termasuk jawaban "tidak ada foto" |
 
 ## Riwayat
 
@@ -551,3 +559,4 @@ Audit katalog memuat id, nama, harga, `tersembunyi`, jumlah gambar, `status_tinj
 | 2026-11-05 | `durasi_detik` boleh `null` (panggilan diangkat di HP) |
 | 2026-11-06 | §17 balasan cepat dua arah dan katalog WhatsApp Business |
 | 2026-11-09 | §17.3 profil bisnis (baca utuh, tulis deskripsi/alamat/e-mail/situs/foto/sampul, tanpa nama) dan §17.4 katalog ditulis modul; mesin JalurPesan PR #27 |
+| 2026-11-09 | Review independen #195: `Idempotency-Key` untuk tambah produk (migration 0018), hasil tak pasti (`engine_outcome_unknown`, audit `tidak_pasti`, mesin PR #28), batas waktu 120 detik dan satu tulisan bergambar per nomor, gambar kebesaran `422 gambar_invalid` (termasuk 413), foto profil sendiri disimpan 5 menit, ubah produk sebagian, `404 produk_tidak_ada` |

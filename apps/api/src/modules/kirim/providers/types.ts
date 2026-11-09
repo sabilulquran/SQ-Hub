@@ -275,7 +275,9 @@ export class ProviderOperationError extends Error {
       | "session_reset_required"
       | "group_not_found"
       | "not_group_admin"
-      | "not_connected",
+      | "not_connected"
+      /** §17.3–§17.4: a write sent to WhatsApp without a sure answer; it may have been applied. */
+      | "outcome_unknown",
     message: string,
   ) {
     super(message);
