@@ -239,20 +239,37 @@ function hhmm(minutes: number): string {
   return `${String(Math.floor(minutes / 60)).padStart(2, "0")}:${String(minutes % 60).padStart(2, "0")}`;
 }
 
-/** The profile's hours in the shape `PUT …/jam-kerja` takes (§17.1), plus `janji_temu` for "by appointment" days. */
+/**
+ * The profile's hours in the shape `PUT …/jam-kerja` takes (§17.1), plus `janji_temu` for "by appointment" days. Each
+ * day once, with every range WhatsApp keeps for it in order (the phone may keep several, e.g. 08:00–12:00 and
+ * 13:00–16:00, as separate entries). A day WhatsApp does not list is closed and is left out.
+ */
 function hoursView(hours: ProviderBusinessProfile["hours"]) {
   if (!hours) return null;
-  const days = hours.days.flatMap((d) => {
+  const byDay = new Map<number, { ranges: Array<[number, number]>; appointment: boolean }>();
+  for (const d of hours.days) {
     const hari = DAY_NUMBER[d.day];
-    if (!hari) return [];
-    if (d.mode === "open_24h") return [{ hari, rentang: [{ buka: "00:00", tutup: "24:00" }], janji_temu: false }];
-    if (d.mode === "appointment_only") return [{ hari, rentang: [], janji_temu: true }];
-    if (d.mode === "specific_hours" && d.openMinutes !== null && d.closeMinutes !== null) {
-      return [{ hari, rentang: [{ buka: hhmm(d.openMinutes), tutup: hhmm(d.closeMinutes) }], janji_temu: false }];
+    if (!hari) continue;
+    const day = byDay.get(hari) ?? { ranges: [], appointment: false };
+    byDay.set(hari, day);
+    if (d.mode === "open_24h") day.ranges.push([0, 1440]);
+    else if (d.mode === "appointment_only") day.appointment = true;
+    else if (d.mode === "specific_hours" && d.openMinutes !== null && d.closeMinutes !== null && d.openMinutes < d.closeMinutes) {
+      day.ranges.push([d.openMinutes, d.closeMinutes]);
     }
-    return [];
-  });
-  return { zona: hours.timezone, hari: days.sort((a, b) => a.hari - b.hari) };
+  }
+  const hari = [...byDay.entries()]
+    .filter(([, day]) => day.ranges.length > 0 || day.appointment)
+    .sort(([a], [b]) => a - b)
+    .map(([number, day]) => {
+      const seen = new Set<string>();
+      const rentang = day.ranges
+        .sort((a, b) => a[0] - b[0] || a[1] - b[1])
+        .filter(([open, close]) => !seen.has(`${open}-${close}`) && Boolean(seen.add(`${open}-${close}`)))
+        .map(([open, close]) => ({ buka: hhmm(open), tutup: hhmm(close) }));
+      return { hari: number, rentang, janji_temu: day.appointment && rentang.length === 0 };
+    });
+  return { zona: hours.timezone, hari };
 }
 
 function profileView(profile: ProviderBusinessProfile) {
@@ -440,7 +457,8 @@ export class KirimBusiness {
       return withLink(productItem(p), own);
     });
     if (this.imageUrls.size > 5000) this.imageUrls.clear();
-    return { items, setelah: page.nextCursor };
+    // `katalog_ada`: false when the number has no catalog yet (made once in the WhatsApp Business app), null: not known.
+    return { items, setelah: page.nextCursor, katalog_ada: page.catalogExists ?? null };
   }
 
   /**
@@ -817,6 +835,10 @@ export class KirimBusiness {
 
 function engineError(error: unknown): Error {
   if (!(error instanceof ProviderOperationError)) return error as Error;
+  if (error.code === "catalog_missing") {
+    return new KirimApiError(422, "katalog_belum_ada",
+      "Nomor ini belum punya katalog WhatsApp Business. Buka WhatsApp Business di HP, pilih Alat bisnis lalu Katalog, buat katalognya sekali, lalu coba lagi.");
+  }
   if (error.code === "outcome_unknown") {
     return new KirimApiError(503, "engine_outcome_unknown", "Mesin tidak memberi jawaban pasti; perubahan mungkin sudah terjadi di WhatsApp. Periksa dulu sebelum mencoba lagi.");
   }

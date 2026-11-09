@@ -28,6 +28,7 @@ import {
   type ProviderCatalogProduct,
   type ProviderBusinessHours,
   type ProviderBusinessProfile,
+  type ProviderCatalogPage,
   type ProviderBusinessProfileUpdate,
   type ProviderProductInput,
 } from "./types.js";
@@ -401,7 +402,7 @@ export class JalurPesanProvider implements KirimProvider {
     return (response.body.labels as unknown[]).filter((name): name is string => typeof name === "string");
   }
 
-  async listCatalog(device: DeviceRef, cursor: string | null): Promise<{ products: ProviderCatalogProduct[]; nextCursor: string | null }> {
+  async listCatalog(device: DeviceRef, cursor: string | null): Promise<ProviderCatalogPage> {
     const response = await this.lifecycle("GET", device, `/catalog${cursor ? `?cursor=${encodeURIComponent(cursor)}` : ""}`);
     if (response.status !== 200 || !Array.isArray(response.body.products)) throw this.lifecycleError(response);
     return {
@@ -410,6 +411,7 @@ export class JalurPesanProvider implements KirimProvider {
         return product ? [product] : [];
       }),
       nextCursor: typeof response.body.nextCursor === "string" ? response.body.nextCursor : null,
+      catalogExists: response.body.catalog === "present" ? true : response.body.catalog === "missing" ? false : null,
     };
   }
 
@@ -490,6 +492,9 @@ export class JalurPesanProvider implements KirimProvider {
   }
 
   private productWrite(response: EngineResponse): { product: ProviderCatalogProduct; verified: boolean } {
+    if (response.status === 422 && response.body.code === "catalog_missing") {
+      throw new ProviderOperationError("catalog_missing", "this number has no WhatsApp Business catalog yet");
+    }
     if (response.status !== 200) throw this.lifecycleError(response);
     const product = readProduct(response.body.product);
     // The engine answered success but without a product it can name: WhatsApp may have it, so never a sure failure.

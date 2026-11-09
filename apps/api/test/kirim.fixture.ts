@@ -56,6 +56,8 @@ export class JalurPesanStub {
   readonly businessWrites: Array<{ tenantId: string; method: string; path: string; query: string; body: Record<string, unknown> }> = [];
   /** When false the profile and catalog-write routes answer a bare 404, like an engine before them. */
   businessWriteRoutes = true;
+  /** The number has no WhatsApp Business catalog (JalurPesan #30): the list says "missing", a create is 422. */
+  catalogMissing = false;
   /** The next product create is made, but answered 502 whatsapp_outcome_unknown (WhatsApp did not confirm it). */
   createThenUnknown = false;
   /** The next product create is made, but answered 200 without a product. */
@@ -173,6 +175,7 @@ export class JalurPesanStub {
     this.businessProfiles.clear();
     this.businessWrites.length = 0;
     this.businessWriteRoutes = true;
+    this.catalogMissing = false;
     this.createThenUnknown = false;
     this.createWithoutProduct = false;
     this.hangNextBusiness = false;
@@ -250,6 +253,9 @@ export class JalurPesanStub {
       if (Array.isArray(body.images)) target.imageUrl = body.images.length ? "https://mmg.whatsapp.net/baru.jpg" : null;
       return target;
     };
+    if (path === "/catalog/products" && method === "POST" && this.catalogMissing) {
+      return { status: 422, body: { success: false, error: "This number has no WhatsApp Business catalog yet", code: "catalog_missing" } };
+    }
     if (path === "/catalog/products" && method === "POST") {
       const product = fields({ id: `p-${list.length + 1}`, imageUrl: null, reviewStatus: "PENDING" });
       list.push(product);
@@ -439,6 +445,7 @@ export class JalurPesanStub {
       }
     }
     if (path === "/catalog" && request.method === "GET") {
+      if (this.catalogMissing) return { status: 200, body: { success: true, products: [], nextCursor: null, catalog: "missing" } };
       return { status: 200, body: { success: true, products: this.catalog.get(tenantId) ?? [], nextCursor: null } };
     }
     const parity = /^\/groups\/([^/]+)(?:\/(settings|requests|picture|leave))?$/.exec(path);

@@ -116,6 +116,13 @@ export interface ProviderCatalogProduct {
   reviewStatus?: string | null;
 }
 
+/** One page of the catalog (§17). */
+export interface ProviderCatalogPage {
+  products: ProviderCatalogProduct[];
+  nextCursor: string | null;
+  catalogExists?: boolean | null;
+}
+
 /** §17.4: a product as written to the catalog; `price` in thousandths of the currency, images JPEG/PNG (null keeps them). */
 export interface ProviderProductInput {
   name: string;
@@ -278,7 +285,9 @@ export class ProviderOperationError extends Error {
       | "not_group_admin"
       | "not_connected"
       /** §17.3–§17.4: a write sent to WhatsApp without a sure answer; it may have been applied. */
-      | "outcome_unknown",
+      | "outcome_unknown"
+      /** §17.4: the number has no WhatsApp Business catalog yet (JalurPesan 422 `catalog_missing`). */
+      | "catalog_missing",
     message: string,
   ) {
     super(message);
@@ -341,7 +350,11 @@ export interface KirimProvider {
    * on the phone are never touched. Returns the managed labels now on the chat.
    */
   setChatLabels(device: DeviceRef, chat: { jid: string; altJid: string | null }, managed: string[], labels: string[]): Promise<string[]>;
-  listCatalog(device: DeviceRef, cursor: string | null): Promise<{ products: ProviderCatalogProduct[]; nextCursor: string | null }>;
+  /**
+   * `catalogExists`: false when WhatsApp knows no catalog for the number (JalurPesan #30 `catalog: "missing"`), null
+   * when the engine does not say.
+   */
+  listCatalog(device: DeviceRef, cursor: string | null): Promise<ProviderCatalogPage>;
   /** §17.3: the profile read whole, and its texts, photo and cover photo written (`verified` from reading it back). */
   businessProfile(device: DeviceRef): Promise<ProviderBusinessProfile>;
   updateBusinessProfile(device: DeviceRef, update: ProviderBusinessProfileUpdate): Promise<{ verified: boolean | null; profile: ProviderBusinessProfile | null }>;
