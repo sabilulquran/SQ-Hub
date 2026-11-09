@@ -27,6 +27,9 @@ import {
   type ProviderQuickReply,
   type ProviderCatalogProduct,
   type ProviderBusinessHours,
+  type ProviderBusinessProfile,
+  type ProviderBusinessProfileUpdate,
+  type ProviderProductInput,
 } from "./types.js";
 
 /** Cache of engine `mediaId` per Kirim media and number, so a retry never uploads again (§3.2). */
@@ -393,16 +396,67 @@ export class JalurPesanProvider implements KirimProvider {
     if (response.status !== 200 || !Array.isArray(response.body.products)) throw this.lifecycleError(response);
     return {
       products: (response.body.products as unknown[]).flatMap((item) => {
-        const p = item as Record<string, unknown>;
-        if (!p || typeof p.id !== "string" || typeof p.name !== "string") return [];
-        return [{
-          id: p.id, name: p.name, description: typeof p.description === "string" ? p.description : "",
-          price: typeof p.price === "number" ? p.price : null, currency: typeof p.currency === "string" ? p.currency : null,
-          url: typeof p.url === "string" ? p.url : null, hidden: p.hidden === true, imageUrl: typeof p.imageUrl === "string" ? p.imageUrl : null,
-        }];
+        const product = readProduct(item);
+        return product ? [product] : [];
       }),
       nextCursor: typeof response.body.nextCursor === "string" ? response.body.nextCursor : null,
     };
+  }
+
+  // ------------------------------------------------------- §17.3–§17.4: WhatsApp Business profile and catalog writes
+
+  async businessProfile(device: DeviceRef): Promise<ProviderBusinessProfile> {
+    const response = await this.lifecycle("GET", device, "/business-profile");
+    const profile = response.status === 200 ? readBusinessProfile(response.body.profile) : null;
+    if (!profile) throw this.lifecycleError(response);
+    return profile;
+  }
+
+  async updateBusinessProfile(device: DeviceRef, update: ProviderBusinessProfileUpdate): Promise<{ verified: boolean | null; profile: ProviderBusinessProfile | null }> {
+    const response = await this.lifecycle("PATCH", device, "/business-profile", update);
+    if (response.status !== 200 || response.body.applied !== true) throw this.lifecycleError(response);
+    return { verified: typeof response.body.verified === "boolean" ? response.body.verified : null, profile: readBusinessProfile(response.body.profile) };
+  }
+
+  async setOwnProfilePicture(device: DeviceRef, jpeg: Buffer | null): Promise<{ verified: boolean | null }> {
+    const response = jpeg
+      ? await this.lifecycle("PUT", device, "/business-profile/picture", { image: jpeg.toString("base64") })
+      : await this.lifecycle("DELETE", device, "/business-profile/picture");
+    if (response.status !== 200 || response.body.applied !== true) throw this.lifecycleError(response);
+    return { verified: typeof response.body.verified === "boolean" ? response.body.verified : null };
+  }
+
+  async setCoverPhoto(device: DeviceRef, jpeg: Buffer): Promise<{ id: string; verified: boolean | null }> {
+    const response = await this.lifecycle("PUT", device, "/business-profile/cover-photo", { image: jpeg.toString("base64") });
+    if (response.status !== 200 || typeof response.body.id !== "string") throw this.lifecycleError(response);
+    return { id: response.body.id, verified: typeof response.body.verified === "boolean" ? response.body.verified : null };
+  }
+
+  async removeCoverPhoto(device: DeviceRef, id: string | null): Promise<{ id: string } | null> {
+    const response = await this.lifecycle("DELETE", device, `/business-profile/cover-photo${id ? `?id=${encodeURIComponent(id)}` : ""}`);
+    if (response.status === 409 && response.body.code === "cover_photo_unknown") return null;
+    if (response.status !== 200 || typeof response.body.id !== "string") throw this.lifecycleError(response);
+    return { id: response.body.id };
+  }
+
+  async createProduct(device: DeviceRef, input: ProviderProductInput): Promise<{ product: ProviderCatalogProduct; verified: boolean }> {
+    return this.productWrite(await this.lifecycle("POST", device, "/catalog/products", productBody(input)));
+  }
+
+  async updateProduct(device: DeviceRef, productId: string, input: ProviderProductInput): Promise<{ product: ProviderCatalogProduct; verified: boolean }> {
+    return this.productWrite(await this.lifecycle("PUT", device, `/catalog/products/${encodeURIComponent(productId)}`, productBody(input)));
+  }
+
+  async deleteProduct(device: DeviceRef, productId: string): Promise<number> {
+    const response = await this.lifecycle("DELETE", device, `/catalog/products/${encodeURIComponent(productId)}`);
+    if (response.status !== 200) throw this.lifecycleError(response);
+    return typeof response.body.deleted === "number" ? response.body.deleted : 0;
+  }
+
+  private productWrite(response: EngineResponse): { product: ProviderCatalogProduct; verified: boolean } {
+    const product = response.status === 200 ? readProduct(response.body.product) : null;
+    if (!product) throw this.lifecycleError(response);
+    return { product, verified: response.body.verified === true };
   }
 
   async leaveGroup(device: DeviceRef, groupJid: string): Promise<void> {
@@ -672,6 +726,76 @@ export class JalurPesanProvider implements KirimProvider {
     }
     return mapSendResponse(response, onMediaMissing);
   }
+}
+
+/** A catalog product from the engine; null when it lacks an id or a name. */
+function readProduct(item: unknown): ProviderCatalogProduct | null {
+  const p = item as Record<string, unknown> | null;
+  if (!p || typeof p !== "object" || typeof p.id !== "string" || typeof p.name !== "string") return null;
+  const text = (value: unknown) => (typeof value === "string" ? value : null);
+  return {
+    id: p.id,
+    name: p.name,
+    description: text(p.description) ?? "",
+    price: typeof p.price === "number" ? p.price : null,
+    currency: text(p.currency),
+    url: text(p.url),
+    hidden: p.hidden === true,
+    imageUrl: text(p.imageUrl),
+    retailerId: text(p.retailerId),
+    reviewStatus: text(p.reviewStatus),
+  };
+}
+
+function productBody(input: ProviderProductInput): Record<string, unknown> {
+  return {
+    name: input.name,
+    description: input.description,
+    price: input.price,
+    currency: input.currency,
+    url: input.url,
+    retailerId: input.retailerId,
+    hidden: input.hidden,
+    ...(input.images ? { images: input.images.map((image) => image.toString("base64")) } : {}),
+  };
+}
+
+/** The engine's business profile; null when it is not one. The photo URL itself is not kept (only whether there is one). */
+export function readBusinessProfile(value: unknown): ProviderBusinessProfile | null {
+  const p = value as Record<string, unknown> | null;
+  if (!p || typeof p !== "object" || Array.isArray(p)) return null;
+  const text = (v: unknown) => (typeof v === "string" ? v : null);
+  const hours = p.hours as { timezone?: unknown; days?: unknown } | null | undefined;
+  const cover = p.coverPhoto as { id?: unknown } | null | undefined;
+  const minutes = (v: unknown) => (typeof v === "number" && Number.isInteger(v) && v >= 0 && v <= 1440 ? v : null);
+  return {
+    name: text(p.name),
+    description: text(p.description) ?? "",
+    address: text(p.address),
+    email: text(p.email),
+    websites: Array.isArray(p.websites) ? p.websites.filter((w): w is string => typeof w === "string") : [],
+    categories: Array.isArray(p.categories)
+      ? p.categories.flatMap((c) => {
+          const item = c as { id?: unknown; name?: unknown } | null;
+          return item && typeof item.name === "string" ? [{ id: text(item.id), name: item.name }] : [];
+        })
+      : [],
+    hours: hours && typeof hours === "object"
+      ? {
+          timezone: text(hours.timezone),
+          days: Array.isArray(hours.days)
+            ? hours.days.flatMap((d) => {
+                const day = d as Record<string, unknown> | null;
+                return day && typeof day.day === "string" && typeof day.mode === "string"
+                  ? [{ day: day.day, mode: day.mode, openMinutes: minutes(day.openMinutes), closeMinutes: minutes(day.closeMinutes) }]
+                  : [];
+              })
+            : [],
+        }
+      : null,
+    hasPicture: typeof p.profilePictureUrl === "string" && p.profilePictureUrl.length > 0,
+    coverPhotoId: cover && typeof cover.id === "string" ? cover.id : null,
+  };
 }
 
 /** §3.2 send mapping. 429 (engine send safety) is treated as temporary; see PR notes. */

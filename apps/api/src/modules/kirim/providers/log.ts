@@ -15,6 +15,7 @@ import {
   type ProviderJoinRequest,
   type ProviderQuickReply,
   type ProviderCatalogProduct,
+  type ProviderBusinessProfile,
 } from "./types.js";
 
 export type KirimLog = (entry: Record<string, unknown>, message: string) => void;
@@ -203,6 +204,38 @@ export class LogProvider implements KirimProvider {
   }
 
   async listCatalog(): Promise<{ products: ProviderCatalogProduct[]; nextCursor: string | null }> {
+    throw new ProviderOperationError("engine_rejected", "log provider has no WhatsApp Business");
+  }
+
+  async businessProfile(): Promise<ProviderBusinessProfile> {
+    throw new ProviderOperationError("engine_rejected", "log provider has no WhatsApp Business");
+  }
+
+  async updateBusinessProfile(): Promise<{ verified: boolean | null; profile: ProviderBusinessProfile | null }> {
+    throw new ProviderOperationError("engine_rejected", "log provider has no WhatsApp Business");
+  }
+
+  async setOwnProfilePicture(): Promise<{ verified: boolean | null }> {
+    throw new ProviderOperationError("engine_rejected", "log provider has no WhatsApp Business");
+  }
+
+  async setCoverPhoto(): Promise<{ id: string; verified: boolean | null }> {
+    throw new ProviderOperationError("engine_rejected", "log provider has no WhatsApp Business");
+  }
+
+  async removeCoverPhoto(): Promise<{ id: string } | null> {
+    throw new ProviderOperationError("engine_rejected", "log provider has no WhatsApp Business");
+  }
+
+  async createProduct(): Promise<{ product: ProviderCatalogProduct; verified: boolean }> {
+    throw new ProviderOperationError("engine_rejected", "log provider has no WhatsApp Business");
+  }
+
+  async updateProduct(): Promise<{ product: ProviderCatalogProduct; verified: boolean }> {
+    throw new ProviderOperationError("engine_rejected", "log provider has no WhatsApp Business");
+  }
+
+  async deleteProduct(): Promise<number> {
     throw new ProviderOperationError("engine_rejected", "log provider has no WhatsApp Business");
   }
 }

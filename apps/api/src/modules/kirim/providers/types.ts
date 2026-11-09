@@ -110,6 +110,46 @@ export interface ProviderCatalogProduct {
   url: string | null;
   hidden: boolean;
   imageUrl: string | null;
+  /** The product's SKU (WhatsApp `retailer_id`), when the engine says. */
+  retailerId?: string | null;
+  /** WhatsApp's review of the product (e.g. "APPROVED", "PENDING", "REJECTED"), when the engine says. */
+  reviewStatus?: string | null;
+}
+
+/** §17.4: a product as written to the catalog; `price` in thousandths of the currency, images JPEG/PNG (null keeps them). */
+export interface ProviderProductInput {
+  name: string;
+  description: string;
+  price: number | null;
+  currency: string | null;
+  url: string | null;
+  retailerId: string | null;
+  hidden: boolean;
+  images: Buffer[] | null;
+}
+
+/** §17.3: the number's own WhatsApp Business profile as the engine reads it. */
+export interface ProviderBusinessProfile {
+  name: string | null;
+  description: string;
+  address: string | null;
+  email: string | null;
+  websites: string[];
+  categories: Array<{ id: string | null; name: string }>;
+  hours: {
+    timezone: string | null;
+    days: Array<{ day: string; mode: string; openMinutes: number | null; closeMinutes: number | null }>;
+  } | null;
+  hasPicture: boolean;
+  coverPhotoId: string | null;
+}
+
+/** §17.3: profile fields to change; one left out stays. The business name is never written. */
+export interface ProviderBusinessProfileUpdate {
+  description?: string;
+  address?: string;
+  email?: string;
+  websites?: string[];
 }
 
 /** WhatsApp Business hours: one entry per open day (JalurPesan business-hours); a day left out is closed. */
@@ -299,6 +339,19 @@ export interface KirimProvider {
    */
   setChatLabels(device: DeviceRef, chat: { jid: string; altJid: string | null }, managed: string[], labels: string[]): Promise<string[]>;
   listCatalog(device: DeviceRef, cursor: string | null): Promise<{ products: ProviderCatalogProduct[]; nextCursor: string | null }>;
+  /** §17.3: the profile read whole, and its texts, photo and cover photo written (`verified` from reading it back). */
+  businessProfile(device: DeviceRef): Promise<ProviderBusinessProfile>;
+  updateBusinessProfile(device: DeviceRef, update: ProviderBusinessProfileUpdate): Promise<{ verified: boolean | null; profile: ProviderBusinessProfile | null }>;
+  /** `null` removes the photo. */
+  setOwnProfilePicture(device: DeviceRef, jpeg: Buffer | null): Promise<{ verified: boolean | null }>;
+  setCoverPhoto(device: DeviceRef, jpeg: Buffer): Promise<{ id: string; verified: boolean | null }>;
+  /** `null` when no cover photo is known to remove (the engine's 409 `cover_photo_unknown`). */
+  removeCoverPhoto(device: DeviceRef, id: string | null): Promise<{ id: string } | null>;
+  /** §17.4: catalog products written; `verified` is whether WhatsApp's answer matches what was sent. */
+  createProduct(device: DeviceRef, input: ProviderProductInput): Promise<{ product: ProviderCatalogProduct; verified: boolean }>;
+  updateProduct(device: DeviceRef, productId: string, input: ProviderProductInput): Promise<{ product: ProviderCatalogProduct; verified: boolean }>;
+  /** How many products WhatsApp deleted (0: it did not know the product). */
+  deleteProduct(device: DeviceRef, productId: string): Promise<number>;
   setGroupSubject(device: DeviceRef, groupJid: string, subject: string): Promise<void>;
   setGroupDescription(device: DeviceRef, groupJid: string, description: string): Promise<void>;
   groupInviteCode(device: DeviceRef, groupJid: string): Promise<string>;
