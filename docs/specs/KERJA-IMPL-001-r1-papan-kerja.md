@@ -414,7 +414,7 @@ Dibangun di repository pada 2026-11-10. Butir di bawah adalah keputusan teknis y
 | Disk Mi8 | Pada 2026-11-10 sisa disk 8,4 GB, di bawah 10 GiB; production memakai `KERJA_MIN_FREE_DISK_BYTES` 5 GiB (`DRAFT`) sampai disk dilonggarkan |
 | Geser kartu | Pointer events tanpa pustaka: mouse langsung, sentuh setelah tekan 250 ms sehingga halaman tetap bisa digulir; di ponsel tab kolom menjadi sasaran lepas. Cadangan: tombol *Pindahkan* di panel kartu |
 | Pratinjau pengembangan | `?preview=kerja` (hanya saat pratinjau Vite aktif) memasang data contoh di peramban tanpa Keycloak dan basis data |
-| Klien Keycloak | `infra/keycloak/clients/kerja-sq.json` + `scripts/reconcile-kerja-clients.sh`, diuji dua kali jalan di workflow `keycloak-infra` |
+| Klien Keycloak | `infra/keycloak/clients/kerja-sq.json` + `scripts/reconcile-kerja-clients.sh`, diuji dua kali jalan di workflow `keycloak-infra`. Scope bawaan `basic acr profile email`, karena kode login bersama (hub-auth) selalu meminta `openid profile email` |
 
 Rute yang dibangun:
 

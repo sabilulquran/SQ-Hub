@@ -1124,8 +1124,10 @@ jobs:
           done
 
           # Sign-in page for its exact callback; any other redirect is refused; no client credentials.
-          auth="$KEYCLOAK_HOSTNAME/realms/sq-staff/protocol/openid-connect/auth?client_id=kerja-sq&response_type=code&scope=openid%20profile&code_challenge=E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM&code_challenge_method=S256&state=ci"
-          curl --fail --silent --show-error -o /dev/null "${auth}&redirect_uri=https%3A%2F%2Fkerja.sabilulquran.or.id%2Fapi%2Fauth%2Fcallback"
+          auth="$KEYCLOAK_HOSTNAME/realms/sq-staff/protocol/openid-connect/auth?client_id=kerja-sq&response_type=code&scope=openid%20profile%20email&code_challenge=E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM&code_challenge_method=S256&state=ci"
+          # The app asks for openid profile email (HubOidcProvider); a missing scope would bounce back with invalid_scope (302).
+          status="$(curl --silent -o /dev/null -w %{http_code} "${auth}&redirect_uri=https%3A%2F%2Fkerja.sabilulquran.or.id%2Fapi%2Fauth%2Fcallback")"
+          [[ "$status" == "200" ]] || { echo "kerja-sq sign-in page did not load for openid profile email ($status)" >&2; exit 1; }
           status="$(curl --silent -o /dev/null -w '%{http_code}' "${auth}&redirect_uri=https%3A%2F%2Fkirim.sabilulquran.or.id%2Fapi%2Fauth%2Fcallback")"
           [[ "$status" == "400" ]] || { echo "kerja-sq accepted a redirect outside its own host ($status)" >&2; exit 1; }
           token_url="$KEYCLOAK_HOSTNAME/realms/sq-staff/protocol/openid-connect/token"
