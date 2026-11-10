@@ -190,6 +190,10 @@ export class KerjaAttachments implements CopyAttachments {
     )).rows[0]!;
     if (row.diunggah_oleh !== viewer.actor && akses.peran !== "pj") forbidden("Hanya pengunggah atau penanggung jawab ruang yang bisa menghapus lampiran.");
     if (row.pemilik_jenis === "kartu") await requireCardWritable(this.pool, row.pemilik_id);
+    if (row.pemilik_jenis === "ceklis_item") {
+      const card = (await this.pool.query<{ kartu_id: string }>("SELECT c.kartu_id FROM kerja_ceklis_item i JOIN kerja_ceklis c ON c.id = i.ceklis_id WHERE i.id = $1", [row.pemilik_id])).rows[0];
+      if (card) await requireCardWritable(this.pool, card.kartu_id);
+    }
     await this.pool.query("UPDATE kerja_lampiran SET dihapus = true, dihapus_pada = now(), dihapus_oleh = $2 WHERE id = $1", [lampiranId, viewer.actor]);
     return { id: lampiranId };
   }
@@ -245,8 +249,8 @@ export class KerjaAttachments implements CopyAttachments {
     }
   }
 
-  /** Daily: files of attachments deleted more than `afterDays` ago leave the disk. */
-  async purgeDeleted(afterDays = 30): Promise<number> {
+  /** Daily: files of attachments deleted more than `afterDays` ago leave the disk (`DRAFT`: one day). */
+  async purgeDeleted(afterDays = 1): Promise<number> {
     const rows = await this.pool.query<{ id: string; ruang_id: string; kunci_penyimpanan: string }>(
       `SELECT id, ruang_id, kunci_penyimpanan FROM kerja_lampiran
        WHERE dihapus AND berkas_dibuang_pada IS NULL AND dihapus_pada < now() - make_interval(days => $1) LIMIT 500`,

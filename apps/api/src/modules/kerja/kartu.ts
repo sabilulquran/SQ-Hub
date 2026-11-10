@@ -287,7 +287,8 @@ export class KerjaCards {
   /** KERJA-001 §7.3 nomor 3: the text is emptied, the row stays so replies keep their parent. */
   async deleteComment(viewer: Viewer, komentarId: string) {
     const akses = await requireVia(this.pool, "komentar", komentarId, viewer, "kerja");
-    const row = (await this.pool.query<{ penulis: string; dihapus: boolean }>("SELECT penulis, dihapus FROM kerja_komentar WHERE id = $1", [komentarId])).rows[0]!;
+    const row = (await this.pool.query<{ penulis: string; dihapus: boolean; kartu_id: string }>("SELECT penulis, dihapus, kartu_id FROM kerja_komentar WHERE id = $1", [komentarId])).rows[0]!;
+    await requireCardWritable(this.pool, row.kartu_id);
     if (row.penulis !== viewer.actor && akses.peran !== "pj") forbidden("Hanya penulis atau penanggung jawab ruang yang bisa menghapus komentar.");
     if (row.dihapus) return { id: komentarId };
     await this.pool.query("UPDATE kerja_komentar SET dihapus = true, isi = '', isi_teks = '' WHERE id = $1", [komentarId]);

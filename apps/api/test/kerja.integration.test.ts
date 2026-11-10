@@ -545,9 +545,37 @@ describe("KERJA-IMPL-001 review follow-ups", () => {
     const used = async () => (await call(KEPALA_SMP, "GET", `/ruang/${seed.smp}/berkas`)).body.kuota.terpakai;
     expect(await used()).toBe(30 * 1024);
     await call(KEPALA_SMP, "DELETE", `/butir/${item}`);
-    expect(await used()).toBe(20 * 1024);
     await call(KEPALA_SMP, "DELETE", `/ceklis/${list}`);
+    // A deleted file holds its quota until it has left the disk, so upload-and-delete cannot fill the disk.
+    expect(await used()).toBe(30 * 1024);
+    expect(await pool.query("SELECT 1 FROM kerja_lampiran WHERE dihapus = false AND pemilik_jenis = 'ceklis_item'")).toMatchObject({ rowCount: 0 });
+    await pool.query("UPDATE kerja_lampiran SET dihapus_pada = now() - interval '2 days' WHERE dihapus");
+    expect(await kerja.attachments.purgeDeleted()).toBe(2);
     expect(await used()).toBe(0);
+  });
+
+  it("audits an admin rename, keeps archived cards read-only, and drops other boards' labels on move", async () => {
+    const seed = await seedRooms();
+    const before = await auditCount();
+    await kerja.rooms.adminUpdate("operator:test", seed.smp, { nama: "SMPIT", alasan: "Nama pendek" });
+    expect(await auditCount()).toBe(before + 1);
+
+    const kartu = await card(KEPALA_SMP, seed.smpBoard.kolom[0].id, { judul: "Arsip" });
+    const comment = (await call(KEPALA_SMP, "POST", `/kartu/${kartu}/komentar`, { isi: "Catatan" })).body.id;
+    const list = (await call(KEPALA_SMP, "POST", `/kartu/${kartu}/ceklis`, { nama: "L" })).body.id;
+    const item = (await call(KEPALA_SMP, "POST", `/ceklis/${list}/butir`, { nama: "B" })).body.id;
+    const file = (await upload(KEPALA_SMP, `/butir/${item}/lampiran`, "a.txt", Buffer.from("isi"))).body.id;
+    await call(KEPALA_SMP, "POST", `/kartu/${kartu}/arsip`);
+    expect((await call(KEPALA_SMP, "DELETE", `/komentar/${comment}`)).body.error).toBe("kartu_diarsipkan");
+    expect((await call(KEPALA_SMP, "DELETE", `/lampiran/${file}`)).body.error).toBe("kartu_diarsipkan");
+
+    await call(KEPALA_SMP, "POST", `/papan/${seed.smpBoard.id}/label`, { nama: "Penting", warna: "merah" });
+    const label = (await call(KEPALA_SMP, "GET", `/papan/${seed.smpBoard.id}`)).body.label[0].id;
+    const moving = await card(KEPALA_SMP, seed.smpBoard.kolom[0].id, { judul: "Pindah papan" });
+    await call(KEPALA_SMP, "PUT", `/kartu/${moving}/label`, { label: [label] });
+    const other = (await call(KEPALA_SMP, "POST", `/ruang/${seed.smp}/papan`, { nama: "Kalender" })).body;
+    expect((await call(KEPALA_SMP, "POST", `/kartu/${moving}/pindah`, { kolom_id: other.kolom[0].id, indeks: 0 })).status).toBe(200);
+    expect((await call(KEPALA_SMP, "GET", `/kartu/${moving}`)).body.label).toEqual([]);
   });
 
   it("raises a rejected proposal again when the reason changes", async () => {

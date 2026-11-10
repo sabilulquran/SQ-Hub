@@ -108,7 +108,7 @@ export function BerkasPage({ ruangId }: { ruangId: string }) {
             <div className="mb-4 rounded-2xl border border-border/70 bg-surface-raised p-4">
               <p className="text-sm font-semibold">Kuota lampiran ruang: {ukuranBerkas(kuota.terpakai)} dari {ukuranBerkas(kuota.batas)}</p>
               <div className="mt-2 h-2 overflow-hidden rounded-full bg-muted" aria-hidden="true"><div className={`h-full ${percent > 90 ? "bg-destructive" : "bg-brand-primary"}`} style={{ width: `${percent}%` }} /></div>
-              <p className="mt-1 text-xs text-muted-foreground">Termasuk lampiran semua kartu di ruang ini.</p>
+              <p className="mt-1 text-xs text-muted-foreground">Termasuk lampiran semua kartu di ruang ini, dan lampiran yang baru dihapus sampai dibersihkan esok hari.</p>
             </div>
             <ErrorNote message={error} />
             <Attachments items={items} canWork={canWork} canDeleteAll={room.peranSaya === "pj"} uploadPath={`/ruang/${ruangId}/lampiran`} act={async (run) => { setError(null); try { await run(); await files.reload(); } catch (failure) { setError(failure instanceof Error ? failure.message : "Gagal."); } }} setError={setError} />

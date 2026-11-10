@@ -43,6 +43,15 @@ describe("KERJA-IMPL-001 §10 nomor 2: pasted HTML is cleaned", () => {
     expect(sanitizeHtml("<scr<script>ipt>alert(1)</script>").html).not.toContain("<script");
   });
 
+  it("stays fast on hostile input (no rescan per unclosed bracket)", () => {
+    for (const payload of ["<a ".repeat(13333), "<a \"".repeat(10000), "<!x".repeat(13000), "<?x".repeat(13000), "<script ".repeat(5000), "<a href='".repeat(8000)]) {
+      const started = performance.now();
+      const result = sanitizeHtml(payload);
+      expect(performance.now() - started).toBeLessThan(150);
+      expect(result.html).not.toMatch(/<(?!\/?(p|br|strong|em|u|s|ul|ol|li|blockquote|code|pre|a|span)\b)/);
+    }
+  });
+
   it("keeps mentions only for people the room allows", () => {
     const html = `<span data-sebut="${PERSON}">@Fulan</span> <span data-sebut="hcis:employee:00000000-0000-4000-8000-000000000009">@Lain</span>`;
     const result = sanitizeHtml(html, (id) => id === PERSON);

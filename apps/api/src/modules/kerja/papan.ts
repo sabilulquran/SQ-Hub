@@ -338,8 +338,8 @@ export class KerjaBoards {
     const akses = await requireVia(this.pool, "kartu", kartuId, viewer, "kerja");
     await requireCardWritable(this.pool, kartuId);
     await withTransaction(this.pool, async (client) => {
-      const target = (await client.query<{ ruang_id: string; menandai_selesai: boolean }>(
-        "SELECT p.ruang_id, k.menandai_selesai FROM kerja_kolom k JOIN kerja_papan p ON p.id = k.papan_id WHERE k.id = $1 AND NOT k.dihapus",
+      const target = (await client.query<{ ruang_id: string; papan_id: string; menandai_selesai: boolean }>(
+        "SELECT p.ruang_id, k.papan_id, k.menandai_selesai FROM kerja_kolom k JOIN kerja_papan p ON p.id = k.papan_id WHERE k.id = $1 AND NOT k.dihapus",
         [input.kolom_id],
       )).rows[0];
       // R1 does not move cards between rooms (§6.5); a column elsewhere is simply not found.
@@ -351,6 +351,10 @@ export class KerjaBoards {
       await lockColumn(client, input.kolom_id);
       const posisi = await positionAt(client, input.kolom_id, kartuId, input.indeks);
       await client.query("UPDATE kerja_kartu SET kolom_id = $2, posisi = $3, diperbarui_pada = now() WHERE id = $1", [kartuId, input.kolom_id, posisi]);
+      await client.query(
+        "DELETE FROM kerja_kartu_label WHERE kartu_id = $1 AND label_id NOT IN (SELECT id FROM kerja_label WHERE papan_id = $2)",
+        [kartuId, target.papan_id],
+      );
       if (card.kolom_id !== input.kolom_id) {
         await writeHistory(client, { kartuId, aksi: "pindah_kolom", aktor: viewer.actor, lama: { kolom_id: card.kolom_id }, baru: { kolom_id: input.kolom_id } });
       }

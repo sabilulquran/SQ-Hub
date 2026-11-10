@@ -7,10 +7,11 @@
  * comments and `<o:p>` tags. Text is decoded and re-escaped, so a stray `<` cannot open a tag.
  */
 
-const DROP_WITH_CONTENT = /<(script|style|iframe|object|embed|template|noscript|xml|head|title|svg|math|textarea|select)\b[\s\S]*?<\/\1\s*>/gi;
-const DROP_UNCLOSED = /<(script|style|iframe|object|embed|template|noscript|xml|svg|math)\b[\s\S]*$/i;
-const COMMENTS = /<!--[\s\S]*?(-->|$)|<![^>]*>|<\?[\s\S]*?\?>/g;
-const TOKEN = /<(\/?)([a-zA-Z][a-zA-Z0-9:-]*)\b((?:[^>"']|"[^"]*"|'[^']*')*)>|([^<]+)|(<)/g;
+// Every pattern below stops at the next "<" (or consumes to the end), so a run of unclosed
+// "<" costs linear time instead of one rescan per "<" (independent review of PR #200).
+const BLOCK_OPENER = /<(script|style|iframe|object|embed|template|noscript|xml|head|title|svg|math|textarea|select)\b/gi;
+const COMMENTS = /<!--[\s\S]*?(?:-->|$)|<![^<>]*>|<\?[^<>]*>/g;
+const TOKEN = /<(\/?)([a-zA-Z][a-zA-Z0-9:-]*)\b((?:[^<>"']|"[^<"]*"|'[^<']*')*)>|([^<]+)|(<)/g;
 const ATTRIBUTE = /([a-zA-Z_:][-a-zA-Z0-9_:.]*)\s*(?:=\s*("([^"]*)"|'([^']*)'|([^\s"'>]+)))?/g;
 
 const RENAME: Record<string, string> = { b: "strong", i: "em", strike: "s", del: "s" };
@@ -62,8 +63,25 @@ export function safeHref(raw: string): string | null {
   return compact;
 }
 
+/** Drops script-like blocks with their content; an unclosed one drops everything after it. */
+function dropBlocks(input: string): string {
+  const opener = new RegExp(BLOCK_OPENER.source, "gi");
+  let out = "";
+  let last = 0;
+  for (let match = opener.exec(input); match; match = opener.exec(input)) {
+    out += input.slice(last, match.index);
+    const close = new RegExp(`</${match[1]!.toLowerCase()}\\s*>`, "gi");
+    close.lastIndex = opener.lastIndex;
+    const end = close.exec(input);
+    if (!end) return out;
+    last = end.index + end[0].length;
+    opener.lastIndex = last;
+  }
+  return out + input.slice(last);
+}
+
 export function sanitizeHtml(input: string, canMention: (personId: string) => boolean = () => false): SanitizedHtml {
-  const cleaned = input.replace(COMMENTS, "").replace(DROP_WITH_CONTENT, "").replace(DROP_UNCLOSED, "");
+  const cleaned = dropBlocks(input.replace(COMMENTS, ""));
   const out: string[] = [];
   const text: string[] = [];
   const mentions = new Set<string>();

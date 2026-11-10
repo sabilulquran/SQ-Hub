@@ -406,11 +406,12 @@ Dibangun di repository pada 2026-11-10. Butir di bawah adalah keputusan teknis y
 | Pengingat | H−1 hari = 24 jam sebelum, H−1 jam = 1 jam sebelum, sebagai instan mutlak. Kartu yang sudah masuk jam terakhir hanya mendapat H−1 jam (penanda H−1 hari ikut ditutup); waktu yang sudah lewat tidak mengirim apa-apa. Kartu di ruang yang diarsipkan tidak diingatkan. Penerimanya penanggung jawab kartu |
 | Notifikasi lain | `penugasan` ke orang yang baru ditugaskan (kartu atau butir ceklis), `sebutan` ke anggota yang baru disebut di uraian atau komentar; tidak ke diri sendiri |
 | Usulan Directory | Usulan yang ditolak tidak dibuat ulang untuk orang, ruang, dan jenis yang sama; usulan terbuka yang tidak lagi cocok dengan Directory menjadi `kedaluwarsa`. Peninjau tidak pernah diusulkan keluar |
-| Pekerjaan harian | Sekali per tanggal WIB setelah `KERJA_DIRECTORY_SYNC_HOUR` (bawaan 05.00): pembandingan Directory, pengarsipan ruang panitia, pembuangan berkas lampiran yang dihapus lebih dari **30 hari** (`DRAFT`), dan berkas sementara unggahan yang terputus |
+| Pekerjaan harian | Sekali per tanggal WIB setelah `KERJA_DIRECTORY_SYNC_HOUR` (bawaan 05.00): pembandingan Directory, pengarsipan ruang panitia, pembuangan berkas lampiran yang dihapus lebih dari **1 hari** (`DRAFT`); berkas yang dihapus tetap dihitung dalam kuota ruang sampai benar-benar dibuang, supaya unggah-hapus berulang tidak bisa menghabiskan disk, dan berkas sementara unggahan yang terputus |
 | Pemindahan lampiran > 1 tahun | **Belum dibangun.** Wajib ada sebelum lampiran pertama berumur setahun (November 2027): skrip yang memeriksa salinan Drive lalu menandai `di_arsip` dan menghapus berkas dari disk. `TBD` |
 | Pencarian | Full-text `indonesian` pada judul+uraian dan komentar, ditambah `ILIKE` pada judul untuk potongan kata |
 | Unduh | `inline` hanya untuk PDF dan gambar, dengan `Content-Security-Policy: sandbox`; selain itu `attachment`. `X-Content-Type-Options: nosniff` selalu |
-| Komposer | Tempel selalu sebagai teks polos; server tetap membersihkan HTML saat simpan dan saat tampil |
+| Komposer | Tempel selalu sebagai teks polos; server tetap membersihkan HTML saat simpan dan saat tampil. Pembersih berjalan dalam waktu linear (tanpa pindai ulang per `<` yang tidak ditutup) |
+| Disk Mi8 | Pada 2026-11-10 sisa disk 8,4 GB, di bawah 10 GiB; production memakai `KERJA_MIN_FREE_DISK_BYTES` 5 GiB (`DRAFT`) sampai disk dilonggarkan |
 | Geser kartu | Pointer events tanpa pustaka: mouse langsung, sentuh setelah tekan 250 ms sehingga halaman tetap bisa digulir; di ponsel tab kolom menjadi sasaran lepas. Cadangan: tombol *Pindahkan* di panel kartu |
 | Pratinjau pengembangan | `?preview=kerja` (hanya saat pratinjau Vite aktif) memasang data contoh di peramban tanpa Keycloak dan basis data |
 | Klien Keycloak | `infra/keycloak/clients/kerja-sq.json` + `scripts/reconcile-kerja-clients.sh`, diuji dua kali jalan di workflow `keycloak-infra` |

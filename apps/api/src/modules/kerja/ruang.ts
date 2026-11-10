@@ -175,15 +175,15 @@ export class KerjaRooms {
         if ((error as { code?: string }).code === "23505") throw new KerjaError(409, "unit_sudah_punya_ruang", "Unit ini sudah punya ruang tetap yang aktif.");
         throw error;
       }
-      if (needsReason) {
+      if (needsReason || admin) {
         await writeAudit(client, {
           aktor: actor,
           aksi: admin ? "admin.ruang.ubah" : "ruang.ubah",
           objekJenis: "ruang",
           objekRef: room.id,
           ruangId: room.id,
-          alasan: input.alasan!,
-          metadata: { berakhir_pada: input.berakhir_pada ?? null, status: input.status ?? null, kuota_mb: input.kuota_mb ?? null },
+          alasan: input.alasan ?? "Ubah nama ruang",
+          metadata: { nama: input.nama ?? null, berakhir_pada: input.berakhir_pada ?? null, status: input.status ?? null, kuota_mb: input.kuota_mb ?? null },
         });
       }
     });
@@ -209,6 +209,7 @@ export class KerjaRooms {
   async updateMember(viewer: Viewer, ruangId: string, person: string, input: z.infer<typeof memberUpdateSchema>) {
     await requireRoom(this.pool, ruangId, viewer, "kelola");
     await withTransaction(this.pool, async (client) => {
+      await client.query("SELECT id FROM kerja_ruang WHERE id = $1 FOR UPDATE", [ruangId]);
       const current = await client.query<{ peran: Peran }>("SELECT peran FROM kerja_ruang_anggota WHERE ruang_id = $1 AND person_id = $2 FOR UPDATE", [ruangId, person]);
       if (!current.rows[0]) notFound();
       if (current.rows[0].peran === "pj" && input.peran !== "pj") await assertAnotherPj(client, ruangId, person);
@@ -222,6 +223,7 @@ export class KerjaRooms {
   async removeMember(viewer: Viewer, ruangId: string, person: string, input: z.infer<typeof reasonSchema>) {
     await requireRoom(this.pool, ruangId, viewer, "kelola");
     await withTransaction(this.pool, async (client) => {
+      await client.query("SELECT id FROM kerja_ruang WHERE id = $1 FOR UPDATE", [ruangId]);
       const current = await client.query<{ peran: Peran }>("SELECT peran FROM kerja_ruang_anggota WHERE ruang_id = $1 AND person_id = $2 FOR UPDATE", [ruangId, person]);
       if (!current.rows[0]) notFound();
       if (current.rows[0].peran === "pj") await assertAnotherPj(client, ruangId, person);
@@ -317,7 +319,7 @@ export class KerjaRooms {
        FROM kerja_ruang r ORDER BY r.status, r.jenis DESC, r.nama`,
     );
     const used = new Map((await this.pool.query<{ ruang_id: string; total: string }>(
-      "SELECT ruang_id, sum(ukuran) AS total FROM kerja_lampiran WHERE NOT dihapus GROUP BY ruang_id",
+      "SELECT ruang_id, sum(ukuran) AS total FROM kerja_lampiran WHERE berkas_dibuang_pada IS NULL AND NOT di_arsip GROUP BY ruang_id",
     )).rows.map((row) => [row.ruang_id, Number(row.total)]));
     const items = [];
     for (const row of result.rows) {
@@ -487,7 +489,7 @@ export class KerjaRooms {
 }
 
 export async function usedBytes(db: Db, ruangId: string): Promise<number> {
-  const result = await db.query<{ total: string | null }>("SELECT sum(ukuran) AS total FROM kerja_lampiran WHERE ruang_id = $1 AND NOT dihapus", [ruangId]);
+  const result = await db.query<{ total: string | null }>("SELECT sum(ukuran) AS total FROM kerja_lampiran WHERE ruang_id = $1 AND berkas_dibuang_pada IS NULL AND NOT di_arsip", [ruangId]);
   return Number(result.rows[0]?.total ?? 0);
 }
 
