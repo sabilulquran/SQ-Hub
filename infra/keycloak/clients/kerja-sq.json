@@ -27,7 +27,8 @@
       "defaultClientScopes": [
         "basic",
         "acr",
-        "profile"
+        "profile",
+        "email"
       ],
       "optionalClientScopes": []
     }
