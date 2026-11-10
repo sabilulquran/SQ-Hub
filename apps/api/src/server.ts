@@ -15,6 +15,8 @@ import { KeycloakIdentityManagement } from "./modules/identity-management/client
 import { KeycloakTokenExchanger } from "./modules/governance/token-exchange.js";
 import { loadKirimConfig } from "./modules/kirim/config.js";
 import { createKirimModule } from "./modules/kirim/module.js";
+import { loadKerjaConfig } from "./modules/kerja/config.js";
+import { createKerjaModule } from "./modules/kerja/module.js";
 import {
   GovernanceService,
   PgGovernanceApplicationSource,
@@ -40,6 +42,7 @@ const config = loadConfig();
 const pool = createPool(config.databaseUrl);
 const directoryConfig = loadDirectoryConfig();
 const kirimConfig = loadKirimConfig();
+const kerjaConfig = loadKerjaConfig();
 const directory = new PgOrganizationDirectory(pool);
 const repository = new PgApplicationAccessRepository(pool);
 const accessService = new ApplicationAccessService(repository);
@@ -190,6 +193,22 @@ const kirim = kirimConfig
     })
   : undefined;
 
+// KERJA-IMPL-001 §11: KERJA_ENABLED=false means no route, no timer and no tile.
+let kerjaLog: (entry: Record<string, unknown>, message: string) => void = () => undefined;
+const kerja = kerjaConfig
+  ? createKerjaModule({
+      pool,
+      config: kerjaConfig,
+      keycloakIssuer: config.keycloakIssuer,
+      access: accessService,
+      directorySource: directory,
+      workspaceApplications,
+      hubOrigin,
+      secureCookies: config.hubCookieSecure,
+      log: (entry, message) => kerjaLog(entry, message),
+    })
+  : undefined;
+
 const app = buildApp({
   accessService,
   verifyMachineToken,
@@ -214,8 +233,10 @@ const app = buildApp({
     verifyMachineToken: createKeycloakMachineTokenVerifier(directoryConfig.read),
   } } : {}),
   ...(kirim ? { kirim } : {}),
+  ...(kerja ? { kerja } : {}),
 });
 kirimLog = (entry, message) => app.log.info(entry, message);
+kerjaLog = (entry, message) => app.log.info(entry, message);
 
 roleAdministrationLog = (entry) => app.log.info({ ...entry }, "role administration request");
 governanceLog = (entry) => app.log.info({ event: "governance.summary", ...entry }, "governance summary request");
@@ -223,11 +244,13 @@ governanceLog = (entry) => app.log.info({ event: "governance.summary", ...entry 
 const pullDirectory = directoryConfig.sync ? createDirectoryPull(directoryConfig.sync) : null;
 let stopDirectory: (() => Promise<void>) | undefined;
 let stopKirim: (() => Promise<void>) | undefined;
+let stopKerja: (() => Promise<void>) | undefined;
 
 const shutdown = async (signal: string) => {
   app.log.info({ signal }, "shutting down");
   await stopDirectory?.();
   await stopKirim?.();
+  await stopKerja?.();
   await app.close();
   await pool.end();
   process.exit(0);
@@ -239,6 +262,7 @@ process.on("SIGTERM", () => void shutdown("SIGTERM"));
 try {
   // §9: refuse to start when a Kirim SQ key cannot open its canary; no plaintext fallback.
   if (kirim) stopKirim = await kirim.start((entry, message) => app.log.warn(entry, message));
+  if (kerja) stopKerja = await kerja.start((entry, message) => app.log.info(entry, message));
   await app.listen({ port: config.port, host: config.host });
   if (pullDirectory) stopDirectory = startDirectoryScheduler({
     reconcile: (asOf) => directory.synchronize(asOf, pullDirectory),

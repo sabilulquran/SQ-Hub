@@ -14,7 +14,8 @@
     "access:admin": "node --env-file-if-exists=.env.local --import tsx src/cli/access-admin.ts",
     "platform:admin": "node --env-file-if-exists=.env.local --import tsx src/cli/platform-admin.ts",
     "directory:admin": "node --env-file-if-exists=.env.local --import tsx src/cli/organization-directory.ts",
-    "kirim:admin": "node --env-file-if-exists=.env.local --import tsx src/cli/kirim-admin.ts"
+    "kirim:admin": "node --env-file-if-exists=.env.local --import tsx src/cli/kirim-admin.ts",
+    "kerja:admin": "node --env-file-if-exists=.env.local --import tsx src/cli/kerja-admin.ts"
   },
   "dependencies": {
     "@fastify/multipart": "10.1.2",

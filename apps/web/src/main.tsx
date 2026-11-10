@@ -17,6 +17,9 @@ import { GovernancePageView } from "@/governance/GovernancePage";
 import { kirimAntreanFixture, kirimNomorFixture } from "@/dev/kirimFixture";
 import { KirimApp, KirimAppView } from "@/kirim/KirimApp";
 import { isKirimHost, resolveKirimRoute } from "@/kirim/routes";
+import { KerjaApp } from "@/kerja/KerjaApp";
+import { isKerjaHost } from "@/kerja/routes";
+import { installKerjaPreview } from "@/dev/kerjaFixture";
 import { resolveHubRoute } from "@/routes";
 import { initThemePreference } from "@/theme";
 import "@/styles.css";
@@ -115,8 +118,12 @@ function renderPreviewApp() {
   return <NotFoundPage />;
 }
 
+// Development preview of Kerja with in-memory data: `?preview=kerja` on any path Kerja knows.
+const kerjaPreview = previewEnabled && params.get("preview") === "kerja";
+if (kerjaPreview) installKerjaPreview();
+
 createRoot(document.getElementById("root")!).render(
-  <StrictMode>{isKirimHost(window.location.hostname) ? <KirimApp /> : previewEnabled ? renderPreviewApp() : <WorkspaceApp />}</StrictMode>,
+  <StrictMode>{isKirimHost(window.location.hostname) ? <KirimApp /> : isKerjaHost(window.location.hostname) || kerjaPreview ? <KerjaApp /> : previewEnabled ? renderPreviewApp() : <WorkspaceApp />}</StrictMode>,
 );
 
 if (previewEnabled) {
