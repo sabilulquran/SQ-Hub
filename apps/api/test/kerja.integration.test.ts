@@ -527,6 +527,45 @@ describe("KERJA-IMPL-001 attachments (§9)", () => {
   });
 });
 
+describe("KERJA-IMPL-001 review follow-ups", () => {
+  it("answers 404, not a database error, to a malformed room id", async () => {
+    await seedRooms();
+    expect((await call(KEPALA_SMP, "PATCH", "/ruang/bukan-uuid", { nama: "x" })).status).toBe(404);
+    expect((await call(KEPALA_SMP, "GET", "/ruang/bukan-uuid")).status).toBe(404);
+  });
+
+  it("frees the quota of attachments whose checklist item or checklist is deleted", async () => {
+    const seed = await seedRooms();
+    const kartu = await card(KEPALA_SMP, seed.smpBoard.kolom[0].id, { judul: "Butir berlampiran" });
+    const list = (await call(KEPALA_SMP, "POST", `/kartu/${kartu}/ceklis`, { nama: "Langkah" })).body.id;
+    const item = (await call(KEPALA_SMP, "POST", `/ceklis/${list}/butir`, { nama: "Foto" })).body.id;
+    const other = (await call(KEPALA_SMP, "POST", `/ceklis/${list}/butir`, { nama: "Scan" })).body.id;
+    expect((await upload(KEPALA_SMP, `/butir/${item}/lampiran`, "a.txt", Buffer.alloc(10 * 1024, "a"))).status).toBe(201);
+    expect((await upload(KEPALA_SMP, `/butir/${other}/lampiran`, "b.txt", Buffer.alloc(20 * 1024, "b"))).status).toBe(201);
+    const used = async () => (await call(KEPALA_SMP, "GET", `/ruang/${seed.smp}/berkas`)).body.kuota.terpakai;
+    expect(await used()).toBe(30 * 1024);
+    await call(KEPALA_SMP, "DELETE", `/butir/${item}`);
+    expect(await used()).toBe(20 * 1024);
+    await call(KEPALA_SMP, "DELETE", `/ceklis/${list}`);
+    expect(await used()).toBe(0);
+  });
+
+  it("raises a rejected proposal again when the reason changes", async () => {
+    const seed = await seedRooms();
+    directoryState.people[TU_SMP] = ["TU SMPIT", U_PKBM];
+    await kerja.rooms.compareWithDirectory();
+    const first = (await call(KEPALA_SMP, "GET", `/ruang/${seed.smp}/usulan`)).body.items as Array<{ id: string; alasan: string }>;
+    await call(KEPALA_SMP, "POST", `/usulan/${first[0]!.id}/tolak`, { alasan: "Masih membantu SMPIT" });
+    await kerja.rooms.compareWithDirectory();
+    expect((await call(KEPALA_SMP, "GET", `/ruang/${seed.smp}/usulan`)).body.items).toHaveLength(0);
+    directoryState.inactive.add(TU_SMP);
+    kerja.directory.invalidate();
+    await kerja.rooms.compareWithDirectory();
+    const again = (await call(KEPALA_SMP, "GET", `/ruang/${seed.smp}/usulan`)).body.items as Array<{ alasan: string }>;
+    expect(again.map((p) => p.alasan)).toEqual(["Tidak lagi aktif di Organization Directory."]);
+  });
+});
+
 describe("KERJA-IMPL-001 daily jobs", () => {
   it("runs once per Jakarta day after the configured hour", async () => {
     await seedRooms();

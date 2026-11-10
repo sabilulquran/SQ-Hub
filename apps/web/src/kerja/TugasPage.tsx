@@ -1,5 +1,5 @@
 import { AlertTriangle, CalendarClock, CheckSquare, MessageSquare, Paperclip, Users } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { kerjaFetch, type RuangRingkas, type TugasSaya } from "@/kerja/api";
 import { formatTanggal, JENIS_SELESAI, PERAN, relatifTenggat } from "@/kerja/format";
@@ -14,6 +14,10 @@ export function TugasPage({ preview }: { preview?: TugasData }) {
   const query = new URLSearchParams({ status, ...(ruang ? { ruang } : {}) }).toString();
   const { state } = useLoad<TugasData>(() => (preview ? Promise.resolve(preview) : kerjaFetch<TugasData>(`/tugas-saya?${query}`)), query, preview);
   const data = state.status === "ready" ? state.data : null;
+  const [rooms, setRooms] = useState<TugasData["ruang"]>(preview?.ruang ?? []);
+  useEffect(() => {
+    if (data) setRooms(data.ruang);
+  }, [data]);
   const lewat = data?.items.filter((item) => item.lewatTenggat) ?? [];
   const lain = data?.items.filter((item) => !item.lewatTenggat) ?? [];
 
@@ -25,7 +29,7 @@ export function TugasPage({ preview }: { preview?: TugasData }) {
       <div className="mb-4 grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
         <select aria-label="Saring ruang" className="sq-admin-input sm:w-56" value={ruang} onChange={(event) => setRuang(event.target.value)}>
           <option value="">Semua ruang</option>
-          {(data?.ruang ?? []).map((room) => <option key={room.id} value={room.id}>{room.nama}</option>)}
+          {rooms.map((room) => <option key={room.id} value={room.id}>{room.nama}</option>)}
         </select>
         <select aria-label="Saring status" className="sq-admin-input sm:w-44" value={status} onChange={(event) => setStatus(event.target.value as typeof status)}>
           <option value="terbuka">Belum selesai</option>

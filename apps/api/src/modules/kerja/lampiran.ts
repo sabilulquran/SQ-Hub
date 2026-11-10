@@ -213,7 +213,11 @@ export class KerjaAttachments implements CopyAttachments {
   }
 
   /** §6.3 "lampiran": each copied file gets its own storage key and counts against the quota. */
-  async copyForCard(client: PoolClient, input: { fromKartuId: string; toKartuId: string; ruangId: string; actor: string }): Promise<void> {
+  async discard(paths: string[]): Promise<void> {
+    await Promise.all(paths.map((path) => rm(path, { force: true })));
+  }
+
+  async copyForCard(client: PoolClient, input: { fromKartuId: string; toKartuId: string; ruangId: string; actor: string; written: string[] }): Promise<void> {
     const rows = (await client.query<{ nama: string; mime: string; ukuran: string; sha256: string; kunci_penyimpanan: string }>(
       "SELECT nama, mime, ukuran, sha256, kunci_penyimpanan FROM kerja_lampiran WHERE pemilik_jenis = 'kartu' AND pemilik_id = $1 AND NOT dihapus AND NOT di_arsip",
       [input.fromKartuId],
@@ -222,7 +226,7 @@ export class KerjaAttachments implements CopyAttachments {
     const total = rows.reduce((sum, row) => sum + Number(row.ukuran), 0);
     await this.assertDiskRoom();
     await this.assertQuota(client, input.ruangId, total);
-    const written: string[] = [];
+    const written = input.written;
     try {
       for (const row of rows) {
         const kunci = randomUUID();

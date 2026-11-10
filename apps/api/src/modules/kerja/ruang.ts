@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import type { Pool } from "pg";
 import { z } from "zod";
 
-import { requireRoom, type Peran, type Viewer } from "./access.js";
+import { isUuid, requireRoom, type Peran, type Viewer } from "./access.js";
 import { invalid, KerjaError, notFound, withTransaction, writeAudit, type Db } from "./db.js";
 import type { DirectoryView, KerjaDirectory } from "./directory.js";
 
@@ -136,6 +136,7 @@ export class KerjaRooms {
   }
 
   private async loadRoom(ruangId: string) {
+    if (!isUuid(ruangId)) notFound();
     const result = await this.pool.query<{ id: string; jenis: "tetap" | "panitia"; status: "aktif" | "arsip"; unit_id: string | null; berakhir_pada: string | null }>(
       "SELECT id, jenis, status, unit_id, to_char(berakhir_pada, 'YYYY-MM-DD') AS berakhir_pada FROM kerja_ruang WHERE id = $1",
       [ruangId],
@@ -315,6 +316,9 @@ export class KerjaRooms {
               COALESCE((SELECT array_agg(a.person_id) FROM kerja_ruang_anggota a WHERE a.ruang_id = r.id AND a.peran = 'pj'), '{}') AS pj
        FROM kerja_ruang r ORDER BY r.status, r.jenis DESC, r.nama`,
     );
+    const used = new Map((await this.pool.query<{ ruang_id: string; total: string }>(
+      "SELECT ruang_id, sum(ukuran) AS total FROM kerja_lampiran WHERE NOT dihapus GROUP BY ruang_id",
+    )).rows.map((row) => [row.ruang_id, Number(row.total)]));
     const items = [];
     for (const row of result.rows) {
       items.push({
@@ -322,7 +326,7 @@ export class KerjaRooms {
         unit: row.unit_id ? { id: row.unit_id, nama: view?.units.get(row.unit_id)?.nama ?? null } : null,
         anggota: Number(row.anggota),
         pj: row.pj.map((id) => personRef(view, id)),
-        kuota: { terpakai: await usedBytes(this.pool, row.id), batas: row.kuota_bytes ? Number(row.kuota_bytes) : this.options.roomQuotaBytes },
+        kuota: { terpakai: used.get(row.id) ?? 0, batas: row.kuota_bytes ? Number(row.kuota_bytes) : this.options.roomQuotaBytes },
       });
     }
     return { items };
@@ -450,7 +454,7 @@ export class KerjaRooms {
         const inserted = await this.pool.query(
           `INSERT INTO kerja_ruang_usulan (id, ruang_id, person_id, jenis, alasan, directory_version)
            SELECT $1, $2, $3, $4, $5, $6
-           WHERE NOT EXISTS (SELECT 1 FROM kerja_ruang_usulan WHERE ruang_id = $2 AND person_id = $3 AND jenis = $4 AND keputusan = 'ditolak')
+           WHERE NOT EXISTS (SELECT 1 FROM kerja_ruang_usulan WHERE ruang_id = $2 AND person_id = $3 AND jenis = $4 AND alasan = $5 AND keputusan = 'ditolak')
            ON CONFLICT DO NOTHING`,
           [randomUUID(), room.id, proposal.person, proposal.jenis, proposal.alasan, view.version],
         );

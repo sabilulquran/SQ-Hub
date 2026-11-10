@@ -93,12 +93,22 @@ export function PapanPage({ papanId, preview }: { papanId: string; preview?: Pap
 
   // ---- pointer drag ----
 
+  /** With a filter on, the drop index counts visible cards; the server orders the whole column. */
+  const fullIndex = (kolomId: string, kartuId: string, visibleIndex: number): number => {
+    const column = board?.kolom.find((item) => item.id === kolomId);
+    if (!column) return visibleIndex;
+    const all = column.kartu.filter((card) => card.id !== kartuId);
+    const shown = all.filter(visible);
+    if (visibleIndex < shown.length) return all.indexOf(shown[visibleIndex]!);
+    return shown.length === 0 ? all.length : all.indexOf(shown[shown.length - 1]!) + 1;
+  };
+
   const targetAt = (x: number, y: number, kartuId: string): DragState["target"] => {
     const elements = document.elementsFromPoint(x, y);
     const tab = elements.find((element) => element instanceof HTMLElement && element.dataset.kolomTab) as HTMLElement | undefined;
     if (tab && board) {
       const column = board.kolom.find((item) => item.id === tab.dataset.kolomTab);
-      return column ? { kolomId: column.id, indeks: column.kartu.filter((card) => card.id !== kartuId).length } : null;
+      return column ? { kolomId: column.id, indeks: column.kartu.filter((card) => card.id !== kartuId && visible(card)).length } : null;
     }
     const columnElement = elements.find((element) => element instanceof HTMLElement && element.dataset.kolomId) as HTMLElement | undefined;
     if (!columnElement) return null;
@@ -184,7 +194,7 @@ export function PapanPage({ papanId, preview }: { papanId: string; preview?: Pap
       openPanel(card.id);
       return;
     }
-    if (target) void move(current.kartuId, target.kolomId, target.indeks);
+    if (target) void move(current.kartuId, target.kolomId, fullIndex(target.kolomId, current.kartuId, target.indeks));
   };
 
   useEffect(() => () => document.removeEventListener("touchmove", preventTouchScroll), [preventTouchScroll]);

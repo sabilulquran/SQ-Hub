@@ -63,11 +63,14 @@ export function useLoad<T>(load: () => Promise<T>, key: string, initial?: T): { 
   const [state, setState] = useState<Loaded<T>>(initial === undefined ? { status: "loading" } : { status: "ready", data: initial });
   const loadRef = useRef(load);
   loadRef.current = load;
+  const latest = useRef(0);
   const run = useCallback(async () => {
+    const request = ++latest.current;
     try {
       const data = await loadRef.current();
-      setState({ status: "ready", data });
+      if (request === latest.current) setState({ status: "ready", data });
     } catch (error) {
+      if (request !== latest.current) return;
       const code = (error as { code?: string }).code;
       setState({ status: "error", message: error instanceof Error ? error.message : "Gagal memuat.", ...(code ? { code } : {}) });
     }

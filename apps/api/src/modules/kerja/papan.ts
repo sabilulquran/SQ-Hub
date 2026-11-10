@@ -57,7 +57,9 @@ export const REBALANCE_GAP = "0.000000001";
 const STEP = 1024;
 
 export interface CopyAttachments {
-  copyForCard(client: PoolClient, input: { fromKartuId: string; toKartuId: string; ruangId: string; actor: string }): Promise<void>;
+  /** Pushes every file it writes to `written`, so the caller can remove them if the transaction fails. */
+  copyForCard(client: PoolClient, input: { fromKartuId: string; toKartuId: string; ruangId: string; actor: string; written: string[] }): Promise<void>;
+  discard(paths: string[]): Promise<void>;
 }
 
 export class KerjaBoards {
@@ -482,6 +484,7 @@ export class KerjaBoards {
     }
     const members = await roomMembers(this.pool, akses.ruangId);
     const id = randomUUID();
+    const written: string[] = [];
     await withTransaction(this.pool, async (client) => {
       await lockColumn(client, kolomId);
       const position = await client.query<{ posisi: string }>("SELECT COALESCE(max(posisi), 0) + $2 AS posisi FROM kerja_kartu WHERE kolom_id = $1 AND NOT arsip", [kolomId, STEP]);
@@ -525,7 +528,10 @@ export class KerjaBoards {
           }
         }
       }
-      if (input.lampiran) await this.attachments.copyForCard(client, { fromKartuId: kartuId, toKartuId: id, ruangId: akses.ruangId, actor: viewer.actor });
+      if (input.lampiran) await this.attachments.copyForCard(client, { fromKartuId: kartuId, toKartuId: id, ruangId: akses.ruangId, actor: viewer.actor, written });
+    }).catch(async (error: unknown) => {
+      await this.attachments.discard(written);
+      throw error;
     });
     return { id };
   }

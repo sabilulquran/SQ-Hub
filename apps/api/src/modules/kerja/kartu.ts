@@ -165,7 +165,14 @@ export class KerjaCards {
   async deleteChecklist(viewer: Viewer, ceklisId: string) {
     await requireVia(this.pool, "ceklis", ceklisId, viewer, "kerja");
     await requireCardWritable(this.pool, await this.cardOf("ceklis", ceklisId));
-    await this.pool.query("UPDATE kerja_ceklis SET dihapus = true WHERE id = $1", [ceklisId]);
+    await withTransaction(this.pool, async (client) => {
+      await client.query("UPDATE kerja_ceklis SET dihapus = true WHERE id = $1", [ceklisId]);
+      await client.query(
+        `UPDATE kerja_lampiran SET dihapus = true, dihapus_pada = now(), dihapus_oleh = $2
+         WHERE pemilik_jenis = 'ceklis_item' AND NOT dihapus AND pemilik_id IN (SELECT id FROM kerja_ceklis_item WHERE ceklis_id = $1)`,
+        [ceklisId, viewer.actor],
+      );
+    });
     return { id: ceklisId };
   }
 
@@ -220,7 +227,13 @@ export class KerjaCards {
   async deleteItem(viewer: Viewer, itemId: string) {
     await requireVia(this.pool, "item", itemId, viewer, "kerja");
     await requireCardWritable(this.pool, await this.cardOf("item", itemId));
-    await this.pool.query("UPDATE kerja_ceklis_item SET dihapus = true WHERE id = $1", [itemId]);
+    await withTransaction(this.pool, async (client) => {
+      await client.query("UPDATE kerja_ceklis_item SET dihapus = true WHERE id = $1", [itemId]);
+      await client.query(
+        "UPDATE kerja_lampiran SET dihapus = true, dihapus_pada = now(), dihapus_oleh = $2 WHERE pemilik_jenis = 'ceklis_item' AND pemilik_id = $1 AND NOT dihapus",
+        [itemId, viewer.actor],
+      );
+    });
     return { id: itemId };
   }
 
