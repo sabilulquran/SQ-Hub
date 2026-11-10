@@ -1081,6 +1081,61 @@ jobs:
           docker compose --env-file "$KEYCLOAK_ENV_FILE" -f infra/keycloak/docker-compose.ci.yml \
             exec -T keycloak rm -f "$kcadm_config"
 
+      - name: Reconcile and verify the Kerja client (sq-staff)
+        shell: bash
+        run: |
+          kcadm_config=/tmp/kerja-clients-ci.kcadm
+          docker compose \
+            --env-file "$KEYCLOAK_ENV_FILE" \
+            -f infra/keycloak/docker-compose.ci.yml \
+            -f infra/keycloak/docker-compose.bootstrap.yml \
+            exec -T keycloak \
+            sh -ceu '
+              /opt/keycloak/bin/kcadm.sh config credentials \
+                --config "$1" \
+                --server http://127.0.0.1:8080 \
+                --realm master \
+                --user "$KC_BOOTSTRAP_ADMIN_USERNAME" \
+                --password "$KC_BOOTSTRAP_ADMIN_PASSWORD" >/dev/null
+            ' sh "$kcadm_config"
+
+          run_reconcile() {
+            KEYCLOAK_EXEC_MODE=compose \
+            KEYCLOAK_COMPOSE_FILE=infra/keycloak/docker-compose.ci.yml \
+            KEYCLOAK_KCADM_CONFIG="$kcadm_config" \
+              bash infra/keycloak/scripts/reconcile-kerja-clients.sh
+          }
+
+          # KERJA-IMPL-001 §7.1: only sq-staff, which already exists here (the SPMB step created it).
+          for other in sq-staff-staging sq-keluarga sq-karir; do
+            if KEYCLOAK_REALM="$other" run_reconcile; then
+              echo "reconcile-kerja-clients.sh accepted realm $other" >&2
+              exit 1
+            fi
+          done
+          for pass in first second; do
+            output="$(run_reconcile)"
+            printf '%s\n' "$output"
+            grep -q '^KERJA_CLIENTS_RECONCILE_IDEMPOTENT_PASS realm=sq-staff client=kerja-sq$' <<<"$output"
+            if [[ "$pass" == "second" ]] && grep -q 'CREATED' <<<"$output"; then
+              echo "second reconcile run created objects; it is not idempotent" >&2
+              exit 1
+            fi
+          done
+
+          # Sign-in page for its exact callback; any other redirect is refused; no client credentials.
+          auth="$KEYCLOAK_HOSTNAME/realms/sq-staff/protocol/openid-connect/auth?client_id=kerja-sq&response_type=code&scope=openid%20profile&code_challenge=E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM&code_challenge_method=S256&state=ci"
+          curl --fail --silent --show-error -o /dev/null "${auth}&redirect_uri=https%3A%2F%2Fkerja.sabilulquran.or.id%2Fapi%2Fauth%2Fcallback"
+          status="$(curl --silent -o /dev/null -w '%{http_code}' "${auth}&redirect_uri=https%3A%2F%2Fkirim.sabilulquran.or.id%2Fapi%2Fauth%2Fcallback")"
+          [[ "$status" == "400" ]] || { echo "kerja-sq accepted a redirect outside its own host ($status)" >&2; exit 1; }
+          token_url="$KEYCLOAK_HOSTNAME/realms/sq-staff/protocol/openid-connect/token"
+          status="$(curl --silent -o /dev/null -w '%{http_code}' -d grant_type=client_credentials -d client_id=kerja-sq "$token_url")"
+          [[ "$status" == "401" || "$status" == "400" ]] || { echo "kerja-sq issued a client-credentials token ($status)" >&2; exit 1; }
+
+          unset output
+          docker compose --env-file "$KEYCLOAK_ENV_FILE" -f infra/keycloak/docker-compose.ci.yml \
+            exec -T keycloak rm -f "$kcadm_config"
+
       - name: Reject committed Keycloak secrets
         shell: bash
         run: |
@@ -1136,6 +1191,8 @@ jobs:
           jq empty infra/keycloak/realm/sq-keluarga-desired-state.json
           bash -n infra/keycloak/scripts/reconcile-spmb-staff-clients.sh
           jq empty infra/keycloak/clients/spmb-sq-staff.json
+          bash -n infra/keycloak/scripts/reconcile-kerja-clients.sh
+          jq empty infra/keycloak/clients/kerja-sq.json
 
       - name: Karir stylesheet name follows its content
         # Cloudflare and browsers keep theme CSS for 30 days, so a changed file needs a new name.

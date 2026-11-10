@@ -1,0 +1,35 @@
+{
+  "realm": "sq-staff",
+  "clients": {
+    "kerja-sq": {
+      "clientId": "kerja-sq",
+      "name": "Kerja",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "clientAuthenticatorType": "client-secret",
+      "publicClient": false,
+      "bearerOnly": false,
+      "standardFlowEnabled": true,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": false,
+      "frontchannelLogout": true,
+      "fullScopeAllowed": false,
+      "consentRequired": false,
+      "redirectUris": [
+        "https://kerja.sabilulquran.or.id/api/auth/callback"
+      ],
+      "webOrigins": [],
+      "attributes": {
+        "pkce.code.challenge.method": "S256",
+        "post.logout.redirect.uris": "https://kerja.sabilulquran.or.id/"
+      },
+      "defaultClientScopes": [
+        "basic",
+        "acr",
+        "profile"
+      ],
+      "optionalClientScopes": []
+    }
+  }
+}

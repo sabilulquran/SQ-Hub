@@ -284,7 +284,7 @@ Berkas **tidak** dienkripsi di disk Mi8 (D-1), mengikuti pola Karir SQ: perlindu
 | `KERJA_MAX_UPLOAD_BYTES` | `26214400` (25 MB) |
 | `KERJA_ROOM_QUOTA_BYTES` | Bawaan `1073741824` (1 GB) |
 | `KERJA_REMINDER_INTERVAL_MS` | Bawaan `60000` |
-| `KERJA_DIRECTORY_SYNC_CRON` | Jam pembandingan usulan harian, WIB |
+| `KERJA_DIRECTORY_SYNC_HOUR` | Jam (0–23, WIB) pekerjaan harian; bawaan `5` |
 | `KERJA_MIN_FREE_DISK_BYTES` | `10737418240` (10 GiB) |
 
 ## 12. Uji
@@ -394,9 +394,43 @@ Diputuskan Product Owner 2026-11-10, semuanya mengikuti saran DRAFT kecuali D-6 
 - **`scripts/mi8/`:** `sq-core-kerja-media-offhost` disalin ke repo setelah dipasang di host, mengikuti aturan "production tetap otoritatif".
 - **Rencana kapasitas:** `KERJA_MEDIA_ROOT` masuk daftar direktori yang dipantau.
 
+## 18. Catatan implementasi (2026-11-10)
+
+Dibangun di repository pada 2026-11-10. Butir di bawah adalah keputusan teknis yang tidak tertulis di bagian sebelumnya; yang berlabel `DRAFT` boleh diubah tanpa mengubah skema.
+
+| Topik | Yang dibangun |
+| --- | --- |
+| Papan pertama | Setiap ruang baru (dan setiap papan baru) lahir dengan tiga kolom: *Akan dikerjakan*, *Sedang dikerjakan*, *Selesai* (yang terakhir `menandai_selesai`). `DRAFT` |
+| Aktor | `kerja_riwayat.aktor`, `kerja_audit.aktor`, dan kolom `*_oleh` berisi `person_id` Directory; sesi admin tanpa orang Directory tercatat `staff:<sha256(issuer, sub)>`; CLI `operator:<nama>`; pekerjaan terjadwal `system:*` |
+| Orang tanpa Directory | Pemegang Application Access yang tidak cocok dengan orang aktif di Directory (`identityRefs`) ditolak 403 `orang_belum_tercatat` di semua rute `/api/kerja/*`; layar admin tetap bisa dibuka |
+| Pengingat | H−1 hari = 24 jam sebelum, H−1 jam = 1 jam sebelum, sebagai instan mutlak. Kartu yang sudah masuk jam terakhir hanya mendapat H−1 jam (penanda H−1 hari ikut ditutup); waktu yang sudah lewat tidak mengirim apa-apa. Kartu di ruang yang diarsipkan tidak diingatkan. Penerimanya penanggung jawab kartu |
+| Notifikasi lain | `penugasan` ke orang yang baru ditugaskan (kartu atau butir ceklis), `sebutan` ke anggota yang baru disebut di uraian atau komentar; tidak ke diri sendiri |
+| Usulan Directory | Usulan yang ditolak tidak dibuat ulang untuk orang, ruang, dan jenis yang sama; usulan terbuka yang tidak lagi cocok dengan Directory menjadi `kedaluwarsa`. Peninjau tidak pernah diusulkan keluar |
+| Pekerjaan harian | Sekali per tanggal WIB setelah `KERJA_DIRECTORY_SYNC_HOUR` (bawaan 05.00): pembandingan Directory, pengarsipan ruang panitia, pembuangan berkas lampiran yang dihapus lebih dari **30 hari** (`DRAFT`), dan berkas sementara unggahan yang terputus |
+| Pemindahan lampiran > 1 tahun | **Belum dibangun.** Wajib ada sebelum lampiran pertama berumur setahun (November 2027): skrip yang memeriksa salinan Drive lalu menandai `di_arsip` dan menghapus berkas dari disk. `TBD` |
+| Pencarian | Full-text `indonesian` pada judul+uraian dan komentar, ditambah `ILIKE` pada judul untuk potongan kata |
+| Unduh | `inline` hanya untuk PDF dan gambar, dengan `Content-Security-Policy: sandbox`; selain itu `attachment`. `X-Content-Type-Options: nosniff` selalu |
+| Komposer | Tempel selalu sebagai teks polos; server tetap membersihkan HTML saat simpan dan saat tampil |
+| Geser kartu | Pointer events tanpa pustaka: mouse langsung, sentuh setelah tekan 250 ms sehingga halaman tetap bisa digulir; di ponsel tab kolom menjadi sasaran lepas. Cadangan: tombol *Pindahkan* di panel kartu |
+| Pratinjau pengembangan | `?preview=kerja` (hanya saat pratinjau Vite aktif) memasang data contoh di peramban tanpa Keycloak dan basis data |
+| Klien Keycloak | `infra/keycloak/clients/kerja-sq.json` + `scripts/reconcile-kerja-clients.sh`, diuji dua kali jalan di workflow `keycloak-infra` |
+
+Rute yang dibangun:
+
+```text
+/api/kerja/context · /launcher · /tugas-saya · /notifikasi[/dibaca|/:id/dibaca]
+/api/kerja/ruang[/:id] · /ruang/:id/{anggota[/:person],calon,usulan,yatim,arsip,berkas,cari,papan,lampiran}
+/api/kerja/usulan/:id/{terima,tolak}
+/api/kerja/papan/:id[/kolom|/label] · /kolom/:id[/kartu] · /label/:id
+/api/kerja/kartu/:id[/pindah|/tutup|/buka|/arsip|/pulihkan|/orang|/label|/salin|/ceklis|/komentar|/lampiran]
+/api/kerja/ceklis/:id[/butir] · /butir/:id[/lampiran] · /komentar/:id · /lampiran/:id
+/api/admin/kerja/{ruang[/:id[/pj]],unit,orang}
+```
+
 ## Riwayat
 
 | Tanggal | Perubahan |
 | --- | --- |
 | 2026-10-20 | DRAFT pertama untuk R1 dari KERJA-001 revisi 4 |
 | 2026-11-10 | ACCEPTED. Keputusan §16 dikunci (D-6 menjadi 1 GB; D-8–D-10 ditambahkan), migration menjadi `0019`, lockup "Kerja", langkah production mengikuti aturan rilis owner 2026-10-27 |
+| 2026-11-10 | Dibangun di repository (bawaan `KERJA_ENABLED=false`); catatan implementasi di §18; `KERJA_DIRECTORY_SYNC_CRON` menjadi `KERJA_DIRECTORY_SYNC_HOUR` |

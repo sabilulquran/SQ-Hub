@@ -25,6 +25,7 @@
     "seed": "npm --workspace @sq-hub/api run seed",
     "access:admin": "npm --workspace @sq-hub/api run access:admin --",
     "kirim:admin": "npm --workspace @sq-hub/api run kirim:admin --",
+    "kerja:admin": "npm --workspace @sq-hub/api run kerja:admin --",
     "db:up": "docker compose --env-file infra/.env.local -f infra/docker-compose.local.yml up -d postgres",
     "db:down": "docker compose --env-file infra/.env.local -f infra/docker-compose.local.yml down"
   }

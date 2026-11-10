@@ -17,6 +17,8 @@ import { listLauncherApplications } from "./modules/application-access/launcher.
 import { registerHubAuthRoutes } from "./modules/hub-auth/routes.js";
 import type { HubWorkspaceApplicationSource } from "./modules/hub-auth/workspace-repository.js";
 import type { KirimModule } from "./modules/kirim/module.js";
+import type { KerjaModule } from "./modules/kerja/module.js";
+import { KERJA_ADMIN_PREFIX, KERJA_PREFIX } from "./modules/kerja/routes.js";
 import { KIRIM_ADMIN_PREFIX } from "./modules/kirim/routes-admin.js";
 import { KIRIM_INTERNAL_PREFIX } from "./modules/kirim/routes-internal.js";
 import type { HubAuthRuntime } from "./modules/hub-auth/service.js";
@@ -77,6 +79,8 @@ export function buildApp(input: {
   logStream?: NodeJS.WritableStream;
   organizationDirectory?: Parameters<typeof registerOrganizationDirectoryRoutes>[1];
   kirim?: Pick<KirimModule, "register">;
+  /** KERJA-IMPL-001 §11: absent when KERJA_ENABLED is not true. */
+  kerja?: Pick<KerjaModule, "register">;
   /** HUB-IMPL-022: source of POST /internal/v1/application-access/launcher (same rows as /api/workspace). */
   launcher?: { applications: HubWorkspaceApplicationSource; hubOrigin?: string };
 }) {
@@ -92,6 +96,7 @@ export function buildApp(input: {
   if (input.organizationDirectory) registerOrganizationDirectoryRoutes(app, input.organizationDirectory);
   // KIRIM-IMPL-001 §11: KIRIM_ENABLED=false means the module is not passed and no route exists.
   if (input.kirim) input.kirim.register(app);
+  if (input.kerja) input.kerja.register(app);
 
   app.get("/health", async () => ({ status: "ok" }));
 
@@ -241,5 +246,7 @@ export function buildApp(input: {
 export function safeLogUrl(url: string): string {
   if (url.startsWith(DIRECTORY_PREFIX)) return DIRECTORY_PREFIX;
   if (url.startsWith(KIRIM_INTERNAL_PREFIX) || url.startsWith(KIRIM_ADMIN_PREFIX)) return url.split("?", 1)[0] ?? url;
+  // KERJA-IMPL-001 §10 nomor 5: a search query is card content, so it never reaches the log.
+  if (url.startsWith(`${KERJA_PREFIX}/`) || url.startsWith(KERJA_ADMIN_PREFIX)) return url.split("?", 1)[0] ?? url;
   return url;
 }
