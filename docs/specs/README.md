@@ -29,6 +29,7 @@ Indeks ini membantu maintainer membedakan specification yang sudah berada di `ma
 | KIRIM-IMPL-002 | [Kirim SQ R2: API percakapan, grup, dan impor riwayat](KIRIM-IMPL-002-r2-api-percakapan.md) | **ACCEPTED** (PO, 2026-10-19); T-1…T-6 disetujui. Langkah production §15 butuh persetujuan owner; J-1 di JalurPesan adalah gate kerja harian SPMB. |
 | KIRIM-IMPL-003 | [Kirim SQ: kartu WhatsApp per modul dan akses otomatis](KIRIM-IMPL-003-kartu-modul.md) | **ACCEPTED** (permintaan PO 2026-11-03). Kartu per aplikasi registry, nomor bersama, akses modul tanpa salin kredensial; HCIS konsumen pertama. |
 | KIRIM-IMPL-004 | [Kirim SQ K3.2: aksi pesan, panggilan, foto profil, grup bersama, dan API grup R3](KIRIM-IMPL-004-k3-2-aksi-pesan-panggilan-grup.md) | **Dibangun** di repository (2026-11-05) untuk SPMB-IMPL-005 K3.2/K3.4; batas edit/hapus/tambah anggota `DRAFT` sampai diukur. |
+| KERJA-IMPL-001 | [Kerja SQ R1: papan kerja](KERJA-IMPL-001-r1-papan-kerja.md) | **ACCEPTED** (PO, 2026-11-10); keputusan §16 dikunci (kuota ruang 1 GB, nama tampilan "Kerja", pengingat WhatsApp di R2). Modul `kerja` di SQ Hub mengikuti ADR-0011, bawaan `KERJA_ENABLED=false`. Langkah production §15 mengikuti aturan rilis owner 2026-10-27. |
 
 ## ID proposal aktif yang belum berada di `main`
 
@@ -39,7 +40,6 @@ Indeks ini membantu maintainer membedakan specification yang sudah berada di `ma
 | HUB-IMPL-024 | [Aktivasi pegawai diminta HCIS](HUB-IMPL-024-hcis-staff-activation-invite.md) | **ACCEPTED** 2026-11-04; `POST /internal/v1/staff-activation/invite` untuk machine client HCIS (`STAFF_ACTIVATION_ALLOWED_CLIENTS`): Akun SQ dari data HCIS, email Keycloak `VERIFY_EMAIL`+`UPDATE_PASSWORD`, akses `hcis` bila belum ada catatan. |
 | HUB-IMPL-022 | [Shared app launcher list](HUB-IMPL-022-shared-app-launcher-list.md) | **ACCEPTED** 2026-10-23 (in this PR until merged); internal launcher endpoint, Kirim SQ launcher, key -> icon table. Production activation needs separate owner approval. |
 | HUB-IMPL-021 | [Ringkasan Yayasan](HUB-IMPL-021-ringkasan-yayasan.md) | **ACCEPTED** 2026-10-17 (in this PR until merged); governance landing page for Organ Yayasan with per-app summaries, with ADR-0009. Production activation needs separate owner approval. |
-| KERJA-IMPL-001 | [Kerja SQ R1: papan kerja](KERJA-IMPL-001-r1-papan-kerja.md) | **DRAFT** 2026-10-20 (in this PR until merged); rooms per unit and per committee, boards and cards, checklists, comments, attachments, cross-room "my tasks", in-room search, card history, in-app reminders. Follows the ADR-0011 module pattern; no new process on Mi8. Seven decisions in §16 are open, and implementation is not authorized until the PO accepts. |
 
 ## Proposal yang disupersede
 

@@ -1,10 +1,10 @@
 # Kerja SQ — Desain modul (PRD)
 
-**Status:** DRAFT / DISCOVERY. Dokumen ini tidak mengizinkan implementasi, pembelian, atau perubahan production.
-**Spesifikasi:** KERJA-001 (usulan). Spesifikasi implementasi belum ada.
-**Tanggal:** 2026-11-03 (revisi 5 — permintaan ke ruang lain dan tampilan kalender masuk R2, §6.10–6.11)
+**Status:** R1 ACCEPTED lewat [KERJA-IMPL-001](../specs/KERJA-IMPL-001-r1-papan-kerja.md) (2026-11-10). R2 dan R3 tetap DRAFT / DISCOVERY sampai spesifikasinya sendiri diterima.
+**Spesifikasi:** KERJA-001. Implementasi R1: KERJA-IMPL-001.
+**Tanggal:** 2026-11-10 (revisi 6 — keputusan KERJA-IMPL-001 §16 dikunci, §14 ditutup)
 
-**Riwayat revisi:** r0 rancangan awal · r1 menambah §4.4 bangun-atau-adopsi, §6.6–6.9, §7, §8, Lampiran B · r2 keputusan peluncuran dan `kerja_admin` · r3 struktur nyata dan penyimpanan lampiran pindah ke pola Karir SQ, mengoreksi r2 yang menolaknya atas dasar skala yang keliru · r4 angka akhir · r5 permintaan ke ruang lain dan tampilan kalender (R2), dari kebutuhan ruang Marketing, Komunikasi & Media
+**Riwayat revisi:** r0 rancangan awal · r1 menambah §4.4 bangun-atau-adopsi, §6.6–6.9, §7, §8, Lampiran B · r2 keputusan peluncuran dan `kerja_admin` · r3 struktur nyata dan penyimpanan lampiran pindah ke pola Karir SQ, mengoreksi r2 yang menolaknya atas dasar skala yang keliru · r4 angka akhir · r5 permintaan ke ruang lain dan tampilan kalender (R2), dari kebutuhan ruang Marketing, Komunikasi & Media · r6 keputusan R1 dikunci (§2 nomor 14–16, §14), kuota ruang 1 GB, nama tampilan "Kerja", koreksi baris risiko lampiran di §13
 **Terkait:** ADR-0001 (batas platform), ADR-0006 (stack), ADR-0007 (Organization Directory), ADR-0011 + `kirim-sq-module-design.md` (pola modul di dalam Hub), `rapat-sq-module-design.md` (batas dengan register keputusan)
 **Referensi luar:** bedah aplikasi Cicle 3.22.5 (Lampiran A); penelusuran enam alat kanban sumber terbuka (Lampiran B)
 
@@ -113,6 +113,14 @@ Keputusan tambahan 2026-11-03:
 | --- | --- |
 | 12 | **Permintaan konten, kalender konten, dan persetujuan tayang divisi Marketing, Komunikasi & Media dikerjakan di Kerja SQ**, bukan di modul sendiri. Modul media yang menyusul hanya memegang bank media, tautan kampanye, dan siaran. |
 | 13 | Kerja SQ R2 menambah **permintaan ke ruang lain** (§6.10) dan **tampilan kalender** (§6.11). |
+
+Keputusan tambahan 2026-11-10:
+
+| # | Keputusan |
+| --- | --- |
+| 14 | **KERJA-IMPL-001 diterima** dengan seluruh keputusan §16-nya: lampiran tidak dienkripsi di disk, hanya `kerja_admin` yang membuat ruang di R1, organ tidak ikut sebagai peninjau di R1, SMPIT dan PKBM dua ruang, riwayat dan audit disimpan selamanya di R1, peran `peninjau` ada sejak R1. |
+| 15 | **Kuota lampiran bawaan 1 GB per ruang**, bukan 2 GB, supaya jumlah kuota 13 ruang tetap jauh di bawah disk bebas Mi8 (§7.4). |
+| 16 | **Nama di tampilan "Kerja"**, tanpa singkatan "SQ". "Kerja SQ" tetap nama dokumen dan kunci teknis (`kerja-sq`). Pengingat WhatsApp tetap R2, sebagai pekerjaan pertamanya. |
 
 ## 3. Batas tanggung jawab
 
@@ -460,6 +468,8 @@ Tabel berawalan `kerja_`, seluruhnya di basis data SQ Hub (§4.1).
 | `kerja_pengingat` | kartu, empat penanda, waktu terkirim masing-masing |
 | `kerja_riwayat` | kartu, aksi, aktor, pada, ringkasan nilai lama dan baru |
 
+KERJA-IMPL-001 §4 menambah empat tabel pendukung: `kerja_ruang_usulan` (usulan keanggotaan dari Directory, §5.3), `kerja_notifikasi` (pengingat dan penugasan in-app), `kerja_admins` (pemegang `kerja_admin`), dan `kerja_audit` (tindakan admin dan perubahan keanggotaan).
+
 ### 7.2 Entitas tahap berikutnya
 
 | Tabel | Tahap | Isi |
@@ -679,6 +689,8 @@ Dua lapis, dan jangan dicampur.
 | Anggota | Membuat dan mengerjakan kartu, berkomentar |
 | Peninjau | Hanya membaca. Untuk organ dan pengawas |
 
+Rincian izin per tindakan untuk tiap peran ada di KERJA-IMPL-001 §7.3. Bukan anggota ruang menerima 404, bukan 403.
+
 Empat catatan:
 
 1. **Tidak meniru enam tingkat peran Cicle.** Yayasan sudah punya hierarki di Directory; menambah hierarki kedua di dalam modul hanya menciptakan dua sumber kebenaran yang bisa berselisih.
@@ -724,7 +736,7 @@ Yang dibangun sebagai gantinya: **komentar pada kartu** (ada konteksnya) dan **p
 | **Ruang panitia menumpuk** | Tanggal berakhir wajib (§5.1) |
 | **Membangun ulang yang sudah ada** | Ditelusuri dan dijawab di §4.4 dan Lampiran B, dengan dua pemicu untuk meninjau ulang |
 | **Peluncuran serentak gagal diam-diam** | Keputusan §2 nomor 7 membuang pengaman bertahap, jadi pengamannya dipindah ke §13.1 |
-| **Beban serentak seluruh staf sejak hari pertama** | Gate memori §4.3 diukur dengan asumsi seluruh staf, bukan satu unit. Lampiran lewat tautan bertanda tangan (§7.4) menjaga byte tidak melewati Mi8 |
+| **Beban serentak seluruh staf sejak hari pertama** | Gate memori §4.3 diukur dengan asumsi seluruh staf, bukan satu unit. Lampiran melewati Mi8 (pola Karir SQ, §7.4), jadi dijaga batas 25 MB per berkas, kuota 1 GB per ruang, dan penolakan unggah saat disk bebas di bawah 10 GiB |
 
 ### 13.1 Pengaman untuk peluncuran serentak
 
@@ -749,14 +761,14 @@ Keempat pengaman di atas tetap berlaku, tetapi sebagai kebiasaan kerja, bukan se
 | --- | --- | --- |
 | 1 | ~~Unit mana yang memakai lebih dulu~~ | **Terjawab 2026-10-20**: seluruh unit sekaligus (§2 nomor 7). Pengamannya di §13.1 |
 | 2 | ~~Siapa `kerja_admin`~~ | **Terjawab 2026-10-20**: Kepala HCM (§2 nomor 8) |
-| 3 | Modul di Hub atau proses sendiri | **Modul di Hub untuk R1**, dengan pengukuran RSS sebelum/sesudah. Tinjau ulang setelah R1 dipakai sebulan; §4.1 sudah menyiapkan jalan ekstraksi, dan §4.4 menyebut dua pemicu |
+| 3 | Modul di Hub atau proses sendiri | **Terjawab 2026-11-10: modul di Hub untuk R1**, dengan pengukuran RSS sebelum/sesudah. Tinjau ulang setelah R1 dipakai sebulan; §4.1 sudah menyiapkan jalan ekstraksi, dan §4.4 menyebut dua pemicu |
 | 4 | ~~Di mana lampiran disimpan~~ | **Terjawab 2026-10-20**: pola Karir SQ — disk Mi8 dengan salinan terenkripsi ke Drive (§2 nomor 9, §7.4). Yang tersisa hanya angka batas ukuran berkas; usul 25 MB |
-| 5 | Retensi kartu dan lampiran ruang yang sudah ditutup | **Kartu dan riwayatnya selamanya, lampiran ditinjau setelah setahun.** Angka usulan, belum dihitung terhadap disk |
-| 6 | Apakah peninjau organ melihat seluruh ruang | **Tidak.** Organ melihat Ringkasan Yayasan (angka), bukan isi kartu tiap unit. Beri akses isi hanya bila diminta dan dicatat |
-| 7 | Apakah R1 perlu aplikasi ponsel | **Tidak.** Web responsif dulu, tetapi papan wajib bisa dipakai pada lebar ponsel sejak R1 (§8) |
+| 5 | Retensi kartu dan lampiran ruang yang sudah ditutup | **Terjawab 2026-11-10**: kartu, riwayat, dan audit selamanya di R1; lampiran berumur lebih dari setahun dipindah ke salinan Drive saja (KERJA-IMPL-001 §9, D-5) |
+| 6 | Apakah peninjau organ melihat seluruh ruang | **Terjawab 2026-11-10: tidak** (KERJA-IMPL-001 D-3). Organ melihat Ringkasan Yayasan (angka), bukan isi kartu tiap unit. Beri akses isi hanya bila diminta dan dicatat |
+| 7 | Apakah R1 perlu aplikasi ponsel | **Terjawab 2026-11-10: tidak.** Web responsif dulu, tetapi papan wajib bisa dipakai pada lebar ponsel sejak R1 (§8) |
 | 8 | ~~Berapa wakil kepala di tiap unit sekolah~~ | **Terjawab 2026-10-20**: total 26 pengguna tahap pertama (§1.3). Tidak ada lagi yang menghalangi `KERJA-IMPL-001` |
-| 9 | Kapan wakil kepala ikut memakai | **Setelah kepala unitnya paham**, bukan bersamaan. Mengikuti urutan sosialisasi yang sudah ditetapkan (§13.1) |
-| 10 | Batas ukuran lampiran per berkas | **25 MB.** Alasannya kapasitas Mi8 sebagai server, bukan perangkat pengguna (§7.4) |
+| 9 | Kapan wakil kepala ikut memakai | **Terjawab 2026-11-10: setelah kepala unitnya paham**, bukan bersamaan. Mengikuti urutan sosialisasi yang sudah ditetapkan (§13.1) |
+| 10 | Batas ukuran lampiran per berkas | **Terjawab 2026-11-10: 25 MB.** Alasannya kapasitas Mi8 sebagai server, bukan perangkat pengguna (§7.4) |
 | 11 | Siapa boleh mengajukan permintaan (§6.10) | **DRAFT: semua pemegang Application Access `kerja-sq`.** Memperluas ke staf di luar 26 pengguna tahap pertama adalah keputusan peluncuran tersendiri |
 | 12 | Apakah pengaju bisa membatalkan permintaannya sendiri | **DRAFT: ya, selama kartu masih di kolom masuk.** Setelah dipindah, pembatalan lewat komentar ke ruang |
 
@@ -766,9 +778,8 @@ Keempat pengaman di atas tetap berlaku, tetapi sebagai kebiasaan kerja, bukan se
 2. ~~Putuskan §14 nomor 1 dan 2.~~ **Selesai 2026-10-20.**
 3. ~~Tetapkan tujuan penyimpanan lampiran.~~ **Selesai 2026-10-20** (§2 nomor 9).
 4. ~~Tulis `KERJA-IMPL-001` untuk R1 saja.~~ **DRAFT ditulis 2026-10-20**: [KERJA-IMPL-001](../specs/KERJA-IMPL-001-r1-papan-kerja.md). Tidak ada ADR baru yang diperlukan — modul mengikuti pola ADR-0011 yang sudah diterima.
-5. **Putuskan tujuh butir di KERJA-IMPL-001 §16**, lalu terima spesifikasinya. Setelah itu implementasi di repository diizinkan; langkah production tetap satu per satu dengan persetujuan owner.
-
-Tidak ada kode yang ditulis sebelum spesifikasi diterima.
+5. ~~Putuskan butir KERJA-IMPL-001 §16, lalu terima spesifikasinya.~~ **Selesai 2026-11-10.** Implementasi R1 di repository diizinkan; langkah production mengikuti KERJA-IMPL-001 §15.
+6. Spesifikasi R2 ditulis setelah R1 dipakai sebulan (§13.1 nomor 2), dimulai dari pengingat WhatsApp lewat Kirim SQ.
 
 ## Lampiran A — Apa yang diambil dari Cicle
 
