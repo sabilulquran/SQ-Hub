@@ -2,7 +2,7 @@
 
 **Status:** ACCEPTED by the Product Owner on 2026-11-12 (decisions 1–8 of 2026-11-03, go-ahead 2026-11-12). Items marked `DRAFT` are agent defaults awaiting confirmation.
 **Date:** 2026-11-12
-**Supersedes:** ADR-0009 for the organs' entry point. ADR-0009's contract rules (domains own the numbers, per-user token exchange, aggregate-only summaries) stay in force.
+**Supersedes:** ADR-0009 for the organs' entry point and the three ADR-0009 points listed under "ADR-0009 points replaced". Every other ADR-0009 rule stays in force.
 **Specification:** ORGAN-IMPL-001 (`docs/specs/ORGAN-IMPL-001-portal-organ.md`)
 **Related:** ADR-0001, ADR-0003, ADR-0009, HUB-IMPL-021, HUB-IMPL-023; HCIS ORG-003, ORG-010, ORG-013 (`docs/domain/organ-account-approver.md`), GOV-001 (`docs/product/organ-portal-concept.md`)
 
@@ -24,17 +24,18 @@ Constraints: Mi8VPS has about 1 GiB of free memory, so a new long-running proces
 ## Decision
 
 ### D1 Hostname, client, and session of its own
-- The portal is served at `organ.sabilulquran.or.id` with its own Keycloak OIDC client (`sq-organ`, staff realm), its own host-only session cookie, and its own web bundle. TOTP stays mandatory (HUB-IMPL-021).
-- Only an identity with an **effective Organ Yayasan membership** may sign in. Anyone else gets a plain refusal page with a link to SQ Hub.
+- The portal is served at `organ.sabilulquran.or.id` with its own Keycloak OIDC client (`sq-organ`, staff realm), its own host-only session cookie, and its own pages. TOTP stays mandatory (HUB-IMPL-021); for decisions it is proved with a Keycloak Level of Authentication (D4).
+- Only an identity with an **effective Organ Yayasan membership** and Application Access to `organ` may sign in, checked by the portal at the callback and again on every request. Anyone else gets a plain refusal page with a link to SQ Hub.
+- A portal session is bound to the `sq-organ` client: a Hub session presented under the portal cookie is refused.
 - Hub's `/yayasan` becomes a redirect to the portal once the portal is live. Members who are also staff keep Hub for their staff work.
 
 ### D2 Runs inside the SQ Hub API process (`DRAFT`, recommended)
-The portal's backend is a separate route group in the existing SQ Hub API, selected by host, with its own web bundle in this repository (`apps/organ-web`). Reasons:
+The portal's backend is a separate route group in the existing SQ Hub API, selected by host, with its pages in the existing `apps/web` build. Reasons:
 - no new process on Mi8VPS;
 - it reuses the membership records, the registry fields, the token-exchange client, and the governance-summary validation that HUB-IMPL-021 already built and proved;
 - membership administration stays in SQ Admin Center, where the Platform Administrator already works.
 
-The route group never serves the staff launcher, and the staff host never serves portal routes. A later split into its own process is a deployment change, not a contract change.
+The route group never serves the staff launcher, and the staff host never serves portal routes. Host selection applies to browser routes only; internal and machine-token routes on loopback are unaffected. The pages follow the Kirim SQ precedent (the existing `apps/web` build, routed by `location.host`), so no web process is added. A later split into its own process is a deployment change, not a contract change.
 
 ### D3 Domains own numbers, decisions, and rules
 ADR-0001 and ADR-0009 hold. The portal:
@@ -46,25 +47,35 @@ ADR-0001 and ADR-0009 hold. The portal:
 Deciding is a mutation, so it does not reuse the read token of the summary:
 - a separate audience per application for decisions (for HCIS `hcis-organ-decision`), separate from `GOVERNANCE_SUMMARY_AUDIENCE`;
 - `azp` must be the portal client `sq-organ`, never `sq-hub`;
-- the token must carry proof of TOTP (`acr`) from the current session;
+- the token must carry proof of TOTP as a Level of Authentication (`acr` = `"2"`, `DRAFT`), reached by a step-up with `max_age` 900 seconds just before the exchange. A trusted device (HUB-IMPL-012) and a recovery code do not meet it (`DRAFT`). The realm does not issue such a level today, so this is configuration work, and R2 waits until a Mi8VPS probe proves `acr` survives the exchange;
+- the token is single use and short lived: the domain spends its `jti` (a second presentation is `409`) and refuses a token older than 60 seconds from `iat`, as HUB-IMPL-023 does for actor assertions;
+- the portal refuses before any exchange when the membership is not effective or the step-up is stale; the decision audience is reached only through an optional client scope, never a default one;
 - the domain keeps its own checks: step ownership, capability, self-approval by person, audit.
 
 This is the "token exchange on the decision route" that HCIS ORG-013-3 left `TBD`. It needs an ORG-010 amendment in HCIS and Keycloak configuration on Mi8VPS. Until both exist, the portal links to HCIS `/board` for decisions (cookie session, already live).
 
 ### D5 Monthly reports are composed from immutable monthly snapshots
+
+Monthly snapshots are pulled by a separate machine client `sq-organ-reports` (service account only, no login flow), whose token carries one audience per application for monthly snapshots and nothing else. `sq-organ` has no service account. A report section is shown to a member only while that application's live summary for that member answers `ready`, so a member whose domain role is missing or revoked never sees that application's figures.
 - Each application decides when its month is **closed** and then publishes an immutable **monthly governance snapshot** (aggregate only, the summary contract plus `period` and `revision`).
 - HCIS's close marker is the payroll period of that month reaching `APPROVED`, exposed only as "month final" with no period id or amount (`DRAFT`, GOV-001). The other applications define theirs in their own specs.
 - The portal stores the composed monthly report: the snapshots it received, their revisions, and the analysis text. **This is the one narrow exception to ADR-0009's "Hub never keeps past summaries"**: the stored values are aggregates that the owning application already published as final, the owner of each figure stays the application, and a reopened month arrives as a new revision rather than an edit.
 - A section whose application has not closed the month reads "Belum final", never a provisional figure.
 
 ### D6 Analysis by the Claude API, from aggregates only
-- Input: only the aggregate values already shown on the page, the period, and the metric labels. No names, identifiers, per-person rows, approval contents, or free text written by users. The approval queue goes in only as counts and ages.
+- Input: only the aggregate values of the monthly snapshots, the period, and the metric labels. No names, identifiers, per-person rows, approval contents, per-member decision counts, or free text written by users.
 - Output: 3–5 bullets in Indonesian, each citing the metric keys it rests on. The portal rejects a bullet whose cited keys are not in the input and drops the whole analysis when nothing valid is left.
-- Model: `claude-opus-5-5` with structured output and server-side refusal fallback. The model id, the input hash, and the time are stored with the text. Text is labelled "Dibuat AI" and is never regenerated silently.
+- Model: `claude-opus-5-5` with structured output and server-side refusal fallback. The model that actually served the request (`response.model`), the input hash, and the time are stored with the text. Text is labelled "Dibuat AI" and is never regenerated silently.
 - The API key lives in the Hub server environment only; it never reaches the browser.
 
 ### D7 Collective decisions are out of scope
 Every organ decision in the portal is individual. Meetings, circulars, and quorum need their own specification first.
+
+## ADR-0009 points replaced
+
+1. **Actions (ADR-0009: any action happens in the owning app, never in Hub).** The portal may *forward* an individual decision. Rules, state, and audit stay in the owning application (D4).
+2. **Actions or documents of their own as a new domain application.** The portal stays a module in the Hub process until there is a reason to split it (D2). It still owns no domain data or rules.
+3. **Per-user domain access.** Monthly snapshots are read by a machine client, but each section is shown only to members whose live summary from that application is `ready` (D5).
 
 ## Alternatives considered
 
