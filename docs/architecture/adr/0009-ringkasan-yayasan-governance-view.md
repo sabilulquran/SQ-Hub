@@ -1,6 +1,6 @@
 # ADR-0009: Ringkasan Yayasan — Governance View in SQ Hub
 
-**Status:** ACCEPTED by the Product Owner on 2026-10-17
+**Status:** ACCEPTED by the Product Owner on 2026-10-17. **Entry point superseded by [ADR-0012](0012-portal-organ-yayasan.md) (2026-11-12):** the organs move to `organ.sabilulquran.or.id`; the contract rules below stay in force.
 **Date:** 2026-10-17
 **Specification:** HUB-IMPL-021 (ACCEPTED)
 

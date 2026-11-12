@@ -1,6 +1,6 @@
 # HUB-IMPL-021 — Ringkasan Yayasan
 
-**Status:** ACCEPTED by the Product Owner on 2026-10-17. Acceptance authorizes implementation under this contract. Production activation on Mi8VPS, including the Keycloak token-exchange setup, still needs review, CI, and explicit owner approval.
+**Status:** ACCEPTED by the Product Owner on 2026-10-17. §5 (the Ringkasan Yayasan page as the organs' landing) is superseded by ORGAN-IMPL-001 once `PORTAL_ORGAN_ENABLED` is on; §1–§4 are reused by it; §1 is amended (Application Access `organ` is revoked when any membership ends) and §3 is extended to v1.1 (`decisions`) by ORGAN-IMPL-001. Acceptance authorizes implementation under this contract. Production activation on Mi8VPS, including the Keycloak token-exchange setup, still needs review, CI, and explicit owner approval.
 **Product:** SQ Hub
 **Area:** Governance view / cross-application summaries
 **Date:** 2026-10-17
