@@ -17,6 +17,8 @@ export interface WorkspaceCapabilities {
   platformAdministration: boolean;
   /** HUB-IMPL-021: show Ringkasan Yayasan (effective Organ Yayasan membership). */
   governanceView?: boolean;
+  /** ORGAN-IMPL-001 §1.3: the Portal Organ Yayasan, for members while it is live. */
+  organPortalUrl?: string;
 }
 
 export interface WorkspaceSnapshot {
@@ -283,7 +285,16 @@ export interface GovernanceSummary {
   metrics: GovernanceMetric[];
   charts?: GovernanceChart[];
   attention?: Array<{ label: string; count: number; href: string }>;
+  /** ORGAN-IMPL-001 §2 (v1.1): the viewer's own pending decisions. */
+  decisions?: GovernanceDecision[];
   detailUrl: string;
+}
+
+export interface GovernanceDecision {
+  label: string;
+  count: number;
+  oldestAgeDays: number;
+  href: string;
 }
 
 export type GovernanceCard =

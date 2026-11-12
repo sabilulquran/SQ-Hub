@@ -15,6 +15,8 @@ import { KeycloakIdentityManagement } from "./modules/identity-management/client
 import { KeycloakTokenExchanger } from "./modules/governance/token-exchange.js";
 import { loadKirimConfig } from "./modules/kirim/config.js";
 import { createKirimModule } from "./modules/kirim/module.js";
+import { loadOrganPortalConfig } from "./modules/organ-portal/config.js";
+import { createOrganPortalModule } from "./modules/organ-portal/module.js";
 import { loadKerjaConfig } from "./modules/kerja/config.js";
 import { createKerjaModule } from "./modules/kerja/module.js";
 import {
@@ -42,6 +44,7 @@ const config = loadConfig();
 const pool = createPool(config.databaseUrl);
 const directoryConfig = loadDirectoryConfig();
 const kirimConfig = loadKirimConfig();
+const organPortalConfig = loadOrganPortalConfig();
 const kerjaConfig = loadKerjaConfig();
 const directory = new PgOrganizationDirectory(pool);
 const repository = new PgApplicationAccessRepository(pool);
@@ -132,6 +135,10 @@ const hubAuth = new HubAuthService(
     sessionMaxHours: config.hubSessionMaxHours,
     transactionTtlMinutes: config.hubOidcTransactionTtlMinutes,
     secureCookies: config.hubCookieSecure,
+    // ORGAN-IMPL-001 §1.2: sessions are bound to their client; rows from before the column are Hub's.
+    sessionClientId: config.hubOidcClientId,
+    acceptLegacySessions: true,
+    ...(organPortalConfig ? { organPortalUrl: `${organPortalConfig.publicOrigin}/` } : {}),
   },
   new HubTokenVault(config.hubOidcClientSecret),
   platformAdmin,
@@ -193,6 +200,22 @@ const kirim = kirimConfig
     })
   : undefined;
 
+// ORGAN-IMPL-001 §12: PORTAL_ORGAN_ENABLED=false means no route and `/yayasan` stays in Hub.
+let organLog: (entry: { applicationKey: string; status: unknown; latencyMs: number }) => void = () => undefined;
+const organPortal = organPortalConfig
+  ? createOrganPortalModule({
+      pool,
+      config: organPortalConfig,
+      keycloakIssuer: config.keycloakIssuer,
+      access: accessService,
+      memberships: organMembershipStore,
+      observations: governanceObservations,
+      workspaceApplications,
+      secureCookies: config.hubCookieSecure,
+      log: (entry) => organLog(entry),
+    })
+  : undefined;
+
 // KERJA-IMPL-001 §11: KERJA_ENABLED=false means no route, no timer and no tile.
 let kerjaLog: (entry: Record<string, unknown>, message: string) => void = () => undefined;
 const kerja = kerjaConfig
@@ -234,7 +257,9 @@ const app = buildApp({
   } } : {}),
   ...(kirim ? { kirim } : {}),
   ...(kerja ? { kerja } : {}),
+  ...(organPortal ? { organPortal } : {}),
 });
+organLog = (entry) => app.log.info({ event: "organ.summary", ...entry }, "organ portal summary request");
 kirimLog = (entry, message) => app.log.info(entry, message);
 kerjaLog = (entry, message) => app.log.info(entry, message);
 

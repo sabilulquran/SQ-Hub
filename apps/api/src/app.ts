@@ -17,6 +17,7 @@ import { listLauncherApplications } from "./modules/application-access/launcher.
 import { registerHubAuthRoutes } from "./modules/hub-auth/routes.js";
 import type { HubWorkspaceApplicationSource } from "./modules/hub-auth/workspace-repository.js";
 import type { KirimModule } from "./modules/kirim/module.js";
+import type { OrganPortalModule } from "./modules/organ-portal/module.js";
 import type { KerjaModule } from "./modules/kerja/module.js";
 import { KERJA_ADMIN_PREFIX, KERJA_PREFIX } from "./modules/kerja/routes.js";
 import { KIRIM_ADMIN_PREFIX } from "./modules/kirim/routes-admin.js";
@@ -81,6 +82,8 @@ export function buildApp(input: {
   kirim?: Pick<KirimModule, "register">;
   /** KERJA-IMPL-001 §11: absent when KERJA_ENABLED is not true. */
   kerja?: Pick<KerjaModule, "register">;
+  /** ORGAN-IMPL-001 §12: absent when PORTAL_ORGAN_ENABLED is not true. */
+  organPortal?: Pick<OrganPortalModule, "register">;
   /** HUB-IMPL-022: source of POST /internal/v1/application-access/launcher (same rows as /api/workspace). */
   launcher?: { applications: HubWorkspaceApplicationSource; hubOrigin?: string };
 }) {
@@ -97,6 +100,7 @@ export function buildApp(input: {
   // KIRIM-IMPL-001 §11: KIRIM_ENABLED=false means the module is not passed and no route exists.
   if (input.kirim) input.kirim.register(app);
   if (input.kerja) input.kerja.register(app);
+  if (input.organPortal) input.organPortal.register(app);
 
   app.get("/health", async () => ({ status: "ok" }));
 

@@ -25,6 +25,15 @@ export interface HubSessionRecord extends HubSessionIdentity {
   expiresAt: Date;
 }
 
+/**
+ * ORGAN-IMPL-001 §1.2: a session is read only by the client that issued it. `acceptLegacy` lets
+ * the SQ Hub configuration keep reading rows written before `client_id` existed.
+ */
+export interface HubSessionClient {
+  clientId: string;
+  acceptLegacy: boolean;
+}
+
 export interface HubAuthStore {
   createTransaction(input: {
     tokenHash: string;
@@ -42,8 +51,10 @@ export interface HubAuthStore {
     replaceSessionTokenHash?: string | null;
     expiresAt: Date;
     context: HubRequestContext;
+    /** ORGAN-IMPL-001 §1.2: the OIDC client that issued the session. */
+    clientId?: string | null;
   }): Promise<HubSessionRecord>;
-  getSession(tokenHash: string, idleSeconds: number): Promise<HubSessionRecord | null>;
+  getSession(tokenHash: string, idleSeconds: number, client?: HubSessionClient): Promise<HubSessionRecord | null>;
   updateAccountRefreshToken(sessionId: string, ciphertext: string): Promise<void>;
   revokeSession(tokenHash: string, context: HubRequestContext): Promise<void>;
 }
@@ -155,6 +166,7 @@ export class PgHubAuthRepository implements HubAuthStore {
     replaceSessionTokenHash?: string | null;
     expiresAt: Date;
     context: HubRequestContext;
+    clientId?: string | null;
   }): Promise<HubSessionRecord> {
     const client = await this.pool.connect();
     try {
@@ -219,8 +231,9 @@ export class PgHubAuthRepository implements HubAuthStore {
             account_refresh_token_ciphertext,
             expires_at,
             ip_address,
-            user_agent
-          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+            user_agent,
+            client_id
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
           RETURNING
             id AS "sessionId",
             identity_issuer AS "identityIssuer",
@@ -246,6 +259,7 @@ export class PgHubAuthRepository implements HubAuthStore {
           effectiveExpiresAt,
           input.context.ipAddress,
           input.context.userAgent,
+          input.clientId ?? null,
         ],
       );
       const row = result.rows[0];
@@ -306,7 +320,7 @@ export class PgHubAuthRepository implements HubAuthStore {
     }
   }
 
-  async getSession(tokenHash: string, idleSeconds: number): Promise<HubSessionRecord | null> {
+  async getSession(tokenHash: string, idleSeconds: number, client?: HubSessionClient): Promise<HubSessionRecord | null> {
     const result = await this.pool.query<SessionRow>(
       `
         SELECT
@@ -325,9 +339,10 @@ export class PgHubAuthRepository implements HubAuthStore {
           AND revoked_at IS NULL
           AND expires_at > now()
           AND last_seen_at > now() - ($2::double precision * interval '1 second')
+          AND ($3::text IS NULL OR client_id = $3 OR ($4::boolean AND client_id IS NULL))
         LIMIT 1
       `,
-      [tokenHash, idleSeconds],
+      [tokenHash, idleSeconds, client?.clientId ?? null, client?.acceptLegacy ?? false],
     );
     const row = result.rows[0];
     if (!row) return null;

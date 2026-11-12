@@ -77,4 +77,24 @@ describe("Governance summary contract v1", () => {
     const result = validateGovernanceSummary(body, expected);
     expect(JSON.stringify(result)).not.toContain("#ff0000");
   });
+
+  it("keeps a valid v1.1 decisions block and drops only an invalid one (ORGAN-IMPL-001 §2)", () => {
+    const attention = [1, 2, 3].map((count) => ({ label: `Perhatian ${count}`, count, href: `${origin}/board` }));
+    const decision = { label: "Cuti menunggu keputusan Anda", count: 2, oldestAgeDays: 3, href: `${origin}/board` };
+    const kept = validateGovernanceSummary(summaryFor("hcis", origin, { attention, decisions: [decision] }), expected);
+    expect(kept.ok && kept.summary.decisions).toEqual([decision]);
+    expect(kept.ok && kept.summary.attention).toHaveLength(3);
+
+    for (const decisions of [
+      [{ ...decision, count: 0 }],
+      [{ ...decision, oldestAgeDays: -1 }],
+      [{ ...decision, href: "https://elsewhere.example.test/board" }],
+      Array.from({ length: 4 }, () => decision),
+      "not a list",
+    ]) {
+      const result = validateGovernanceSummary(summaryFor("hcis", origin, { decisions }), expected);
+      expect(result.ok).toBe(true);
+      expect(result.ok && "decisions" in result.summary).toBe(false);
+    }
+  });
 });

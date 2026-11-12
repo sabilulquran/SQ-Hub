@@ -106,8 +106,21 @@ const summarySchema = z
       .array(z.object({ label, count: z.number().int().nonnegative(), href: z.string().url().max(2048) }))
       .max(3)
       .optional(),
+    decisions: z.unknown().optional(),
     detailUrl: z.string().url().max(2048),
   });
+
+/** ORGAN-IMPL-001 §2 (contract v1.1): the caller's own pending decisions, validated on their own. */
+const decisionsSchema = z
+  .array(z.object({
+    label,
+    count: z.number().int().min(1),
+    oldestAgeDays: z.number().int().nonnegative(),
+    href: z.string().url().max(2048),
+  }))
+  .max(3);
+
+export type GovernanceDecision = z.infer<typeof decisionsSchema>[number];
 
 export type GovernanceUnit = (typeof UNITS)[number];
 export type GovernanceChart = z.infer<typeof chartSchema>;
@@ -122,6 +135,8 @@ export interface GovernanceSummaryV1 {
   metrics: GovernanceMetric[];
   charts?: GovernanceChart[];
   attention?: Array<{ label: string; count: number; href: string }>;
+  /** v1.1, per caller: never stored, never put in shared reports (ORGAN-IMPL-001 §2). */
+  decisions?: GovernanceDecision[];
   detailUrl: string;
 }
 
@@ -164,6 +179,12 @@ export function validateGovernanceSummary(
     if (chart.success) charts.push(chart.data);
   }
 
+  // An invalid decisions block, or one linking off the application's origin, drops only itself.
+  const decisions = parsed.data.decisions === undefined ? undefined : decisionsSchema.safeParse(parsed.data.decisions);
+  const validDecisions = decisions?.success && decisions.data.every((item) => sameOrigin(item.href, origin))
+    ? decisions.data
+    : [];
+
   return {
     ok: true,
     summary: {
@@ -174,6 +195,7 @@ export function validateGovernanceSummary(
       metrics,
       ...(charts.length > 0 ? { charts } : {}),
       ...(parsed.data.attention && parsed.data.attention.length > 0 ? { attention: parsed.data.attention } : {}),
+      ...(validDecisions.length > 0 ? { decisions: validDecisions } : {}),
       detailUrl: parsed.data.detailUrl,
     },
   };

@@ -130,6 +130,43 @@ function ReadyView({
   retrying: string[];
   onRetryCard?: (applicationKey: string) => void;
 }) {
+  return (
+    <>
+      <GovernanceOverview displayName={workspace.user.displayName} snapshot={snapshot} retrying={retrying} onRetryCard={onRetryCard} />
+      <section className="mt-9" aria-labelledby="your-apps-heading">
+        <h2 id="your-apps-heading" className="font-display text-xl font-bold text-brand-heading sm:text-2xl">Aplikasi Anda</h2>
+        {workspace.applications.length > 0 ? (
+          <div className="mt-4 grid grid-cols-1 gap-3 min-[360px]:grid-cols-2 lg:grid-cols-3 lg:gap-4">
+            {workspace.applications.map((application) => <ApplicationCard key={application.key} application={application} />)}
+          </div>
+        ) : (
+          <p className="mt-2 text-sm text-muted-foreground">Belum ada akses aplikasi aktif untuk akun ini.</p>
+        )}
+      </section>
+    </>
+  );
+}
+
+/**
+ * The organs' overview: greeting, headline strip, attention list and one section per
+ * application. Shared by Ringkasan Yayasan in Hub and the Portal Organ Yayasan (ORGAN-IMPL-001 §3).
+ */
+export function GovernanceOverview({
+  displayName,
+  snapshot,
+  retrying,
+  onRetryCard,
+  eyebrow = "Ringkasan Yayasan",
+  before,
+}: {
+  displayName: string;
+  snapshot: GovernanceSnapshot;
+  retrying: string[];
+  onRetryCard?: ((applicationKey: string) => void) | undefined;
+  eyebrow?: string;
+  /** Rendered right after the greeting, for example the portal's decisions card. */
+  before?: ReactNode;
+}) {
   const ready = snapshot.cards.filter((card): card is ReadyCard => card.state === "ready");
   const failed = snapshot.cards.filter((card): card is FailedCard => card.state === "failed");
   const oldest = ready.map((card) => card.summary.dataAsOf).sort((a, b) => Date.parse(a) - Date.parse(b))[0];
@@ -142,9 +179,9 @@ function ReadyView({
   return (
     <>
       <section aria-labelledby="yayasan-heading">
-        <p className="text-sm font-semibold text-brand-primary-deep">Ringkasan Yayasan</p>
+        <p className="text-sm font-semibold text-brand-primary-deep">{eyebrow}</p>
         <h1 id="yayasan-heading" className="mt-1 font-display text-3xl font-bold tracking-[-0.03em] text-brand-heading sm:text-4xl">
-          Assalamu&apos;alaikum, {workspace.user.displayName}
+          Assalamu&apos;alaikum, {displayName}
         </h1>
         <div className="mt-2 flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
           <span className="inline-flex items-center gap-1.5 rounded-full bg-cat-pay-soft px-2.5 py-1 text-xs font-bold text-cat-pay">
@@ -155,6 +192,8 @@ function ReadyView({
           {oldest ? <span>Data per {formatDateTime(oldest)}</span> : null}
         </div>
       </section>
+
+      {before}
 
       {snapshot.cards.length === 0 ? (
         <div className="mt-7 rounded-2xl border border-dashed border-border bg-surface-raised px-5 py-9 text-center">
@@ -205,17 +244,6 @@ function ReadyView({
       ) : null}
 
       {ready.map((card) => <ModuleSection key={card.applicationKey} summary={card.summary} />)}
-
-      <section className="mt-9" aria-labelledby="your-apps-heading">
-        <h2 id="your-apps-heading" className="font-display text-xl font-bold text-brand-heading sm:text-2xl">Aplikasi Anda</h2>
-        {workspace.applications.length > 0 ? (
-          <div className="mt-4 grid grid-cols-1 gap-3 min-[360px]:grid-cols-2 lg:grid-cols-3 lg:gap-4">
-            {workspace.applications.map((application) => <ApplicationCard key={application.key} application={application} />)}
-          </div>
-        ) : (
-          <p className="mt-2 text-sm text-muted-foreground">Belum ada akses aplikasi aktif untuk akun ini.</p>
-        )}
-      </section>
     </>
   );
 }
@@ -309,7 +337,7 @@ function ModuleSection({ summary }: { summary: GovernanceSummary }) {
   );
 }
 
-function StatusPanel({ icon, title, body, action }: { icon: ReactNode; title: string; body: string; action?: { label: string; onClick: () => void } | undefined }) {
+export function StatusPanel({ icon, title, body, action }: { icon: ReactNode; title: string; body: string; action?: { label: string; onClick: () => void } | undefined }) {
   return (
     <section className="rounded-2xl border border-border/70 bg-surface-raised p-6 text-center shadow-[var(--shadow-soft)]" role="status">
       <span className="mx-auto flex h-11 w-11 items-center justify-center rounded-xl bg-brand-primary-pale text-brand-primary-deep">{icon}</span>

@@ -1,6 +1,6 @@
 # ORGAN-IMPL-001 — Portal Organ Yayasan
 
-**Status:** ACCEPTED (Product Owner, 2026-11-12) bersama ADR-0012. Butir bertanda `DRAFT` adalah default agent yang menunggu konfirmasi, dan butir `TBD` belum diputuskan. Implementasi belum dimulai.
+**Status:** ACCEPTED (Product Owner, 2026-11-12) bersama ADR-0012. Butir bertanda `DRAFT` adalah default agent yang menunggu konfirmasi, dan butir `TBD` belum diputuskan. **R1 diimplementasikan** di repository (bawaan `PORTAL_ORGAN_ENABLED=false`); langkah production ada di [ORGAN-IMPL-001-keycloak.md](../operations/ORGAN-IMPL-001-keycloak.md). R2 dan R3 belum dimulai.
 **Arsitektur:** [ADR-0012](../architecture/adr/0012-portal-organ-yayasan.md)
 **Menggantikan:** HUB-IMPL-021 §5, yaitu halaman Ringkasan Yayasan sebagai pintu masuk organ. Bagian lain HUB-IMPL-021 dipakai ulang: keanggotaan (§1), field registry (§2), kontrak ringkasan (§3, di sini diperluas menjadi v1.1), dan perilaku fetch (§4).
 **Terkait:** HUB-IMPL-012, HUB-IMPL-021, HUB-IMPL-023; HCIS ORG-003, ORG-004, ORG-010, ORG-013, GOV-001
@@ -40,9 +40,9 @@ Catatan: selama workflow cuti di production masih `LEGACY`, tidak ada langkah ya
 ## 1. Host, sesi, dan gerbang (R1)
 
 ### 1.1 Routing
-- Pemilihan route group menurut `Host` hanya berlaku untuk route browser: `/api/organ/*` di browser, yang di sisi API terlihat sebagai `/organ/*` karena proxy web menghapus prefiks `/api` (seperti catatan path HUB-IMPL-021 §2). Route auth portal ada di bawah `/organ/auth/*`.
+- Pemilihan route group menurut `Host` hanya berlaku untuk route browser: `/api/organ/*` di browser, yang di sisi API terlihat sebagai `/organ/*` karena proxy web menghapus prefiks `/api` (seperti catatan path HUB-IMPL-021 §2). Route auth portal memakai path yang sama dengan Kirim dan Kerja (`/auth/oidc/start`, `/auth/callback`, `/auth/logout`) dengan constraint host `organ.`, sehingga tidak bertabrakan dengan route Hub.
 - Route `/internal/*` dan route ber-token mesin **tidak bergantung pada `Host`**. Pemanggil loopback di `127.0.0.1:3302` (Kirim, Application Access, Organization Directory) tidak berubah.
-- Route browser menjawab `421` hanya untuk host publik yang tidak ada di allowlist `HUB_PUBLIC_ORIGIN`, `ORGAN_PUBLIC_ORIGIN`, dan `KIRIM_PUBLIC_ORIGIN`.
+- Implementasi R1 tidak menambah jawaban `421`. Route portal hanya cocok dengan host `organ.` (host lain mendapat `404`), dan route Hub tetap seperti sebelumnya. Pemisahan yang sebenarnya dijaga oleh sesi yang terikat ke client (§1.2), bukan oleh host.
 - Halaman portal ada di build `apps/web` yang sama dengan router `location.host`. Tidak ada proses web baru.
 - Edge Mi8VPS meneruskan host `organ.` ke proses web dan API yang sudah ada dengan `Host` aslinya. Record Cloudflare dibuat owner.
 
