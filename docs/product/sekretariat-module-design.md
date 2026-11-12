@@ -2,7 +2,7 @@
 
 **Status:** DRAFT / DISCOVERY. Dokumen ini tidak mengizinkan implementasi atau perubahan production.
 **Spesifikasi:** SEK-001 (usulan). Spesifikasi implementasi belum ada.
-**Tanggal:** 2026-11-11 (revisi 0)
+**Tanggal:** 2026-11-12 (revisi 1; revisi 0 2026-11-11)
 **Terkait:** ADR-0001 (batas platform), ADR-0006 (stack), ADR-0007 (Organization Directory), ADR-0011 (pola modul bersama); `rapat-sq-module-design.md` (RAPAT-001 §2, register keputusan), `kerja-sq-module-design.md` (KERJA-001 §1.3, struktur organisasi dan 26 pengguna), `kirim-sq-module-design.md` (KIRIM-001); HCIS `docs/domain/hr-documents.md` (DOC-001/DOC-002, keputusan D-01–D-15) dan register EMP-010
 
 ## 1. Dasar
@@ -14,7 +14,7 @@ Yayasan **tidak punya unit kerja Sekretariat**. Struktur organisasi (KERJA-001 �
 | Fungsi | Siapa yang mengerjakannya sekarang |
 | --- | --- |
 | Surat keluar atas nama yayasan (undangan, pemberitahuan, permohonan, pengantar) | Unit masing-masing mengetik sendiri, nomor ditentukan sendiri-sendiri |
-| Surat masuk (dinas pendidikan, kemenag, mitra, bank) | Diterima siapa pun yang sedang ada, diteruskan lewat WhatsApp, tidak teregister |
+| Surat masuk (dinas pendidikan, kemenag, mitra, bank) — fisik maupun email | Diterima siapa pun yang sedang ada, diteruskan lewat WhatsApp, tidak teregister; email yayasan dibaca dari akun pribadi/unit tanpa catatan bersama |
 | Surat Keputusan (SK) pengurus dan direktur | Diketik saat dibutuhkan; register tidak ada |
 | Dokumen legal yayasan (akta notaris, SK Kemenkumham, NPWP, izin operasional sekolah, MoU) | Berkas fisik dan salinan PDF tersebar; tanggal habis izin tidak diingatkan sistem |
 | Templat dan kop surat | Tiap unit memegang salinannya sendiri, versi tidak seragam |
@@ -33,7 +33,7 @@ Dua modul lain sudah menunjuk fungsi ini tanpa pemiliknya: RAPAT-001 menetapkan 
 ### 1.3 Hasil yang dituju
 
 1. Setiap surat keluar atas nama yayasan memegang nomor yang dijamin register pusat, dengan arsip PDF yang tidak berubah setelah terbit.
-2. Setiap surat masuk teregister, terdisposisi ke unit yang tepat, dan kelihatan statusnya.
+2. Setiap surat masuk — lewat email yayasan maupun berkas fisik yang dipindai — jatuh ke kotak masuk yang tepat, terdisposisi ke unit, dan kelihatan statusnya.
 3. Setiap SK terdaftar, bernomor, dan tertaut ke keputusan rapat yang mendasarinya bila ada.
 4. Dokumen legal yayasan terkumpul di satu arsip dengan tanggal habis yang diingatkan jauh hari.
 5. Penerima surat bisa memverifikasi keaslian surat yayasan dari nomor atau QR.
@@ -43,7 +43,7 @@ Dua modul lain sudah menunjuk fungsi ini tanpa pemiliknya: RAPAT-001 menetapkan 
 | Urusan | **Sekretariat** | **Di luar modul** |
 | --- | --- | --- |
 | Surat keluar yayasan dan unit | Register, penomoran, arsip PDF, templat | Isi surat ditulis unit pengirim |
-| Surat masuk | Register, pindaian, disposisi, status | Tindak lanjutnya dikerjakan unit (bisa jadi kartu Kerja SQ) |
+| Surat masuk | Kotak masuk per unit + yayasan: email domain (IMAP) dan pindaian surat fisik, register, disposisi, status | Tindak lanjutnya dikerjakan unit (bisa jadi kartu Kerja SQ); kotak masuk WhatsApp milik Kirim SQ |
 | SK pengurus/direktur | Register, penomoran, arsip | Keputusan rapatnya milik Rapat SQ; SK kepegawaian (pengangkatan, mutasi) milik register HCIS EMP-010 |
 | Dokumen legal yayasan | Arsip, metadata, tanggal habis, pengingat | Dokumen kepemilikan aset (sertifikat tanah, BPKB) milik Aset SQ; Sekretariat hanya menautkan |
 | Surat layanan kepegawaian | — | HCIS DOC-001/DOC-002 (surat keterangan, SP) dengan penomoran sendiri (D-04) |
@@ -56,7 +56,8 @@ Yang **tidak** dibangun:
 - **tanda tangan elektronik bersertifikat.** Surat memakai blok penandatangan tercetak, sama seperti HCIS PAYSLIP-005; verifikasi keaslian lewat register dan QR, bukan sertifikat digital;
 - **rantai approval surat.** Penerbitan satu langkah oleh pemegang peran; yayasan sekecil ini tidak butuh e-office berjenjang (meniru keputusan HCIS D-07);
 - **pemindaian massal arsip lama.** Mulai dari surat yang terbit sejak modul hidup; arsip lama menyusul per kebutuhan (§13 nomor 4);
-- **master organisasi kedua.** Kode unit untuk penomoran dibaca dari Organization Directory.
+- **master organisasi kedua.** Kode unit untuk penomoran dibaca dari Organization Directory;
+- **klien email penuh.** R1 membaca dan meregister email masuk, tidak mengirim, tidak mengelola folder, dan tidak menghapus apa pun di mailbox; email tetap bisa dibuka lewat webmail seperti biasa.
 
 ## 3. Letak
 
@@ -79,7 +80,11 @@ PERSURATAN (R1)
 JenisSurat ──► NomorSurat (register, urut per jenis per tahun)
                  │
 SuratKeluar ─────┘──► ArsipPDF (snapshot, checksum, QR)
-SuratMasuk ──► Disposisi ──► (opsional) kartu Kerja SQ
+
+KOTAK MASUK (R1)
+Email (IMAP sekretariat@) ──┐
+Pindaian surat fisik ───────┴──► SuratMasuk ──► KotakMasuk (yayasan / per unit)
+                                     └──► Disposisi ──► (opsional) kartu Kerja SQ
 
 REGISTER SK (R2)
 SK ──► NomorSurat ──► ArsipPDF
@@ -92,7 +97,9 @@ DokumenLegal (jenis, penerbit, nomor asli, berlaku s.d.) ──► Pengingat (Ki
 - **JenisSurat** memegang kode penomoran (mis. `UND` undangan, `KET` keterangan, `SK`, `MoU`) dan templatnya. Dikelola `sekretariat_admin`.
 - **NomorSurat** dialokasikan **hanya saat terbit**, tidak saat draf dibuat, dan **tidak didaur ulang** — surat yang dibatalkan tetap memegang nomornya berstatus `DIBATALKAN`. Dua keputusan ini meniru HCIS D-02/D-03 yang sudah ACCEPTED.
 - **ArsipPDF** adalah berkas final yang diunggah atau dirender, disimpan sekali dengan checksum; data pegawai/unit di dalamnya adalah snapshot saat terbit.
-- **SuratMasuk** menyimpan pengirim, tanggal diterima, perihal, pindaian, dan disposisi (unit tujuan + catatan + tenggat).
+- **KotakMasuk** adalah kotak surat per pemilik: satu kotak yayasan dan satu kotak per unit. Isinya SuratMasuk dari dua kanal: email yang ditarik dari mailbox domain, dan pindaian surat fisik yang diunggah pencatat.
+- **SuratMasuk** menyimpan pengirim, tanggal diterima, perihal, isi/pindaian beserta lampiran email, dan disposisi (unit tujuan + catatan + tenggat).
+- **Penarik email** adalah adapter yang bisa diganti, meniru pola engine Kirim SQ: port `MailFetcher`, adapter pertama IMAP ke mailbox `sekretariat@sabilulquran.or.id` di hosting email domain (cPanel/Jagoan, yang sudah dipakai Karir SQ untuk kirim email). Modul **membaca dan meregister**; email tetap utuh di mailbox aslinya.
 - **DokumenLegal** menyimpan metadata dan berkas; yang bertanggal habis menghasilkan pengingat H-90/H-30/H-7.
 
 ## 5. Alur utama
@@ -103,11 +110,15 @@ DokumenLegal (jenis, penerbit, nomor asli, berlaku s.d.) ──► Pengingat (Ki
 2. Saat **terbitkan**, register mengalokasikan nomor berikutnya untuk jenis itu pada tahun berjalan, menempelkan QR verifikasi, dan mengunci arsip.
 3. Surat lama (sebelum modul hidup) boleh diregister mundur dengan penanda `RETROAKTIF` dan nomor aslinya apa adanya — register tidak menerbitkan nomor baru untuk masa lalu.
 
-### 5.2 Surat masuk dan disposisi
+### 5.2 Kotak masuk dan disposisi
 
-1. Siapa pun pemegang peran pencatat memotret/mengunggah surat masuk dan mengisi metadata singkat.
-2. Pemegang disposisi (Direktur atau yang ditunjuk) meneruskan ke unit dengan catatan dan tenggat; unit menandai selesai dengan keterangan.
-3. Bila tindak lanjut berupa pekerjaan nyata, disposisi dapat membuat **kartu di ruang Kerja SQ** unit itu (R2, konsumen bernama sesuai aturan Application Platform).
+Keputusan owner 2026-11-12: modul ini juga menjadi **kotak masuk email** yayasan, dengan akses berlapis (§7).
+
+1. **Email.** Penarik email mengambil pesan baru dari `sekretariat@sabilulquran.or.id` dan meregisternya ke kotak masuk yayasan — pengirim, perihal, isi, lampiran. Email tetap utuh di mailbox aslinya. Bila kelak unit punya alamat sendiri (§13 nomor 8), tiap alamat menjadi sumber kotak masuk unitnya.
+2. **Surat fisik.** Pencatat memotret/mengunggah surat dan mengisi metadata singkat; surat yang dialamatkan ke unit boleh diregister langsung ke kotak masuk unit oleh pencatat unit itu.
+3. **Disposisi.** Pemegang disposisi (Direktur atau yang ditunjuk) meneruskan isi kotak yayasan ke kotak masuk unit dengan catatan dan tenggat; unit menandai selesai dengan keterangan.
+4. **Balasan.** R1 hanya membaca dan meregister; balasan email masih dikirim dari klien email biasa, dan statusnya dicatat manual (§13 nomor 9).
+5. Bila tindak lanjut berupa pekerjaan nyata, disposisi dapat membuat **kartu di ruang Kerja SQ** unit itu (R2, konsumen bernama sesuai aturan Application Platform).
 
 ### 5.3 Surat Keputusan
 
@@ -130,20 +141,21 @@ SK diregister seperti surat keluar dengan jenis `SK`, ditambah dua hal: tautan o
 | **Aset SQ** | Dokumen kepemilikan aset tetap di Aset SQ; arsip legal hanya menautkan |
 | **SPMB / Sosial / Keuangan / Karir** | Tidak ada: dokumen transaksi mereka bernomor sendiri di modulnya |
 | **SQ Hub** | Akun SQ, Application Access, Organization Directory (kode unit untuk penomoran), audit |
+| **Email domain (cPanel/Jagoan)** | Sumber kotak masuk: IMAP baca-saja ke `sekretariat@sabilulquran.or.id` (dibuat dulu di cPanel). Kredensial mailbox disimpan sebagai secret di Mi8, bukan di repository |
 
 ## 7. Peran
 
-Tidak ada unit Sekretariat, jadi peran dipegang orang per fungsi:
+Tidak ada unit Sekretariat, jadi peran dipegang orang per fungsi. **Akses berlapis** (keputusan owner 2026-11-12):
 
 | Peran | Kewenangan | Siapa (usulan) |
 | --- | --- | --- |
-| `sekretariat_admin` | Jenis surat, format nomor, templat, arsip legal, hak akses modul | **Kepala HCM** — orang yang sama dengan `kirim_admin` dan `kerja_admin` (DRAFT) |
-| Pencatat unit | Membuat surat keluar unitnya, meregister surat masuk, melihat surat unitnya | Petugas administrasi sekolah dan admin unit (gelombang pertama Kerja SQ) |
-| Pemberi disposisi | Mendisposisi surat masuk yayasan | Direktur, dapat didelegasikan |
+| `sekretariat_admin` | **Akses penuh**: semua kotak masuk (termasuk email yayasan), semua register nomor, semua arsip, jenis surat, templat, hak akses modul | **Kepala HCM** — orang yang sama dengan `kirim_admin` dan `kerja_admin` (DRAFT) |
+| Pencatat unit — hanya orang yang **ditunjuk** per unit | **Sebatas unitnya**: kotak masuk unit, register nomor surat unit (membuat dan menerbitkan surat keluar unit), arsip online unit | Petugas administrasi sekolah dan admin unit (gelombang pertama Kerja SQ) |
+| Pemberi disposisi | Kotak masuk yayasan dan meneruskannya ke kotak unit | Direktur, dapat didelegasikan |
 | Penandatangan | Tercatat pada surat; melihat surat yang ia tandatangani | Direktur, Ketua/Sekretaris Pengurus (akun organ, baca-saja) |
 | Pembaca arsip legal | Membaca dokumen legal | Direktur, organ yayasan, `sekretariat_admin` |
 
-Surat keluar terlihat oleh unit pengirim, admin, Direktur, dan penandatangannya — bukan seluruh staf (§13 nomor 6). Peran dengan akses arsip legal wajib MFA (`staff-authentication-policy.md`).
+Pencatat unit tidak melihat kotak masuk yayasan, kotak unit lain, register unit lain, maupun arsip unit lain. Peran dengan akses arsip legal atau kotak masuk yayasan wajib MFA (`staff-authentication-policy.md`).
 
 ## 8. Penomoran dan verifikasi
 
@@ -154,6 +166,7 @@ Surat keluar terlihat oleh unit pengirim, admin, Direktur, dan penandatangannya 
 ## 9. Privasi, keamanan, audit
 
 - Surat bisa memuat data pribadi dan urusan sensitif (teguran mitra, perjanjian). Isi dan lampiran hanya terbuka bagi peran pada §7; halaman verifikasi tidak pernah menampilkan isi.
+- Isi email adalah data pihak luar: tunduk pada akses berlapis §7, tidak masuk log, dan kredensial mailbox hanya di secret Mi8. Penarikan IMAP baca-saja — modul tidak menghapus atau memindahkan email di mailbox.
 - Dokumen legal adalah identitas hukum yayasan; unduhan memakai tautan sementara dan setiap akses tercatat.
 - Audit mencatat alokasi nomor, penerbitan, pembatalan beralasan, register retroaktif, disposisi dan perubahan statusnya, serta unggah/versi dokumen legal.
 - Berkas PDF/JPEG/PNG maksimum 10 MiB; register retroaktif dan pembatalan butuh alasan tertulis.
@@ -163,13 +176,13 @@ Surat keluar terlihat oleh unit pengirim, admin, Direktur, dan penandatangannya 
 
 Mengikuti SQ Core design system C dan app shell. Teks antarmuka menulis "Sabilul Qur'an", tidak disingkat "SQ".
 
-Ruang staf: **Ringkasan** (surat terbaru, disposisi terbuka, izin mendekati habis), **Surat keluar**, **Surat masuk**, **Surat Keputusan**, **Arsip legal**, **Pengaturan** (jenis, templat, akses). Pencatat unit hanya melihat menu dan data unitnya. Aksen kategori: belum dipilih.
+Ruang staf: **Ringkasan** (surat terbaru, disposisi terbuka, izin mendekati habis), **Kotak masuk** (email + surat fisik; admin melihat semua kotak, pencatat hanya kotak unitnya), **Surat keluar**, **Surat Keputusan**, **Arsip legal**, **Pengaturan** (jenis, templat, alamat email sumber, akses). Pencatat unit hanya melihat menu dan data unitnya. Aksen kategori: belum dipilih.
 
 ## 11. Tahapan
 
 | Rilis | Isi | Menggantikan |
 | --- | --- | --- |
-| **R1 · Register & nomor** | Jenis surat, surat keluar + penomoran terjamin + arsip PDF unggahan, surat masuk + disposisi in-app, register retroaktif, peran dasar | Penomoran sendiri-sendiri per unit |
+| **R1 · Register, nomor & kotak masuk** | Jenis surat, surat keluar + penomoran terjamin + arsip PDF unggahan, kotak masuk (email `sekretariat@` lewat IMAP + pindaian surat fisik) + disposisi in-app, akses berlapis, register retroaktif | Penomoran sendiri-sendiri per unit; email yayasan tanpa register |
 | **R2 · SK, legal, integrasi** | Register SK + tautan Rapat SQ, arsip dokumen legal + pengingat kedaluwarsa, disposisi → kartu Kerja SQ, notifikasi Kirim SQ, halaman verifikasi publik | Berkas legal tersebar; izin tanpa pengingat |
 | **R3 · Render dari templat** | Surat dirender dari templat + data (pola HCIS D-01), kop seragam, blok tanda tangan | Ketik manual di Word per unit |
 
@@ -183,7 +196,8 @@ R1 berdiri sendiri: tidak menunggu Rapat SQ, Kirim SQ production, atau modul lai
 | Penomoran pusat ditinggalkan dan unit kembali mengarang nomor | Verifikasi QR membuat surat teregister lebih "sah" di mata penerima; sosialisasi lewat jalur yang sama dengan Kerja SQ |
 | Register ganda dengan HCIS untuk SK kepegawaian | Batas §2 eksplisit; UI SK menolak jenis kepegawaian dan menunjuk ke HCIS |
 | Dokumen legal bocor | Peran sempit + MFA, tautan sementara, akses tercatat |
-| Beban Mi8 bertambah | Modul di proses Hub yang ada; berkas kecil dan jarang; pola backup yang sudah berjalan |
+| Beban Mi8 bertambah | Modul di proses Hub yang ada; berkas kecil dan jarang; penarikan email berkala (bukan push), lampiran dibatasi; pola backup yang sudah berjalan |
+| Kredensial mailbox bocor atau mailbox penuh spam | Kredensial di secret Mi8, IMAP baca-saja; alamat `sekretariat@` dipublikasikan seperlunya; spam ditandai tanpa disposisi dan tidak membuat kartu |
 | Subdomain dibuat lalu ditinggalkan | DNS hanya lewat tunnel Mi8, dihapus bila pensiun |
 
 ## 13. Keputusan terbuka
@@ -197,14 +211,17 @@ Semua saran di bawah adalah asumsi **DRAFT** sampai Product Owner menetapkannya.
 | 3 | Apakah penomoran HCIS (D-04) ikut register pusat ini | **Tidak untuk sekarang.** HCIS menomori suratnya sendiri; disatukan hanya bila owner memutuskan, lewat kontrak API |
 | 4 | Arsip lama diregister mundur sampai kapan | Hanya yang masih dirujuk (SK aktif, MoU berjalan, izin berlaku); bukan pemindaian massal |
 | 5 | Nama modul di antarmuka | **"Sekretariat"** saja; nama internal Sekretariat SQ sejalan Kirim/Rapat/Kerja SQ |
-| 6 | Siapa boleh melihat surat keluar | Unit pengirim + admin + Direktur + penandatangan; **bukan** seluruh staf |
+| 6 | ~~Siapa boleh melihat surat keluar~~ | **DIPUTUSKAN owner 2026-11-12:** akses berlapis — admin akses penuh termasuk semua kotak masuk; per unit hanya orang yang ditunjuk, sebatas kotak masuk, register nomor, dan arsip online unitnya (§7) |
 | 7 | Pengingat kedaluwarsa jatuh ke siapa | Direktur dan kepala unit terkait, H-90/H-30/H-7 |
+| 8 | Alamat email: satu `sekretariat@` atau juga per unit | Mulai **satu alamat** `sekretariat@sabilulquran.or.id`; pembagian ke unit lewat disposisi in-app. Alamat per unit menyusul bila volume menuntut, tiap alamat jadi sumber kotak unitnya |
+| 9 | Balas email dari dalam modul | **Tidak di R1** — baca dan register saja; balasan dari klien email biasa dan statusnya dicatat. Kirim dari modul (SMTP mailbox yang sama) dinilai di R2 setelah volume terlihat |
 
 ## 14. Langkah berikutnya
 
 1. Data singkat volume: hitung surat keluar/masuk sebulan terakhir di dua unit contoh, daftar dokumen legal beserta tanggal habisnya. Hasilnya mengganti catatan DISCOVERY §1.2.
 2. Product Owner menetapkan §13, terutama nomor 1 (format nomor) dan 2 (admin).
-3. Pemegang akun Cloudflare yayasan membuat rekaman `sekretariat` lewat tunnel Mi8 saat R1 siap terbit, tidak lebih awal.
-4. Baru setelah itu: spesifikasi `SEK-IMPL-001` untuk R1 saja, mengikuti pola KERJA-IMPL-001. ADR tampaknya tidak perlu — modul mengikuti pola ADR-0011 yang sudah ACCEPTED.
+3. Buat mailbox `sekretariat@sabilulquran.or.id` di cPanel (pemegang akses hosting email), simpan kredensialnya sebagai secret di Mi8.
+4. Pemegang akun Cloudflare yayasan membuat rekaman `sekretariat` lewat tunnel Mi8 saat R1 siap terbit, tidak lebih awal.
+5. Baru setelah itu: spesifikasi `SEK-IMPL-001` untuk R1 saja, mengikuti pola KERJA-IMPL-001. ADR tampaknya tidak perlu — modul mengikuti pola ADR-0011 yang sudah ACCEPTED.
 
 Tidak ada kode yang ditulis sebelum langkah 1–2 selesai.
