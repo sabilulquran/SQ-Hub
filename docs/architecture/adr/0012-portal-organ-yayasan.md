@@ -56,7 +56,7 @@ This is the "token exchange on the decision route" that HCIS ORG-013-3 left `TBD
 
 ### D5 Monthly reports are composed from immutable monthly snapshots
 
-Monthly snapshots are pulled by a separate machine client `sq-organ-reports` (service account only, no login flow), whose token carries one audience per application for monthly snapshots and nothing else. `sq-organ` has no service account. A report section is shown to a member only while that application's live summary for that member answers `ready`, so a member whose domain role is missing or revoked never sees that application's figures.
+Monthly snapshots are pulled by a separate machine client `sq-organ-reports` (service account only, no login flow), which requests one token per application whose `aud` names only that application's monthly-snapshot audience. `sq-organ` has no service account. A report section is shown to a member only while that application's live summary for that member answers `ready`, so a member whose domain role is missing or revoked never sees that application's figures.
 - Each application decides when its month is **closed** and then publishes an immutable **monthly governance snapshot** (aggregate only, the summary contract plus `period` and `revision`).
 - HCIS's close marker is the payroll period of that month reaching `APPROVED`, exposed only as "month final" with no period id or amount (`DRAFT`, GOV-001). The other applications define theirs in their own specs.
 - The portal stores the composed monthly report: the snapshots it received, their revisions, and the analysis text. **This is the one narrow exception to ADR-0009's "Hub never keeps past summaries"**: the stored values are aggregates that the owning application already published as final, the owner of each figure stays the application, and a reopened month arrives as a new revision rather than an edit.
@@ -64,7 +64,7 @@ Monthly snapshots are pulled by a separate machine client `sq-organ-reports` (se
 
 ### D6 Analysis by the Claude API, from aggregates only
 - Input: only the aggregate values of the monthly snapshots, the period, and the metric labels. No names, identifiers, per-person rows, approval contents, per-member decision counts, or free text written by users.
-- Output: 3–5 bullets in Indonesian, each citing the metric keys it rests on. The portal rejects a bullet whose cited keys are not in the input and drops the whole analysis when nothing valid is left.
+- Output: 3–5 bullets in Indonesian, each citing the metric keys it rests on. The portal rejects a bullet whose cited keys are not in the input and drops the whole analysis when fewer than three valid bullets are left.
 - Model: `claude-opus-5-5` with structured output and server-side refusal fallback. The model that actually served the request (`response.model`), the input hash, and the time are stored with the text. Text is labelled "Dibuat AI" and is never regenerated silently.
 - The API key lives in the Hub server environment only; it never reaches the browser.
 

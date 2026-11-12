@@ -40,7 +40,7 @@ Catatan: selama workflow cuti di production masih `LEGACY`, tidak ada langkah ya
 ## 1. Host, sesi, dan gerbang (R1)
 
 ### 1.1 Routing
-- Pemilihan route group menurut `Host` hanya berlaku untuk route browser (`/api/organ/*`, dan route auth portal di bawah `/api/organ/auth/*`).
+- Pemilihan route group menurut `Host` hanya berlaku untuk route browser: `/api/organ/*` di browser, yang di sisi API terlihat sebagai `/organ/*` karena proxy web menghapus prefiks `/api` (seperti catatan path HUB-IMPL-021 §2). Route auth portal ada di bawah `/organ/auth/*`.
 - Route `/internal/*` dan route ber-token mesin **tidak bergantung pada `Host`**. Pemanggil loopback di `127.0.0.1:3302` (Kirim, Application Access, Organization Directory) tidak berubah.
 - Route browser menjawab `421` hanya untuk host publik yang tidak ada di allowlist `HUB_PUBLIC_ORIGIN`, `ORGAN_PUBLIC_ORIGIN`, dan `KIRIM_PUBLIC_ORIGIN`.
 - Halaman portal ada di build `apps/web` yang sama dengan router `location.host`. Tidak ada proses web baru.
@@ -49,7 +49,7 @@ Catatan: selama workflow cuti di production masih `LEGACY`, tidak ada langkah ya
 ### 1.2 Client dan sesi
 - Client OIDC `sq-organ` di realm staf: confidential, PKCE, satu redirect `https://organ.sabilulquran.or.id/api/organ/auth/callback`. Client ini **tanpa service account**.
 - Cookie sesinya host-only dan bernama sendiri.
-- Tabel `hub_sessions` mendapat kolom `client_id` (migrasi baru, nullable untuk baris lama). Setiap route portal menolak sesi yang `client_id`-nya bukan `sq-organ`, dan route Hub menolak sesi `sq-organ`. Akibatnya cookie sesi Hub yang dikirim dengan nama cookie portal ditolak.
+- Tabel `hub_sessions` mendapat kolom `client_id` (migrasi baru, nullable untuk baris lama). Setiap host hanya menerima sesi dengan `client_id`-nya sendiri: `sq-organ` di portal, `sq-hub` di Hub, `kirim-sq` untuk sesi Kirim. Nilai `NULL` hanya berlaku untuk baris sebelum migrasi, dianggap `sq-hub`, dan kedaluwarsa dalam 12 jam. Akibatnya cookie sesi Hub yang dikirim dengan nama cookie portal ditolak.
 - **Gerbang anggota.** Portal, bukan Keycloak, memeriksa keanggotaan efektif dan Application Access `organ`. Pemeriksaan dilakukan di callback (tanpa sesi bila gagal) **dan pada setiap request**. Keanggotaan yang `termEnd`-nya lewat langsung ditolak.
 - Saat keanggotaan berakhir, Application Access `organ` dicabut, termasuk untuk Path A, karena HUB-IMPL-021 §1 mempertahankan Application Access lain milik Path A. Ini amandemen kecil pada HUB-IMPL-021 §1.
 
@@ -99,7 +99,7 @@ Cakupan: hanya langkah dengan principal **akun** organ. Langkah milik Pengurus b
 | Route aplikasi | Isi |
 |---|---|
 | `GET <decision_path>` | Langkah `pending` milik pemanggil. Isinya sesuai ORG-013-3: jenis, nama dan jabatan pemohon, periode, alasan, serta riwayat langkah tanpa catatan approver lain |
-| `POST <decision_path>/<stepId>` | `{ decision: "approve" \| "reject", note?: string, requestId: uuid }`. Jawaban: `200` diputuskan, `403` bukan milik pemanggil atau tanpa capability, `409` sudah diputuskan atau `jti`/`requestId` sudah dipakai, `401` token tidak sah |
+| `POST <decision_path>/<stepId>` | `{ decision: "approve" \| "reject", note?: string, requestId: uuid }`. Jawaban: `200` diputuskan, `403` bukan milik pemanggil atau tanpa capability, `409` langkah sudah diputuskan oleh `requestId` lain atau `jti` sudah dibelanjakan. `requestId` yang sama mengembalikan hasil keputusan pertama (`200`, replay), `401` token tidak sah |
 
 Alur di portal:
 1. **Tolak sebelum exchange.** Portal memeriksa dulu keanggotaan efektif dan kesegaran step-up. Bila salah satu gagal, tidak ada exchange.
@@ -129,7 +129,7 @@ Catatan, nama, dan alasan tidak ditulis.
 - Kontraknya sama dengan ringkasan v1.1 **tanpa `decisions`**, ditambah empat field: `period` (`YYYY-MM`), `revision` (mulai 1), `closedAt`, dan `supersedes`. Snapshot hanya diterbitkan setelah bulan itu ditutup.
 - `dataAsOf` = waktu penerbitan. Metrik yang tidak punya riwayat effective-dated diambil saat tutup bulan dan diberi label "per tanggal tutup".
 - Endpoint: `GET <governance_monthly_path>?period=YYYY-MM` (field registry baru). Jawabannya `404` bila bulan itu belum ditutup.
-- **Identitas mesin.** Job harian pukul 03:00 WIB (di luar jam 19 UTC) memakai client `sq-organ-reports`: confidential, khusus service account, tanpa alur login. Tokennya membawa audience `<app>-governance-monthly`. Aplikasi menerima token ini **hanya** di `governance_monthly_path`, dengan allowlist `azp` = `sq-organ-reports`.
+- **Identitas mesin.** Job harian pukul 03:00 WIB (di luar jam 19 UTC) memakai client `sq-organ-reports`: confidential, khusus service account, tanpa alur login. Job meminta satu token per aplikasi dengan parameter `audience`, sehingga `aud` hanya berisi `<app>-governance-monthly` untuk aplikasi itu. Aplikasi menerima token ini **hanya** di `governance_monthly_path`, dengan allowlist `azp` = `sq-organ-reports`.
 
 ### 5.2 Penyimpanan (append-only)
 | Tabel | Kunci | Isi |
