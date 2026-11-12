@@ -2,8 +2,8 @@
 
 **Status:** DRAFT / DISCOVERY. Dokumen ini tidak mengizinkan implementasi atau perubahan production.
 **Spesifikasi:** SEK-001 (usulan). Spesifikasi implementasi belum ada.
-**Tanggal:** 2026-11-12 (revisi 3; revisi 0 2026-11-11)
-**Terkait:** ADR-0001 (batas platform), ADR-0006 (stack), ADR-0007 (Organization Directory), ADR-0011 (pola modul bersama); `rapat-sq-module-design.md` (RAPAT-001 §2, register keputusan), `kerja-sq-module-design.md` (KERJA-001 §1.3, struktur organisasi dan 26 pengguna), `kirim-sq-module-design.md` (KIRIM-001); HCIS `docs/domain/outgoing-letter-register.md` (DOC-003, buku nomor surat yayasan), `docs/domain/hr-documents.md` (DOC-001/DOC-002) dan register EMP-010
+**Tanggal:** 2026-11-12 (revisi 4; revisi 0 2026-11-11)
+**Terkait:** ADR-0001 (batas platform), ADR-0006 (stack), ADR-0007 (Organization Directory), ADR-0011 (pola modul bersama); `rapat-sq-module-design.md` (RAPAT-001 §2, register keputusan), `kerja-sq-module-design.md` (KERJA-001 §1.3, struktur organisasi dan 26 pengguna), `kirim-sq-module-design.md` (KIRIM-001); HCIS `docs/domain/outgoing-letter-register.md` (DOC-003, buku nomor surat yayasan), `docs/domain/hr-documents.md` (DOC-001/DOC-002) dan register EMP-010; **Pedoman Tata Naskah Dinas YSQ v0.11 (draf)** — sumber kaidah penomoran (§8)
 
 ## 1. Dasar
 
@@ -95,8 +95,8 @@ DokumenLegal (jenis, penerbit, nomor asli, berlaku s.d.) ──► Pengingat (Ki
 ```
 
 - **JenisSurat** memegang kode penomoran (mis. `UND` undangan, `KET` keterangan, `SK`, `MoU`) dan templatnya. Dikelola `sekretariat_admin`.
-- **NomorSurat** hidup di buku milik Sekretariat, yang mewarisi model DOC-003 apa adanya: **JenisSurat** (kode, periode reset tahunan/bulanan), **Penerbit** (yayasan, unit, panitia), **HakAmbilNomor** (grant per orang per penerbit), dan **Penghitung** per penerbit × jenis × periode. Sifat-sifat yang sudah teruji di DOC-003 dipertahankan: alokasi tanpa celah dan tanpa ganda dalam satu transaksi (D-05), nomor tidak pernah didaur ulang — yang batal tetap tercatat berstatus Dibatalkan (D-08), nomor awal hanya bisa menaikkan penghitung (D-17), zona waktu Asia/Jakarta.
-- Penerbit jenis **unit** dipetakan ke Organization Directory; penerbit **panitia** dibuat `sekretariat_admin` secara manual dengan masa berlaku, karena ORG-012 (panitia) tidak ikut Directory (DRAFT).
+- **NomorSurat** hidup di buku milik Sekretariat, yang mewarisi mekanika DOC-003: **JenisSurat**, **Penerbit**, **HakAmbilNomor** (grant per orang per penerbit), dan **Penghitung** per penerbit × jenis × tahun. Katalog jenis (21 kode dua digit), katalog penerbit, dan formatnya mengikuti Pedoman Tata Naskah Dinas (§8); reset urut hanya tahunan. Sifat yang sudah teruji di DOC-003 dipertahankan: alokasi tanpa celah dan tanpa ganda dalam satu transaksi (D-05), nomor tidak pernah didaur ulang — yang batal tetap tercatat berstatus Dibatalkan (D-08), nomor awal hanya bisa menaikkan penghitung (D-17), zona waktu Asia/Jakarta.
+- Katalog **Penerbit** adalah daftar tetap dari pedoman (§8) yang dikelola `sekretariat_admin`; penerbit organ/bidang/divisi/satuan boleh ditautkan ke unit Organization Directory untuk akses berlapis, sedangkan penerbit **panitia/tim/satgas** (`PAN.[alias]` dst.) dibuat manual dengan masa berlaku, karena ORG-012 tidak ikut Directory (DRAFT).
 - Sekretariat mengalokasikan **hanya saat terbit**, tidak saat draf dibuat.
 - **ArsipPDF** adalah berkas final yang diunggah atau dirender, disimpan sekali dengan checksum; data pegawai/unit di dalamnya adalah snapshot saat terbit.
 - **KotakMasuk** adalah kotak surat per pemilik: satu kotak yayasan dan satu kotak per unit. Isinya SuratMasuk dari dua kanal: email yang ditarik dari mailbox domain, dan pindaian surat fisik yang diunggah pencatat.
@@ -118,7 +118,7 @@ Keputusan owner 2026-11-12: modul ini juga menjadi **kotak masuk email** yayasan
 
 1. **Email.** Penarik email mengambil pesan baru dari `sekretariat@sabilulquran.or.id` dan meregisternya ke kotak masuk yayasan — pengirim, perihal, isi, lampiran. Email tetap utuh di mailbox aslinya. Bila kelak unit punya alamat sendiri (§13 nomor 8), tiap alamat menjadi sumber kotak masuk unitnya.
 2. **Surat fisik.** Pencatat memotret/mengunggah surat dan mengisi metadata singkat; surat yang dialamatkan ke unit boleh diregister langsung ke kotak masuk unit oleh pencatat unit itu.
-3. **Disposisi.** Pemegang disposisi (Direktur atau yang ditunjuk) meneruskan isi kotak yayasan ke kotak masuk unit dengan catatan dan tenggat; unit menandai selesai dengan keterangan.
+3. **Disposisi.** Pemegang disposisi (Direktur atau yang ditunjuk) meneruskan isi kotak yayasan ke kotak masuk unit dengan catatan dan tenggat; unit menandai selesai dengan keterangan. Disposisi tidak diberi nomor naskah (pedoman Pasal 13 ayat 6). Balasan resmi atas surat masuk diterbitkan sebagai surat keluar baru berkode jenis 14 milik penerbit yang membalas, dan register menautkan surat masuk dengan balasannya (Pasal 14 ayat 4).
 4. **Balasan.** R1 hanya membaca dan meregister; balasan email masih dikirim dari klien email biasa, dan statusnya dicatat manual (§13 nomor 9).
 5. Bila tindak lanjut berupa pekerjaan nyata, disposisi dapat membuat **kartu di ruang Kerja SQ** unit itu (R2, konsumen bernama sesuai aturan Application Platform).
 
@@ -136,7 +136,7 @@ SK diregister seperti surat keluar dengan jenis `SK`, ditambah dua hal: tautan o
 
 Dua keputusan owner 2026-11-12: **tidak ada nomor HCIS sendiri — semua register penomoran surat terpusat**, dan **"pindahkan register nomor surat ke sekretariat."** Buku yang lahir di HCIS sebagai DOC-003 (ACCEPTED 2026-11-11, sudah terimplementasi) berpindah ke modul ini — DOC-003 D-01 memang sudah mengantisipasinya: "bila kelak ada aplikasi persuratan tersendiri, register ini menjadi sumbernya."
 
-1. **Buku dan modelnya pindah utuh.** Jenis surat, penerbit, hak ambil nomor, penghitung, dan seluruh nomor yang sudah teralokasi di DOC-003 **dimigrasikan sekali** ke tabel Sekretariat saat R1 siap; penghitung tidak pernah mundur selama migrasi (DOC-003 D-17). Layar `/app/letters` dan `/admin/letters` di HCIS pensiun setelah migrasi diverifikasi.
+1. **Buku dan modelnya pindah utuh.** Jenis surat, penerbit, hak ambil nomor, penghitung, dan seluruh nomor yang sudah teralokasi di DOC-003 **dimigrasikan sekali** ke tabel Sekretariat saat R1 siap; penghitung tidak pernah mundur selama migrasi (DOC-003 D-17). Nomor lama yang telanjur teralokasi dengan format/katalog DOC-003 dipertahankan apa adanya; sejak cutover, nomor baru memakai katalog dan format Pedoman Tata Naskah (§8). Layar `/app/letters` dan `/admin/letters` di HCIS pensiun setelah migrasi diverifikasi.
 2. **HCIS menjadi konsumen.** Surat terbitan HCIS (surat keterangan, SP, surat tugas, SK panitia) mengalokasikan nomornya lewat API buku Sekretariat dengan identitas layanan khusus — bukan kredensial manusia. Nomor yang sudah terbit tidak diubah; peralihan sisi HCIS ditulis sebagai spesifikasi HCIS tersendiri.
 3. **Masa antara.** Sampai Sekretariat R1 hidup dan migrasi selesai, buku DOC-003 di HCIS terus berjalan seperti sekarang — tidak ada masa tanpa buku, dan tidak pernah ada dua buku aktif: cutover satu arah dengan tanggal yang disepakati.
 4. **Fail-closed:** bila buku tak terjangkau, surat tidak terbit — tidak ada nomor cadangan lokal, karena deret paralel adalah masalah yang justru mau dihapus. HCIS dan Hub berjalan di host yang sama (Mi8), jadi kegagalan ini seharusnya langka.
@@ -171,7 +171,13 @@ Pencatat unit tidak melihat kotak masuk yayasan, kotak unit lain, register unit 
 
 ## 8. Penomoran dan verifikasi
 
-- Format diwarisi dari DOC-003 D-02 (warisan legacy, DRAFT): **`<JENIS>.<urut>/<PENERBIT>/<bulan romawi>/<tahun>`**, contoh `UND.007/SDIT/XI/2026`; urut per penerbit per jenis per periode (D-03), zona Asia/Jakarta. Satu buku berarti satu format (§13 nomor 1).
+Keputusan owner 2026-11-12: kaidah penomoran mengikuti **Pedoman Tata Naskah Dinas YSQ v0.11 (draf), Pasal 8 dan 13–14** — hanya kaidah penomorannya; bab pedoman yang lain (kop, bentuk naskah, kewenangan, dokumen terkendali) **tidak** diadopsi rancangan ini. Pedoman itu sendiri meminta "satu register naskah terpusat yang dikelola Sekretariat Pengurus … dapat berupa berkas bersama atau aplikasi" (Pasal 13 ayat 4) — buku modul ini adalah aplikasinya.
+
+- Pola: **`[kode jenis].[nomor urut]/[kode penerbit]/[bulan Romawi]/[tahun]`**. Kode jenis dua digit dari katalog 21 jenis Pasal 8 (01 Keputusan, 02 Perjanjian/Kesepakatan, 03 Edaran, 04 Surat Tugas, 05 Kuasa, 06 Pernyataan, 07 Peringatan, 08 Keterangan, 09 Rekomendasi, 10 Permohonan, 11 Pemberitahuan/Pengumuman, 12 Undangan, 13 Panggilan, 14 Balasan/Tanggapan, 15 Penawaran, 16 Pengantar, 17 Nota Dinas/Memo, 18 Berita Acara, 19 Laporan, 20 Notula, 21 Sertifikat/Piagam); nomor urut tiga digit mulai `001` (lewat 999 lanjut `1000`); bulan Romawi I–XII dan tahun empat digit menurut tanggal naskah. Contoh: `01.001/PENG.YSQ/I/2026`, `12.003/PAN.MILAD/X/2026`.
+- Urut dihitung **per kode jenis per kode penerbit**, reset **hanya 1 Januari** — tidak ada periode bulanan. Jenis yang punya dua bentuk (11, 16) tetap satu urutan.
+- Kode penerbit adalah katalog tetap Pasal 13 ayat (7): organ `PEMB.YSQ`, `PENG.YSQ`, `PENGAWAS.YSQ`; `DIR.YSQ`; bidang `PEND.YSQ`, `OPS.YSQ`; divisi `HCM.YSQ`, `GA.YSQ`, `KEU.YSQ`, `MEDIA.YSQ`, `SOSIAL.YSQ`, `USAHA.YSQ`; satuan `SDITTSQ`, `SMPITTSQ`, `PKBMSQ`, `PESTSQ`, `TTSQ`; serta `PAN.[alias]`/`TIM.[alias]`/`SATGAS.[alias]` yang dicatat pada register induk. Kode dipakai tetap; perubahan hanya karena ganti nama/izin/struktur lewat Keputusan Pengurus.
+- Petugas register per penerbit (Pasal 13 ayat 3) memetakan hak ambil nomor: Sekretariat Pengurus untuk naskah organ, Direktorat, dan bidang; kepala/petugas divisi untuk naskah divisinya; tata usaha satuan untuk satuannya; petugas register induk untuk panitia/tim/satgas. Ini persis model grant per orang per penerbit yang diwarisi dari DOC-003 dan akses berlapis §7.
+- Nomor diberikan **setelah pemeriksaan selesai** (Pasal 14) — alokasi saat terbit, tanpa tanggal mundur. Nomor batal tetap tercatat dengan alasannya dan tidak dipakai ulang. Naskah dua penerbit memakai nomor penerbit penanggung jawab utama; Perjanjian/Kesepakatan dengan pihak luar memakai nomor Yayasan; lampiran ikut nomor induknya; disposisi dan rekaman tidak diberi nomor.
 - Urutan tanpa lompatan dijamin buku dalam satu transaksi (DOC-003 D-05). PDF disimpan sekali di Sekretariat dengan checksum dan QR.
 - **Halaman verifikasi** `sekretariat.sabilulquran.or.id/v/<kode>` (publik, tanpa login) hanya menampilkan nomor, jenis, tanggal, perihal umum, dan penandatangan — tanpa isi surat dan tanpa data pribadi.
 
@@ -220,7 +226,7 @@ Semua saran di bawah adalah asumsi **DRAFT** sampai Product Owner menetapkannya.
 
 | # | Pertanyaan | Saran |
 | --- | --- | --- |
-| 1 | Format nomor surat yayasan | Warisi format DOC-003 D-02 (DRAFT): `<JENIS>.<urut>/<PENERBIT>/<bulan romawi>/<tahun>`, contoh `UND.007/SDIT/XI/2026` — nomor yang sudah teralokasi ikut format ini, jadi menggantinya berarti dua format dalam satu buku. Bila owner mau format lain, tetapkan **sebelum** cutover R1 |
+| 1 | ~~Format nomor surat yayasan~~ | **DIPUTUSKAN owner 2026-11-12:** kaidah penomoran mengikuti Pedoman Tata Naskah Dinas YSQ v0.11 Pasal 8 dan 13–14 (§8): `[kode jenis].[urut]/[kode penerbit]/[bulan Romawi]/[tahun]`, contoh `01.001/PENG.YSQ/I/2026`. Hanya kaidah penomoran yang diadopsi; bab pedoman lain tidak. Nomor DOC-003 yang telanjur teralokasi dipertahankan apa adanya |
 | 2 | Siapa `sekretariat_admin` | **Kepala HCM**, sama dengan `kirim_admin` dan `kerja_admin` |
 | 3 | ~~Apakah penomoran HCIS ikut register pusat, dan di mana bukunya~~ | **DIPUTUSKAN owner 2026-11-12** (dua tahap): tidak ada nomor HCIS sendiri — semua penomoran surat terpusat di satu buku — dan **buku itu dipindahkan ke Sekretariat**. Data DOC-003 dimigrasikan, HCIS menjadi konsumen API, DOC-003 D-01/D-10 dan `hr-documents.md` D-04 digantikan (§5.5). Asumsi DRAFT yang menyertainya: dokumen transaksi (tanda terima SPMB/Sosial, kuitansi Keuangan) bukan surat dan tetap bernomor modulnya |
 | 4 | Arsip lama diregister mundur sampai kapan | Hanya yang masih dirujuk (SK aktif, MoU berjalan, izin berlaku); bukan pemindaian massal |
