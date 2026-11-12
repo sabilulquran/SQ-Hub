@@ -2,8 +2,8 @@
 
 **Status:** DRAFT / DISCOVERY. Dokumen ini tidak mengizinkan implementasi atau perubahan production.
 **Spesifikasi:** SEK-001 (usulan). Spesifikasi implementasi belum ada.
-**Tanggal:** 2026-11-12 (revisi 1; revisi 0 2026-11-11)
-**Terkait:** ADR-0001 (batas platform), ADR-0006 (stack), ADR-0007 (Organization Directory), ADR-0011 (pola modul bersama); `rapat-sq-module-design.md` (RAPAT-001 §2, register keputusan), `kerja-sq-module-design.md` (KERJA-001 §1.3, struktur organisasi dan 26 pengguna), `kirim-sq-module-design.md` (KIRIM-001); HCIS `docs/domain/hr-documents.md` (DOC-001/DOC-002, keputusan D-01–D-15) dan register EMP-010
+**Tanggal:** 2026-11-12 (revisi 2; revisi 0 2026-11-11)
+**Terkait:** ADR-0001 (batas platform), ADR-0006 (stack), ADR-0007 (Organization Directory), ADR-0011 (pola modul bersama); `rapat-sq-module-design.md` (RAPAT-001 §2, register keputusan), `kerja-sq-module-design.md` (KERJA-001 §1.3, struktur organisasi dan 26 pengguna), `kirim-sq-module-design.md` (KIRIM-001); HCIS `docs/domain/outgoing-letter-register.md` (DOC-003, buku nomor surat yayasan), `docs/domain/hr-documents.md` (DOC-001/DOC-002) dan register EMP-010
 
 ## 1. Dasar
 
@@ -23,7 +23,7 @@ Dua modul lain sudah menunjuk fungsi ini tanpa pemiliknya: RAPAT-001 menetapkan 
 
 ### 1.2 Masalah
 
-- **Nomor surat tidak dijamin.** Tidak ada register pusat, jadi dua unit bisa memakai nomor yang sama, dan nomor bisa "dikarang" mundur. Surat atas nama yayasan tidak bisa diverifikasi keasliannya.
+- **Nomor surat baru saja mendapat bukunya, tetapi belum ada arsip dan verifikasinya.** Buku nomor pusat sudah lahir di HCIS (DOC-003, ACCEPTED 2026-11-11) dan menjawab nomor ganda; yang belum ada: arsip berkas suratnya, templat, dan cara penerima memverifikasi keaslian surat.
 - **Surat masuk hilang jejak.** Tidak ada catatan surat apa diterima kapan, siapa yang menindaklanjuti, dan apa hasilnya.
 - **SK tidak teregister.** Keputusan rapat akan tercatat di Rapat SQ (R1), tetapi SK sebagai dokumen resmi yang menindaklanjutinya tidak punya register dan penomoran.
 - **Izin bisa kedaluwarsa tanpa peringatan.** Izin operasional sekolah dan perjanjian kerja sama punya tanggal habis; tidak ada sistem yang mengingatkan.
@@ -44,10 +44,10 @@ Dua modul lain sudah menunjuk fungsi ini tanpa pemiliknya: RAPAT-001 menetapkan 
 | --- | --- | --- |
 | Surat keluar yayasan dan unit | Register, penomoran, arsip PDF, templat | Isi surat ditulis unit pengirim |
 | Surat masuk | Kotak masuk per unit + yayasan: email domain (IMAP) dan pindaian surat fisik, register, disposisi, status | Tindak lanjutnya dikerjakan unit (bisa jadi kartu Kerja SQ); kotak masuk WhatsApp milik Kirim SQ |
-| SK pengurus/direktur | Register, penomoran, arsip | Keputusan rapatnya milik Rapat SQ; SK kepegawaian (pengangkatan, mutasi) milik register HCIS EMP-010 |
+| SK pengurus/direktur | Register, penomoran, arsip | Keputusan rapatnya milik Rapat SQ; SK kepegawaian (pengangkatan, mutasi) tetap teregister di HCIS EMP-010, **nomornya dari register pusat** |
 | Dokumen legal yayasan | Arsip, metadata, tanggal habis, pengingat | Dokumen kepemilikan aset (sertifikat tanah, BPKB) milik Aset SQ; Sekretariat hanya menautkan |
-| Surat layanan kepegawaian | — | HCIS DOC-001/DOC-002 (surat keterangan, SP) dengan penomoran sendiri (D-04) |
-| Dokumen transaksi modul lain | — | Tanda terima SPMB, tanda terima donasi Sosial, dokumen Keuangan: masing-masing menomori sendiri |
+| **Penomoran surat se-yayasan** | **Satu buku nomor untuk seluruh yayasan** (keputusan owner 2026-11-12: tidak ada deret nomor per modul). Buku itu **sudah ada dan terimplementasi**: HCIS DOC-003 `outgoing-letter-register.md` (ACCEPTED 2026-11-11). Sekretariat **tidak membangun register kedua** — ia mengambil nomor dan menampilkan buku lewat kontrak API (§5.5) | Buku fisiknya tinggal di HCIS; surat terbitan HCIS (surat keterangan, SP, surat tugas) pun memakai buku yang sama — DOC-003 D-10 digantikan keputusan owner |
+| Dokumen transaksi modul lain | — | Tanda terima SPMB, tanda terima donasi Sosial, kuitansi Keuangan adalah dokumen transaksi, bukan surat: tetap bernomor modulnya (asumsi DRAFT, §13 nomor 3) |
 | Notula dan keputusan rapat | — | Rapat SQ |
 | Kalender kegiatan dan tugas | — | Kerja SQ |
 
@@ -95,7 +95,7 @@ DokumenLegal (jenis, penerbit, nomor asli, berlaku s.d.) ──► Pengingat (Ki
 ```
 
 - **JenisSurat** memegang kode penomoran (mis. `UND` undangan, `KET` keterangan, `SK`, `MoU`) dan templatnya. Dikelola `sekretariat_admin`.
-- **NomorSurat** dialokasikan **hanya saat terbit**, tidak saat draf dibuat, dan **tidak didaur ulang** — surat yang dibatalkan tetap memegang nomornya berstatus `DIBATALKAN`. Dua keputusan ini meniru HCIS D-02/D-03 yang sudah ACCEPTED.
+- **NomorSurat** datang dari **buku nomor yayasan HCIS DOC-003** lewat API (§5.5) — Sekretariat tidak memegang penghitung sendiri. Sifat buku itu berlaku di sini: alokasi tanpa celah dan tanpa ganda dalam satu transaksi (DOC-003 D-05), nomor tidak pernah didaur ulang, yang batal tetap tercatat berstatus Dibatalkan (D-08). Sekretariat mengalokasikan **hanya saat terbit**, tidak saat draf dibuat.
 - **ArsipPDF** adalah berkas final yang diunggah atau dirender, disimpan sekali dengan checksum; data pegawai/unit di dalamnya adalah snapshot saat terbit.
 - **KotakMasuk** adalah kotak surat per pemilik: satu kotak yayasan dan satu kotak per unit. Isinya SuratMasuk dari dua kanal: email yang ditarik dari mailbox domain, dan pindaian surat fisik yang diunggah pencatat.
 - **SuratMasuk** menyimpan pengirim, tanggal diterima, perihal, isi/pindaian beserta lampiran email, dan disposisi (unit tujuan + catatan + tenggat).
@@ -130,11 +130,21 @@ SK diregister seperti surat keluar dengan jenis `SK`, ditambah dua hal: tautan o
 2. Pengingat jatuh ke Direktur dan unit terkait: in-app dulu, WhatsApp lewat Kirim SQ begitu kapasitasnya tersedia (adapter `log` → `kirim`, pola KERJA-001).
 3. Perpanjangan dicatat sebagai versi baru; versi lama tetap tersimpan.
 
+### 5.5 Satu buku nomor se-yayasan (HCIS DOC-003)
+
+Keputusan owner 2026-11-12: **tidak ada nomor HCIS sendiri — semua register penomoran surat terpusat.** Buku pusat itu sudah ada dan terimplementasi: **HCIS DOC-003** (Buku Nomor Surat Keluar Yayasan, ACCEPTED 2026-11-11), satu buku untuk seluruh yayasan dengan penerbit (yayasan, unit, panitia), alokasi tanpa celah, dan nomor yang tidak pernah dipakai ulang. Konsekuensinya dua arah:
+
+1. **Sekretariat tidak membangun register nomor kedua.** Saat pencatat menerbitkan surat keluar di Sekretariat, modul memanggil API buku DOC-003 dengan identitas layanan khusus untuk mengambil nomor atas nama penerbit (unit/yayasan), lalu mengunci arsip PDF-nya di Sekretariat. Buku tetap satu; Sekretariat menambahkan yang tidak dimiliki DOC-003: arsip berkas surat, templat, verifikasi QR, dan kotak masuk.
+2. **Surat terbitan HCIS pun memakai buku yang sama.** DOC-003 D-10 (surat keterangan/SP/surat tugas memakai penghitung DOC-001 sendiri) **digantikan**: ke depan HCIS mengalokasikan nomor surat terbitannya dari buku DOC-003. Nomor yang sudah terbit tidak diubah; peralihannya butuh spesifikasi HCIS tersendiri.
+3. **Fail-closed:** bila buku tak terjangkau, surat tidak terbit — tidak ada nomor cadangan lokal, karena deret paralel adalah masalah yang justru mau dihapus. HCIS dan Hub berjalan di host yang sama (Mi8), jadi kegagalan ini seharusnya langka.
+4. Surat lama yang terbit di luar buku diregister mundur `RETROAKTIF` dengan nomor aslinya, di Sekretariat (arsipnya) — buku DOC-003 tidak menerbitkan nomor untuk masa lalu.
+5. Penempatan buku di HCIS adalah keadaan hari ini, bukan dogma: DOC-003 D-01 sendiri mencatat bahwa bila aplikasi persuratan tersendiri lahir, buku ini menjadi sumbernya. Memindahkan buku ke Sekretariat adalah keputusan owner tersendiri di kemudian hari, bukan bagian rancangan ini.
+
 ## 6. Integrasi dengan modul lain
 
 | Modul | Hubungan |
 | --- | --- |
-| **HCIS** | Batas, bukan integrasi: surat layanan kepegawaian (DOC-001/002) dan SK kepegawaian (EMP-010) tetap di HCIS dengan penomorannya sendiri. Bila kelak owner menyatukan penomoran, HCIS membaca alokasi nomor lewat kontrak API — tidak di rancangan ini (§13 nomor 3) |
+| **HCIS** | **Pemegang buku nomor DOC-003** (§5.5): Sekretariat mengambil nomor dan membaca register gabungan lewat kontrak API dengan identitas layanan. Keputusan owner 2026-11-12: surat terbitan HCIS sendiri (DOC-001/002, surat tugas) juga beralih ke buku itu — D-10 dan D-04 `hr-documents.md` digantikan, peralihannya spesifikasi HCIS tersendiri. Dokumen dan register dokumen (DOC-001, EMP-010) tetap di HCIS |
 | **Rapat SQ** | SK menautkan butir keputusan rapat sebagai dasarnya (R2, setelah Rapat R1 ada). Satu arah: Sekretariat membaca, tidak menulis |
 | **Kerja SQ** | Disposisi dapat membuat kartu di ruang unit (R2). Pencatat unit = petugas administrasi yang sudah ada di 26 pengguna Kerja SQ |
 | **Kirim SQ** | Pengingat kedaluwarsa dan notifikasi disposisi lewat `WhatsAppSender` port dengan adapter `log` + `kirim` |
@@ -159,8 +169,8 @@ Pencatat unit tidak melihat kotak masuk yayasan, kotak unit lain, register unit 
 
 ## 8. Penomoran dan verifikasi
 
-- Format usulan, selaras dengan HCIS D-04 dan nomor yang sudah beredar (`YSQ/HCM/UJ/030`): **`<urut>/<kode-jenis>/<kode-unit>/YSQ/<bulan-romawi>/<tahun>`**, urut per jenis per tahun takwim; surat atas nama yayasan memakai kode unit `SEK` atau tanpa kode unit (§13 nomor 1). Status **DRAFT** — aturan bisnis yang belum ada di dokumen mana pun.
-- Urutan tanpa lompatan dijamin database (pola §8 SOS-001). PDF disimpan sekali dengan checksum dan QR.
+- Format mengikuti buku DOC-003 D-02 (warisan legacy, DRAFT di sana): **`<JENIS>.<urut>/<PENERBIT>/<bulan romawi>/<tahun>`**, contoh `UND.007/SDIT/XI/2026`; urut per penerbit per jenis per periode (D-03), zona Asia/Jakarta. Satu buku berarti satu format — Sekretariat tidak membuat format tandingan (§13 nomor 1).
+- Urutan tanpa lompatan dijamin buku DOC-003 dalam satu transaksi (D-05). PDF disimpan sekali di Sekretariat dengan checksum dan QR.
 - **Halaman verifikasi** `sekretariat.sabilulquran.or.id/v/<kode>` (publik, tanpa login) hanya menampilkan nomor, jenis, tanggal, perihal umum, dan penandatangan — tanpa isi surat dan tanpa data pribadi.
 
 ## 9. Privasi, keamanan, audit
@@ -182,11 +192,11 @@ Ruang staf: **Ringkasan** (surat terbaru, disposisi terbuka, izin mendekati habi
 
 | Rilis | Isi | Menggantikan |
 | --- | --- | --- |
-| **R1 · Register, nomor & kotak masuk** | Jenis surat, surat keluar + penomoran terjamin + arsip PDF unggahan, kotak masuk (email `sekretariat@` lewat IMAP + pindaian surat fisik) + disposisi in-app, akses berlapis, register retroaktif | Penomoran sendiri-sendiri per unit; email yayasan tanpa register |
+| **R1 · Arsip surat & kotak masuk** | Surat keluar: nomor diambil dari buku DOC-003 lewat API + arsip PDF unggahan; kotak masuk (email `sekretariat@` lewat IMAP + pindaian surat fisik) + disposisi in-app; akses berlapis; register retroaktif | Arsip surat tanpa sistem; email yayasan tanpa register |
 | **R2 · SK, legal, integrasi** | Register SK + tautan Rapat SQ, arsip dokumen legal + pengingat kedaluwarsa, disposisi → kartu Kerja SQ, notifikasi Kirim SQ, halaman verifikasi publik | Berkas legal tersebar; izin tanpa pengingat |
 | **R3 · Render dari templat** | Surat dirender dari templat + data (pola HCIS D-01), kop seragam, blok tanda tangan | Ketik manual di Word per unit |
 
-R1 berdiri sendiri: tidak menunggu Rapat SQ, Kirim SQ production, atau modul lain.
+R1 bergantung hanya pada API buku DOC-003 di HCIS; selebihnya tidak menunggu Rapat SQ, Kirim SQ production, atau modul lain. Peralihan surat terbitan HCIS (DOC-001/002, surat tugas) ke buku DOC-003 adalah pekerjaan HCIS dengan spesifikasinya sendiri, bukan rilis modul ini.
 
 ## 12. Risiko
 
@@ -194,7 +204,8 @@ R1 berdiri sendiri: tidak menunggu Rapat SQ, Kirim SQ production, atau modul lai
 | --- | --- |
 | Modul dibangun tetapi tidak dipakai karena tidak ada unit pemiliknya | Fungsi ditempelkan ke orang yang sudah ada (petugas administrasi gelombang Kerja SQ); mulai dari penomoran, kebutuhan yang paling terasa |
 | Penomoran pusat ditinggalkan dan unit kembali mengarang nomor | Verifikasi QR membuat surat teregister lebih "sah" di mata penerima; sosialisasi lewat jalur yang sama dengan Kerja SQ |
-| Register ganda dengan HCIS untuk SK kepegawaian | Batas §2 eksplisit; UI SK menolak jenis kepegawaian dan menunjuk ke HCIS |
+| Register ganda dengan HCIS untuk SK kepegawaian | Batas §2 eksplisit; UI SK menolak jenis kepegawaian dan menunjuk ke HCIS; nomornya tetap satu deret lewat §5.5 |
+| Buku DOC-003 di HCIS tak terjangkau saat menerbitkan surat | Fail-closed disengaja (§5.5); HCIS dan Hub satu host, kegagalan lintas proses langka; penerbitan bisa ditunda tanpa kehilangan data |
 | Dokumen legal bocor | Peran sempit + MFA, tautan sementara, akses tercatat |
 | Beban Mi8 bertambah | Modul di proses Hub yang ada; berkas kecil dan jarang; penarikan email berkala (bukan push), lampiran dibatasi; pola backup yang sudah berjalan |
 | Kredensial mailbox bocor atau mailbox penuh spam | Kredensial di secret Mi8, IMAP baca-saja; alamat `sekretariat@` dipublikasikan seperlunya; spam ditandai tanpa disposisi dan tidak membuat kartu |
@@ -206,9 +217,9 @@ Semua saran di bawah adalah asumsi **DRAFT** sampai Product Owner menetapkannya.
 
 | # | Pertanyaan | Saran |
 | --- | --- | --- |
-| 1 | Format nomor surat yayasan | `<urut>/<kode-jenis>/<kode-unit>/YSQ/<bulan-romawi>/<tahun>`, urut per jenis per tahun; selaras HCIS D-04 |
+| 1 | Format nomor surat yayasan | Sudah ada di buku DOC-003 D-02 (DRAFT): `<JENIS>.<urut>/<PENERBIT>/<bulan romawi>/<tahun>`, contoh `UND.007/SDIT/XI/2026`. **Pakai itu** — satu buku satu format; bila mau format lain, ubah di DOC-003, bukan membuat format kedua di sini |
 | 2 | Siapa `sekretariat_admin` | **Kepala HCM**, sama dengan `kirim_admin` dan `kerja_admin` |
-| 3 | Apakah penomoran HCIS (D-04) ikut register pusat ini | **Tidak untuk sekarang.** HCIS menomori suratnya sendiri; disatukan hanya bila owner memutuskan, lewat kontrak API |
+| 3 | ~~Apakah penomoran HCIS ikut register pusat~~ | **DIPUTUSKAN owner 2026-11-12:** tidak ada nomor HCIS sendiri — semua penomoran surat terpusat di **satu buku: DOC-003**. Sekretariat tidak membangun register kedua dan mengambil nomor lewat API (§5.5); surat terbitan HCIS pun beralih ke buku itu (DOC-003 D-10 dan `hr-documents.md` D-04 digantikan, peralihan lewat spesifikasi HCIS). Asumsi DRAFT yang menyertainya: dokumen transaksi (tanda terima SPMB/Sosial, kuitansi Keuangan) bukan surat dan tetap bernomor modulnya |
 | 4 | Arsip lama diregister mundur sampai kapan | Hanya yang masih dirujuk (SK aktif, MoU berjalan, izin berlaku); bukan pemindaian massal |
 | 5 | Nama modul di antarmuka | **"Sekretariat"** saja; nama internal Sekretariat SQ sejalan Kirim/Rapat/Kerja SQ |
 | 6 | ~~Siapa boleh melihat surat keluar~~ | **DIPUTUSKAN owner 2026-11-12:** akses berlapis — admin akses penuh termasuk semua kotak masuk; per unit hanya orang yang ditunjuk, sebatas kotak masuk, register nomor, dan arsip online unitnya (§7) |
