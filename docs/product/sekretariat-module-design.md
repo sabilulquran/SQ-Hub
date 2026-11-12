@@ -2,7 +2,7 @@
 
 **Status:** DRAFT / DISCOVERY. Dokumen ini tidak mengizinkan implementasi atau perubahan production.
 **Spesifikasi:** SEK-001 (usulan). Spesifikasi implementasi belum ada.
-**Tanggal:** 2026-11-12 (revisi 4; revisi 0 2026-11-11)
+**Tanggal:** 2026-11-12 (revisi 5; revisi 0 2026-11-11)
 **Terkait:** ADR-0001 (batas platform), ADR-0006 (stack), ADR-0007 (Organization Directory), ADR-0011 (pola modul bersama); `rapat-sq-module-design.md` (RAPAT-001 §2, register keputusan), `kerja-sq-module-design.md` (KERJA-001 §1.3, struktur organisasi dan 26 pengguna), `kirim-sq-module-design.md` (KIRIM-001); HCIS `docs/domain/outgoing-letter-register.md` (DOC-003, buku nomor surat yayasan), `docs/domain/hr-documents.md` (DOC-001/DOC-002) dan register EMP-010; **Pedoman Tata Naskah Dinas YSQ v0.11 (draf)** — sumber kaidah penomoran (§8)
 
 ## 1. Dasar
@@ -161,7 +161,7 @@ Tidak ada unit Sekretariat, jadi peran dipegang orang per fungsi. **Akses berlap
 
 | Peran | Kewenangan | Siapa (usulan) |
 | --- | --- | --- |
-| `sekretariat_admin` | **Akses penuh**: semua kotak masuk (termasuk email yayasan), semua register nomor, semua arsip, jenis surat, templat, hak akses modul | **Kepala HCM** — orang yang sama dengan `kirim_admin` dan `kerja_admin` (DRAFT) |
+| `sekretariat_admin` | **Akses penuh**: semua kotak masuk (termasuk email yayasan), semua register nomor, semua arsip, jenis surat, templat, hak akses modul | **Kepala HCM** — orang yang sama dengan `kirim_admin` dan `kerja_admin` (DIPUTUSKAN 2026-11-12, §13 nomor 2) |
 | Pencatat unit — hanya orang yang **ditunjuk** per unit | **Sebatas unitnya**: kotak masuk unit, register nomor surat unit (membuat dan menerbitkan surat keluar unit), arsip online unit | Petugas administrasi sekolah dan admin unit (gelombang pertama Kerja SQ) |
 | Pemberi disposisi | Kotak masuk yayasan dan meneruskannya ke kotak unit | Direktur, dapat didelegasikan |
 | Penandatangan | Tercatat pada surat; melihat surat yang ia tandatangani | Direktur, Ketua/Sekretaris Pengurus (akun organ, baca-saja) |
@@ -220,28 +220,29 @@ R1 tidak menunggu Rapat SQ, Kirim SQ production, atau modul lain, tetapi memikul
 | Kredensial mailbox bocor atau mailbox penuh spam | Kredensial di secret Mi8, IMAP baca-saja; alamat `sekretariat@` dipublikasikan seperlunya; spam ditandai tanpa disposisi dan tidak membuat kartu |
 | Subdomain dibuat lalu ditinggalkan | DNS hanya lewat tunnel Mi8, dihapus bila pensiun |
 
-## 13. Keputusan terbuka
+## 13. Keputusan
 
-Semua saran di bawah adalah asumsi **DRAFT** sampai Product Owner menetapkannya.
+Seluruh pertanyaan bagian ini telah **DIPUTUSKAN** Product Owner pada 2026-11-12: nomor 1, 3, dan 6 lewat keputusan tersendiri, dan sisanya (2, 4, 5, 7, 8, 9) dengan menyetujui saran di kolom kanan ("Ya, pakai semua saran"). Satu-satunya asumsi yang tetap DRAFT: dokumen transaksi bukan surat (lihat nomor 3).
 
-| # | Pertanyaan | Saran |
+| # | Pertanyaan | Keputusan |
 | --- | --- | --- |
 | 1 | ~~Format nomor surat yayasan~~ | **DIPUTUSKAN owner 2026-11-12:** kaidah penomoran mengikuti Pedoman Tata Naskah Dinas YSQ v0.11 Pasal 8 dan 13–14 (§8): `[kode jenis].[urut]/[kode penerbit]/[bulan Romawi]/[tahun]`, contoh `01.001/PENG.YSQ/I/2026`. Hanya kaidah penomoran yang diadopsi; bab pedoman lain tidak. Nomor DOC-003 yang telanjur teralokasi dipertahankan apa adanya |
-| 2 | Siapa `sekretariat_admin` | **Kepala HCM**, sama dengan `kirim_admin` dan `kerja_admin` |
+| 2 | Siapa `sekretariat_admin` | **Kepala HCM**, sama dengan `kirim_admin` dan `kerja_admin` (DIPUTUSKAN 2026-11-12). Catatan: pedoman Pasal 12 menyebut mailbox `sekretariat@` dikelola Divisi General Affairs; bila owner kelak memindahkan admin ke GA, cukup ganti pemegang peran |
 | 3 | ~~Apakah penomoran HCIS ikut register pusat, dan di mana bukunya~~ | **DIPUTUSKAN owner 2026-11-12** (dua tahap): tidak ada nomor HCIS sendiri — semua penomoran surat terpusat di satu buku — dan **buku itu dipindahkan ke Sekretariat**. Data DOC-003 dimigrasikan, HCIS menjadi konsumen API, DOC-003 D-01/D-10 dan `hr-documents.md` D-04 digantikan (§5.5). Asumsi DRAFT yang menyertainya: dokumen transaksi (tanda terima SPMB/Sosial, kuitansi Keuangan) bukan surat dan tetap bernomor modulnya |
-| 4 | Arsip lama diregister mundur sampai kapan | Hanya yang masih dirujuk (SK aktif, MoU berjalan, izin berlaku); bukan pemindaian massal |
-| 5 | Nama modul di antarmuka | **"Sekretariat"** saja; nama internal Sekretariat SQ sejalan Kirim/Rapat/Kerja SQ |
+| 4 | Arsip lama diregister mundur sampai kapan | Hanya yang masih dirujuk (SK aktif, MoU berjalan, izin berlaku); bukan pemindaian massal (DIPUTUSKAN 2026-11-12) |
+| 5 | Nama modul di antarmuka | **"Sekretariat"** saja; nama internal Sekretariat SQ sejalan Kirim/Rapat/Kerja SQ (DIPUTUSKAN 2026-11-12) |
 | 6 | ~~Siapa boleh melihat surat keluar~~ | **DIPUTUSKAN owner 2026-11-12:** akses berlapis — admin akses penuh termasuk semua kotak masuk; per unit hanya orang yang ditunjuk, sebatas kotak masuk, register nomor, dan arsip online unitnya (§7) |
-| 7 | Pengingat kedaluwarsa jatuh ke siapa | Direktur dan kepala unit terkait, H-90/H-30/H-7 |
-| 8 | Alamat email: satu `sekretariat@` atau juga per unit | Mulai **satu alamat** `sekretariat@sabilulquran.or.id`; pembagian ke unit lewat disposisi in-app. Alamat per unit menyusul bila volume menuntut, tiap alamat jadi sumber kotak unitnya |
-| 9 | Balas email dari dalam modul | **Tidak di R1** — baca dan register saja; balasan dari klien email biasa dan statusnya dicatat. Kirim dari modul (SMTP mailbox yang sama) dinilai di R2 setelah volume terlihat |
+| 7 | Pengingat kedaluwarsa jatuh ke siapa | Direktur dan kepala unit terkait, H-90/H-30/H-7 (DIPUTUSKAN 2026-11-12) |
+| 8 | Alamat email: satu `sekretariat@` atau juga per unit | Mulai **satu alamat** `sekretariat@sabilulquran.or.id` — pedoman Pasal 12 menyebutnya surel resmi yayasan; pembagian ke unit lewat disposisi in-app. Alamat per unit menyusul bila volume menuntut, tiap alamat jadi sumber kotak unitnya (DIPUTUSKAN 2026-11-12) |
+| 9 | Balas email dari dalam modul | **Tidak di R1** — baca dan register saja; balasan dari klien email biasa dan statusnya dicatat. Kirim dari modul (SMTP mailbox yang sama) dinilai di R2 setelah volume terlihat (DIPUTUSKAN 2026-11-12) |
 
 ## 14. Langkah berikutnya
 
-1. Data singkat volume: hitung surat keluar/masuk sebulan terakhir di dua unit contoh, daftar dokumen legal beserta tanggal habisnya. Hasilnya mengganti catatan DISCOVERY §1.2.
-2. Product Owner menetapkan §13, terutama nomor 1 (format nomor) dan 2 (admin).
-3. Buat mailbox `sekretariat@sabilulquran.or.id` di cPanel (pemegang akses hosting email), simpan kredensialnya sebagai secret di Mi8.
-4. Pemegang akun Cloudflare yayasan membuat rekaman `sekretariat` lewat tunnel Mi8 saat R1 siap terbit, tidak lebih awal.
-5. Baru setelah itu: spesifikasi `SEK-IMPL-001` untuk R1 saja, mengikuti pola KERJA-IMPL-001, **termasuk rencana migrasi dan cutover buku DOC-003** (verifikasi jumlah baris dan penghitung, tanggal cutover, pensiun layar HCIS) berpasangan dengan spesifikasi HCIS untuk sisi konsumennya. ADR tampaknya tidak perlu — modul mengikuti pola ADR-0011 yang sudah ACCEPTED.
+Seluruh keputusan §13 ditetapkan pada 2026-11-12; **tidak ada yang menghalangi spesifikasi.** Yang tersisa:
 
-Tidak ada kode yang ditulis sebelum langkah 1–2 selesai.
+1. Spesifikasi `SEK-IMPL-001` untuk R1 saja, mengikuti pola KERJA-IMPL-001, **termasuk rencana migrasi dan cutover buku DOC-003** (verifikasi jumlah baris dan penghitung, tanggal cutover, pensiun layar HCIS) berpasangan dengan spesifikasi HCIS untuk sisi konsumennya. ADR tampaknya tidak perlu — modul mengikuti pola ADR-0011 yang sudah ACCEPTED.
+2. Data singkat volume (surat keluar/masuk sebulan terakhir di dua unit contoh, daftar dokumen legal beserta tanggal habisnya) melengkapi catatan DISCOVERY §1.2 — memperkaya spesifikasi, tidak memblokirnya.
+3. Buat mailbox `sekretariat@sabilulquran.or.id` di cPanel (pemegang akses hosting email), simpan kredensialnya sebagai secret di Mi8 — dibutuhkan sebelum R1 dinyalakan, bukan sebelum spesifikasi.
+4. Pemegang akun Cloudflare yayasan membuat rekaman `sekretariat` lewat tunnel Mi8 saat R1 siap terbit, tidak lebih awal.
+
+Tidak ada kode yang ditulis sebelum SEK-IMPL-001 diterima.
