@@ -70,7 +70,9 @@ final class TrustedDeviceOtpAuthenticator extends OTPFormAuthenticator {
                 records.size(), result.reason());
 
         if (result.trusted()) {
-            setCookie(context, result.rotatedCookie(), TrustedDeviceManager.LIFETIME_SECONDS);
+            if (result.rotatedCookie() != null) {
+                setCookie(context, result.rotatedCookie(), TrustedDeviceManager.LIFETIME_SECONDS);
+            }
             context.success();
             return;
         }
