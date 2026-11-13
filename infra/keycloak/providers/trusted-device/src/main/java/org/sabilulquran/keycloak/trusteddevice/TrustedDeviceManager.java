@@ -69,42 +69,44 @@ final class TrustedDeviceManager {
                                  String credentialFingerprint, List<String> currentRecords) {
         List<String> pruned = prune(currentRecords, credentialFingerprint);
         if (cookie == null || cookie.isBlank()) {
-            return Validation.rejected(pruned);
+            return Validation.rejected(pruned, Reason.NO_COOKIE);
         }
 
         String[] parts = cookie.split("\\.", -1);
         if (parts.length != 6 || !VERSION.equals(parts[0])) {
-            return Validation.rejected(pruned);
+            return Validation.rejected(pruned, Reason.MALFORMED);
         }
 
         long expiresAt;
         try {
             expiresAt = Long.parseLong(parts[1]);
         } catch (NumberFormatException failure) {
-            return Validation.rejected(pruned);
+            return Validation.rejected(pruned, Reason.MALFORMED);
         }
 
         long now = Instant.now(clock).getEpochSecond();
         if (expiresAt <= now || expiresAt > now + LIFETIME_SECONDS) {
-            return Validation.rejected(pruned);
+            return Validation.rejected(pruned, Reason.EXPIRED);
         }
-        if (!constantTimeEquals(parts[3], digest(realmId + ":" + userId))
-                || !constantTimeEquals(parts[4], credentialFingerprint)) {
-            return Validation.rejected(pruned);
+        if (!constantTimeEquals(parts[3], digest(realmId + ":" + userId))) {
+            return Validation.rejected(pruned, Reason.OTHER_SUBJECT);
+        }
+        if (!constantTimeEquals(parts[4], credentialFingerprint)) {
+            return Validation.rejected(pruned, Reason.CREDENTIALS_CHANGED);
         }
 
         String payload = String.join(".", parts[0], parts[1], parts[2], parts[3], parts[4]);
         if (!constantTimeEquals(parts[5], sign(payload))) {
-            return Validation.rejected(pruned);
+            return Validation.rejected(pruned, Reason.BAD_SIGNATURE);
         }
 
         String matchedRecord = record(expiresAt, digest(parts[2]), credentialFingerprint);
         if (!pruned.remove(matchedRecord)) {
-            return Validation.rejected(pruned);
+            return Validation.rejected(pruned, Reason.NO_SERVER_RECORD);
         }
 
         Issue rotated = issue(realmId, userId, credentialFingerprint, pruned);
-        return new Validation(true, rotated.cookie(), rotated.records(), rotated.expiresAt());
+        return new Validation(true, rotated.cookie(), rotated.records(), rotated.expiresAt(), Reason.TRUSTED);
     }
 
     private List<String> prune(List<String> records, String credentialFingerprint) {
@@ -170,9 +172,24 @@ final class TrustedDeviceManager {
     record Issue(String cookie, List<String> records, long expiresAt) {
     }
 
-    record Validation(boolean trusted, String rotatedCookie, List<String> records, long expiresAt) {
-        static Validation rejected(List<String> records) {
-            return new Validation(false, null, List.copyOf(records), 0);
+    /**
+     * Why a presented proof was accepted or refused. Diagnostics only: a reason names no
+     * cookie value, nonce, user, or credential material.
+     */
+    enum Reason {
+        TRUSTED,
+        NO_COOKIE,
+        MALFORMED,
+        EXPIRED,
+        OTHER_SUBJECT,
+        CREDENTIALS_CHANGED,
+        BAD_SIGNATURE,
+        NO_SERVER_RECORD
+    }
+
+    record Validation(boolean trusted, String rotatedCookie, List<String> records, long expiresAt, Reason reason) {
+        static Validation rejected(List<String> records, Reason reason) {
+            return new Validation(false, null, List.copyOf(records), 0, reason);
         }
     }
 }

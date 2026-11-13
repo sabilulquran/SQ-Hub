@@ -7,6 +7,7 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.stream.Collectors;
+import org.jboss.logging.Logger;
 import org.keycloak.authentication.AuthenticationFlowContext;
 import org.keycloak.authentication.AuthenticationFlowError;
 import org.keycloak.authentication.authenticators.browser.AbstractUsernameFormAuthenticator;
@@ -21,6 +22,12 @@ import org.keycloak.services.messages.Messages;
 import org.keycloak.services.validation.Validation;
 
 final class TrustedDeviceOtpAuthenticator extends OTPFormAuthenticator {
+    /**
+     * Diagnostic trail for the 30-day trust (SQ-DIAG-TRUSTED-DEVICE). It records only whether a
+     * proof arrived, how many server-side records the account holds, and the decision - never a
+     * cookie value, nonce, user identifier, or credential material.
+     */
+    private static final Logger LOG = Logger.getLogger(TrustedDeviceOtpAuthenticator.class);
     static final String COOKIE_NAME = "SQ_TRUSTED_DEVICE";
     static final String USER_ATTRIBUTE = "sq.internal.trusted-device.v1";
     static final String FORM_FIELD = "trustDevice";
@@ -57,6 +64,10 @@ final class TrustedDeviceOtpAuthenticator extends OTPFormAuthenticator {
         TrustedDeviceManager.Validation result = manager.validateAndRotate(
                 cookie, context.getRealm().getId(), user.getId(), fingerprint, records);
         persistRecords(user, result.records());
+
+        LOG.infof("SQ-DIAG-TRUSTED-DEVICE validate realm=%s proof=%s records=%d decision=%s",
+                context.getRealm().getName(), cookie == null ? "absent" : "present",
+                records.size(), result.reason());
 
         if (result.trusted()) {
             setCookie(context, result.rotatedCookie(), TrustedDeviceManager.LIFETIME_SECONDS);
@@ -122,6 +133,9 @@ final class TrustedDeviceOtpAuthenticator extends OTPFormAuthenticator {
                     context.getRealm().getId(), user.getId(), fingerprint, records);
             persistRecords(user, issue.records());
             setCookie(context, issue.cookie(), TrustedDeviceManager.LIFETIME_SECONDS);
+            LOG.infof("SQ-DIAG-TRUSTED-DEVICE issue realm=%s records=%d secure=%s sameSite=%s path=%s",
+                    context.getRealm().getName(), issue.records().size(), "true", "Lax",
+                    "/realms/" + context.getRealm().getName() + "/");
         }
         context.success(OTPCredentialModel.TYPE);
     }
