@@ -215,6 +215,12 @@ export class SekretariatBuku {
         "UPDATE sekretariat_nomor SET status = 'dibatalkan', dibatalkan_pada = now(), dibatalkan_oleh = $2, dibatalkan_alasan = $3 WHERE id = $1",
         [nomorId, viewer.actor, alasan],
       );
+      // The register and the archive must agree: a letter holding a voided number is voided too.
+      await client.query(
+        `UPDATE sekretariat_surat_keluar SET status = 'dibatalkan', dibatalkan_pada = now(), dibatalkan_oleh = $2, dibatalkan_alasan = $3
+         WHERE nomor_id = $1 AND status = 'terbit'`,
+        [nomorId, viewer.actor, alasan],
+      );
       await writeAudit(client, { aktor: viewer.actor, aksi: "nomor.batal", objekJenis: "sekretariat_nomor", objekRef: row.nomor_lengkap, alasan });
     });
     return { id: nomorId };
@@ -251,7 +257,10 @@ export class SekretariatBuku {
 
   /** The combined register, scoped to the issuers the viewer may see (§8). 25 per page with total. */
   async register(viewer: Viewer, admin: boolean, query: z.infer<typeof registerQuerySchema>) {
-    const peran = await loadPeran(this.pool, viewer, admin);
+    return this.registerScoped(await loadPeran(this.pool, viewer, admin), query);
+  }
+
+  private async registerScoped(peran: Peranku, query: z.infer<typeof registerQuerySchema>) {
     if (query.penerbit) requirePenerbit(peran, query.penerbit);
     const scope = query.penerbit ? [query.penerbit] : peran.admin ? null : [...peran.penerbitIds];
     if (scope !== null && scope.length === 0) return { items: [], total: 0, page: 1, pageSize: 25 };
@@ -302,9 +311,10 @@ export class SekretariatBuku {
 
   /** CSV export of the same scope; cells are neutralized against spreadsheet formulas. */
   async exportCsv(viewer: Viewer, admin: boolean, query: z.infer<typeof registerQuerySchema>): Promise<string> {
+    const peran = await loadPeran(this.pool, viewer, admin);
     const lines: string[] = ["nomor;jenis;penerbit;tanggal;perihal;tujuan;status;sumber"];
     for (let page = 1; page <= 800; page += 1) {
-      const result = await this.register(viewer, admin, { ...query, page });
+      const result = await this.registerScoped(peran, { ...query, page });
       if (page === 1 && result.total > 20_000) {
         throw new SekretariatError(422, "ekspor_terlalu_besar", "Hasil melebihi 20.000 baris; persempit penyaringnya.");
       }

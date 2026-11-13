@@ -284,6 +284,24 @@ describe("SEK-IMPL-001 buku nomor (§5)", () => {
     expect(ulang.body.error).toBe("berkas_terkunci");
   });
 
+  it("membatalkan nomor dari buku ikut membatalkan suratnya", async () => {
+    const surat = await terbitkanSurat(TU_SDIT, "SDITTSQ");
+    const nomorId = (await pool.query<{ nomor_id: string }>("SELECT nomor_id FROM sekretariat_surat_keluar WHERE id = $1", [surat.id])).rows[0]!.nomor_id;
+    expect((await call(HCM, "POST", `/sekretariat/nomor/${nomorId}/batal`, { alasan: "Dibatalkan dari buku nomor." })).status).toBe(200);
+    const detail = await call(TU_SDIT, "GET", `/sekretariat/surat/${surat.id}`);
+    expect(detail.body.status).toBe("dibatalkan");
+  });
+
+  it("menghapus draf menandai berkasnya untuk dibuang, bukan meninggalkannya yatim", async () => {
+    const id = await penerbitId("SDITTSQ");
+    const draf = await call(TU_SDIT, "POST", `/sekretariat/penerbit/${id}/surat`, { jenis_kode: "12", perihal: "Draf dibuang", tujuan: "Unit", penandatangan: "Kepala" });
+    await upload(TU_SDIT, `/surat/${draf.body.id}/berkas`, "surat.pdf", PDF);
+    await call(TU_SDIT, "POST", `/sekretariat/surat/${draf.body.id}/batal`, { alasan: "Tidak jadi, dihapus." });
+    const rows = await pool.query<{ dihapus: boolean }>("SELECT dihapus FROM sekretariat_berkas WHERE pemilik_id = $1", [draf.body.id]);
+    expect(rows.rows).toHaveLength(1);
+    expect(rows.rows[0]!.dihapus).toBe(true);
+  });
+
   it("retroaktif menyimpan nomor asli tanpa menyentuh penghitung", async () => {
     const id = await penerbitId("SDITTSQ");
     const retro = await call(TU_SDIT, "POST", `/sekretariat/penerbit/${id}/retroaktif`, {
@@ -393,13 +411,14 @@ describe("SEK-IMPL-001 penarik email (§7 nomor 1)", () => {
   it("menarik email baru sekali saja, lampiran tersimpan, mailbox state maju", async () => {
     fetcher.mails = [mail(1, { lampiran: [{ nama: "berkas.pdf", isi: PDF }] }), mail(2)];
     const pertama = await sekretariat.mail.runOnce();
-    expect(pertama).toEqual({ baru: 2, dilewati: 0 });
+    expect(pertama).toEqual({ baru: 2, dilewati: 0, gagal: false });
     const ulang = await sekretariat.mail.runOnce();
     expect(ulang.baru).toBe(0);
     const yayasan = await kotakYayasanId();
     const isi = await call(DIREKTUR, "GET", `/sekretariat/kotak/${yayasan}/surat`);
     expect(isi.body.total).toBe(2);
-    const detail = await call(DIREKTUR, "GET", `/sekretariat/surat-masuk/${isi.body.items[1].id}`);
+    const berlampiran = isi.body.items.find((item: { perihal: string }) => item.perihal === "Surat elektronik 1");
+    const detail = await call(DIREKTUR, "GET", `/sekretariat/surat-masuk/${berlampiran.id}`);
     expect(detail.body.berkas).toHaveLength(1);
     expect(detail.body.berkas[0].nama).toBe("berkas.pdf");
   });
@@ -409,6 +428,16 @@ describe("SEK-IMPL-001 penarik email (§7 nomor 1)", () => {
     await sekretariat.mail.runOnce();
     fetcher.uidValidity = "gen-2";
     fetcher.mails = [mail(1, { messageId: "<m-5@example.test>" })];
+    const hasil = await sekretariat.mail.runOnce();
+    expect(hasil.baru).toBe(0);
+    expect(hasil.dilewati).toBe(1);
+  });
+
+  it("email tanpa Message-ID tetap terdedup saat UIDVALIDITY berganti", async () => {
+    fetcher.mails = [mail(3, { messageId: null, perihal: "Tanpa message-id" })];
+    await sekretariat.mail.runOnce();
+    fetcher.uidValidity = "gen-2";
+    fetcher.mails = [mail(9, { messageId: null, perihal: "Tanpa message-id" })]; // same content, new generation and uid
     const hasil = await sekretariat.mail.runOnce();
     expect(hasil.baru).toBe(0);
     expect(hasil.dilewati).toBe(1);
@@ -427,7 +456,7 @@ describe("SEK-IMPL-001 penarik email (§7 nomor 1)", () => {
   it("kegagalan IMAP tercatat untuk layar admin dan tidak melempar", async () => {
     fetcher.fail = true;
     const hasil = await sekretariat.mail.runOnce();
-    expect(hasil).toEqual({ baru: 0, dilewati: 0 });
+    expect(hasil).toEqual({ baru: 0, dilewati: 0, gagal: true });
     const status = await call(HCM, "GET", "/admin/sekretariat/mail");
     expect(status.body.items[0].galatTerakhir).toBe("Error");
   });
