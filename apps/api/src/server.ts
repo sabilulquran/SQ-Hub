@@ -15,7 +15,7 @@ import { KeycloakIdentityManagement } from "./modules/identity-management/client
 import { KeycloakTokenExchanger } from "./modules/governance/token-exchange.js";
 import { loadKirimConfig } from "./modules/kirim/config.js";
 import { createKirimModule } from "./modules/kirim/module.js";
-import { loadOrganPortalConfig } from "./modules/organ-portal/config.js";
+import { assertOrganPortalDistinct, loadOrganPortalConfig } from "./modules/organ-portal/config.js";
 import { createOrganPortalModule } from "./modules/organ-portal/module.js";
 import { loadKerjaConfig } from "./modules/kerja/config.js";
 import { createKerjaModule } from "./modules/kerja/module.js";
@@ -58,6 +58,12 @@ const platformAdmin = new PlatformAdminService(
 // HUB-IMPL-022: one workspace source for Hub's own launcher, the internal launcher route and Kirim SQ.
 const workspaceApplications = new PgHubWorkspaceRepository(pool);
 const hubOrigin = new URL(config.hubOidcRedirectUri).origin;
+if (organPortalConfig) {
+  assertOrganPortalDistinct(organPortalConfig, {
+    clientIds: [config.hubOidcClientId, kirimConfig?.admin?.clientId, kerjaConfig?.oidc.clientId],
+    origins: [hubOrigin, kirimConfig?.admin?.publicOrigin, kerjaConfig?.publicOrigin],
+  });
+}
 const identityDirectory = new KeycloakIdentityDirectory({
   baseUrl: config.keycloakDirectoryBaseUrl,
   realm: config.keycloakDirectoryRealm,

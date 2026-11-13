@@ -49,6 +49,15 @@ export function OrganApp() {
       const session = (await response.json()) as OrganSession;
       setState({ status: "ready", session, snapshot: null });
       const summaries = await fetch("/api/organ/summaries", { credentials: "same-origin", headers: { Accept: "application/json" } });
+      if (summaries.status === 401 || summaries.status === 428) {
+        window.location.assign("/api/auth/oidc/start");
+        return;
+      }
+      if (summaries.status === 403) {
+        const body = (await summaries.json().catch(() => ({}))) as { error?: string };
+        setState({ status: "refused", code: body.error ?? "organ_access_denied" });
+        return;
+      }
       if (!summaries.ok) throw new Error(String(summaries.status));
       const snapshot = (await summaries.json()) as GovernanceSnapshot;
       setState({ status: "ready", session, snapshot });

@@ -2,6 +2,7 @@ import Fastify from "fastify";
 import { describe, expect, it } from "vitest";
 
 import type { GovernanceService } from "../src/modules/governance/service.js";
+import { assertOrganPortalDistinct, loadOrganPortalConfig } from "../src/modules/organ-portal/config.js";
 import type { HubOidcAuthorizationTransaction, HubOidcProviderLike } from "../src/modules/hub-auth/oidc-provider.js";
 import type { HubAuthStore, HubSessionClient, HubSessionIdentity, HubSessionRecord } from "../src/modules/hub-auth/repository.js";
 import { HubAuthService } from "../src/modules/hub-auth/service.js";
@@ -183,3 +184,30 @@ describe("ORGAN-IMPL-001 R1 portal", () => {
     expect((await app.inject({ method: "GET", url: "/organ/session", headers: { ...HOST, cookie } })).statusCode).toBe(401);
   });
 });
+
+describe("ORGAN-IMPL-001 §12 configuration", () => {
+  const env = {
+    PORTAL_ORGAN_ENABLED: "true",
+    ORGAN_OIDC_CLIENT_ID: "sq-organ",
+    ORGAN_OIDC_CLIENT_SECRET: "synthetic",
+    ORGAN_PUBLIC_ORIGIN: "https://organ.sabilulquran.or.id/",
+  };
+
+  it("is off by default and needs every value when on", () => {
+    expect(loadOrganPortalConfig({})).toBeNull();
+    expect(() => loadOrganPortalConfig({ PORTAL_ORGAN_ENABLED: "true" })).toThrow(/required/);
+    expect(loadOrganPortalConfig(env)).toEqual({
+      oidc: { clientId: "sq-organ", clientSecret: "synthetic" },
+      publicOrigin: "https://organ.sabilulquran.or.id",
+      applicationKey: "organ",
+    });
+  });
+
+  it("refuses a client id or host shared with SQ Hub, Kirim or Kerja", () => {
+    const config = loadOrganPortalConfig(env)!;
+    expect(() => assertOrganPortalDistinct(config, { clientIds: ["sq-hub", undefined], origins: ["https://hub.sabilulquran.or.id"] })).not.toThrow();
+    expect(() => assertOrganPortalDistinct(config, { clientIds: ["sq-organ"], origins: [] })).toThrow(/ORGAN_OIDC_CLIENT_ID/);
+    expect(() => assertOrganPortalDistinct(config, { clientIds: [], origins: ["https://organ.sabilulquran.or.id:443"] })).toThrow(/ORGAN_PUBLIC_ORIGIN/);
+  });
+});
+

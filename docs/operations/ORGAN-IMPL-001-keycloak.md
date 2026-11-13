@@ -64,7 +64,11 @@ With `PORTAL_ORGAN_ENABLED=false` (the default), no portal route exists and `/ya
 | `127.0.0.1:3302/internal/kirim/...` and the other loopback routes | Unchanged |
 | Login as a member | Ringkasan with the HCIS card. "Menunggu keputusan Anda" appears only when that account has pending steps |
 
-## 8. Rollback
+## 8. Effect on other sessions
+
+Migration `0020` binds every session to its client. After the release, Kirim SQ and Kerja SQ sessions created before it are read as SQ Hub sessions, so their users sign in again once. SQ Hub sessions are unaffected. Mention this in the release note.
+
+## 9. Rollback
 
 1. Set `PORTAL_ORGAN_ENABLED=false` and restart SQ Hub. `/yayasan` serves the Hub page again.
 2. The `sq-organ` client and the DNS record can stay. Removing `sq-organ` from the HCIS allowlist is optional.

@@ -47,14 +47,14 @@ Catatan: selama workflow cuti di production masih `LEGACY`, tidak ada langkah ya
 - Edge Mi8VPS meneruskan host `organ.` ke proses web dan API yang sudah ada dengan `Host` aslinya. Record Cloudflare dibuat owner.
 
 ### 1.2 Client dan sesi
-- Client OIDC `sq-organ` di realm staf: confidential, PKCE, satu redirect `https://organ.sabilulquran.or.id/api/organ/auth/callback`. Client ini **tanpa service account**.
+- Client OIDC `sq-organ` di realm staf: confidential, PKCE, satu redirect `https://organ.sabilulquran.or.id/api/auth/callback`. Client ini **tanpa service account**.
 - Cookie sesinya host-only dan bernama sendiri.
 - Tabel `hub_sessions` mendapat kolom `client_id` (migrasi baru, nullable untuk baris lama). Setiap host hanya menerima sesi dengan `client_id`-nya sendiri: `sq-organ` di portal, `sq-hub` di Hub, `kirim-sq` untuk sesi Kirim. Nilai `NULL` hanya berlaku untuk baris sebelum migrasi, dianggap `sq-hub`, dan kedaluwarsa dalam 12 jam. Akibatnya cookie sesi Hub yang dikirim dengan nama cookie portal ditolak.
 - **Gerbang anggota.** Portal, bukan Keycloak, memeriksa keanggotaan efektif dan Application Access `organ`. Pemeriksaan dilakukan di callback (tanpa sesi bila gagal) **dan pada setiap request**. Keanggotaan yang `termEnd`-nya lewat langsung ditolak.
-- Saat keanggotaan berakhir, Application Access `organ` dicabut, termasuk untuk Path A, karena HUB-IMPL-021 §1 mempertahankan Application Access lain milik Path A. Ini amandemen kecil pada HUB-IMPL-021 §1.
+- `TBD` (belum diimplementasikan di R1; gerbang per request tetap menolak): saat keanggotaan berakhir, Application Access `organ` dicabut, termasuk untuk Path A, karena HUB-IMPL-021 §1 mempertahankan Application Access lain milik Path A. Ini amandemen kecil pada HUB-IMPL-021 §1.
 
 ### 1.3 Redirect dari Hub
-Bila `PORTAL_ORGAN_ENABLED=true`, `GET /yayasan` di Hub menjawab `302` ke portal. Pendaratan otomatis anggota setelah login di Hub (HUB-IMPL-021 §5) dimatikan. Anggota yang juga staf mendarat di Beranda Hub, yang menampilkan tautan "Portal Organ Yayasan".
+Bila `PORTAL_ORGAN_ENABLED=true`, `/yayasan` di Hub dialihkan ke portal. (Implementasi R1: pengalihan dilakukan oleh halaman web Hub memakai `capabilities.organPortalUrl` dari workspace snapshot, yang hanya dikirim ke anggota efektif; bukan `302` dari server.) Pendaratan otomatis anggota setelah login di Hub (HUB-IMPL-021 §5) dimatikan. Anggota yang juga staf mendarat di Beranda Hub, yang menampilkan tautan "Portal Organ Yayasan".
 
 ### 1.4 Konfigurasi Keycloak
 Langkah dan probe-nya ditulis di `docs/operations/ORGAN-IMPL-001-keycloak.md` (`TBD`, dibuat sebelum rilis R1, mengikuti pola `HUB-IMPL-021-token-exchange.md`). Isinya: client `sq-organ`, standard token exchange, scope optional per audience ringkasan, mapper audience, dan probe yang membuktikan `azp = sq-organ` serta penolakan audience yang tidak terdaftar.

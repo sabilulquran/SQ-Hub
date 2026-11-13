@@ -33,3 +33,21 @@ export function loadOrganPortalConfig(env: NodeJS.ProcessEnv = process.env): Org
     applicationKey: parsed.ORGAN_APPLICATION_KEY,
   };
 }
+
+/**
+ * ORGAN-IMPL-001 §1.2: the portal's separation rests on its own client and its own host. Sharing
+ * either with SQ Hub, Kirim or Kerja would silently merge sessions or let portal routes shadow
+ * theirs, so startup refuses it.
+ */
+export function assertOrganPortalDistinct(
+  config: OrganPortalConfig,
+  others: { clientIds: Array<string | undefined>; origins: Array<string | undefined> },
+): void {
+  if (others.clientIds.some((clientId) => clientId === config.oidc.clientId)) {
+    throw new Error("ORGAN_OIDC_CLIENT_ID must differ from the SQ Hub, Kirim and Kerja OIDC clients");
+  }
+  const host = new URL(config.publicOrigin).hostname;
+  if (others.origins.some((origin) => origin !== undefined && new URL(origin).hostname === host)) {
+    throw new Error("ORGAN_PUBLIC_ORIGIN must use its own host, not the SQ Hub, Kirim or Kerja host");
+  }
+}
