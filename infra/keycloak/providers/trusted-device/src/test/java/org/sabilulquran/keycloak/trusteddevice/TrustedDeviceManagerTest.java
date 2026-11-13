@@ -1,5 +1,6 @@
 package org.sabilulquran.keycloak.trusteddevice;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -9,6 +10,7 @@ import java.security.SecureRandom;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
+import java.util.ArrayList;
 import java.util.Base64;
 import java.util.List;
 import org.junit.jupiter.api.Test;
@@ -25,7 +27,7 @@ class TrustedDeviceManagerTest {
     }
 
     @Test
-    void checkedValidOtpIssuesProofAndSameDeviceValidatesOnceThenRotates() {
+    void checkedValidOtpIssuesProofAndSameDeviceValidatesThenRotates() {
         TrustedDeviceManager manager = managerAt(NOW);
         TrustedDeviceManager.Issue issue = manager.issue("realm", "user", "credentials", List.of());
         TrustedDeviceManager.Validation accepted = manager.validateAndRotate(
@@ -34,9 +36,65 @@ class TrustedDeviceManagerTest {
         assertTrue(accepted.trusted());
         assertNotEquals(issue.cookie(), accepted.rotatedCookie());
 
-        TrustedDeviceManager.Validation replay = manager.validateAndRotate(
+        TrustedDeviceManager later = managerAt(NOW.plusSeconds(TrustedDeviceManager.ROTATION_GRACE_SECONDS + 1L));
+        TrustedDeviceManager.Validation replay = later.validateAndRotate(
                 issue.cookie(), "realm", "user", "credentials", accepted.records());
         assertFalse(replay.trusted());
+    }
+
+    @Test
+    void aSecondRequestWithinTheRotationGraceKeepsTheTrust() {
+        TrustedDeviceManager manager = managerAt(NOW);
+        TrustedDeviceManager.Issue issue = manager.issue("realm", "user", "credentials", List.of());
+        TrustedDeviceManager.Validation first = manager.validateAndRotate(
+                issue.cookie(), "realm", "user", "credentials", issue.records());
+        assertTrue(first.trusted());
+
+        // The same browser presents the copy it had before the rotation reached it.
+        TrustedDeviceManager.Validation concurrent = manager.validateAndRotate(
+                issue.cookie(), "realm", "user", "credentials", first.records());
+        assertTrue(concurrent.trusted());
+
+        // The rotated proof still works afterwards, so the trust is not lost either way.
+        assertTrue(manager.validateAndRotate(
+                first.rotatedCookie(), "realm", "user", "credentials", concurrent.records()).trusted());
+    }
+
+    @Test
+    void graceDoesNotOutliveItsWindowAndNeverPushesOutATrustedDevice() {
+        TrustedDeviceManager manager = managerAt(NOW);
+        TrustedDeviceManager.Issue issue = manager.issue("realm", "user", "credentials", List.of());
+        TrustedDeviceManager.Validation accepted = manager.validateAndRotate(
+                issue.cookie(), "realm", "user", "credentials", issue.records());
+
+        // One live record plus one record inside its grace window.
+        assertEquals(2, accepted.records().size());
+
+        List<String> crowded = new ArrayList<>(accepted.records());
+        TrustedDeviceManager.Issue latest = null;
+        for (int device = 0; device < TrustedDeviceManager.MAX_DEVICES; device++) {
+            latest = manager.issue("realm", "user", "credentials", crowded);
+            crowded = new ArrayList<>(latest.records());
+        }
+
+        assertEquals(TrustedDeviceManager.MAX_DEVICES, crowded.size());
+        assertTrue(manager.validateAndRotate(
+                latest.cookie(), "realm", "user", "credentials", crowded).trusted());
+    }
+
+    @Test
+    void recordsWrittenBeforeTheGraceWindowStillValidate() {
+        TrustedDeviceManager manager = managerAt(NOW);
+        TrustedDeviceManager.Issue issue = manager.issue("realm", "user", "credentials", List.of());
+        List<String> legacy = issue.records().stream()
+                .map(record -> {
+                    String[] fields = record.split("\\|", -1);
+                    return String.join("|", "v1", fields[1], fields[2], fields[3]);
+                })
+                .toList();
+
+        assertTrue(manager.validateAndRotate(
+                issue.cookie(), "realm", "user", "credentials", legacy).trusted());
     }
 
     @Test
