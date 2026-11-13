@@ -179,4 +179,3 @@ describe("ORGAN-IMPL-001 §1.2 sessions bound to their client", () => {
     expect(await repository.getSession("d".repeat(64), 3600, organ)).toBeNull();
   });
 });
-

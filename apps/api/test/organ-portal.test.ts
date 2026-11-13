@@ -210,4 +210,3 @@ describe("ORGAN-IMPL-001 §12 configuration", () => {
     expect(() => assertOrganPortalDistinct(config, { clientIds: [], origins: ["https://organ.sabilulquran.or.id:443"] })).toThrow(/ORGAN_PUBLIC_ORIGIN/);
   });
 });
-
