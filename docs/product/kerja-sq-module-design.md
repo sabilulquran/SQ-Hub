@@ -552,7 +552,7 @@ Rancangan menjaga agar peninjauan itu murah: modul hanya menyimpan **kunci penyi
 | **Tugas Saya** | Kartu dari seluruh ruang yang diikuti, diurutkan menurut §6.7. Halaman pertama setelah masuk | semua |
 | **Daftar ruang** | Ruang tetap dan ruang panitia, dipisah; ruang yang akan berakhir ditandai | semua |
 | **Papan** | Kanban: kolom, kartu, geser. Penyaring label dan penanggung jawab | anggota, peninjau (baca) |
-| **Kartu** | Panel di sisi papan pada layar lebar, halaman penuh di ponsel | anggota, peninjau (baca) |
+| **Kartu** | Pop-up di atas halaman (dialog di tengah pada layar lebar, layar penuh di ponsel); papan di belakangnya tidak bergeser (sq-core-app-shell.md, keputusan owner 2026-11-13) | anggota, peninjau (baca) |
 | **Pencarian** | §6.6, dengan penyaringnya | semua |
 | **Berkas ruang** | Lampiran yang tidak menempel kartu | anggota |
 | **Arsip ruang** | Kartu terarsip dan ruang panitia yang sudah berakhir | anggota |

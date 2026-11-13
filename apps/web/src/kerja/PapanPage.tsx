@@ -3,7 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as
 
 import { errorMessage, KerjaRequestError, kerjaFetch, type JenisSelesai, type KartuRingkas, type Papan } from "@/kerja/api";
 import { JENIS_SELESAI, relatifTenggat } from "@/kerja/format";
-import { KartuPanel } from "@/kerja/KartuPanel";
+import { CardDialog, openCard, useOpenCard } from "@/kerja/CardDialog";
 import { navigate } from "@/kerja/routes";
 import { CardCounters } from "@/kerja/TugasPage";
 import { AvatarStack, ErrorNote, LabelChip, Link, primaryButton, secondaryButton, StateCard, useLoad } from "@/kerja/ui";
@@ -28,7 +28,7 @@ interface DragState {
  */
 export function PapanPage({ papanId, preview }: { papanId: string; preview?: Papan }) {
   const { state, reload, setData } = useLoad<Papan>(() => (preview ? Promise.resolve(preview) : kerjaFetch<Papan>(`/papan/${papanId}`)), papanId, preview);
-  const [openCard, setOpenCard] = useState<string | null>(() => (typeof window === "undefined" ? null : new URLSearchParams(window.location.search).get("kartu")));
+  const openCardId = useOpenCard();
   const [labelFilter, setLabelFilter] = useState("");
   const [personFilter, setPersonFilter] = useState("");
   const [mobileColumn, setMobileColumn] = useState(0);
@@ -39,20 +39,11 @@ export function PapanPage({ papanId, preview }: { papanId: string; preview?: Pap
   const pressTimer = useRef<number | null>(null);
   const boardRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    const sync = () => setOpenCard(new URLSearchParams(window.location.search).get("kartu"));
-    window.addEventListener("popstate", sync);
-    return () => window.removeEventListener("popstate", sync);
-  }, []);
-
   const board = state.status === "ready" ? state.data : null;
   const canWork = Boolean(board && board.ruang.peranSaya !== "peninjau" && board.ruang.status === "aktif");
 
-  const openPanel = (kartuId: string | null) => {
-    const url = kartuId ? `/papan/${papanId}?kartu=${kartuId}` : `/papan/${papanId}`;
-    window.history.pushState({}, "", url);
-    setOpenCard(kartuId);
-  };
+  // The card opens as a pop-up over the board; the board keeps its layout (sq-core-app-shell.md).
+  const openPanel = (kartuId: string) => openCard(kartuId);
 
   const visible = useCallback((card: KartuRingkas) => {
     if (labelFilter && !card.label.some((label) => label.id === labelFilter)) return false;
@@ -209,8 +200,8 @@ export function PapanPage({ papanId, preview }: { papanId: string; preview?: Pap
   const totalCards = data.kolom.reduce((sum, column) => sum + column.kartu.length, 0);
 
   return (
-    <div className={openCard ? "lg:grid lg:grid-cols-[minmax(0,1fr)_28rem] lg:gap-5" : ""}>
-      <div className={openCard ? "hidden lg:block lg:min-w-0" : "min-w-0"}>
+    <div>
+      <div className="min-w-0">
         <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
           <div className="min-w-0">
             <Link href={`/ruang/${data.ruang.id}`} className="text-xs font-semibold text-muted-foreground hover:underline">{data.ruang.nama}{data.ruang.status === "arsip" ? " · diarsipkan" : ""}</Link>
@@ -281,7 +272,7 @@ export function PapanPage({ papanId, preview }: { papanId: string; preview?: Pap
                       <CardTile
                         card={card}
                         dragging={drag?.active === true && drag.kartuId === card.id}
-                        selected={openCard === card.id}
+                        selected={openCardId === card.id}
                         draggable={canWork}
                         onPointerDown={(event) => onPointerDown(event, card)}
                         onPointerMove={onPointerMove}
@@ -306,11 +297,7 @@ export function PapanPage({ papanId, preview }: { papanId: string; preview?: Pap
         </div>
       ) : null}
 
-      {openCard ? (
-        <aside className="lg:sticky lg:top-24 lg:max-h-[calc(100vh-7rem)] lg:overflow-y-auto lg:rounded-2xl lg:border lg:border-border lg:bg-surface-raised lg:p-5 lg:shadow-[var(--shadow-soft)]" aria-label="Kartu">
-          <KartuPanel key={openCard} kartuId={openCard} papan={data} onClose={() => openPanel(null)} onChanged={() => void reload()} />
-        </aside>
-      ) : null}
+      <CardDialog papan={data} onChanged={() => void reload()} />
 
       {askKind ? (
         <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 sm:items-center" role="dialog" aria-modal="true" aria-label="Pilih jenis selesai">

@@ -1,6 +1,7 @@
 import { ArrowDown, ArrowUp, Trash2, UserPlus } from "lucide-react";
 import { useState, type ReactNode } from "react";
 
+import { CardDialog, CardLink } from "@/kerja/CardDialog";
 import { errorMessage, kerjaFetch, type Calon, type Orang, type Papan, type Peran, type RuangDetail, type Warna } from "@/kerja/api";
 import { formatTanggal, PERAN, WARNA } from "@/kerja/format";
 import { ErrorNote, LabelChip, Link, PageHeader, Panel, primaryButton, ReasonDialog, secondaryButton, StateCard, useLoad } from "@/kerja/ui";
@@ -87,6 +88,7 @@ export function PengaturanPage({ ruangId }: { ruangId: string }) {
         </Panel>
       </div>
 
+      <CardDialog />
       {pending ? (
         <ReasonDialog
           title={pending.title}
@@ -180,7 +182,7 @@ function Orphans({ ruangId }: { ruangId: string }) {
       <ul className="space-y-1">
         {list.state.data.items.map((item) => (
           <li key={`${item.kartuId}-${item.orang.id}`} className="text-sm">
-            <Link href={`/kartu/${item.kartuId}`} className="font-semibold text-brand-primary-deep hover:underline">{item.judul}</Link>
+            <CardLink kartuId={item.kartuId} className="font-semibold text-brand-primary-deep hover:underline">{item.judul}</CardLink>
             <span className="text-muted-foreground"> · {item.orang.nama}{item.tenggatPada ? ` · tenggat ${formatTanggal(item.tenggatPada)}` : ""}</span>
           </li>
         ))}
