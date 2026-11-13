@@ -41,7 +41,7 @@ export function installOrganPreview(): void {
   window.fetch = (input, init) => {
     const url = new URL(typeof input === "string" ? input : input instanceof URL ? input.href : input.url, window.location.origin);
     if (url.pathname === "/api/organ/session") {
-      return json({ user: { displayName: "M. Imadduddin Muqoyim" }, membership: { organ: "pengurus", positionLabel: "Sekretaris" } });
+      return json({ user: { displayName: "Anggota Sintetis" }, membership: { organ: "pengurus", positionLabel: "Sekretaris" } });
     }
     if (url.pathname === "/api/organ/summaries") return json(organPreviewSnapshot);
     const list = /^\/api\/organ\/applications\/([^/]+)\/employees$/.exec(url.pathname);

@@ -9,7 +9,7 @@ export function resolveOrganRoute(pathname: string): OrganRoute {
   const path = pathname.replace(/\/+$/, "") || "/";
   if (path === "/") return { name: "ringkasan" };
   if (path === "/keputusan") return { name: "keputusan" };
-  const application = /^\/aplikasi\/([a-z0-9][a-z0-9_-]{0,62})$/.exec(path)?.[1];
+  const application = /^\/aplikasi\/([a-z0-9][a-z0-9-]{0,62})$/.exec(path)?.[1];
   if (application) return { name: "aplikasi", applicationKey: application };
   return { name: "not-found" };
 }

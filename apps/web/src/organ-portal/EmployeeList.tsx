@@ -1,5 +1,5 @@
 import { ChevronLeft, ChevronRight, LoaderCircle, Search } from "lucide-react";
-import { useCallback, useEffect, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 
 import { formatDay } from "@/organ-portal/format";
 
@@ -34,8 +34,11 @@ interface Filters {
 export function EmployeeList({ applicationKey }: { applicationKey: string }) {
   const [filters, setFilters] = useState<Filters>({ page: 1, q: "", unitId: "" });
   const [state, setState] = useState<EmployeeListState>({ status: "loading" });
+  const latest = useRef(0);
 
   const load = useCallback(async (next: Filters) => {
+    // Only the newest request may update the list, so a slow older reply cannot overwrite it.
+    const request = ++latest.current;
     setState((current) => (current.status === "ready" ? current : { status: "loading" }));
     const params = new URLSearchParams({ page: String(next.page), pageSize: "25" });
     if (next.q.trim().length >= 2) params.set("q", next.q.trim());
@@ -45,6 +48,7 @@ export function EmployeeList({ applicationKey }: { applicationKey: string }) {
         credentials: "same-origin",
         headers: { Accept: "application/json" },
       });
+      if (request !== latest.current) return;
       if (response.status === 401) {
         window.location.assign("/api/auth/oidc/start");
         return;
@@ -54,9 +58,10 @@ export function EmployeeList({ applicationKey }: { applicationKey: string }) {
         return;
       }
       if (!response.ok) throw new Error(String(response.status));
-      setState({ status: "ready", page: (await response.json()) as OrganEmployeePage });
+      const body = (await response.json()) as OrganEmployeePage;
+      if (request === latest.current) setState({ status: "ready", page: body });
     } catch {
-      setState({ status: "error" });
+      if (request === latest.current) setState({ status: "error" });
     }
   }, [applicationKey]);
 
@@ -97,9 +102,14 @@ export function EmployeeListView({
   const first = page && page.pagination.total > 0 ? (page.pagination.page - 1) * page.pagination.pageSize + 1 : 0;
   const last = page ? Math.min(page.pagination.page * page.pagination.pageSize, page.pagination.total) : 0;
 
+  // The API searches from two characters; one character keeps the current list and says why.
+  const tooShort = draft.trim().length === 1;
+  const search = () => {
+    if (!tooShort && draft.trim() !== filters.q.trim()) onSearch?.(draft.trim());
+  };
   const submit = (event: FormEvent) => {
     event.preventDefault();
-    onSearch?.(draft);
+    search();
   };
 
   return (
@@ -111,19 +121,21 @@ export function EmployeeListView({
 
       <div className="mt-4 flex flex-col gap-3 sm:flex-row">
         <form onSubmit={submit} className="relative flex-1" role="search">
-          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" strokeWidth={1.5} aria-hidden="true" />
+          <Search className="pointer-events-none absolute left-3 top-3 h-4 w-4 text-muted-foreground" strokeWidth={1.5} aria-hidden="true" />
           <label htmlFor="cari-pegawai" className="sr-only">Cari nama atau NIP</label>
           <input
             id="cari-pegawai"
             type="search"
             value={draft}
             onChange={(event) => setDraft(event.target.value)}
-            onBlur={() => { if (draft !== filters.q) onSearch?.(draft); }}
+            onBlur={search}
+            aria-describedby={tooShort ? "cari-pegawai-hint" : undefined}
             placeholder="Cari nama atau NIP"
             minLength={2}
             maxLength={80}
             className="h-10 w-full rounded-lg border border-border bg-surface-raised pl-9 pr-3 text-sm text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           />
+          {tooShort ? <p id="cari-pegawai-hint" className="mt-1 text-xs text-muted-foreground">Ketik minimal 2 huruf</p> : null}
         </form>
         <label className="sr-only" htmlFor="unit-pegawai">Unit</label>
         <select
