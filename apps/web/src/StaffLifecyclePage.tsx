@@ -1,7 +1,9 @@
 import { KeyRound, Search, UserMinus, UserPlus } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
+import { useStaffDialog } from "@/admin-staff-dialog";
 import { AppShell } from "@/components/AppShell";
+import { DetailDialog } from "@/components/DetailDialog";
 import type { AdminStaff, WorkspaceSnapshot } from "@/types";
 
 interface Props {
@@ -121,11 +123,23 @@ export function StaffLifecyclePage({ workspace, onLogout, onAuthorizationDenied 
     await loadPreview(selected);
   });
 
+  // The picked person opens as a pop-up, `?orang=<username>` (sq-core-app-shell.md "Detail views
+  // open as a pop-up"); a link or Back to that address opens the same person.
+  const staffDialog = useStaffDialog({ fetchJson: adminFetch, known: staff });
+  const dialogStaff = staffDialog.staff;
+  useEffect(() => {
+    if (dialogStaff) { setPreview(null); void run(() => loadPreview(dialogStaff)); }
+    // Load once each time a person's pop-up opens.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dialogStaff?.subject]);
+  const shown = dialogStaff && selected?.subject === dialogStaff.subject ? selected : null;
+  const dialogOpen = Boolean(staffDialog.username);
+
   return <AppShell workspace={workspace} space="admin" active="admin-lifecycle" breadcrumb={["Administrasi", "Pegawai masuk & keluar"]} onLogout={onLogout}>
       <h1 className="font-display text-2xl font-bold tracking-[-0.02em] text-brand-heading sm:text-3xl">Pegawai masuk dan keluar</h1>
       <div className="mt-5 rounded-2xl border border-brand-primary/15 bg-brand-primary-pale/50 p-4 text-sm leading-6 text-brand-primary-deep">Pegawai diverifikasi ke HCIS saat akun dibuat. Perubahan unit atau posisi tidak mengubah akses aplikasi. Offboarding tidak mengubah data atau izin HCIS.</div>
-      {message ? <div className="mt-4 rounded-xl border border-border bg-surface-raised p-3 text-sm">{message}</div> : null}
-      {steps.length ? <ul className="mt-3 rounded-xl border border-border bg-surface-raised p-3 text-sm">{steps.map((step) => <li key={step.step + step.target}>{step.target}: {step.status} — {step.message}</li>)}</ul> : null}
+      {message && !dialogOpen ? <div className="mt-4 rounded-xl border border-border bg-surface-raised p-3 text-sm">{message}</div> : null}
+      {steps.length && !dialogOpen ? <StepList steps={steps} /> : null}
       <div className="mt-6 grid gap-6 xl:grid-cols-2">
         <section className="rounded-2xl border border-border bg-surface-raised p-5 shadow-sm"><h2 className="flex items-center gap-2 font-display text-lg font-bold"><UserPlus className="h-5 w-5" /> Provision Staff</h2><div className="mt-4 grid gap-3 sm:grid-cols-2">
           <p className="text-xs font-bold">Pegawai HCIS dengan NIP</p>
@@ -136,11 +150,24 @@ export function StaffLifecyclePage({ workspace, onLogout, onAuthorizationDenied 
           <label className="text-xs font-bold sm:col-span-2">Alasan<textarea className={input} value={form.reason} onChange={(e) => setForm({ ...form, reason: e.target.value })} /></label>
         </div><button disabled={busy} className={primary} onClick={provision}><UserPlus className="h-4 w-4" /> Buat identitas Staff</button><p className="mt-3 text-xs leading-5 text-muted-foreground">NIK bukan username. Browser tidak menerima password, hash, TOTP seed, recovery code, token, atau client secret.</p></section>
         <section className="rounded-2xl border border-border bg-surface-raised p-5 shadow-sm"><h2 className="flex items-center gap-2 font-display text-lg font-bold"><UserMinus className="h-5 w-5" /> Status & Offboarding</h2><div className="mt-4 flex gap-2"><input className={input} value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Cari username, email, atau nama" /><button className={secondary} disabled={busy} onClick={search}><Search className="h-4 w-4" /> Cari</button></div>
-          <div className="mt-3 space-y-2">{staff.map((entry) => <button key={entry.subject} className="w-full rounded-xl border border-border p-3 text-left text-sm" onClick={() => run(() => loadPreview(entry))}><strong>{entry.displayName}</strong><span className="block text-xs text-muted-foreground">{entry.username} · {entry.enabled ? "aktif" : "nonaktif"}</span></button>)}</div>
-          {selected ? <div className="mt-4 rounded-xl bg-muted/25 p-4"><strong>{selected.displayName}</strong>{preview ? <p className="mt-2 text-xs leading-5 text-muted-foreground">Application Access aktif: {preview.activeApplications.length} · Platform Administrator: {preview.platformAdministrator ? "aktif" : "tidak aktif"} · Organ Yayasan: {preview.organMembership ? "aktif" : "tidak aktif"} · Status HCIS tidak menentukan offboarding otomatis.</p> : null}<textarea className={input} value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Alasan tindakan (wajib)" /><div className="mt-3 flex flex-wrap gap-2">{!selected.enabled ? <button className={secondary} onClick={() => setEnabled(true)}>Aktifkan global</button> : null}<button className={secondary} onClick={initializePassword}><KeyRound className="h-4 w-4" /> Instruksi password</button></div><p className="mt-3 text-xs">Offboarding mencabut semua Application Access dan hak Admin SQ, mengakhiri keanggotaan Organ Yayasan, lalu menonaktifkan Akun SQ.</p><button className={primary} onClick={offboard}><UserMinus className="h-4 w-4" /> Jalankan atau ulangi offboarding</button></div> : null}
+          <div className="mt-3 space-y-2">{staff.map((entry) => <button key={entry.subject} className={staffDialog.username === entry.username ? "w-full rounded-xl border border-brand-primary/40 bg-brand-primary-pale/55 p-3 text-left text-sm" : "w-full rounded-xl border border-border p-3 text-left text-sm"} onClick={() => { setMessage(null); setSteps([]); staffDialog.open(entry); }}><strong>{entry.displayName}</strong><span className="block text-xs text-muted-foreground">{entry.username} · {entry.enabled ? "aktif" : "nonaktif"}</span></button>)}</div>
+          {staff.length === 0 ? <p className="mt-3 text-xs leading-5 text-muted-foreground">Pilih orang dari hasil pencarian. Status dan offboarding-nya terbuka di jendela pop-up.</p> : null}
         </section>
       </div>
+
+      {staffDialog.username ? <DetailDialog title={shown?.displayName ?? "Status dan offboarding"} description={shown ? `${shown.username} · ${shown.enabled ? "aktif" : "nonaktif"}` : undefined} onClose={staffDialog.close}>
+        {message ? <div className="mb-3 rounded-xl border border-border bg-surface-raised p-3 text-sm" role="status">{message}</div> : null}
+        {steps.length ? <div className="mb-3"><StepList steps={steps} /></div> : null}
+        {staffDialog.status === "loading" ? <p className="text-sm text-muted-foreground">Mencari orang di Akun SQ...</p> : null}
+        {staffDialog.status === "missing" ? <p className="text-sm text-muted-foreground">Tidak ada Akun SQ dengan nama pengguna pada tautan ini. Tutup lalu cari ulang.</p> : null}
+        {staffDialog.status === "error" ? <p className="text-sm text-muted-foreground">Data orang ini belum dapat dimuat. Tutup lalu coba lagi beberapa saat.</p> : null}
+        {shown ? <div>{preview ? <p className="text-xs leading-5 text-muted-foreground">Application Access aktif: {preview.activeApplications.length} · Platform Administrator: {preview.platformAdministrator ? "aktif" : "tidak aktif"} · Organ Yayasan: {preview.organMembership ? "aktif" : "tidak aktif"} · Status HCIS tidak menentukan offboarding otomatis.</p> : busy ? <p className="text-xs text-muted-foreground">Memuat ringkasan akses...</p> : null}<textarea className={input} value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Alasan tindakan (wajib)" /><div className="mt-3 flex flex-wrap gap-2">{!shown.enabled ? <button className={secondary} onClick={() => setEnabled(true)}>Aktifkan global</button> : null}<button className={secondary} onClick={initializePassword}><KeyRound className="h-4 w-4" /> Instruksi password</button></div><p className="mt-3 text-xs">Offboarding mencabut semua Application Access dan hak Admin SQ, mengakhiri keanggotaan Organ Yayasan, lalu menonaktifkan Akun SQ.</p><button className={primary} onClick={offboard}><UserMinus className="h-4 w-4" /> Jalankan atau ulangi offboarding</button></div> : null}
+      </DetailDialog> : null}
   </AppShell>;
+}
+
+function StepList({ steps }: { steps: Array<{ step: string; target: string; status: string; message: string }> }) {
+  return <ul className="mt-3 rounded-xl border border-border bg-surface-raised p-3 text-sm">{steps.map((step) => <li key={step.step + step.target}>{step.target}: {step.status} — {step.message}</li>)}</ul>;
 }
 
 const input = "mt-1.5 w-full rounded-xl border border-border bg-surface-raised px-3 py-2.5 text-sm outline-none focus:border-brand-primary/50";

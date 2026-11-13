@@ -2,6 +2,8 @@ import { CalendarClock, Landmark, RefreshCw, Search, UserMinus, UserPlus } from 
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 
 import { AppShell } from "@/components/AppShell";
+import { DetailDialog } from "@/components/DetailDialog";
+import { useDialogParam } from "@/components/useDialogParam";
 import { organLabel } from "@/organ";
 import type {
   AdminStaff,
@@ -65,6 +67,9 @@ export function OrganMembershipPage({ workspace, onLogout, onAuthorizationDenied
   const [selectedApps, setSelectedApps] = useState<string[] | null>(null);
   const [result, setResult] = useState<OrganOperationResult | null>(null);
   const [detail, setDetail] = useState<OrganMembershipDetail | null>(null);
+  // A member's detail opens as a pop-up, `?anggota=<membership id>` (sq-core-app-shell.md "Detail
+  // views open as a pop-up"); a link or Back to that address opens the same member.
+  const [memberParam, openMember, closeMember] = useDialogParam("anggota");
 
   const adminFetch = useCallback(async <T,>(url: string, init?: RequestInit): Promise<T> => {
     const response = await fetch(url, {
@@ -143,9 +148,22 @@ export function OrganMembershipPage({ workspace, onLogout, onAuthorizationDenied
     await load();
   });
 
-  const openDetail = (membership: OrganMembershipView) => run(async () => {
-    setDetail(await adminFetch<OrganMembershipDetail>(`/api/admin/organ-memberships/${membership.id}`));
-  });
+  const openDetail = (membership: OrganMembershipView) => {
+    setDetail(null);
+    setMessage(null);
+    openMember(membership.id);
+  };
+
+  const overviewReady = overview !== null;
+  useEffect(() => {
+    if (!memberParam || !overviewReady || detail?.membership.id === memberParam) return;
+    void run(async () => {
+      setDetail(await adminFetch<OrganMembershipDetail>(`/api/admin/organ-memberships/${encodeURIComponent(memberParam)}`));
+    });
+    // Load once each time a member's pop-up opens.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [memberParam, overviewReady]);
+  const shownDetail = memberParam && detail?.membership.id === memberParam ? detail : null;
 
   return (
     <AppShell workspace={workspace} space="admin" active="admin-organ" breadcrumb={["Administrasi", "Organ Yayasan"]} onLogout={onLogout}>
@@ -153,7 +171,7 @@ export function OrganMembershipPage({ workspace, onLogout, onAuthorizationDenied
       <p className="mt-1 max-w-3xl text-sm leading-6 text-muted-foreground">
         Catat Pembina, Pengurus, dan Pengawas beserta masa jabatannya. Keanggotaan hanya membuka Ringkasan Yayasan di SQ Hub; peran tata kelola tetap diberikan oleh masing-masing aplikasi.
       </p>
-      {message ? <p className="sq-admin-message mt-4" role="status">{message}</p> : null}
+      {message && !memberParam ? <p className="sq-admin-message mt-4" role="status">{message}</p> : null}
       {loadError ? (
         <Panel className="mt-5 text-center">
           <p className="text-sm text-muted-foreground">Daftar Organ Yayasan belum dapat dimuat.</p>
@@ -265,16 +283,23 @@ export function OrganMembershipPage({ workspace, onLogout, onAuthorizationDenied
             </Panel>
           </div>
 
-          {detail ? (
-            <MembershipDetail
-              key={detail.membership.id}
-              detail={detail}
-              busy={busy}
-              run={run}
-              adminFetch={adminFetch}
-              onChanged={async (next) => { setDetail(next); await load(); }}
-              canEndNewIdentity={overview.capabilities.endNewIdentity}
-            />
+          {memberParam ? (
+            <DetailDialog title={shownDetail?.membership.displayName ?? "Keanggotaan organ"} wide onClose={closeMember}>
+              {message ? <p className="sq-admin-message mb-4" role="status">{message}</p> : null}
+              {shownDetail ? (
+                <MembershipDetail
+                  key={shownDetail.membership.id}
+                  detail={shownDetail}
+                  busy={busy}
+                  run={run}
+                  adminFetch={adminFetch}
+                  onChanged={async (next) => { setDetail(next); await load(); }}
+                  canEndNewIdentity={overview.capabilities.endNewIdentity}
+                />
+              ) : !message ? (
+                <p className="flex items-center gap-2 text-sm text-muted-foreground"><RefreshCw className="h-4 w-4 animate-spin" /> Memuat keanggotaan...</p>
+              ) : null}
+            </DetailDialog>
           ) : null}
         </>
       ) : null}
@@ -352,11 +377,10 @@ function MembershipDetail({
   });
 
   return (
-    <Panel className="mt-5">
+    <div>
       <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <h2 className="font-display text-lg font-bold text-brand-heading">{membership.displayName ?? "Akun SQ"}</h2>
-          <p className="mt-0.5 text-xs text-muted-foreground">{membership.username ?? ""}{membership.email ? ` · ${membership.email}` : ""}</p>
+          <p className="text-xs text-muted-foreground">{membership.username ?? ""}{membership.email ? ` · ${membership.email}` : ""}</p>
           <p className="mt-1 text-sm">{organLabel(membership.organ)}{membership.positionLabel ? ` · ${membership.positionLabel}` : ""} · {formatTerm(membership)}</p>
           <PathBadge path={membership.provisioningPath} />
         </div>
@@ -409,7 +433,7 @@ function MembershipDetail({
         <p className="mt-4 text-sm text-muted-foreground">Keanggotaan ini sudah berakhir{membership.endedAt ? ` pada ${formatDate(membership.endedAt.slice(0, 10))}` : ""}.</p>
       )}
       {steps.length > 0 ? <StepList steps={steps} /> : null}
-    </Panel>
+    </div>
   );
 }
 

@@ -10,10 +10,13 @@ import {
   ShieldEllipsis,
   UserRound,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
 
+import { useStaffDialog } from "@/admin-staff-dialog";
 import { AppShell } from "@/components/AppShell";
+import { DetailDialog } from "@/components/DetailDialog";
 import type { HubNavKey } from "@/components/shellNavigation";
+import { useDialogParam } from "@/components/useDialogParam";
 import type {
   AdminApplication,
   AdminAuditRecord,
@@ -52,6 +55,9 @@ const sectionNav: Record<Section, { key: HubNavKey; label: string }> = {
 function sectionFromPath(pathname: string): Section {
   return sectionByPath[pathname.replace(/\/+$/, "")] ?? "applications";
 }
+
+/** `?aplikasi=baru` opens the form for a new application; any other value is an application key. */
+const NEW_APPLICATION = "baru";
 
 const emptyApplication: AdminApplication = {
   key: "",
@@ -99,6 +105,9 @@ export function AdminCenterPage({
   const [applicationForm, setApplicationForm] = useState<AdminApplication>(emptyApplication);
   const [applicationSaving, setApplicationSaving] = useState(false);
   const [applicationMessage, setApplicationMessage] = useState<string | null>(null);
+  const [applicationNotice, setApplicationNotice] = useState<string | null>(null);
+  const [applicationParam, openApplication, closeApplication] = useDialogParam("aplikasi");
+  const [applicationFormFor, setApplicationFormFor] = useState<string | null>(null);
   const [staffQuery, setStaffQuery] = useState("");
   const [staffSearching, setStaffSearching] = useState(false);
   const [staffResults, setStaffResults] = useState<AdminStaff[]>([]);
@@ -112,10 +121,21 @@ export function AdminCenterPage({
   const [audit, setAudit] = useState<AdminAuditRecord[]>([]);
 
   const applications = state.status === "ready" ? state.applications : [];
-  const editingExisting = useMemo(
-    () => applications.some((application) => application.key === applicationForm.key),
-    [applications, applicationForm.key],
-  );
+  // The pop-up's form is filled once per opened application (sq-core-app-shell.md "Detail views
+  // open as a pop-up"), so a save that refreshes the list does not reset what is being typed.
+  if (applicationParam && state.status === "ready" && applicationFormFor !== applicationParam) {
+    const existing = applicationParam === NEW_APPLICATION ? undefined : applications.find((application) => application.key === applicationParam);
+    setApplicationFormFor(applicationParam);
+    setApplicationForm(existing ? { ...existing } : emptyApplication);
+    setApplicationMessage(null);
+    setApplicationNotice(null);
+  }
+  if (!applicationParam && applicationFormFor !== null) setApplicationFormFor(null);
+  const applicationMissing =
+    applicationParam !== null &&
+    applicationParam !== NEW_APPLICATION &&
+    !applications.some((application) => application.key === applicationParam);
+  const editingExisting = applications.some((application) => application.key === applicationForm.key);
 
   const handleDenied = useCallback(
     (reason: "forbidden" | "reauth") => {
@@ -231,7 +251,9 @@ export function AdminCenterPage({
         };
       });
       setApplicationForm({ ...body.application });
-      setApplicationMessage("Registry aplikasi berhasil diperbarui.");
+      setApplicationMessage(null);
+      setApplicationNotice("Registry aplikasi berhasil diperbarui.");
+      closeApplication();
     } catch (error) {
       setApplicationMessage(readableError(error, "Aplikasi gagal disimpan. Periksa data lalu coba lagi."));
     } finally {
@@ -278,6 +300,21 @@ export function AdminCenterPage({
       setAccessLoading(false);
     }
   };
+
+  // The picked person opens as a pop-up, `?orang=<username>` (sq-core-app-shell.md "Detail views
+  // open as a pop-up"); a link or Back to that address opens the same person.
+  const staffDialog = useStaffDialog({
+    fetchJson: adminFetch,
+    known: staffResults,
+    enabled: state.status === "ready" && section === "access",
+  });
+  const dialogStaff = staffDialog.staff;
+  useEffect(() => {
+    if (dialogStaff) void selectStaff(dialogStaff);
+    // Load once each time a person's pop-up opens.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dialogStaff?.subject]);
+  const shownStaff = dialogStaff && selectedStaff?.subject === dialogStaff.subject ? selectedStaff : null;
 
   const mutateAccess = async (applicationKey: string, action: "grant" | "revoke") => {
     if (!selectedStaff || !accessReason.trim()) {
@@ -348,29 +385,35 @@ export function AdminCenterPage({
           {state.status === "ready" ? (
             <>
               {section === "applications" ? (
-                <section className="mt-5 grid gap-5 xl:grid-cols-[minmax(0,1.25fr)_minmax(19rem,0.75fr)]">
-                  <div>
+                <section className="mt-5">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
                     <SectionHeading eyebrow="Application Registry" title="Aplikasi platform" description="Pilih aplikasi untuk mengubah metadata. Kunci aplikasi tetap stabil setelah dibuat." />
-                    <div className="mt-4 grid gap-3 md:grid-cols-2">
-                      {applications.map((application) => (
-                        <button key={application.key} type="button" onClick={() => { setApplicationForm({ ...application }); setApplicationMessage(null); }} className="rounded-2xl border border-border/70 bg-surface-raised p-4 text-left shadow-[var(--shadow-soft)] transition hover:border-brand-primary/35">
-                          <div className="flex items-start justify-between gap-3">
-                            <div className="min-w-0"><h3 className="truncate font-display text-base font-bold text-brand-heading">{application.name}</h3><p className="mt-1 font-mono text-[10px] text-muted-foreground">{application.key}</p></div>
-                            <StatusPill active={application.status === "active"} activeLabel="Aktif" inactiveLabel="Nonaktif" />
-                          </div>
-                          <p className="mt-3 truncate text-xs text-muted-foreground">{application.canonicalUrl}</p>
-                          {application.governanceSummaryPath ? <p className="mt-1.5 inline-flex rounded-full bg-info-soft px-2 py-0.5 text-[10px] font-bold text-info-ink">Ringkasan tata kelola</p> : null}
-                        </button>
-                      ))}
-                    </div>
+                    <button type="button" onClick={() => openApplication(NEW_APPLICATION)} className="inline-flex shrink-0 items-center justify-center gap-1.5 self-start rounded-xl border border-border px-3 py-2 text-xs font-bold text-brand-primary-deep sm:self-auto"><Plus className="h-3.5 w-3.5" /> Baru</button>
                   </div>
+                  {applicationNotice && !applicationParam ? <InlineMessage>{applicationNotice}</InlineMessage> : null}
+                  <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                    {applications.map((application) => (
+                      <button key={application.key} type="button" onClick={() => openApplication(application.key)} className="rounded-2xl border border-border/70 bg-surface-raised p-4 text-left shadow-[var(--shadow-soft)] transition hover:border-brand-primary/35">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0"><h3 className="truncate font-display text-base font-bold text-brand-heading">{application.name}</h3><p className="mt-1 font-mono text-[10px] text-muted-foreground">{application.key}</p></div>
+                          <StatusPill active={application.status === "active"} activeLabel="Aktif" inactiveLabel="Nonaktif" />
+                        </div>
+                        <p className="mt-3 truncate text-xs text-muted-foreground">{application.canonicalUrl}</p>
+                        {application.governanceSummaryPath ? <p className="mt-1.5 inline-flex rounded-full bg-info-soft px-2 py-0.5 text-[10px] font-bold text-info-ink">Ringkasan tata kelola</p> : null}
+                      </button>
+                    ))}
+                  </div>
+                </section>
+              ) : null}
 
-                  <div className="rounded-2xl border border-border/70 bg-surface-raised p-4 shadow-[var(--shadow-soft)]">
-                    <div className="flex items-center justify-between gap-3">
-                      <h3 className="font-display text-lg font-bold text-brand-heading">{editingExisting ? "Ubah aplikasi" : "Daftarkan aplikasi"}</h3>
-                      <button type="button" onClick={() => { setApplicationForm(emptyApplication); setApplicationMessage(null); }} className="inline-flex items-center gap-1.5 rounded-xl border border-border px-3 py-2 text-xs font-bold text-brand-primary-deep"><Plus className="h-3.5 w-3.5" /> Baru</button>
-                    </div>
-                    <div className="mt-4 space-y-3.5">
+              {section === "applications" && applicationParam ? (
+                applicationMissing ? (
+                  <DetailDialog title="Aplikasi tidak ditemukan" onClose={closeApplication}>
+                    <EmptyState icon={AppWindow} title="Aplikasi tidak ditemukan pada registry." body="Tautan ini menunjuk kunci aplikasi yang tidak terdaftar. Tutup lalu pilih aplikasi dari daftar." />
+                  </DetailDialog>
+                ) : (
+                  <DetailDialog title={editingExisting ? "Ubah aplikasi" : "Daftarkan aplikasi"} onClose={closeApplication}>
+                    <div className="space-y-3.5">
                       <Field label="Kunci aplikasi" helper={editingExisting ? "Kunci tidak dapat diubah setelah aplikasi dibuat." : "Gunakan kunci pendek dan stabil, misalnya spmb."}>
                         <input value={applicationForm.key} disabled={editingExisting} onChange={(event) => setApplicationForm((current) => ({ ...current, key: event.target.value }))} placeholder="contoh: spmb" className="sq-admin-input" />
                       </Field>
@@ -383,8 +426,8 @@ export function AdminCenterPage({
                     </div>
                     {applicationMessage ? <InlineMessage>{applicationMessage}</InlineMessage> : null}
                     <button type="button" disabled={applicationSaving || Boolean(previewApplications)} onClick={() => void saveApplication()} className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-brand-primary px-4 py-2.5 text-sm font-bold text-brand-foreground shadow-[var(--shadow-button)] disabled:cursor-not-allowed disabled:opacity-50"><Save className="h-4 w-4" />{applicationSaving ? "Menyimpan..." : "Simpan registry"}</button>
-                  </div>
-                </section>
+                  </DetailDialog>
+                )
               ) : null}
 
               {section === "access" ? (
@@ -394,33 +437,40 @@ export function AdminCenterPage({
                     <input value={staffQuery} onChange={(event) => setStaffQuery(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") void searchStaff(); }} placeholder="Cari NIP, email, atau nama Staff" className="sq-admin-input flex-1" />
                     <button type="button" disabled={staffSearching || Boolean(previewApplications)} onClick={() => void searchStaff()} className="inline-flex items-center justify-center gap-2 rounded-xl bg-brand-primary px-4 py-2.5 text-sm font-bold text-brand-foreground disabled:opacity-50">{staffSearching ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}Cari Staff</button>
                   </div>
-                  {accessMessage ? <InlineMessage>{accessMessage}</InlineMessage> : null}
+                  {accessMessage && !staffDialog.username ? <InlineMessage>{accessMessage}</InlineMessage> : null}
 
-                  <div className="mt-4 grid gap-4 xl:grid-cols-[minmax(16rem,0.65fr)_minmax(0,1.35fr)]">
-                    <div className="space-y-2.5">{staffResults.map((staff) => <StaffResult key={staff.subject} staff={staff} selected={selectedStaff?.subject === staff.subject} onClick={() => void selectStaff(staff)} />)}</div>
-                    <div className="rounded-2xl border border-border/70 bg-surface-raised p-4 shadow-[var(--shadow-soft)]">
-                      {!selectedStaff ? <EmptyState icon={UserRound} title="Pilih Staff" body="Hasil pencarian menampilkan identitas manusia tanpa menampilkan subject OIDC mentah." /> : (
-                        <>
-                          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                            <div><p className="font-display text-lg font-bold text-brand-heading">{selectedStaff.displayName}</p><p className="mt-1 text-xs text-muted-foreground">{selectedStaff.username}{selectedStaff.email ? ` · ${selectedStaff.email}` : ""}</p></div>
-                            <div className="flex flex-wrap gap-1.5"><SecurityPill ok={selectedStaff.security.totpConfigured} label="TOTP" /><SecurityPill ok={selectedStaff.security.recoveryCodesConfigured} label="Kode pemulihan" /></div>
-                          </div>
-                          <div className="mt-4"><Field label="Alasan perubahan akses" helper="Wajib diisi untuk setiap grant atau revoke."><input value={accessReason} onChange={(event) => setAccessReason(event.target.value)} placeholder="Contoh: penugasan operasional" className="sq-admin-input" /></Field></div>
-                          {accessLoading ? <div className="mt-4"><LoadingCard label="Memuat status akses..." compact /></div> : (
-                            <div className="mt-4 divide-y divide-border/60 rounded-xl border border-border/70">
-                              {staffAccess.map((item) => (
-                                <div key={item.application.key} className="flex flex-col gap-3 p-3.5 sm:flex-row sm:items-center sm:justify-between">
-                                  <div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><p className="font-bold text-brand-heading">{item.application.name}</p><StatusPill active={item.status === "active"} activeLabel="Akses aktif" inactiveLabel={item.status === "revoked" ? "Dicabut" : "Belum diberi"} /></div><p className="mt-1 max-w-2xl text-xs text-muted-foreground">{item.reason ?? "Belum ada alasan perubahan akses."}</p></div>
-                                  <div className="flex shrink-0 gap-2"><button type="button" disabled={item.status === "active" || !accessReason.trim()} onClick={() => void mutateAccess(item.application.key, "grant")} className="rounded-xl bg-brand-primary px-3 py-2 text-xs font-bold text-brand-foreground disabled:opacity-40">Berikan</button><button type="button" disabled={item.status !== "active" || !accessReason.trim()} onClick={() => void mutateAccess(item.application.key, "revoke")} className="rounded-xl border border-destructive/25 bg-destructive/5 px-3 py-2 text-xs font-bold text-destructive disabled:opacity-40">Cabut</button></div>
-                                </div>
-                              ))}
-                            </div>
-                          )}
-                        </>
-                      )}
-                    </div>
-                  </div>
+                  <div className="mt-4 grid gap-2.5 md:grid-cols-2 xl:grid-cols-3">{staffResults.map((staff) => <StaffResult key={staff.subject} staff={staff} selected={staffDialog.username === staff.username} onClick={() => staffDialog.open(staff)} />)}</div>
+                  {staffResults.length === 0 && !accessMessage ? <div className="mt-4 rounded-2xl border border-border/70 bg-surface-raised p-4 shadow-[var(--shadow-soft)]"><EmptyState icon={UserRound} title="Pilih Staff" body="Hasil pencarian menampilkan identitas manusia tanpa menampilkan subject OIDC mentah. Memilih seseorang membuka akses aplikasinya di jendela pop-up." /></div> : null}
                 </section>
+              ) : null}
+
+              {section === "access" && staffDialog.username ? (
+                <DetailDialog
+                  title={shownStaff?.displayName ?? "Akses aplikasi"}
+                  description={shownStaff ? `${shownStaff.username}${shownStaff.email ? ` · ${shownStaff.email}` : ""}` : undefined}
+                  onClose={staffDialog.close}
+                >
+                  {accessMessage ? <p className="sq-admin-message mb-3" role="status">{accessMessage}</p> : null}
+                  {staffDialog.status === "loading" ? <LoadingCard label="Mencari orang di Akun SQ..." compact /> : null}
+                  {staffDialog.status === "missing" ? <EmptyState icon={UserRound} title="Orang ini tidak ditemukan" body="Tidak ada Akun SQ dengan nama pengguna pada tautan ini. Tutup lalu cari ulang." /> : null}
+                  {staffDialog.status === "error" ? <EmptyState icon={ShieldAlert} title="Data orang ini belum dapat dimuat" body="Direktori Staff sedang tidak tersedia. Tutup lalu coba lagi beberapa saat." /> : null}
+                  {staffDialog.status === "ready" ? (
+                    <>
+                      {shownStaff ? <div className="flex flex-wrap gap-1.5"><SecurityPill ok={shownStaff.security.totpConfigured} label="TOTP" /><SecurityPill ok={shownStaff.security.recoveryCodesConfigured} label="Kode pemulihan" /></div> : null}
+                      <div className="mt-4"><Field label="Alasan perubahan akses" helper="Wajib diisi untuk setiap grant atau revoke."><input value={accessReason} onChange={(event) => setAccessReason(event.target.value)} placeholder="Contoh: penugasan operasional" className="sq-admin-input" /></Field></div>
+                      {accessLoading || !shownStaff ? <div className="mt-4"><LoadingCard label="Memuat status akses..." compact /></div> : (
+                        <div className="mt-4 divide-y divide-border/60 rounded-xl border border-border/70">
+                          {staffAccess.map((item) => (
+                            <div key={item.application.key} className="flex flex-col gap-3 p-3.5 sm:flex-row sm:items-center sm:justify-between">
+                              <div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><p className="font-bold text-brand-heading">{item.application.name}</p><StatusPill active={item.status === "active"} activeLabel="Akses aktif" inactiveLabel={item.status === "revoked" ? "Dicabut" : "Belum diberi"} /></div><p className="mt-1 max-w-2xl text-xs text-muted-foreground">{item.reason ?? "Belum ada alasan perubahan akses."}</p></div>
+                              <div className="flex shrink-0 gap-2"><button type="button" disabled={item.status === "active" || !accessReason.trim()} onClick={() => void mutateAccess(item.application.key, "grant")} className="rounded-xl bg-brand-primary px-3 py-2 text-xs font-bold text-brand-foreground disabled:opacity-40">Berikan</button><button type="button" disabled={item.status !== "active" || !accessReason.trim()} onClick={() => void mutateAccess(item.application.key, "revoke")} className="rounded-xl border border-destructive/25 bg-destructive/5 px-3 py-2 text-xs font-bold text-destructive disabled:opacity-40">Cabut</button></div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </>
+                  ) : null}
+                </DetailDialog>
               ) : null}
 
               {section === "audit" ? (
