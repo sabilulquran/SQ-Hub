@@ -19,6 +19,8 @@ import { KirimApp, KirimAppView } from "@/kirim/KirimApp";
 import { isKirimHost, resolveKirimRoute } from "@/kirim/routes";
 import { KerjaApp } from "@/kerja/KerjaApp";
 import { isKerjaHost } from "@/kerja/routes";
+import { SekretariatApp } from "@/sekretariat/SekretariatApp";
+import { isSekretariatHost } from "@/sekretariat/routes";
 import { OrganApp } from "@/organ-portal/OrganApp";
 import { isOrganHost } from "@/organ-portal/routes";
 import { installKerjaPreview } from "@/dev/kerjaFixture";
@@ -125,7 +127,7 @@ const kerjaPreview = previewEnabled && params.get("preview") === "kerja";
 if (kerjaPreview) installKerjaPreview();
 
 createRoot(document.getElementById("root")!).render(
-  <StrictMode>{isOrganHost(window.location.hostname) ? <OrganApp /> : isKirimHost(window.location.hostname) ? <KirimApp /> : isKerjaHost(window.location.hostname) || kerjaPreview ? <KerjaApp /> : previewEnabled ? renderPreviewApp() : <WorkspaceApp />}</StrictMode>,
+  <StrictMode>{isOrganHost(window.location.hostname) ? <OrganApp /> : isKirimHost(window.location.hostname) ? <KirimApp /> : isSekretariatHost(window.location.hostname) ? <SekretariatApp /> : isKerjaHost(window.location.hostname) || kerjaPreview ? <KerjaApp /> : previewEnabled ? renderPreviewApp() : <WorkspaceApp />}</StrictMode>,
 );
 
 if (previewEnabled) {

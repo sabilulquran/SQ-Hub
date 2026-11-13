@@ -21,6 +21,9 @@ import type { OrganPortalModule } from "./modules/organ-portal/module.js";
 import type { KerjaModule } from "./modules/kerja/module.js";
 import { KERJA_ADMIN_PREFIX, KERJA_PREFIX } from "./modules/kerja/routes.js";
 import { KIRIM_ADMIN_PREFIX } from "./modules/kirim/routes-admin.js";
+import type { SekretariatModule } from "./modules/sekretariat/module.js";
+import { SEKRETARIAT_ADMIN_PREFIX, SEKRETARIAT_PREFIX } from "./modules/sekretariat/routes.js";
+import { SEKRETARIAT_INTERNAL_PREFIX } from "./modules/sekretariat/routes-internal.js";
 import { KIRIM_INTERNAL_PREFIX } from "./modules/kirim/routes-internal.js";
 import type { HubAuthRuntime } from "./modules/hub-auth/service.js";
 import type { IdentityDirectory } from "./modules/identity-directory/client.js";
@@ -82,6 +85,8 @@ export function buildApp(input: {
   kirim?: Pick<KirimModule, "register">;
   /** KERJA-IMPL-001 §11: absent when KERJA_ENABLED is not true. */
   kerja?: Pick<KerjaModule, "register">;
+  /** SEK-IMPL-001 §10: absent when SEKRETARIAT_ENABLED is not true. */
+  sekretariat?: Pick<SekretariatModule, "register">;
   /** ORGAN-IMPL-001 §12: absent when PORTAL_ORGAN_ENABLED is not true. */
   organPortal?: Pick<OrganPortalModule, "register">;
   /** HUB-IMPL-022: source of POST /internal/v1/application-access/launcher (same rows as /api/workspace). */
@@ -100,6 +105,8 @@ export function buildApp(input: {
   // KIRIM-IMPL-001 §11: KIRIM_ENABLED=false means the module is not passed and no route exists.
   if (input.kirim) input.kirim.register(app);
   if (input.kerja) input.kerja.register(app);
+  // SEK-IMPL-001: SEKRETARIAT_ENABLED=false means the module is not passed and no route exists.
+  if (input.sekretariat) input.sekretariat.register(app);
   if (input.organPortal) input.organPortal.register(app);
 
   app.get("/health", async () => ({ status: "ok" }));
@@ -252,5 +259,9 @@ export function safeLogUrl(url: string): string {
   if (url.startsWith(KIRIM_INTERNAL_PREFIX) || url.startsWith(KIRIM_ADMIN_PREFIX)) return url.split("?", 1)[0] ?? url;
   // KERJA-IMPL-001 §10 nomor 5: a search query is card content, so it never reaches the log.
   if (url.startsWith(`${KERJA_PREFIX}/`) || url.startsWith(KERJA_ADMIN_PREFIX)) return url.split("?", 1)[0] ?? url;
+  // SEK-IMPL-001 §9: letter and e-mail content never reaches the log; queries carry filters only.
+  if (url.startsWith(`${SEKRETARIAT_PREFIX}/`) || url.startsWith(SEKRETARIAT_ADMIN_PREFIX) || url.startsWith(SEKRETARIAT_INTERNAL_PREFIX)) {
+    return url.split("?", 1)[0] ?? url;
+  }
   return url;
 }

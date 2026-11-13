@@ -1,0 +1,59 @@
+{
+  "realm": "sq-staff",
+  "clients": {
+    "sekretariat-sq": {
+      "clientId": "sekretariat-sq",
+      "name": "Sekretariat",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "clientAuthenticatorType": "client-secret",
+      "publicClient": false,
+      "bearerOnly": false,
+      "standardFlowEnabled": true,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": false,
+      "frontchannelLogout": true,
+      "fullScopeAllowed": false,
+      "consentRequired": false,
+      "redirectUris": [
+        "https://sekretariat.sabilulquran.or.id/api/auth/callback"
+      ],
+      "webOrigins": [],
+      "attributes": {
+        "pkce.code.challenge.method": "S256",
+        "post.logout.redirect.uris": "https://sekretariat.sabilulquran.or.id/"
+      },
+      "defaultClientScopes": [
+        "basic",
+        "acr",
+        "profile",
+        "email"
+      ],
+      "optionalClientScopes": []
+    },
+    "hcis-sekretariat": {
+      "clientId": "hcis-sekretariat",
+      "name": "HCIS - alokasi nomor Sekretariat",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "clientAuthenticatorType": "client-secret",
+      "publicClient": false,
+      "bearerOnly": false,
+      "standardFlowEnabled": false,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": true,
+      "frontchannelLogout": false,
+      "fullScopeAllowed": false,
+      "consentRequired": false,
+      "redirectUris": [],
+      "webOrigins": [],
+      "attributes": {},
+      "defaultClientScopes": [
+        "basic"
+      ],
+      "optionalClientScopes": []
+    }
+  }
+}
