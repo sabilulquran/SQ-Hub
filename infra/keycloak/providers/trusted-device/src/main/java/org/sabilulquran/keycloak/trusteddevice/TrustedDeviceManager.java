@@ -111,12 +111,16 @@ final class TrustedDeviceManager {
         if (matchedRecord == null) {
             return Validation.rejected(pruned, Reason.NO_SERVER_RECORD);
         }
-        pruned.remove(matchedRecord);
-        if (!isWithinGrace(matchedRecord)) {
-            // Keep the consumed proof alive briefly, so a concurrent request from the same browser
-            // still passes. After the window the copy fails closed exactly as before.
-            pruned.add(record(expiresAt, nonceHash, credentialFingerprint, now + ROTATION_GRACE_SECONDS));
+        if (isWithinGrace(matchedRecord)) {
+            // A copy the browser still had in flight when the rotation happened. The jar already
+            // holds the rotated proof, so this request is trusted and nothing is issued: no second
+            // cookie, no extra record, however many stale copies arrive inside the window.
+            return new Validation(true, null, List.copyOf(pruned), recordExpiry(matchedRecord), Reason.TRUSTED);
         }
+        pruned.remove(matchedRecord);
+        // Keep the proof just consumed alive briefly, so requests the same browser sent before the
+        // rotation reached it still pass. After the window the copy fails closed exactly as before.
+        pruned.add(record(expiresAt, nonceHash, credentialFingerprint, now + ROTATION_GRACE_SECONDS));
 
         Issue rotated = issue(realmId, userId, credentialFingerprint, pruned);
         return new Validation(true, rotated.cookie(), rotated.records(), rotated.expiresAt(), Reason.TRUSTED);

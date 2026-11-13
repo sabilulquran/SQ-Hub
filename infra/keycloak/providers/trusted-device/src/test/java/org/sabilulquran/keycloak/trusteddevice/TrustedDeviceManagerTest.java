@@ -3,6 +3,7 @@ package org.sabilulquran.keycloak.trusteddevice;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -50,14 +51,23 @@ class TrustedDeviceManagerTest {
                 issue.cookie(), "realm", "user", "credentials", issue.records());
         assertTrue(first.trusted());
 
-        // The same browser presents the copy it had before the rotation reached it.
+        // The same browser presents the copy it had before the rotation reached it. The jar already
+        // holds the rotated proof, so nothing is issued again.
         TrustedDeviceManager.Validation concurrent = manager.validateAndRotate(
                 issue.cookie(), "realm", "user", "credentials", first.records());
         assertTrue(concurrent.trusted());
+        assertNull(concurrent.rotatedCookie());
+        assertEquals(first.records().size(), concurrent.records().size());
+
+        // Any further stale copy inside the window is accepted too, without growing the device list.
+        TrustedDeviceManager.Validation repeated = manager.validateAndRotate(
+                issue.cookie(), "realm", "user", "credentials", concurrent.records());
+        assertTrue(repeated.trusted());
+        assertEquals(first.records().size(), repeated.records().size());
 
         // The rotated proof still works afterwards, so the trust is not lost either way.
         assertTrue(manager.validateAndRotate(
-                first.rotatedCookie(), "realm", "user", "credentials", concurrent.records()).trusted());
+                first.rotatedCookie(), "realm", "user", "credentials", repeated.records()).trusted());
     }
 
     @Test
