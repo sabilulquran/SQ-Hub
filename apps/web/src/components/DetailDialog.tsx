@@ -79,14 +79,14 @@ export function DetailDialog({
 
   return (
     <div className="fixed inset-0 z-50 flex items-stretch justify-center md:items-start md:p-10" role="presentation">
-      <button type="button" aria-label="Tutup" tabIndex={-1} className="absolute inset-0 h-full w-full cursor-default bg-black/45" onClick={() => closeRef.current()} />
+      <button type="button" aria-label="Tutup" tabIndex={-1} className="sq-backdrop-enter absolute inset-0 h-full w-full cursor-default bg-black/45" onClick={() => closeRef.current()} />
       <div
         ref={panelRef}
         role="dialog"
         aria-modal="true"
         aria-label={title ?? label}
         tabIndex={-1}
-        className={`relative flex h-full w-full flex-col overflow-y-auto bg-surface-raised shadow-[var(--shadow-raised)] outline-none md:h-auto md:max-h-[90vh] md:rounded-2xl ${title ? "" : "p-4 md:p-6"} ${wide ? "md:max-w-[960px]" : "md:max-w-[720px]"}`}
+        className={`sq-dialog-enter relative flex h-full w-full flex-col overflow-y-auto overflow-x-hidden bg-surface-raised shadow-[var(--shadow-raised)] outline-none md:h-auto md:max-h-[90vh] md:rounded-2xl ${title ? "" : "p-4 md:p-6"} ${wide ? "md:max-w-[960px]" : "md:max-w-[720px]"}`}
       >
         {title ? (
           <>
