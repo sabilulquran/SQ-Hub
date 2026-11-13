@@ -14,6 +14,7 @@ import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.List;
+import java.util.Set;
 import org.junit.jupiter.api.Test;
 
 class TrustedDeviceManagerTest {
@@ -82,13 +83,17 @@ class TrustedDeviceManagerTest {
 
         List<String> crowded = new ArrayList<>(accepted.records());
         TrustedDeviceManager.Issue latest = null;
+        StringBuilder trace = new StringBuilder("sizes start=" + crowded.size());
         for (int device = 0; device < TrustedDeviceManager.MAX_DEVICES; device++) {
             latest = manager.issue("realm", "user", "credentials", crowded);
             crowded = new ArrayList<>(latest.records());
+            trace.append(" -> ").append(crowded.size());
         }
 
         List<String> finalRecords = List.copyOf(crowded);
-        assertEquals(TrustedDeviceManager.MAX_DEVICES, finalRecords.size(), () -> String.join(" ;; ", finalRecords));
+        String report = trace + " | max=" + TrustedDeviceManager.MAX_DEVICES
+                + " | distinct=" + Set.copyOf(finalRecords).size();
+        assertEquals(TrustedDeviceManager.MAX_DEVICES, finalRecords.size(), () -> report);
         assertTrue(manager.validateAndRotate(
                 latest.cookie(), "realm", "user", "credentials", crowded).trusted());
     }
