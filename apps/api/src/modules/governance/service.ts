@@ -6,6 +6,7 @@ import { HubAuthError } from "../hub-auth/service.js";
 import type { HubSessionRecord } from "../hub-auth/repository.js";
 import type { Organ } from "../organ-membership/repository.js";
 import { validateGovernanceSummary, type GovernanceSummaryV1 } from "./contract.js";
+import { employeeListSchema, type EmployeeList, type EmployeeListQuery } from "./employee-list.js";
 import { GOVERNANCE_SCOPE_PREFIX, type TokenExchanger } from "./token-exchange.js";
 
 export interface GovernanceApplication {
@@ -47,6 +48,22 @@ export interface GovernanceObservationStore {
 export class GovernanceForbiddenError extends Error {
   readonly statusCode = 403;
   readonly code = "GOVERNANCE_FORBIDDEN";
+}
+
+/** The application itself refused the member (its own governance role is missing). */
+export class GovernanceApplicationRefusedError extends Error {
+  readonly statusCode = 403;
+  readonly code = "APPLICATION_REFUSED";
+}
+
+export class GovernanceNotFoundError extends Error {
+  readonly statusCode = 404;
+  readonly code = "GOVERNANCE_NOT_FOUND";
+}
+
+export class GovernanceUnavailableError extends Error {
+  readonly statusCode = 503;
+  readonly code = "GOVERNANCE_UNAVAILABLE";
 }
 
 export interface GovernanceLogEntry {
@@ -129,6 +146,73 @@ export class GovernanceService {
       cards,
       generatedAt: new Date(this.now()).toISOString(),
     };
+  }
+
+  /**
+   * ORGAN-IMPL-001 §3.1 / HCIS ORG-014: one page of an application's active-employee list, as the
+   * member. The list lives next to the summary (`…/summary` → `…/employees`), is validated against
+   * the six-field contract, and is never cached or stored.
+   */
+  async employees(
+    session: HubSessionRecord,
+    sessionToken: string | null,
+    applicationKey: string,
+    query: EmployeeListQuery,
+  ): Promise<EmployeeList> {
+    const identity = { issuer: session.issuer, subject: session.subject };
+    if (!(await this.deps.memberships.getEffective(identity))) throw new GovernanceForbiddenError("no effective organ membership");
+    const application = (await this.deps.applications.listForIdentity(identity))
+      .find((item) => item.applicationKey === applicationKey);
+    if (!application || !/\/summary$/.test(application.summaryPath)) throw new GovernanceNotFoundError();
+
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), this.timeoutMs);
+    try {
+      let exchanged: string;
+      try {
+        const subjectToken = await this.raceAbort(this.deps.userAccessToken(sessionToken), controller.signal);
+        exchanged = await this.deps.exchanger.exchange(
+          subjectToken,
+          { audience: application.audience, scope: `${GOVERNANCE_SCOPE_PREFIX}${application.audience}` },
+          controller.signal,
+        );
+      } catch (error) {
+        if (error instanceof HubAuthError) throw error;
+        throw new GovernanceUnavailableError();
+      }
+      const url = new URL(governanceSummaryUrl(application.canonicalUrl, application.summaryPath.replace(/summary$/, "employees")));
+      url.searchParams.set("page", String(query.page));
+      url.searchParams.set("pageSize", String(query.pageSize));
+      if (query.q) url.searchParams.set("q", query.q);
+      if (query.unitId) url.searchParams.set("unitId", query.unitId);
+      let response: Response;
+      try {
+        response = await (this.deps.fetch ?? fetch)(url, {
+          method: "GET",
+          headers: { Authorization: `Bearer ${exchanged}`, Accept: "application/json" },
+          redirect: "error",
+          signal: controller.signal,
+        });
+      } catch {
+        throw new GovernanceUnavailableError();
+      }
+      if (response.status === 403) throw new GovernanceApplicationRefusedError();
+      if (response.status === 404) throw new GovernanceNotFoundError();
+      if (response.status !== 200 || !response.headers.get("content-type")?.toLowerCase().includes("application/json")) {
+        throw new GovernanceUnavailableError();
+      }
+      let body: unknown;
+      try {
+        body = JSON.parse(await readLimited(response, MAX_BODY_BYTES));
+      } catch {
+        throw new GovernanceUnavailableError();
+      }
+      const parsed = employeeListSchema.safeParse(body);
+      if (!parsed.success) throw new GovernanceUnavailableError();
+      return parsed.data;
+    } finally {
+      clearTimeout(timer);
+    }
   }
 
   private async fetchOne(application: GovernanceApplication, userToken: () => Promise<string>): Promise<FetchOutcome> {

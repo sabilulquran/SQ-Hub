@@ -3,7 +3,14 @@ import { z } from "zod";
 
 import { applicationKeySchema } from "../application-access/service.js";
 import type { IdentityRef } from "../application-access/types.js";
-import { GovernanceForbiddenError, type GovernanceService } from "../governance/service.js";
+import { employeeListQuerySchema } from "../governance/employee-list.js";
+import {
+  GovernanceApplicationRefusedError,
+  GovernanceForbiddenError,
+  GovernanceNotFoundError,
+  GovernanceUnavailableError,
+  type GovernanceService,
+} from "../governance/service.js";
 import { HubAuthError, readCookie, type HubAuthRuntime } from "../hub-auth/service.js";
 import type { Organ } from "../organ-membership/repository.js";
 
@@ -147,6 +154,20 @@ export function registerOrganRoutes(
     }
   });
 
+  // ORGAN-IMPL-001 §3.1 / HCIS ORG-014: the application's active-employee list, one page at a time,
+  // fetched as the member and never cached. Only applications that publish one answer 200.
+  app.get("/organ/applications/:applicationKey/employees", { constraints }, async (request, reply) => {
+    reply.header("Cache-Control", "no-store");
+    try {
+      const params = z.object({ applicationKey: applicationKeySchema }).parse(request.params);
+      const query = employeeListQuerySchema.parse(request.query);
+      const { session, sessionToken } = await member(request);
+      return reply.send(await input.governance.employees(session, sessionToken, params.applicationKey, query));
+    } catch (error) {
+      return fail(reply, error);
+    }
+  });
+
   // Retry for one failed card; bypasses the in-memory cache for that application only.
   app.get("/organ/summaries/:applicationKey", { constraints }, async (request, reply) => {
     reply.header("Cache-Control", "no-store");
@@ -165,6 +186,9 @@ function fail(reply: FastifyReply, error: unknown) {
   if (error instanceof OrganPortalError) return reply.status(error.statusCode).send({ error: error.code });
   if (error instanceof HubAuthError) return reply.status(error.statusCode).send({ error: error.code });
   if (error instanceof GovernanceForbiddenError) return reply.status(403).send({ error: "organ_membership_required" });
+  if (error instanceof GovernanceApplicationRefusedError) return reply.status(403).send({ error: "application_refused" });
+  if (error instanceof GovernanceNotFoundError) return reply.status(404).send({ error: "not_found" });
+  if (error instanceof GovernanceUnavailableError) return reply.status(503).send({ error: "GOVERNANCE_UNAVAILABLE" });
   if (error instanceof z.ZodError) return reply.status(400).send({ error: "INVALID_REQUEST" });
   return reply.status(503).send({ error: "GOVERNANCE_UNAVAILABLE" });
 }

@@ -3,8 +3,9 @@ import { describe, expect, it } from "vitest";
 
 import { governanceFixture } from "@/dev/governanceFixture";
 import { collectDecisions } from "@/organ-portal/decisions";
+import { EmployeeListView } from "@/organ-portal/EmployeeList";
 import { OrganAppView } from "@/organ-portal/OrganApp";
-import { isOrganHost, resolveOrganRoute } from "@/organ-portal/routes";
+import { detailHref, isOrganHost, resolveOrganRoute } from "@/organ-portal/routes";
 import type { GovernanceSnapshot } from "@/types";
 
 // ORGAN-IMPL-001 R1, web side. Synthetic data only.
@@ -32,6 +33,9 @@ describe("Portal Organ Yayasan routes", () => {
     expect(resolveOrganRoute("/")).toEqual({ name: "ringkasan" });
     expect(resolveOrganRoute("/keputusan/")).toEqual({ name: "keputusan" });
     expect(resolveOrganRoute("/admin")).toEqual({ name: "not-found" });
+    expect(resolveOrganRoute("/aplikasi/hcis")).toEqual({ name: "aplikasi", applicationKey: "hcis" });
+    expect(resolveOrganRoute("/aplikasi/../admin")).toEqual({ name: "not-found" });
+    expect(detailHref("hcis")).toBe("/aplikasi/hcis");
   });
 });
 
@@ -70,5 +74,45 @@ describe("Portal Organ Yayasan view", () => {
     expect(visible).toContain(title);
     expect(visible).not.toContain("Keputusan");
     expect(visible).not.toContain("Keluar");
+  });
+
+  it("links each section's Rincian to the organ host, not the application", () => {
+    const html = renderToStaticMarkup(<OrganAppView route={{ name: "ringkasan" }} state={{ status: "ready", session, snapshot: governanceFixture }} />);
+    const ready = governanceFixture.cards.find((card) => card.state === "ready");
+    expect(html).toContain(`href="/aplikasi/${ready!.applicationKey}"`);
+    expect(html).not.toMatch(/href="https?:\/\/[^"]*\/board"/);
+  });
+
+  it("renders the Rincian page with the employee list slot", () => {
+    const ready = governanceFixture.cards.find((card) => card.state === "ready")!;
+    const visible = text(renderToStaticMarkup(
+      <OrganAppView
+        route={{ name: "aplikasi", applicationKey: ready.applicationKey }}
+        state={{ status: "ready", session, snapshot: governanceFixture }}
+        detail={(key) => <p>daftar {key}</p>}
+      />,
+    ));
+    expect(visible).toContain(`daftar ${ready.applicationKey}`);
+    const missing = text(renderToStaticMarkup(<OrganAppView route={{ name: "aplikasi", applicationKey: "tidak-ada" }} state={{ status: "ready", session, snapshot: governanceFixture }} />));
+    expect(missing).toContain("Rincian tidak ditemukan");
+  });
+});
+
+describe("Daftar pegawai (ORG-014)", () => {
+  const page = {
+    items: [{ fullName: "Pegawai Sintetis", employeeNumber: "2020001", unitName: "Unit Sintetis", position: "Guru Kelas", employmentStatus: "Tetap", startedOn: "2020-01-01" }],
+    pagination: { page: 2, pageSize: 25, total: 26, pageCount: 2 },
+    units: [{ id: "00000000-0000-4000-8000-000000000001", name: "Unit Sintetis" }],
+  };
+
+  it("shows the six permitted fields and where the page sits", () => {
+    const visible = text(renderToStaticMarkup(<EmployeeListView state={{ status: "ready", page }} filters={{ page: 2, q: "", unitId: "" }} />));
+    for (const value of ["Pegawai Sintetis", "2020001", "Unit Sintetis", "Guru Kelas", "Tetap", "Mulai bekerja"]) expect(visible).toContain(value);
+    expect(visible).toContain("26–26 dari 26 pegawai");
+  });
+
+  it("says so when nothing matches", () => {
+    const empty = { ...page, items: [], pagination: { page: 1, pageSize: 25, total: 0, pageCount: 0 } };
+    expect(text(renderToStaticMarkup(<EmployeeListView state={{ status: "ready", page: empty }} filters={{ page: 1, q: "zz", unitId: "" }} />))).toContain("Tidak ada pegawai yang cocok");
   });
 });

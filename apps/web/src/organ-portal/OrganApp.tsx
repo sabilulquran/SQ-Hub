@@ -1,12 +1,15 @@
-import { AlertTriangle, ArrowUpRight, ClipboardCheck, Landmark, LoaderCircle, LogOut } from "lucide-react";
+import { ArrowUpRight, ChevronLeft, LoaderCircle, RefreshCw } from "lucide-react";
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 
-import { BrandLockup } from "@/components/BrandLockup";
-import { GovernanceOverview, StatusPanel } from "@/governance/GovernancePage";
-import { collectDecisions } from "@/organ-portal/decisions";
+import { GovernanceChartView } from "@/governance/GovernanceChartView";
+import { organBadge } from "@/organ";
+import { ApplicationSection, AttentionList, FigureBand, SectionStamp } from "@/organ-portal/ApplicationSection";
+import { collectDecisions, type DecisionRow } from "@/organ-portal/decisions";
+import { EmployeeList } from "@/organ-portal/EmployeeList";
+import { formatToday } from "@/organ-portal/format";
+import { OrganShell } from "@/organ-portal/OrganShell";
 import { resolveOrganRoute, type OrganRoute } from "@/organ-portal/routes";
-import type { DecisionRow } from "@/organ-portal/decisions";
-import type { GovernanceCard, GovernanceSnapshot, Organ } from "@/types";
+import type { GovernanceCard, GovernanceSnapshot, GovernanceSummary, Organ } from "@/types";
 
 interface OrganSession {
   user: { displayName: string };
@@ -19,11 +22,14 @@ export type OrganViewState =
   | { status: "error" }
   | { status: "ready"; session: OrganSession; snapshot: GovernanceSnapshot | null };
 
+type ReadyCard = Extract<GovernanceCard, { state: "ready" }>;
+type FailedCard = Extract<GovernanceCard, { state: "failed" }>;
+
 function startupRefusal(): string | null {
   return new URLSearchParams(window.location.search).get("authError");
 }
 
-/** Portal Organ Yayasan on `organ.sabilulquran.or.id` (ORGAN-IMPL-001 R1). */
+/** Portal Organ Yayasan on `organ.sabilulquran.or.id` (ORGAN-IMPL-001). */
 export function OrganApp() {
   const route = resolveOrganRoute(window.location.pathname);
   const [state, setState] = useState<OrganViewState>(() => {
@@ -59,8 +65,7 @@ export function OrganApp() {
         return;
       }
       if (!summaries.ok) throw new Error(String(summaries.status));
-      const snapshot = (await summaries.json()) as GovernanceSnapshot;
-      setState({ status: "ready", session, snapshot });
+      setState({ status: "ready", session, snapshot: (await summaries.json()) as GovernanceSnapshot });
     } catch {
       setState({ status: "error" });
     }
@@ -99,7 +104,17 @@ export function OrganApp() {
     window.location.assign(body.logoutUrl ?? "/");
   }, []);
 
-  return <OrganAppView route={route} state={state} retrying={retrying} onRetryCard={retryCard} onReload={load} onLogout={logout} />;
+  return (
+    <OrganAppView
+      route={route}
+      state={state}
+      retrying={retrying}
+      onRetryCard={retryCard}
+      onReload={load}
+      onLogout={logout}
+      detail={(applicationKey) => <EmployeeList applicationKey={applicationKey} />}
+    />
+  );
 }
 
 export function OrganAppView({
@@ -109,6 +124,8 @@ export function OrganAppView({
   onRetryCard,
   onReload,
   onLogout,
+  detail,
+  now,
 }: {
   route: OrganRoute;
   state: OrganViewState;
@@ -116,70 +133,153 @@ export function OrganAppView({
   onRetryCard?: (applicationKey: string) => void;
   onReload?: () => void;
   onLogout?: () => void | Promise<void>;
+  /** Extra content under an application's Rincian, such as the HCIS employee list. */
+  detail?: (applicationKey: string) => ReactNode;
+  now?: Date;
 }) {
   const ready = state.status === "ready" ? state : null;
   return (
     <OrganShell route={route} displayName={ready?.session.user.displayName} onLogout={ready ? onLogout : undefined}>
-      {state.status === "loading" || (ready && !ready.snapshot) ? (
-        <StatusPanel icon={<LoaderCircle className="h-5 w-5 animate-spin" aria-hidden="true" />} title="Memuat ringkasan" body="Portal sedang meminta ringkasan dari setiap aplikasi." />
-      ) : null}
+      {state.status === "loading" || (ready && !ready.snapshot) ? <Pending text="Memuat ringkasan dari setiap aplikasi" /> : null}
       {state.status === "error" ? (
-        <StatusPanel
-          icon={<AlertTriangle className="h-5 w-5" aria-hidden="true" />}
-          title="Portal belum dapat dimuat"
-          body="Coba lagi beberapa saat."
-          action={onReload ? { label: "Coba lagi", onClick: onReload } : undefined}
-        />
+        <Notice title="Portal belum dapat dimuat" body="Coba lagi beberapa saat" action={onReload ? { label: "Coba lagi", onClick: onReload } : undefined} />
       ) : null}
       {state.status === "refused" ? <Refusal code={state.code} /> : null}
       {ready?.snapshot && route.name === "ringkasan" ? (
-        <GovernanceOverview
-          eyebrow="Portal Organ Yayasan"
-          displayName={ready.session.user.displayName}
-          snapshot={ready.snapshot}
-          retrying={retrying}
-          onRetryCard={onRetryCard}
-          before={<DecisionsCard rows={collectDecisions(ready.snapshot.cards)} compact />}
-        />
+        <Overview session={ready.session} snapshot={ready.snapshot} retrying={retrying} onRetryCard={onRetryCard} now={now} />
       ) : null}
-      {ready?.snapshot && route.name === "keputusan" ? (
-        <section aria-labelledby="keputusan-heading">
-          <p className="text-sm font-semibold text-brand-primary-deep">Portal Organ Yayasan</p>
-          <h1 id="keputusan-heading" className="mt-1 font-display text-3xl font-bold tracking-[-0.03em] text-brand-heading">Keputusan</h1>
-          <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
-            Pengajuan yang menunggu keputusan Anda. Keputusan diambil di aplikasi asalnya, yang tetap mencatat aturan dan riwayatnya.
-          </p>
-          <DecisionsCard rows={collectDecisions(ready.snapshot.cards)} />
-        </section>
+      {ready?.snapshot && route.name === "keputusan" ? <DecisionsPage rows={collectDecisions(ready.snapshot.cards)} /> : null}
+      {ready?.snapshot && route.name === "aplikasi" ? (
+        <DetailPage card={ready.snapshot.cards.find((card) => card.applicationKey === route.applicationKey)} detail={detail} />
       ) : null}
       {route.name === "not-found" && state.status !== "refused" ? (
-        <StatusPanel icon={<AlertTriangle className="h-5 w-5" aria-hidden="true" />} title="Halaman tidak ditemukan" body="Kembali ke Ringkasan." action={{ label: "Ke Ringkasan", onClick: () => window.location.assign("/") }} />
+        <Notice title="Halaman tidak ditemukan" body="Alamat ini tidak ada di Portal Organ" action={{ label: "Ke Ringkasan", onClick: () => window.location.assign("/") }} />
       ) : null}
     </OrganShell>
   );
 }
 
-function DecisionsCard({ rows, compact = false }: { rows: DecisionRow[]; compact?: boolean }) {
-  if (compact && rows.length === 0) return null;
+function Overview({
+  session,
+  snapshot,
+  retrying,
+  onRetryCard,
+  now,
+}: {
+  session: OrganSession;
+  snapshot: GovernanceSnapshot;
+  retrying: string[];
+  onRetryCard?: ((applicationKey: string) => void) | undefined;
+  now?: Date | undefined;
+}) {
+  const ready = snapshot.cards.filter((card): card is ReadyCard => card.state === "ready");
+  const failed = snapshot.cards.filter((card): card is FailedCard => card.state === "failed");
+  const decisions = collectDecisions(snapshot.cards);
+  const role = `${organBadge(session.membership.organ)}${session.membership.positionLabel ? `, ${session.membership.positionLabel}` : ""}`;
   return (
-    <section aria-label="Menunggu keputusan Anda" className="mt-7 rounded-2xl border border-brand-primary/15 bg-brand-primary-pale/40 p-4">
-      <h2 className="font-display text-lg font-bold text-brand-heading">Menunggu keputusan Anda</h2>
+    <>
+      <header>
+        <p className="text-sm text-muted-foreground">Assalamu&apos;alaikum, {session.user.displayName} · {role}</p>
+        <h1 className="mt-2 text-[28px] font-semibold leading-tight tracking-[-0.01em] text-brand-heading sm:text-[32px]">Ringkasan Yayasan</h1>
+        <p className="mt-1 text-sm text-muted-foreground">{formatToday(now)}</p>
+      </header>
+
+      {decisions.length > 0 ? <DecisionsPanel rows={decisions} /> : null}
+
+      {failed.length > 0 ? (
+        <ul className="mt-6 space-y-2">
+          {failed.map((card) => (
+            <li key={card.applicationKey} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-surface-raised px-5 py-3 text-sm">
+              <span className="text-muted-foreground"><span className="font-medium text-brand-heading">{card.name}</span> belum dapat dimuat</span>
+              <button
+                type="button"
+                disabled={!onRetryCard || retrying.includes(card.applicationKey)}
+                onClick={() => onRetryCard?.(card.applicationKey)}
+                className="inline-flex h-8 items-center gap-1.5 rounded-lg px-2 text-sm font-medium text-brand-primary-deep transition-colors hover:bg-brand-primary-pale disabled:opacity-50"
+              >
+                <RefreshCw className={["h-4 w-4", retrying.includes(card.applicationKey) ? "animate-spin" : ""].join(" ")} strokeWidth={1.5} aria-hidden="true" />
+                Coba lagi
+              </button>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+
+      {ready.length === 0 && failed.length === 0 ? (
+        <Notice title="Belum ada ringkasan" body="Belum ada aplikasi yang menghubungkan ringkasan untuk akun Anda. Ringkasan muncul setelah aplikasi memberi akun Anda peran Yayasan." />
+      ) : null}
+
+      {ready.map((card) => <ApplicationSection key={card.applicationKey} summary={card.summary} />)}
+    </>
+  );
+}
+
+function DetailPage({ card, detail }: { card: GovernanceCard | undefined; detail?: ((applicationKey: string) => ReactNode) | undefined }) {
+  if (!card || card.state !== "ready") {
+    return (
+      <Notice
+        title={card ? `${card.name} belum dapat dimuat` : "Rincian tidak ditemukan"}
+        body={card ? "Coba lagi beberapa saat" : "Aplikasi ini tidak menerbitkan ringkasan untuk akun Anda"}
+        action={{ label: "Ke Ringkasan", onClick: () => window.location.assign("/") }}
+      />
+    );
+  }
+  const summary: GovernanceSummary = card.summary;
+  return (
+    <>
+      <a href="/" className="inline-flex h-8 items-center gap-1 rounded-lg pr-2 text-sm text-muted-foreground transition-colors hover:text-brand-heading">
+        <ChevronLeft className="h-4 w-4" strokeWidth={1.5} aria-hidden="true" /> Ringkasan
+      </a>
+      <header className="mt-3 flex flex-wrap items-baseline justify-between gap-x-6 gap-y-2">
+        <h1 className="text-[28px] font-semibold leading-tight tracking-[-0.01em] text-brand-heading sm:text-[32px]">Rincian {summary.title}</h1>
+        <SectionStamp value={summary.dataAsOf} />
+      </header>
+      <div className="mt-6"><FigureBand metrics={summary.metrics.filter((metric) => metric.tone !== "attention")} /></div>
+      <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
+        <div className="grid min-w-0 gap-4">
+          {(summary.charts ?? []).map((chart) => <GovernanceChartView key={chart.key} chart={chart} />)}
+        </div>
+        <AttentionList summary={summary} />
+      </div>
+      {detail?.(summary.applicationKey)}
+    </>
+  );
+}
+
+function DecisionsPage({ rows }: { rows: DecisionRow[] }) {
+  return (
+    <>
+      <header>
+        <h1 className="text-[28px] font-semibold leading-tight tracking-[-0.01em] text-brand-heading sm:text-[32px]">Keputusan</h1>
+        <p className="mt-2 max-w-2xl text-sm text-muted-foreground">
+          Pengajuan yang menunggu keputusan Anda. Keputusan diambil di aplikasi asalnya, yang mencatat aturan dan riwayatnya.
+        </p>
+      </header>
+      <DecisionsPanel rows={rows} />
+    </>
+  );
+}
+
+function DecisionsPanel({ rows }: { rows: DecisionRow[] }) {
+  return (
+    <section aria-label="Menunggu keputusan Anda" className="mt-8 rounded-xl border border-border bg-surface-raised">
+      <h2 className="border-b border-border px-5 py-3 text-sm font-medium text-brand-heading">Menunggu keputusan Anda</h2>
       {rows.length === 0 ? (
-        <p className="mt-2 text-sm text-muted-foreground">Tidak ada pengajuan yang menunggu keputusan Anda.</p>
+        <p className="px-5 py-6 text-sm text-muted-foreground">Tidak ada pengajuan yang menunggu keputusan Anda.</p>
       ) : (
-        <ul className="mt-2 divide-y divide-brand-primary/10">
+        <ul className="divide-y divide-border">
           {rows.map((row, index) => (
             <li key={`${row.href}-${index}`}>
-              <a href={row.href} className="flex min-h-12 items-center justify-between gap-3 py-2 text-sm hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+              <a href={row.href} className="flex min-h-14 items-center justify-between gap-4 px-5 py-3 text-sm transition-colors hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring">
                 <span className="min-w-0">
-                  <span className="font-semibold text-foreground">{row.label}</span>
-                  <span className="block text-xs text-muted-foreground">
+                  <span className="block font-medium text-brand-heading">{row.label}</span>
+                  <span className="mt-0.5 block text-[13px] text-muted-foreground">
                     {row.application} · {row.oldestAgeDays === 0 ? "diajukan hari ini" : `tertua ${row.oldestAgeDays} hari`}
                   </span>
                 </span>
-                <span className="flex shrink-0 items-center gap-2">
-                  <span className="rounded-full bg-surface-raised px-2.5 py-0.5 text-sm font-bold tabular-nums text-brand-primary-deep">{row.count}</span>
-                  <ArrowUpRight className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
+                <span className="flex shrink-0 items-center gap-3">
+                  <span className="text-[20px] font-semibold tabular-nums text-brand-heading">{row.count}</span>
+                  <ArrowUpRight className="h-4 w-4 text-muted-foreground" strokeWidth={1.5} aria-hidden="true" />
                 </span>
               </a>
             </li>
@@ -187,6 +287,28 @@ function DecisionsCard({ rows, compact = false }: { rows: DecisionRow[]; compact
         </ul>
       )}
     </section>
+  );
+}
+
+function Pending({ text }: { text: string }) {
+  return (
+    <p className="flex items-center gap-2 py-12 text-sm text-muted-foreground">
+      <LoaderCircle className="h-4 w-4 animate-spin" strokeWidth={1.5} aria-hidden="true" /> {text}
+    </p>
+  );
+}
+
+function Notice({ title, body, action }: { title: string; body: string; action?: { label: string; onClick: () => void } | undefined }) {
+  return (
+    <div className="mt-6 rounded-xl border border-border bg-surface-raised px-6 py-10 text-center">
+      <h1 className="text-lg font-semibold text-brand-heading">{title}</h1>
+      <p className="mx-auto mt-1.5 max-w-md text-sm text-muted-foreground">{body}</p>
+      {action ? (
+        <button type="button" onClick={action.onClick} className="mt-4 inline-flex h-9 items-center rounded-lg bg-brand-primary px-4 text-sm font-medium text-brand-foreground transition-colors hover:bg-brand-primary-deep">
+          {action.label}
+        </button>
+      ) : null}
+    </div>
   );
 }
 
@@ -207,88 +329,15 @@ function Refusal({ code }: { code: string }) {
   const text = REFUSALS[code] ?? REFUSALS.organ_access_denied!;
   const retryable = code === "identity_unavailable" || code === "oidc_failed";
   return (
-    <div className="rounded-2xl border border-border bg-surface-raised px-5 py-9 text-center">
-      <span className="mx-auto flex h-11 w-11 items-center justify-center rounded-xl bg-muted text-muted-foreground">
-        <Landmark className="h-5 w-5" aria-hidden="true" />
-      </span>
-      <h1 className="mt-3 font-display text-xl font-bold text-brand-heading">{text.title}</h1>
-      <p className="mx-auto mt-1.5 max-w-md text-sm leading-6 text-muted-foreground">{text.body}</p>
-      <div className="mt-4 flex flex-wrap justify-center gap-2">
+    <div className="mt-6 rounded-xl border border-border bg-surface-raised px-6 py-10 text-center">
+      <h1 className="text-xl font-semibold text-brand-heading">{text.title}</h1>
+      <p className="mx-auto mt-1.5 max-w-md text-sm text-muted-foreground">{text.body}</p>
+      <div className="mt-5 flex flex-wrap justify-center gap-2">
         {retryable ? (
-          <a href="/api/auth/oidc/start" className="inline-flex min-h-10 items-center rounded-xl bg-brand-primary px-4 text-sm font-bold text-brand-foreground">Masuk lagi</a>
+          <a href="/api/auth/oidc/start" className="inline-flex h-9 items-center rounded-lg bg-brand-primary px-4 text-sm font-medium text-brand-foreground">Masuk lagi</a>
         ) : null}
-        <a href="https://hub.sabilulquran.or.id/" className="inline-flex min-h-10 items-center rounded-xl border border-border px-4 text-sm font-bold text-brand-primary-deep">Ke SQ Hub</a>
+        <a href="https://hub.sabilulquran.or.id/" className="inline-flex h-9 items-center rounded-lg border border-border px-4 text-sm text-brand-heading">Ke SQ Hub</a>
       </div>
-    </div>
-  );
-}
-
-function OrganShell({
-  route,
-  displayName,
-  onLogout,
-  children,
-}: {
-  route: OrganRoute;
-  displayName?: string | undefined;
-  onLogout?: (() => void | Promise<void>) | undefined;
-  children: ReactNode;
-}) {
-  const [busy, setBusy] = useState(false);
-  const items = [
-    { key: "ringkasan", label: "Ringkasan", href: "/", icon: Landmark },
-    { key: "keputusan", label: "Keputusan", href: "/keputusan", icon: ClipboardCheck },
-  ] as const;
-  return (
-    <div className="min-h-screen bg-background text-foreground">
-      <header className="sticky top-0 z-40 border-b border-border bg-surface-raised">
-        <div className="mx-auto flex h-14 w-full max-w-6xl items-center gap-3 px-4 md:h-16 sm:px-6 lg:px-8">
-          <a href="/" className="min-w-0 shrink-0 rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" aria-label="Ringkasan Portal Organ">
-            <BrandLockup compact appName="Portal Organ" />
-          </a>
-          <div className="ml-auto flex min-w-0 items-center gap-2">
-            {displayName ? <span className="hidden max-w-[14rem] truncate text-sm font-semibold text-muted-foreground md:inline">{displayName}</span> : null}
-            {onLogout ? (
-              <button
-                type="button"
-                disabled={busy}
-                aria-label="Keluar"
-                onClick={() => {
-                  setBusy(true);
-                  void Promise.resolve(onLogout()).finally(() => setBusy(false));
-                }}
-                className="inline-flex min-h-10 items-center gap-1.5 rounded-xl border border-border px-3 text-sm font-bold text-brand-primary-deep disabled:opacity-50"
-              >
-                <LogOut className="h-4 w-4" aria-hidden="true" />
-                <span className="hidden sm:inline">Keluar</span>
-              </button>
-            ) : null}
-          </div>
-        </div>
-        {displayName ? (
-          <nav aria-label="Navigasi Portal Organ" className="mx-auto flex w-full max-w-6xl gap-1 px-4 pb-2 sm:px-6 lg:px-8">
-            {items.map((item) => {
-              const Icon = item.icon;
-              const active = route.name === item.key;
-              return (
-                <a
-                  key={item.key}
-                  href={item.href}
-                  aria-current={active ? "page" : undefined}
-                  className={[
-                    "inline-flex min-h-10 flex-1 items-center justify-center gap-1.5 rounded-xl px-3 text-sm sm:flex-none",
-                    active ? "bg-brand-primary-pale font-bold text-brand-primary-deep" : "font-semibold text-muted-foreground hover:bg-muted",
-                  ].join(" ")}
-                >
-                  <Icon className="h-4 w-4 shrink-0" aria-hidden="true" />
-                  {item.label}
-                </a>
-              );
-            })}
-          </nav>
-        ) : null}
-      </header>
-      <main className="mx-auto w-full max-w-6xl px-4 pb-16 pt-6 sm:px-6 lg:px-8">{children}</main>
     </div>
   );
 }
