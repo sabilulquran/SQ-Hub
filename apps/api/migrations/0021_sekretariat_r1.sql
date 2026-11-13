@@ -202,7 +202,9 @@ CREATE TABLE IF NOT EXISTS sekretariat_berkas (
   nama text NOT NULL CHECK (length(trim(nama)) BETWEEN 1 AND 200),
   kunci text NOT NULL UNIQUE,
   mime text NOT NULL,
-  ukuran bigint NOT NULL CHECK (ukuran BETWEEN 1 AND 10485760),
+  -- The runtime limit is SEKRETARIAT_MAX_UPLOAD_BYTES (10 MiB by default); the schema only guards
+  -- against absurd rows so raising the env within its 100 MB bound needs no migration.
+  ukuran bigint NOT NULL CHECK (ukuran BETWEEN 1 AND 104857600),
   sha256 text NOT NULL CHECK (sha256 ~ '^[0-9a-f]{64}$'),
   terkunci boolean NOT NULL DEFAULT false,
   diunggah_oleh text NOT NULL,

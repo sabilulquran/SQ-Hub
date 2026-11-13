@@ -137,9 +137,7 @@ export function createSekretariatModule(input: {
           return;
         }
         const result = await mail.runOnce();
-        const state = await mail.status();
-        const failing = state.items.some((item) => item.galatTerakhir !== null);
-        backoffRounds = failing ? Math.min(backoffRounds === 0 ? 1 : backoffRounds * 2, Math.ceil(3_600_000 / config.mailIntervalMs)) : 0;
+        backoffRounds = result.gagal ? Math.min(backoffRounds === 0 ? 1 : backoffRounds * 2, Math.ceil(3_600_000 / config.mailIntervalMs)) : 0;
         skip = backoffRounds;
         if (result.baru > 0) startLog({ event: "sekretariat.mail", baru: result.baru }, "sekretariat mail ingested");
       };

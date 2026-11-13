@@ -143,8 +143,14 @@ export class SekretariatSurat {
     const surat = await this.require(peran.admin ? null : [...peran.penerbitIds], suratId);
     if (surat.status === "dibatalkan") throw new SekretariatError(409, "sudah_dibatalkan", "Surat ini sudah dibatalkan.");
     if (surat.status === "draf") {
-      await this.pool.query("DELETE FROM sekretariat_berkas WHERE pemilik_jenis = 'surat_keluar' AND pemilik_id = $1", [suratId]);
-      await this.pool.query("DELETE FROM sekretariat_surat_keluar WHERE id = $1", [suratId]);
+      await withTransaction(this.pool, async (client) => {
+        // Soft-delete keeps the rows so the retention job removes the files from disk (§2 "Berkas").
+        await client.query(
+          "UPDATE sekretariat_berkas SET dihapus = true, dihapus_pada = now() WHERE pemilik_jenis = 'surat_keluar' AND pemilik_id = $1 AND NOT dihapus",
+          [suratId],
+        );
+        await client.query("DELETE FROM sekretariat_surat_keluar WHERE id = $1", [suratId]);
+      });
       return { id: suratId, dihapus: true };
     }
     await withTransaction(this.pool, async (client) => {
@@ -173,8 +179,10 @@ export class SekretariatSurat {
     const total = Number((await this.pool.query<{ c: string }>(
       "SELECT count(*) AS c FROM sekretariat_surat_keluar WHERE penerbit_id = $1", [penerbitId],
     )).rows[0]!.c);
-    const rows = await this.pool.query<SuratRow & { nomor_lengkap: string | null }>(
-      `SELECT s.*, n.nomor_lengkap FROM sekretariat_surat_keluar s LEFT JOIN sekretariat_nomor n ON n.id = s.nomor_id
+    const rows = await this.pool.query<SuratRow>(
+      `SELECT s.id, s.penerbit_id, s.jenis_kode, s.nomor_id, n.nomor_lengkap, s.perihal, s.tujuan, s.penandatangan, s.status,
+              s.retroaktif, s.nomor_asli, to_char(s.tanggal_asli, 'YYYY-MM-DD') AS tanggal_asli, s.balasan_atas, s.dibuat_oleh, s.dibuat_pada, s.terbit_pada
+       FROM sekretariat_surat_keluar s LEFT JOIN sekretariat_nomor n ON n.id = s.nomor_id
        WHERE s.penerbit_id = $1 ORDER BY s.dibuat_pada DESC, s.id LIMIT 25 OFFSET $2`,
       [penerbitId, (page - 1) * 25],
     );

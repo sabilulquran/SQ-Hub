@@ -327,8 +327,8 @@ export function registerSekretariatRoutes(app: FastifyInstance, deps: Sekretaria
 
   app.get(`${SEKRETARIAT_ADMIN_PREFIX}/register/export`, async (request, reply) => {
     try {
-      await admin(request, false);
       const context = await viewer(request, false);
+      if (!context.admin) throw new SekretariatError(403, "sekretariat_admin_required", "Anda belum ditetapkan sebagai pengelola Sekretariat.");
       const csv = await deps.buku.exportCsv(context.v, true, registerQuerySchema.parse(request.query));
       return reply
         .header("Cache-Control", "no-store")

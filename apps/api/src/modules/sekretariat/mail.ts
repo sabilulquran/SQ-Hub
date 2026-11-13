@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { Readable } from "node:stream";
 
 import type { Pool } from "pg";
@@ -44,6 +44,8 @@ export class LogMailFetcher implements MailFetcher {
 export interface IngestResult {
   baru: number;
   dilewati: number;
+  /** True when the fetcher itself failed; the caller backs off (§7 nomor 5). */
+  gagal: boolean;
 }
 
 export class SekretariatMail {
@@ -72,7 +74,7 @@ export class SekretariatMail {
         [this.fetcher.mailbox, error instanceof Error ? error.name : "unknown"],
       );
       this.log({ event: "sekretariat.mail.failed", errorType: error instanceof Error ? error.name : "unknown" }, "sekretariat mail round failed");
-      return { baru: 0, dilewati: 0 };
+      return { baru: 0, dilewati: 0, gagal: true };
     }
     const generationChanged = state.uidValidity !== null && state.uidValidity !== fetched.uidValidity;
     const kotakYayasan = (await this.pool.query<{ id: string }>("SELECT id FROM sekretariat_kotak WHERE jenis = 'yayasan'")).rows[0];
@@ -93,11 +95,15 @@ export class SekretariatMail {
          terakhir_tarik_pada = now(), galat_terakhir = NULL, galat_pada = NULL`,
       [this.fetcher.mailbox, fetched.uidValidity, fetched.mails.reduce((max, mail) => Math.max(max, mail.uid), generationChanged ? 0 : state.lastUid)],
     );
-    return { baru, dilewati };
+    return { baru, dilewati, gagal: false };
   }
 
   private async ingestOne(kotakId: string, uidValidity: string, mail: FetchedMail): Promise<boolean> {
     const id = randomUUID();
+    // A message without a Message-ID still needs a stable key across UIDVALIDITY generations, or a
+    // mailbox rebuild would duplicate it; a content hash stands in (sender, subject, date, body).
+    const dedupId = mail.messageId
+      ?? `dedup-${createHash("sha256").update([mail.dari, mail.perihal, mail.tanggal?.toISOString() ?? "", mail.teks].join("\n")).digest("hex")}@sekretariat.local`;
     const inserted = await this.pool.query(
       `INSERT INTO sekretariat_surat_masuk (id, kotak_id, kanal, dari, perihal, isi_teks, diterima_pada, email_message_id, email_uidvalidity, email_uid)
        VALUES ($1, $2, 'email', $3, $4, $5, $6, $7, $8, $9)
@@ -109,12 +115,29 @@ export class SekretariatMail {
         mail.perihal.slice(0, 500),
         mail.teks.slice(0, 200_000),
         mail.tanggal ?? new Date(),
-        mail.messageId,
+        dedupId,
         uidValidity,
         mail.uid,
       ],
     );
-    if ((inserted.rowCount ?? 0) === 0) return false;
+    if ((inserted.rowCount ?? 0) === 0) {
+      // A crash between the row and its attachments must heal on the retry: the duplicate row
+      // without any file gets the attachments now instead of losing them silently.
+      if (mail.lampiran.length > 0) {
+        const existing = (await this.pool.query<{ id: string; berkas: string }>(
+          `SELECT m.id, (SELECT count(*) FROM sekretariat_berkas b WHERE b.pemilik_jenis = 'surat_masuk' AND b.pemilik_id = m.id) AS berkas
+           FROM sekretariat_surat_masuk m WHERE m.email_message_id = $1 OR (m.email_uidvalidity = $2 AND m.email_uid = $3) LIMIT 1`,
+          [dedupId, uidValidity, mail.uid],
+        )).rows[0];
+        if (existing && Number(existing.berkas) === 0) await this.storeAttachments(existing.id, mail);
+      }
+      return false;
+    }
+    await this.storeAttachments(id, mail);
+    return true;
+  }
+
+  private async storeAttachments(id: string, mail: FetchedMail): Promise<void> {
     for (const lampiran of mail.lampiran) {
       if (lampiran.isi.length === 0) continue;
       if (lampiran.isi.length > this.maxAttachmentBytes) {
@@ -141,7 +164,6 @@ export class SekretariatMail {
         this.log({ event: "sekretariat.mail.attachment_skipped", errorType: error instanceof Error ? error.name : "unknown" }, "sekretariat mail attachment skipped");
       }
     }
-    return true;
   }
 
   async readState(): Promise<MailState> {
