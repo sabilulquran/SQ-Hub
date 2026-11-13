@@ -110,4 +110,11 @@ Still allowed in place: editing a single field inline, dropdown menus and popove
 | HCIS | Remove the sidebar profile card and the header "Administrasi HCIS" link. Add the switcher. Make employee and admin shells one shell with two sidebars. |
 | Aset SQ | Remove the sidebar profile card, Keluar button and "Aset SQ" info box. Add the header with notifications, launcher and account menu. |
 
+### Detail views as pop-ups
+
+| App | Screen | Status |
+| --- | --- | --- |
+| SQ Hub | Kerja card (`?kartu=<id>`) | Follows the rule. |
+| SQ Hub | Admin Center: Registry aplikasi (`?aplikasi=<key>`, `?aplikasi=baru`), Akses aplikasi, Peran HCIS, Pegawai masuk & keluar and Admin Platform (`?orang=<username>`), Organ Yayasan member (`?anggota=<id>`) | Follows the rule since 2026-11-13. The URL carries the Akun SQ username, never the raw OIDC subject. Still in place by design: the "Tambah anggota" column on Organ Yayasan (a create form beside the list, not an item's detail). |
+
 Each app ships this as one PR referencing this document, with light and dark screenshots of desktop, the admin area (where present), and 390 px with the Lainnya sheet open.
