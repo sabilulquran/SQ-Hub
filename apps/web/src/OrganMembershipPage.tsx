@@ -1,6 +1,7 @@
 import { CalendarClock, Landmark, RefreshCw, Search, UserMinus, UserPlus } from "lucide-react";
-import { useCallback, useEffect, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 
+import { answerStillWanted } from "@/admin-staff-dialog";
 import { AppShell } from "@/components/AppShell";
 import { DetailDialog } from "@/components/DetailDialog";
 import { useDialogParam } from "@/components/useDialogParam";
@@ -70,6 +71,9 @@ export function OrganMembershipPage({ workspace, onLogout, onAuthorizationDenied
   // A member's detail opens as a pop-up, `?anggota=<membership id>` (sq-core-app-shell.md "Detail
   // views open as a pop-up"); a link or Back to that address opens the same member.
   const [memberParam, openMember, closeMember] = useDialogParam("anggota");
+  // The member open right now, read by answers that arrive later (see answerStillWanted).
+  const openMemberRef = useRef(memberParam);
+  openMemberRef.current = memberParam;
 
   const adminFetch = useCallback(async <T,>(url: string, init?: RequestInit): Promise<T> => {
     const response = await fetch(url, {
@@ -154,11 +158,25 @@ export function OrganMembershipPage({ workspace, onLogout, onAuthorizationDenied
     openMember(membership.id);
   };
 
+  /**
+   * An action for one member: its answer and its refusal are dropped once another member's pop-up
+   * is open, so they never show under someone else. With the pop-up closed a refusal still shows on
+   * the page.
+   */
+  const runForMember = (membershipId: string) => (task: () => Promise<void>) => run(async () => {
+    try { await task(); } catch (error) {
+      if (answerStillWanted(membershipId, openMemberRef.current, true)) throw error;
+    }
+  });
+
   const overviewReady = overview !== null;
   useEffect(() => {
     if (!memberParam || !overviewReady || detail?.membership.id === memberParam) return;
-    void run(async () => {
-      setDetail(await adminFetch<OrganMembershipDetail>(`/api/admin/organ-memberships/${encodeURIComponent(memberParam)}`));
+    const requested = memberParam;
+    setDetail(null);
+    void runForMember(requested)(async () => {
+      const next = await adminFetch<OrganMembershipDetail>(`/api/admin/organ-memberships/${encodeURIComponent(requested)}`);
+      if (answerStillWanted(next.membership.id, openMemberRef.current)) setDetail(next);
     });
     // Load once each time a member's pop-up opens.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -291,9 +309,12 @@ export function OrganMembershipPage({ workspace, onLogout, onAuthorizationDenied
                   key={shownDetail.membership.id}
                   detail={shownDetail}
                   busy={busy}
-                  run={run}
+                  run={runForMember(shownDetail.membership.id)}
                   adminFetch={adminFetch}
-                  onChanged={async (next) => { setDetail(next); await load(); }}
+                  onChanged={async (next) => {
+                    if (answerStillWanted(next.membership.id, openMemberRef.current)) setDetail(next);
+                    await load();
+                  }}
                   canEndNewIdentity={overview.capabilities.endNewIdentity}
                 />
               ) : !message ? (

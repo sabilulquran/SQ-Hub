@@ -94,6 +94,8 @@ export function PlatformAdministratorsPage({ workspace, onLogout, onAuthorizatio
   // "Detail views open as a pop-up"); a link or Back to that address opens the same person.
   const staffDialog = useStaffDialog({ fetchJson: adminFetch, known: staff });
   const selected = staffDialog.staff;
+  // The reason belongs to one person: it starts empty each time the pop-up's person changes or it closes.
+  useEffect(() => { setReason(""); }, [selected?.subject]);
 
   const search = () => run(async () => {
     const result = await adminFetch<{ staff: AdminStaff[] }>(`/api/admin/staff?q=${encodeURIComponent(query.trim())}`);
@@ -101,11 +103,19 @@ export function PlatformAdministratorsPage({ workspace, onLogout, onAuthorizatio
   });
 
   const propose = () => run(async () => {
-    if (!selected || !reason.trim()) throw new RequestError("INVALID_REQUEST");
-    await adminFetch("/api/admin/platform-administrators/proposals", { method: "POST", body: JSON.stringify({ subject: selected.subject, reason: reason.trim() }) });
-    staffDialog.close(); setReason(""); setStaff([]);
+    const target = selected;
+    if (!target || !reason.trim()) throw new RequestError("INVALID_REQUEST");
+    try {
+      await adminFetch("/api/admin/platform-administrators/proposals", { method: "POST", body: JSON.stringify({ subject: target.subject, reason: reason.trim() }) });
+    } catch (error) {
+      // A refusal for a person whose pop-up was closed or replaced is not shown under someone else.
+      if (staffDialog.mayReport(target.username)) throw error;
+      return;
+    }
+    // Close only this person's pop-up; one opened for someone else meanwhile stays as it is.
+    if (staffDialog.isOpenFor(target.username)) { staffDialog.close(); setReason(""); setStaff([]); }
     await load();
-    setMessage("Usulan dibuat. Admin Platform lain harus mengonfirmasinya dalam 7 hari.");
+    if (staffDialog.mayReport(target.username)) setMessage("Usulan dibuat. Admin Platform lain harus mengonfirmasinya dalam 7 hari.");
   });
 
   const decide = (proposalId: string, decision: "confirm" | "cancel") => run(async () => {

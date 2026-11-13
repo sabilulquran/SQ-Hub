@@ -284,23 +284,6 @@ export function AdminCenterPage({
     }
   };
 
-  const selectStaff = async (staff: AdminStaff) => {
-    setSelectedStaff(staff);
-    setAccessLoading(true);
-    setAccessMessage(null);
-    try {
-      const body = await adminFetch<{ staff: AdminStaff; access: AdminStaffAccess[] }>(
-        `/api/admin/staff/${encodeURIComponent(staff.subject)}/access`,
-      );
-      setSelectedStaff(body.staff);
-      setStaffAccess(body.access);
-    } catch (error) {
-      setAccessMessage(readableError(error, "Status akses Staff gagal dimuat."));
-    } finally {
-      setAccessLoading(false);
-    }
-  };
-
   // The picked person opens as a pop-up, `?orang=<username>` (sq-core-app-shell.md "Detail views
   // open as a pop-up"); a link or Back to that address opens the same person.
   const staffDialog = useStaffDialog({
@@ -309,19 +292,48 @@ export function AdminCenterPage({
     enabled: state.status === "ready" && section === "access",
   });
   const dialogStaff = staffDialog.staff;
+
+  const selectStaff = async (staff: AdminStaff) => {
+    // An answer for a person whose pop-up is no longer open is dropped (answerStillWanted).
+    if (!staffDialog.isOpenFor(staff.username)) return;
+    setSelectedStaff(staff);
+    setStaffAccess([]);
+    setAccessLoading(true);
+    setAccessMessage(null);
+    try {
+      const body = await adminFetch<{ staff: AdminStaff; access: AdminStaffAccess[] }>(
+        `/api/admin/staff/${encodeURIComponent(staff.subject)}/access`,
+      );
+      if (!staffDialog.isOpenFor(staff.username)) return;
+      setSelectedStaff(body.staff);
+      setStaffAccess(body.access);
+      setAccessLoading(false);
+    } catch (error) {
+      if (!staffDialog.isOpenFor(staff.username)) return;
+      setAccessMessage(readableError(error, "Status akses Staff gagal dimuat."));
+      setAccessLoading(false);
+    }
+  };
+
+  // Each time the pop-up's person changes or it closes, nothing typed or loaded for the previous
+  // person stays: the reason and the access list start empty.
   useEffect(() => {
+    setAccessReason("");
+    setStaffAccess([]);
     if (dialogStaff) void selectStaff(dialogStaff);
-    // Load once each time a person's pop-up opens.
+    else setSelectedStaff(null);
+    // Once per person shown in the pop-up.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dialogStaff?.subject]);
   const shownStaff = dialogStaff && selectedStaff?.subject === dialogStaff.subject ? selectedStaff : null;
 
   const mutateAccess = async (applicationKey: string, action: "grant" | "revoke") => {
-    if (!selectedStaff || !accessReason.trim()) {
+    const target = shownStaff;
+    if (!target || !accessReason.trim()) {
       setAccessMessage("Alasan perubahan akses wajib diisi.");
       return;
     }
-    if (action === "revoke" && !window.confirm(`Cabut akses ${selectedStaff.displayName} ke ${applicationKey}?`)) {
+    if (action === "revoke" && !window.confirm(`Cabut akses ${target.displayName} ke ${applicationKey}?`)) {
       return;
     }
     setAccessLoading(true);
@@ -330,15 +342,23 @@ export function AdminCenterPage({
       await adminFetch(`/api/admin/application-access/${action}`, {
         method: "POST",
         body: JSON.stringify({
-          subject: selectedStaff.subject,
+          subject: target.subject,
           applicationKey,
           reason: accessReason.trim(),
         }),
       });
-      setAccessReason("");
-      setAccessMessage(action === "grant" ? "Akses aplikasi diberikan." : "Akses aplikasi dicabut.");
-      await selectStaff(selectedStaff);
+      const done = action === "grant" ? "Akses aplikasi diberikan." : "Akses aplikasi dicabut.";
+      if (staffDialog.isOpenFor(target.username)) {
+        setAccessReason("");
+        await selectStaff(target);
+        if (staffDialog.isOpenFor(target.username)) setAccessMessage(done);
+      } else if (staffDialog.mayReport(target.username)) {
+        // The pop-up was closed meanwhile: the result shows on the page, never under another person.
+        setAccessMessage(done);
+        setAccessLoading(false);
+      }
     } catch (error) {
+      if (!staffDialog.mayReport(target.username)) return;
       setAccessMessage(readableError(error, "Perubahan akses gagal. Coba lagi."));
       setAccessLoading(false);
     }

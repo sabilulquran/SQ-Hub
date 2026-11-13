@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { useDialogParam } from "@/components/useDialogParam";
 import type { AdminStaff } from "@/types";
@@ -10,6 +10,17 @@ export type StaffDialogStatus = "closed" | "loading" | "ready" | "missing" | "er
 
 function sameUsername(a: string, b: string) {
   return a.toLowerCase() === b.toLowerCase();
+}
+
+/**
+ * Whether an answer that arrives for `requested` (a username or a record id) may still change the
+ * screen, given what pop-up is open now (`open`, null when none). An answer for a person who is no
+ * longer open is dropped, so it never shows under another person. With `whenClosed`, an answer
+ * may also show when no pop-up is open (for example a result message on the page behind).
+ */
+export function answerStillWanted(requested: string, open: string | null, whenClosed = false): boolean {
+  if (open === null) return whenClosed;
+  return sameUsername(requested, open);
 }
 
 /**
@@ -43,6 +54,9 @@ export function useStaffDialog({
   enabled?: boolean;
 }) {
   const [username, openParam, close] = useDialogParam(STAFF_DIALOG_PARAM);
+  // The username open right now, read by answers that arrive later (see answerStillWanted).
+  const openRef = useRef(username);
+  openRef.current = username;
   const [resolved, setResolved] = useState<{ username: string; staff: AdminStaff | null; failed: boolean } | null>(null);
 
   const open = useCallback((staff: AdminStaff) => {
@@ -74,5 +88,10 @@ export function useStaffDialog({
           ? "error"
           : "missing";
 
-  return { username, staff: current?.staff ?? null, status, open, close };
+  /** The answer for this person may still fill the open pop-up. */
+  const isOpenFor = useCallback((who: string) => answerStillWanted(who, openRef.current), []);
+  /** A result for this person may still be told: in their pop-up, or on the page once it closed. */
+  const mayReport = useCallback((who: string) => answerStillWanted(who, openRef.current, true), []);
+
+  return { username, staff: current?.staff ?? null, status, open, close, isOpenFor, mayReport };
 }

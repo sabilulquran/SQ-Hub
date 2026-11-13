@@ -76,10 +76,29 @@ export function StaffLifecyclePage({ workspace, onLogout, onAuthorizationDenied 
     finally { setBusy(false); }
   };
 
+  // The picked person opens as a pop-up, `?orang=<username>` (sq-core-app-shell.md "Detail views
+  // open as a pop-up"); a link or Back to that address opens the same person.
+  const staffDialog = useStaffDialog({ fetchJson: adminFetch, known: staff });
+  const dialogStaff = staffDialog.staff;
+
+  /** An action for one person: its refusal is not shown once another person's pop-up is open. */
+  const runFor = (target: AdminStaff, task: () => Promise<void>) => run(async () => {
+    try { await task(); } catch (error) {
+      if (staffDialog.mayReport(target.username)) throw error;
+    }
+  });
+
   const loadPreview = async (entry: AdminStaff) => {
+    // An answer for a person whose pop-up is no longer open is dropped (answerStillWanted).
+    if (!staffDialog.isOpenFor(entry.username)) return;
     setSelected(entry);
-    const result = await adminFetch<{ preview: NonNullable<typeof preview> }>(`/api/admin/staff-lifecycle/${encodeURIComponent(entry.subject)}/offboarding-preview`);
-    setPreview(result.preview);
+    setPreview(null);
+    try {
+      const result = await adminFetch<{ preview: NonNullable<typeof preview> }>(`/api/admin/staff-lifecycle/${encodeURIComponent(entry.subject)}/offboarding-preview`);
+      if (staffDialog.isOpenFor(entry.username)) setPreview(result.preview);
+    } catch (error) {
+      if (staffDialog.isOpenFor(entry.username)) throw error;
+    }
   };
 
   const provision = () => run(async () => {
@@ -99,37 +118,54 @@ export function StaffLifecyclePage({ workspace, onLogout, onAuthorizationDenied 
     setStaff(result.staff); setSelected(null); setPreview(null);
   });
 
-  const setEnabled = (enabled: boolean) => run(async () => {
-    if (!selected || !reason.trim()) throw new Error("INVALID_REQUEST");
-    if (!window.confirm(`${enabled ? "Aktifkan" : "Nonaktifkan"} identitas global ${selected.displayName}?`)) return;
-    await adminFetch("/api/admin/staff-lifecycle/status", { method: "POST", body: JSON.stringify({ subject: selected.subject, enabled, reason: reason.trim(), confirm: true }) });
-    const next = { ...selected, enabled }; setSelected(next); await loadPreview(next);
-    setMessage(enabled ? "Identitas global diaktifkan." : "Identitas global dinonaktifkan.");
-  });
+  const setEnabled = (enabled: boolean) => {
+    const target = selected;
+    if (!target || !reason.trim()) return run(async () => { throw new Error("INVALID_REQUEST"); });
+    return runFor(target, async () => {
+      if (!window.confirm(`${enabled ? "Aktifkan" : "Nonaktifkan"} identitas global ${target.displayName}?`)) return;
+      await adminFetch("/api/admin/staff-lifecycle/status", { method: "POST", body: JSON.stringify({ subject: target.subject, enabled, reason: reason.trim(), confirm: true }) });
+      const next = { ...target, enabled };
+      if (staffDialog.isOpenFor(target.username)) { setSelected(next); await loadPreview(next); }
+      if (staffDialog.mayReport(target.username)) setMessage(enabled ? "Identitas global diaktifkan." : "Identitas global dinonaktifkan.");
+    });
+  };
 
-  const initializePassword = () => run(async () => {
-    if (!selected || !reason.trim()) throw new Error("INVALID_REQUEST");
-    if (!window.confirm(`Kirim instruksi membuat ulang password kepada ${selected.displayName}?`)) return;
-    await adminFetch("/api/admin/staff-lifecycle/password-initialization", { method: "POST", body: JSON.stringify({ subject: selected.subject, reason: reason.trim(), confirm: true }) });
-    setMessage("Akun SQ mengirim instruksi verifikasi email dan pembuatan password. Tautan berlaku 12 jam.");
-  });
+  const initializePassword = () => {
+    const target = selected;
+    if (!target || !reason.trim()) return run(async () => { throw new Error("INVALID_REQUEST"); });
+    return runFor(target, async () => {
+      if (!window.confirm(`Kirim instruksi membuat ulang password kepada ${target.displayName}?`)) return;
+      await adminFetch("/api/admin/staff-lifecycle/password-initialization", { method: "POST", body: JSON.stringify({ subject: target.subject, reason: reason.trim(), confirm: true }) });
+      if (staffDialog.mayReport(target.username)) setMessage("Akun SQ mengirim instruksi verifikasi email dan pembuatan password. Tautan berlaku 12 jam.");
+    });
+  };
 
-  const offboard = () => run(async () => {
-    if (!selected || !reason.trim()) throw new Error("INVALID_REQUEST");
-    if (!window.confirm(`Jalankan atau ulangi offboarding ${selected.displayName}? Status pegawai HCIS tidak akan diubah.`)) return;
-    const result = await adminFetch<{ outcome: "succeeded" | "partial_failure" | "failed"; steps: typeof steps }>("/api/admin/staff-lifecycle/offboard", { method: "POST", body: JSON.stringify({ subject: selected.subject, reason: reason.trim(), confirm: true }) });
-    setSteps(result.steps);
-    setMessage(result.outcome === "succeeded" ? "Offboarding terverifikasi selesai; HCIS tidak diubah." : "Offboarding belum selesai. Periksa hasil tiap langkah dan ulangi. Eskalasi kasus yang belum terselesaikan kepada Kepala HCM.");
-    await loadPreview(selected);
-  });
+  const offboard = () => {
+    const target = selected;
+    if (!target || !reason.trim()) return run(async () => { throw new Error("INVALID_REQUEST"); });
+    return runFor(target, async () => {
+      if (!window.confirm(`Jalankan atau ulangi offboarding ${target.displayName}? Status pegawai HCIS tidak akan diubah.`)) return;
+      const result = await adminFetch<{ outcome: "succeeded" | "partial_failure" | "failed"; steps: typeof steps }>("/api/admin/staff-lifecycle/offboard", { method: "POST", body: JSON.stringify({ subject: target.subject, reason: reason.trim(), confirm: true }) });
+      // The steps and the outcome belong to this person: shown in their pop-up, or on the page once
+      // it closed, never under another person.
+      if (!staffDialog.mayReport(target.username)) return;
+      setSteps(result.steps);
+      setMessage(result.outcome === "succeeded" ? "Offboarding terverifikasi selesai; HCIS tidak diubah." : "Offboarding belum selesai. Periksa hasil tiap langkah dan ulangi. Eskalasi kasus yang belum terselesaikan kepada Kepala HCM.");
+      await loadPreview(target);
+    });
+  };
 
-  // The picked person opens as a pop-up, `?orang=<username>` (sq-core-app-shell.md "Detail views
-  // open as a pop-up"); a link or Back to that address opens the same person.
-  const staffDialog = useStaffDialog({ fetchJson: adminFetch, known: staff });
-  const dialogStaff = staffDialog.staff;
+  // Each time the pop-up's person changes or it closes, nothing typed or loaded for the previous
+  // person stays: the reason and the offboarding summary start empty, and opening a person (also
+  // from a link or Back) clears the previous result and its steps.
   useEffect(() => {
-    if (dialogStaff) { setPreview(null); void run(() => loadPreview(dialogStaff)); }
-    // Load once each time a person's pop-up opens.
+    setReason("");
+    setPreview(null);
+    if (dialogStaff) {
+      setSteps([]);
+      void run(() => loadPreview(dialogStaff));
+    }
+    // Once per person shown in the pop-up.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dialogStaff?.subject]);
   const shown = dialogStaff && selected?.subject === dialogStaff.subject ? selected : null;

@@ -1,7 +1,7 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { findStaffByUsername } from "@/admin-staff-dialog";
+import { answerStillWanted, findStaffByUsername } from "@/admin-staff-dialog";
 import { AdminCenterPage } from "@/AdminCenterPageView";
 import { organOverviewFixture } from "@/dev/organFixture";
 import { workspaceFixture } from "@/dev/workspaceFixture";
@@ -144,5 +144,21 @@ describe("findStaffByUsername", () => {
     expect(fetchJson).toHaveBeenCalledWith("/api/admin/staff?q=19870001");
     const none = vi.fn().mockResolvedValue({ staff: [person("198700011", "s-2")] });
     expect(await findStaffByUsername(none, "19870001", [])).toBeNull();
+  });
+});
+
+describe("answerStillWanted", () => {
+  it("lets an answer fill the pop-up only while the same person or record is open", () => {
+    expect(answerStillWanted("19870001", "19870001")).toBe(true);
+    // Usernames are case-insensitive in Akun SQ; a link may differ in case from the result.
+    expect(answerStillWanted("Staf@Contoh.test", "staf@contoh.test")).toBe(true);
+    expect(answerStillWanted("19870001", "19870002")).toBe(false);
+    expect(answerStillWanted("19870001", null)).toBe(false);
+  });
+
+  it("drops a late answer for A once B is open, but may report it on the page when nothing is open", () => {
+    expect(answerStillWanted("A", "B", true)).toBe(false);
+    expect(answerStillWanted("A", null, true)).toBe(true);
+    expect(answerStillWanted("A", "A", true)).toBe(true);
   });
 });

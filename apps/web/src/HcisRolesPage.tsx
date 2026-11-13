@@ -129,6 +129,11 @@ export function HcisRolesPage({ workspace, onLogout, onAuthorizationDenied }: Pr
   const role = roles.find((entry) => entry.roleId === roleId) ?? null;
   const changeGrant = (apply: () => void) => { apply(); };
 
+  // The picked person opens as a pop-up, `?orang=<username>` (sq-core-app-shell.md "Detail views
+  // open as a pop-up"); a link or Back to that address opens the same person.
+  const staffDialog = useStaffDialog({ fetchJson: adminFetch, known: results, enabled: catalog.status === "ready" });
+  const dialogStaff = staffDialog.staff;
+
   const run = async (task: () => Promise<void>) => {
     setBusy(true); setMessage(null);
     try { await task(); } catch (error) {
@@ -141,20 +146,22 @@ export function HcisRolesPage({ workspace, onLogout, onAuthorizationDenied }: Pr
   };
 
   const loadPerson = async (staff: AdminStaff, nextPage = 1) => {
-    // A requestId belongs to one action for one person; another person is another action.
+    // An answer for a person whose pop-up is no longer open is dropped (answerStillWanted).
+    if (!staffDialog.isOpenFor(staff.username)) return;
+    // A requestId belongs to one action for one person; another person is another action. Closing
+    // and reopening the same person keeps it, so a resend after "outcome unknown" stays one action.
     if (person.status === "idle" || person.staff.subject !== staff.subject) {
       setGrantRequestId(crypto.randomUUID());
       setRevokeRequestIds({});
-      // The form belongs to one person too: an SK number or a term end must not follow the
-      // operator to the next person, and a role picked for one account type may not exist for the next.
-      setRoleId(""); setScopeType("organization"); setUnitId(""); setReason(""); setStartsOn(""); setEndsOn("");
     }
     setPerson({ status: "loading", staff });
     try {
       const lookup = await adminFetch<HcisAccountLookup>(`/api/admin/hcis-roles/staff/${encodeURIComponent(staff.subject)}?page=${nextPage}`);
+      if (!staffDialog.isOpenFor(staff.username)) return;
       setPage(nextPage);
       setPerson({ status: "ready", staff, lookup });
     } catch (error) {
+      if (!staffDialog.isOpenFor(staff.username)) return;
       if (error instanceof RequestError && error.code === "ROLE_ADMIN_ACCOUNT_NOT_FOUND") { setPerson({ status: "no_account", staff }); return; }
       setPerson({ status: "idle" });
       throw error;
@@ -173,8 +180,9 @@ export function HcisRolesPage({ workspace, onLogout, onAuthorizationDenied }: Pr
     if (role.mandateRequired && !reason.trim()) { setMessage("Peran ini menuntut mandat. Tulis dasar penugasannya, misalnya nomor SK."); return; }
     if (role.endDateRequired && !endsOn) { setMessage("Peran ini menuntut tanggal berakhir, yaitu akhir masa jabatan."); return; }
     if (!window.confirm(`Berikan peran ${role.name} kepada ${person.staff.displayName}?`)) return;
+    const target = person.staff;
     try {
-      await adminFetch(`/api/admin/hcis-roles/staff/${encodeURIComponent(person.staff.subject)}/assignments`, {
+      await adminFetch(`/api/admin/hcis-roles/staff/${encodeURIComponent(target.subject)}/assignments`, {
         method: "POST",
         body: JSON.stringify({
           requestId: grantRequestId,
@@ -188,16 +196,19 @@ export function HcisRolesPage({ workspace, onLogout, onAuthorizationDenied }: Pr
       });
     } catch (error) {
       await settleIfRecorded(error, () => setGrantRequestId(crypto.randomUUID()));
+      // A refusal for a person whose pop-up was closed or replaced is not shown under someone else.
+      if (!staffDialog.mayReport(target.username)) return;
       throw error;
     }
     setGrantRequestId(crypto.randomUUID());
-    await loadPerson(person.staff, page);
-    setMessage(`Peran ${role.name} diberikan kepada ${person.staff.displayName}. HCIS mencatatnya atas nama Anda.`);
+    await loadPerson(target, page);
+    if (staffDialog.mayReport(target.username)) setMessage(`Peran ${role.name} diberikan kepada ${target.displayName}. HCIS mencatatnya atas nama Anda.`);
   });
 
   const revoke = (assignment: HcisAccountLookup["assignments"]["items"][number]) => run(async () => {
     if (person.status !== "ready") return;
     if (!window.confirm(`Cabut peran ${assignment.roleName} dari ${person.staff.displayName}?`)) return;
+    const target = person.staff;
     // The same requestId for every resend of this one revocation (see grantRequestId).
     const requestId = revokeRequestIds[assignment.assignmentId] ?? crypto.randomUUID();
     setRevokeRequestIds((current) => ({ ...current, [assignment.assignmentId]: requestId }));
@@ -207,17 +218,18 @@ export function HcisRolesPage({ workspace, onLogout, onAuthorizationDenied }: Pr
       return next;
     });
     try {
-      await adminFetch(`/api/admin/hcis-roles/staff/${encodeURIComponent(person.staff.subject)}/assignments/${encodeURIComponent(assignment.assignmentId)}`, {
+      await adminFetch(`/api/admin/hcis-roles/staff/${encodeURIComponent(target.subject)}/assignments/${encodeURIComponent(assignment.assignmentId)}`, {
         method: "DELETE",
         body: JSON.stringify({ requestId }),
       });
     } catch (error) {
       await settleIfRecorded(error, forget);
+      if (!staffDialog.mayReport(target.username)) return;
       throw error;
     }
     forget();
-    await loadPerson(person.staff, page);
-    setMessage(`Peran ${assignment.roleName} dicabut dari ${person.staff.displayName}.`);
+    await loadPerson(target, page);
+    if (staffDialog.mayReport(target.username)) setMessage(`Peran ${assignment.roleName} dicabut dari ${target.displayName}.`);
   });
 
   /** HCIS saying the request was already recorded means the earlier attempt went through. */
@@ -227,13 +239,13 @@ export function HcisRolesPage({ workspace, onLogout, onAuthorizationDenied }: Pr
     await loadPerson(person.staff, page).catch(() => undefined);
   };
 
-  // The picked person opens as a pop-up, `?orang=<username>` (sq-core-app-shell.md "Detail views
-  // open as a pop-up"); a link or Back to that address opens the same person.
-  const staffDialog = useStaffDialog({ fetchJson: adminFetch, known: results, enabled: catalog.status === "ready" });
-  const dialogStaff = staffDialog.staff;
+  // The form belongs to one person: an SK number or a term end must not follow the operator to
+  // the next person (or to the same person reopened), and a role picked for one account type may
+  // not exist for the next. Each time the pop-up's person changes or it closes, the form starts empty.
   useEffect(() => {
+    setRoleId(""); setScopeType("organization"); setUnitId(""); setReason(""); setStartsOn(""); setEndsOn("");
     if (dialogStaff) void run(() => loadPerson(dialogStaff));
-    // Load once each time a person's pop-up opens.
+    // Once per person shown in the pop-up.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dialogStaff?.subject]);
   const shown = person.status !== "idle" && dialogStaff && person.staff.subject === dialogStaff.subject ? person : null;
