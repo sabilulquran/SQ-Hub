@@ -75,17 +75,25 @@ export const RIWAYAT: Record<string, string> = {
 };
 
 /** Label colours as token pairs that read in both themes. */
-export const WARNA: Record<Warna, { nama: string; kelas: string }> = {
-  abu: { nama: "Abu", kelas: "bg-muted text-foreground" },
-  merah: { nama: "Merah", kelas: "bg-danger-soft text-danger-ink" },
-  oranye: { nama: "Oranye", kelas: "bg-warning-soft text-warning-ink" },
-  kuning: { nama: "Kuning", kelas: "bg-cat-leave-soft text-cat-leave" },
-  hijau: { nama: "Hijau", kelas: "bg-success-soft text-success-ink" },
-  teal: { nama: "Teal", kelas: "bg-cat-attendance-soft text-cat-attendance" },
-  biru: { nama: "Biru", kelas: "bg-info-soft text-info-ink" },
-  ungu: { nama: "Ungu", kelas: "bg-cat-task-soft text-cat-task" },
-  "merah-muda": { nama: "Merah muda", kelas: "bg-cat-pay-soft text-cat-pay" },
+/** Label colours live in a small dot; the chip itself stays neutral so a card is not a row of coloured pills. */
+export const WARNA: Record<Warna, { nama: string; titik: string }> = {
+  abu: { nama: "Abu", titik: "bg-muted-foreground" },
+  merah: { nama: "Merah", titik: "bg-danger-ink" },
+  oranye: { nama: "Oranye", titik: "bg-cat-task" },
+  kuning: { nama: "Kuning", titik: "bg-cat-pay" },
+  hijau: { nama: "Hijau", titik: "bg-success-ink" },
+  teal: { nama: "Teal", titik: "bg-cat-attendance" },
+  biru: { nama: "Biru", titik: "bg-cat-leave" },
+  ungu: { nama: "Ungu", titik: "bg-cat-service" },
+  "merah-muda": { nama: "Merah muda", titik: "bg-[#c2477a] dark:bg-[#e58cb0]" },
 };
+
+/** The parts of a WIB date for the date tile: day number and short month. */
+export function tanggalTile(iso: string): { hari: string; bulan: string; jam: string } {
+  const parts = new Intl.DateTimeFormat("id-ID", { timeZone: "Asia/Jakarta", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).formatToParts(new Date(iso));
+  const get = (type: string) => parts.find((part) => part.type === type)?.value ?? "";
+  return { hari: get("day"), bulan: get("month").replace(".", ""), jam: `${get("hour")}.${get("minute")}` };
+}
 
 export function ukuranBerkas(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
