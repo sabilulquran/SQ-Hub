@@ -87,7 +87,8 @@ class TrustedDeviceManagerTest {
             crowded = new ArrayList<>(latest.records());
         }
 
-        assertEquals(TrustedDeviceManager.MAX_DEVICES, crowded.size(), () -> String.join(" ;; ", crowded));
+        List<String> finalRecords = List.copyOf(crowded);
+        assertEquals(TrustedDeviceManager.MAX_DEVICES, finalRecords.size(), () -> String.join(" ;; ", finalRecords));
         assertTrue(manager.validateAndRotate(
                 latest.cookie(), "realm", "user", "credentials", crowded).trusted());
     }
