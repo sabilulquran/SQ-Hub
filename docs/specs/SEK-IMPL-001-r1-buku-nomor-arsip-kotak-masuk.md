@@ -1,6 +1,6 @@
 # SEK-IMPL-001 — Sekretariat R1: buku nomor, arsip surat, kotak masuk
 
-**Status:** DRAFT (usulan, 2026-11-12). Belum diterima Product Owner; tidak mengizinkan implementasi. Keputusan usulan di §16.
+**Status:** ACCEPTED (Product Owner, 2026-11-13). Keputusan §16 dikunci; implementasi di repository diizinkan. Langkah production §14 mengikuti aturan rilis owner 2026-10-27.
 **Produk:** SQ Hub — modul `sekretariat` (Sekretariat)
 **Owner produk:** Kepala HCM (`sekretariat_admin`, SEK-001 §13 nomor 2)
 **Tanggal:** 2026-11-12 (DRAFT)
@@ -227,9 +227,9 @@ Selama langkah 1–7 buku DOC-003 di HCIS tetap satu-satunya buku aktif; sejak l
 - Repo HCIS: spesifikasi pasangan sisi konsumen + skrip ekspor DOC-003 (ditulis sebelum langkah 8).
 - `infra/production.env.example`: blok `SEKRETARIAT_*`.
 
-## 16. Keputusan usulan (menunggu Product Owner)
+## 16. Keputusan
 
-Semua `DRAFT`; angka boleh diubah tanpa mengubah skema.
+Diputuskan Product Owner 2026-11-13 ("Ya, ACCEPTED"), semuanya mengikuti usulan. Nomor `D-n` dipakai sebagai rujukan di seluruh dokumen.
 
 | # | Topik | Usulan |
 | --- | --- | --- |
@@ -245,3 +245,4 @@ Semua `DRAFT`; angka boleh diubah tanpa mengubah skema.
 | Tanggal | Perubahan |
 | --- | --- |
 | 2026-11-12 | DRAFT pertama untuk R1 dari SEK-001 revisi 5 |
+| 2026-11-13 | ACCEPTED oleh Product Owner; keputusan §16 dikunci sesuai usulan |
