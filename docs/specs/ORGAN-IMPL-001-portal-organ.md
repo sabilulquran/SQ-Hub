@@ -82,9 +82,17 @@ decisions?: Array<{
 - Tata letak mengikuti HUB-IMPL-021 §5: strip headline, bagian per aplikasi, "Perlu perhatian", "Lihat tabel" untuk setiap grafik, dan aturan nilai `null`. Bedanya:
   - tidak ada "Aplikasi Anda" dan tidak ada launcher modul;
   - di atasnya ada kartu "Menunggu keputusan Anda" yang menggabungkan `decisions` dari semua aplikasi.
-- "Lihat rincian" mengarah ke aplikasi asal, yang tetap memeriksa izinnya sendiri. Untuk HCIS tujuannya `/board`.
+- "Rincian {aplikasi}" tetap di host portal: `/aplikasi/:applicationKey` (keputusan owner 13 Nov 2026, menggantikan tautan ke HCIS `/board`). Halaman ini memuat ringkasan aplikasi itu secara utuh (semua angka dan grafik) dan, bila aplikasinya menerbitkan, daftar pegawai (§3.1). Key yang tidak ada di snapshot anggota itu menampilkan "Rincian tidak ditemukan".
 - Grafik mengikuti kontrak. Donut hanya dipakai untuk `composition` dengan satu item; selebihnya batang bertumpuk.
 - Tampilan HP: satu kolom tanpa scroll horizontal, dengan navigasi bawah "Ringkasan", "Keputusan", dan "Laporan" (mulai R3).
+
+### 3.1 Daftar pegawai (R1)
+
+- Sumber: HCIS ORG-014 `GET /governance/employees`, dipanggil server portal lewat `GET /api/organ/applications/:applicationKey/employees` dengan token exchange yang sama seperti ringkasan. Path-nya diturunkan dari `summaryPath` aplikasi (`…/summary` → `…/employees`); aplikasi tanpa `summaryPath` berakhiran `/summary` mendapat `404`.
+- Field yang ditampilkan hanya enam (`DRAFT`, keputusan owner "seperlunya saja"): nama, NIP, unit, jabatan, status kepegawaian, tanggal mulai bekerja. Respons divalidasi ketat; field lain membuat respons ditolak (`503`), bukan diteruskan.
+- Pagination server-side ENG-LIST-001 (`page`, `pageSize` 25, maks 100, `total`), pencarian nama/NIP 2–80 karakter, filter unit.
+- Tidak disimpan, tidak di-cache di browser (`Cache-Control: no-store`), tidak ikut snapshot bulanan, tidak dikirim ke Claude.
+- HCIS hanya menerima `azp` di `GOVERNANCE_EMPLOYEES_ALLOWED_CLIENTS` (default `sq-organ`), jadi Hub `/yayasan` tidak bisa memanggilnya. `403`/`404` dari aplikasi menyembunyikan bagian ini.
 
 ## 4. Keputusan
 
@@ -251,7 +259,7 @@ Kotak "Catatan analisis" diberi label "Dibuat AI — diperiksa terhadap angka di
 
 | Aplikasi | Tahap | Pekerjaan |
 |---|---|---|
-| HCIS | R1 | Amandemen ORG-010: `/governance/summary` menerima `azp` `sq-organ`, lalu menerbitkan `decisions` untuk principal yang punya langkah `pending` |
+| HCIS | R1 | Amandemen ORG-010: `/governance/summary` menerima `azp` `sq-organ`, lalu menerbitkan `decisions` untuk principal yang punya langkah `pending`. ORG-014: `/governance/employees` untuk `azp` `sq-organ` (§3.1) |
 | HCIS | R2 | Audience `hcis-organ-decision` (client Keycloak tanpa alur login); route keputusan bearer sesuai kontrak keputusan v1 (`acr`, `iat` ≤ 60 detik, `jti` sekali pakai, `requestId`); amandemen ORG-013-3 yang menutup `TBD`-nya |
 | HCIS | R3 | Endpoint snapshot bulanan untuk `azp` `sq-organ-reports`, dengan penanda tutup bulan dari payroll `APPROVED` |
 | Karir SQ | R1/R2 | Governance summary dengan `decisions`; kontrak keputusan v1 untuk langkah MPP Ketua (REC-IMPL-006) |
@@ -276,6 +284,7 @@ Setiap baris butuh ID spesifikasi di repository masing-masing.
 - Cookie sesi `sq-hub` yang dikirim ke host `organ.` ditolak.
 - Non-anggota ditolak tanpa sesi. Keanggotaan yang berakhir di tengah sesi langsung ditolak pada request berikutnya.
 - `decisions` yang tidak valid hanya membuang blok itu. Kartu dengan `attention` 3 item ditambah `decisions` tetap valid.
+- Daftar pegawai: route hanya di host `organ.`, anggota tidak efektif ditolak, field di luar enam field membuat respons ditolak, dan "Rincian" tidak menaut ke origin aplikasi.
 - R2:
   - tidak ada exchange bila keanggotaan tidak efektif atau step-up basi;
   - token tidak sampai ke browser;

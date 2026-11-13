@@ -96,6 +96,10 @@ function setup(options: { subject?: string; members?: Set<string>; access?: Set<
       snapshots.push(session.subject);
       return { membership: { organ: "pengurus" }, cards: [], generatedAt: "2026-11-12T00:00:00.000Z" };
     },
+    employees: async (session: HubSessionRecord, _token: string, applicationKey: string) => {
+      snapshots.push(`${session.subject}:${applicationKey}:employees`);
+      return { items: [], pagination: { page: 1, pageSize: 25, total: 0, pageCount: 0 }, units: [] };
+    },
   } as unknown as GovernanceService;
   const app = Fastify();
   registerOrganAuthRoutes(app, { auth, publicOrigin: ORIGIN, gate });
@@ -117,7 +121,7 @@ function sessionCookie(response: Awaited<ReturnType<typeof signIn>>) {
 describe("ORGAN-IMPL-001 R1 portal", () => {
   it("answers only on the organ host", async () => {
     const { app } = setup();
-    for (const url of ["/auth/oidc/start", "/organ/session", "/organ/summaries"]) {
+    for (const url of ["/auth/oidc/start", "/organ/session", "/organ/summaries", "/organ/applications/hcis/employees"]) {
       expect((await app.inject({ method: "GET", url, headers: { host: "hub.sabilulquran.or.id" } })).statusCode).toBe(404);
     }
     const start = await app.inject({ method: "GET", url: "/auth/oidc/start", headers: HOST });
@@ -162,7 +166,20 @@ describe("ORGAN-IMPL-001 R1 portal", () => {
     expect(session.json()).toEqual({ error: "organ_membership_required" });
     const summaries = await app.inject({ method: "GET", url: "/organ/summaries", headers: { ...HOST, cookie } });
     expect(summaries.statusCode).toBe(403);
+    const employees = await app.inject({ method: "GET", url: "/organ/applications/hcis/employees", headers: { ...HOST, cookie } });
+    expect(employees.statusCode).toBe(403);
     expect(snapshots).toEqual([]);
+  });
+
+  it("serves the employee list only through the member gate, never cached", async () => {
+    const { app, snapshots } = setup();
+    const cookie = sessionCookie(await signIn(app))!;
+    expect((await app.inject({ method: "GET", url: "/organ/applications/hcis/employees", headers: HOST })).statusCode).toBe(401);
+    const response = await app.inject({ method: "GET", url: "/organ/applications/hcis/employees?page=1&q=ah", headers: { ...HOST, cookie } });
+    expect(response.statusCode).toBe(200);
+    expect(response.headers["cache-control"]).toBe("no-store");
+    expect(snapshots).toEqual(["ketua:hcis:employees"]);
+    expect((await app.inject({ method: "GET", url: "/organ/applications/hcis/employees?q=a", headers: { ...HOST, cookie } })).statusCode).toBe(400);
   });
 
   it("refuses a session issued to another client presented under the portal cookie (§1.2)", async () => {

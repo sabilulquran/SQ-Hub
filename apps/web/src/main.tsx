@@ -22,6 +22,7 @@ import { isKerjaHost } from "@/kerja/routes";
 import { OrganApp } from "@/organ-portal/OrganApp";
 import { isOrganHost } from "@/organ-portal/routes";
 import { installKerjaPreview } from "@/dev/kerjaFixture";
+import { installOrganPreview } from "@/dev/organPortalFixture";
 import { resolveHubRoute } from "@/routes";
 import { initThemePreference } from "@/theme";
 import "@/styles.css";
@@ -120,12 +121,16 @@ function renderPreviewApp() {
   return <NotFoundPage />;
 }
 
+// Development preview of the Portal Organ with synthetic data: `?preview=organ` on any portal path.
+const organPreview = previewEnabled && params.get("preview") === "organ";
+if (organPreview) installOrganPreview();
+
 // Development preview of Kerja with in-memory data: `?preview=kerja` on any path Kerja knows.
 const kerjaPreview = previewEnabled && params.get("preview") === "kerja";
 if (kerjaPreview) installKerjaPreview();
 
 createRoot(document.getElementById("root")!).render(
-  <StrictMode>{isOrganHost(window.location.hostname) ? <OrganApp /> : isKirimHost(window.location.hostname) ? <KirimApp /> : isKerjaHost(window.location.hostname) || kerjaPreview ? <KerjaApp /> : previewEnabled ? renderPreviewApp() : <WorkspaceApp />}</StrictMode>,
+  <StrictMode>{isOrganHost(window.location.hostname) || organPreview ? <OrganApp /> : isKirimHost(window.location.hostname) ? <KirimApp /> : isKerjaHost(window.location.hostname) || kerjaPreview ? <KerjaApp /> : previewEnabled ? renderPreviewApp() : <WorkspaceApp />}</StrictMode>,
 );
 
 if (previewEnabled) {
