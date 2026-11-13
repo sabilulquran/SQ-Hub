@@ -30,8 +30,9 @@ export function DetailDialog({
     panelRef.current?.focus();
     const onKey = (event: KeyboardEvent) => {
       if (event.key !== "Escape" || event.defaultPrevented) return;
-      // A dialog stacked inside (for example a reason prompt) handles its own Escape first.
-      if (document.querySelectorAll('[role="dialog"][aria-modal="true"]').length > 1) return;
+      // Only the top dialog closes; a dialog stacked inside (a reason prompt, a copy form) goes first.
+      const open = document.querySelectorAll('[role="dialog"][aria-modal="true"]');
+      if (open[open.length - 1] !== panelRef.current) return;
       event.preventDefault();
       closeRef.current();
     };
@@ -45,14 +46,14 @@ export function DetailDialog({
 
   return (
     <div className="fixed inset-0 z-50 flex items-stretch justify-center sm:items-start sm:p-6 md:p-10" role="presentation">
-      <button type="button" aria-label="Tutup" tabIndex={-1} className="absolute inset-0 h-full w-full cursor-default bg-black/45" onClick={() => closeRef.current()} />
+      <button type="button" aria-label="Tutup" tabIndex={-1} className="sq-backdrop-enter absolute inset-0 h-full w-full cursor-default bg-black/45" onClick={() => closeRef.current()} />
       <div
         ref={panelRef}
         role="dialog"
         aria-modal="true"
         aria-label={label}
         tabIndex={-1}
-        className={`relative flex h-full w-full flex-col overflow-y-auto bg-surface-raised p-4 shadow-[var(--shadow-raised)] outline-none sm:h-auto sm:max-h-[90vh] sm:rounded-2xl sm:p-6 ${wide ? "sm:max-w-[960px]" : "sm:max-w-[720px]"}`}
+        className={`sq-dialog-enter relative flex h-full w-full flex-col overflow-y-auto overflow-x-hidden bg-surface-raised p-4 shadow-[var(--shadow-raised)] outline-none sm:h-auto sm:max-h-[90vh] sm:rounded-2xl sm:p-6 ${wide ? "sm:max-w-[960px]" : "sm:max-w-[720px]"}`}
       >
         {children}
       </div>

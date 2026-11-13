@@ -1,5 +1,8 @@
-import { Archive, ArchiveRestore, CheckCircle2, ChevronDown, Copy, History, Paperclip, Pencil, RotateCcw, Trash2, Upload, X } from "lucide-react";
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { Archive, ArchiveRestore, CheckCircle2, Copy, History, MoreHorizontal, MoveRight, Paperclip, Pencil, RotateCcw, Trash2, Upload, X } from "lucide-react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+
+import { DetailDialog } from "@/components/DetailDialog";
+import { useDismiss } from "@/components/useDismiss";
 
 import { errorMessage, kerjaFetch, kerjaUpload, lampiranUrl, type JenisSelesai, type KartuDetail, type Lampiran, type Orang, type Papan } from "@/kerja/api";
 import { Composer, RichText } from "@/kerja/Composer";
@@ -50,91 +53,100 @@ export function KartuPanel({ kartuId, papan: boardFromParent, onClose, onChanged
     }
   };
 
+  const canRestore = card.ruang.peranSaya !== "peninjau" && card.ruang.status === "aktif";
+
   return (
-    <article className="flex flex-col gap-5" aria-labelledby="kartu-judul">
+    <article className="flex flex-col gap-6" aria-labelledby="kartu-judul">
       <header className="flex items-start gap-3">
         <div className="min-w-0 flex-1">
-          <p className="truncate text-xs font-semibold text-muted-foreground">
+          <p className="truncate text-xs text-muted-foreground">
             <Link href={`/ruang/${card.ruang.id}`} className="hover:underline">{card.ruang.nama}</Link> ·{" "}
             <Link href={`/papan/${card.papan.id}`} className="hover:underline">{card.papan.nama}</Link> · {card.kolom.nama}
           </p>
           <TitleEditor key={card.judul} judul={card.judul} editable={canWork} onSave={(judul) => act(() => kerjaFetch(`/kartu/${card.id}`, { method: "PATCH", body: { judul } }))} />
         </div>
+        <CardMenu card={card} papan={papan} canWork={canWork} canRestore={canRestore} act={act} />
         {onClose ? (
-          <button type="button" onClick={onClose} aria-label="Tutup panel kartu" className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-border text-muted-foreground hover:bg-muted">
-            <X className="h-4 w-4" aria-hidden="true" />
+          <button type="button" onClick={onClose} aria-label="Tutup panel kartu" className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-muted-foreground transition-colors hover:bg-muted">
+            <X className="h-5 w-5" aria-hidden="true" />
           </button>
         ) : null}
       </header>
 
-      {card.arsip ? <p className="rounded-xl bg-warning-soft px-3 py-2 text-sm text-warning-ink">Kartu ini diarsipkan. Pulihkan dulu untuk mengubahnya.</p> : null}
-      {card.ruang.peranSaya === "peninjau" ? <p className="rounded-xl bg-info-soft px-3 py-2 text-sm text-info-ink">Anda peninjau di ruang ini: kartu hanya bisa dibaca.</p> : null}
+      {card.arsip ? <p className="rounded-xl bg-warning-soft px-3 py-2 text-sm text-warning-ink">Kartu ini diarsipkan. Pulihkan dulu untuk mengubahnya</p> : null}
+      {card.ruang.peranSaya === "peninjau" ? <p className="rounded-xl bg-info-soft px-3 py-2 text-sm text-info-ink">Anda peninjau di ruang ini: kartu hanya bisa dibaca</p> : null}
       <ErrorNote message={error} />
 
-      <StatusRow card={card} papan={papan} canWork={canWork} canRestore={card.ruang.peranSaya !== "peninjau" && card.ruang.status === "aktif"} act={act} />
+      <div className="flex flex-col gap-8 md:grid md:grid-cols-[minmax(0,1fr)_17rem] md:items-start">
+        <div className="flex min-w-0 flex-col gap-8">
+          <Section title="Uraian">
+            <DescriptionEditor key={card.uraian} html={card.uraian} members={papan?.anggota ?? []} editable={canWork} onSave={(uraian) => act(() => kerjaFetch(`/kartu/${card.id}`, { method: "PATCH", body: { uraian } }))} />
+          </Section>
 
-      <Section title="Waktu">
-        <div className="grid gap-3">
-          <DateField label="Mulai" value={card.mulaiPada} disabled={!canWork} onSave={(value) => act(() => kerjaFetch(`/kartu/${card.id}`, { method: "PATCH", body: { mulai_pada: value } }))} />
-          <DateField label="Tenggat" value={card.tenggatPada} disabled={!canWork} onSave={(value) => act(() => kerjaFetch(`/kartu/${card.id}`, { method: "PATCH", body: { tenggat_pada: value } }))} />
+          <Section title="Ceklis">
+            <Checklists card={card} members={members} canWork={canWork} act={act} />
+          </Section>
+
+          <Section title="Lampiran">
+            <Attachments items={card.lampiran} canWork={canWork} canDeleteAll={card.ruang.peranSaya === "pj"} uploadPath={`/kartu/${card.id}/lampiran`} act={act} setError={setError} />
+          </Section>
+
+          <Section title="Komentar" count={card.komentar.reduce((sum, item) => sum + (item.dihapus ? 0 : 1) + item.balasan.filter((reply) => !reply.dihapus).length, 0)}>
+            <Comments card={card} members={papan?.anggota ?? []} canWork={canWork} act={act} />
+          </Section>
+
+          <HistoryList items={card.riwayat} />
         </div>
-        <p className="mt-1.5 text-xs text-muted-foreground">Waktu Indonesia Barat, format 24 jam. Pengingat dikirim H−1 hari dan H−1 jam.</p>
-      </Section>
 
-      <Section title="Penanggung jawab">
-        <PeoplePicker
-          selected={card.orang}
-          options={members}
-          disabled={!canWork}
-          onSave={(ids) => act(() => kerjaFetch(`/kartu/${card.id}/orang`, { method: "PUT", body: { orang: ids } }))}
-        />
-      </Section>
+        <aside className="order-first flex flex-col gap-6 rounded-2xl bg-muted/50 p-4 md:sticky md:top-0 md:order-none" aria-label="Rincian kartu">
+          <StatusBlock card={card} canWork={canWork} act={act} />
 
-      <Section title="Label">
-        <div className="flex flex-wrap gap-1.5">
-          {(papan?.label ?? card.label).map((label) => {
-            const on = card.label.some((item) => item.id === label.id);
-            return canWork ? (
-              <button
-                key={label.id}
-                type="button"
-                aria-pressed={on}
-                onClick={() => act(() => kerjaFetch(`/kartu/${card.id}/label`, { method: "PUT", body: { label: on ? card.label.filter((item) => item.id !== label.id).map((item) => item.id) : [...card.label.map((item) => item.id), label.id] } }))}
-                className={`rounded-lg border-2 ${on ? "border-brand-primary" : "border-transparent opacity-60 hover:opacity-100"}`}
-              >
-                <LabelChip label={label} />
-              </button>
-            ) : on ? <LabelChip key={label.id} label={label} /> : null;
-          })}
-          {(papan?.label ?? card.label).length === 0 ? <p className="text-sm text-muted-foreground">Papan ini belum punya label. Penanggung jawab ruang bisa menambahkannya di Pengaturan.</p> : null}
-        </div>
-      </Section>
+          <Section title="Waktu">
+            <div className="grid gap-3">
+              <DateField label="Tenggat" value={card.tenggatPada} disabled={!canWork} onSave={(value) => act(() => kerjaFetch(`/kartu/${card.id}`, { method: "PATCH", body: { tenggat_pada: value } }))} />
+              <DateField label="Mulai" value={card.mulaiPada} disabled={!canWork} onSave={(value) => act(() => kerjaFetch(`/kartu/${card.id}`, { method: "PATCH", body: { mulai_pada: value } }))} />
+            </div>
+            <p className="mt-2 text-xs leading-5 text-muted-foreground">WIB, format 24 jam. Pengingat H−1 hari dan H−1 jam</p>
+          </Section>
 
-      <Section title="Uraian">
-        <DescriptionEditor key={card.uraian} html={card.uraian} members={papan?.anggota ?? []} editable={canWork} onSave={(uraian) => act(() => kerjaFetch(`/kartu/${card.id}`, { method: "PATCH", body: { uraian } }))} />
-      </Section>
+          <Section title="Penanggung jawab">
+            <PeoplePicker
+              selected={card.orang}
+              options={members}
+              disabled={!canWork}
+              onSave={(ids) => act(() => kerjaFetch(`/kartu/${card.id}/orang`, { method: "PUT", body: { orang: ids } }))}
+            />
+          </Section>
 
-      <Section title="Ceklis">
-        <Checklists card={card} members={members} canWork={canWork} act={act} />
-      </Section>
-
-      <Section title="Lampiran">
-        <Attachments items={card.lampiran} canWork={canWork} canDeleteAll={card.ruang.peranSaya === "pj"} uploadPath={`/kartu/${card.id}/lampiran`} act={act} setError={setError} />
-      </Section>
-
-      <Section title={`Komentar (${card.komentar.reduce((sum, item) => sum + (item.dihapus ? 0 : 1) + item.balasan.filter((reply) => !reply.dihapus).length, 0)})`}>
-        <Comments card={card} members={papan?.anggota ?? []} canWork={canWork} act={act} />
-      </Section>
-
-      <HistoryList items={card.riwayat} />
+          <Section title="Label">
+            <div className="flex flex-wrap gap-1.5">
+              {(papan?.label ?? card.label).map((label) => {
+                const on = card.label.some((item) => item.id === label.id);
+                return canWork ? (
+                  <button
+                    key={label.id}
+                    type="button"
+                    aria-pressed={on}
+                    onClick={() => act(() => kerjaFetch(`/kartu/${card.id}/label`, { method: "PUT", body: { label: on ? card.label.filter((item) => item.id !== label.id).map((item) => item.id) : [...card.label.map((item) => item.id), label.id] } }))}
+                    className={`rounded-lg transition-opacity ${on ? "ring-2 ring-brand-primary ring-offset-1 ring-offset-surface-raised" : "opacity-50 hover:opacity-100"}`}
+                  >
+                    <LabelChip label={label} />
+                  </button>
+                ) : on ? <LabelChip key={label.id} label={label} /> : null;
+              })}
+              {(papan?.label ?? card.label).length === 0 ? <p className="text-xs leading-5 text-muted-foreground">Belum ada label. Penanggung jawab ruang menambahkannya di Pengaturan</p> : null}
+            </div>
+          </Section>
+        </aside>
+      </div>
     </article>
   );
 }
 
-function Section({ title, children }: { title: string; children: ReactNode }) {
+function Section({ title, count, children }: { title: string; count?: number; children: ReactNode }) {
   return (
     <section>
-      <h3 className="mb-2 text-xs font-bold text-brand-heading">{title}</h3>
+      <h3 className="mb-3 flex items-baseline gap-2 text-sm font-semibold text-brand-heading">{title}{count !== undefined ? <span className="text-xs font-normal tabular-nums text-muted-foreground">{count}</span> : null}</h3>
       {children}
     </section>
   );
@@ -145,7 +157,7 @@ function TitleEditor({ judul, editable, onSave }: { judul: string; editable: boo
   const [value, setValue] = useState(judul);
   if (!editing) {
     return (
-      <h2 id="kartu-judul" className="mt-0.5 font-display text-xl font-bold text-brand-heading">
+      <h2 id="kartu-judul" className="mt-1 font-display text-xl font-semibold leading-snug tracking-[-0.01em] text-brand-heading">
         {editable ? (
           <button type="button" className="text-left hover:underline" onClick={() => setEditing(true)} title="Ubah judul">{judul}</button>
         ) : judul}
@@ -167,35 +179,80 @@ function TitleEditor({ judul, editable, onSave }: { judul: string; editable: boo
   );
 }
 
-function StatusRow({ card, papan, canWork, canRestore, act }: { card: KartuDetail; papan: Papan | null; canWork: boolean; canRestore: boolean; act: (run: () => Promise<unknown>) => Promise<void> }) {
-  const [menu, setMenu] = useState<"tutup" | "salin" | "pindah" | null>(null);
-  const openColumns = papan?.kolom ?? [];
-  return (
-    <div className="flex flex-col gap-2">
-      <div className="flex flex-wrap items-center gap-2">
-        {card.selesai ? (
-          <span className="inline-flex items-center gap-1.5 rounded-xl bg-success-soft px-3 py-2 text-sm font-bold text-success-ink">
-            <CheckCircle2 className="h-4 w-4" aria-hidden="true" /> {JENIS_SELESAI[card.selesai.jenis]} · {card.selesai.oleh.nama}, {formatTanggal(card.selesai.pada)}
-          </span>
-        ) : null}
-        {canWork && !card.selesai ? <button type="button" className={primaryButton} onClick={() => setMenu(menu === "tutup" ? null : "tutup")}><CheckCircle2 className="h-4 w-4" aria-hidden="true" />Tutup kartu<ChevronDown className="h-4 w-4" aria-hidden="true" /></button> : null}
-        {canWork && card.selesai ? <button type="button" className={secondaryButton} onClick={() => void act(() => kerjaFetch(`/kartu/${card.id}/buka`, { method: "POST" }))}><RotateCcw className="h-4 w-4" aria-hidden="true" />Buka kembali</button> : null}
-        {canWork && openColumns.length > 0 ? <button type="button" className={secondaryButton} onClick={() => setMenu(menu === "pindah" ? null : "pindah")}>Pindahkan</button> : null}
-        {canWork ? <button type="button" className={secondaryButton} onClick={() => setMenu(menu === "salin" ? null : "salin")}><Copy className="h-4 w-4" aria-hidden="true" />Salin</button> : null}
-        {canWork ? <button type="button" className={secondaryButton} onClick={() => void act(() => kerjaFetch(`/kartu/${card.id}/arsip`, { method: "POST" }))}><Archive className="h-4 w-4" aria-hidden="true" />Arsipkan</button> : null}
-        {card.arsip && canRestore ? <button type="button" className={secondaryButton} onClick={() => void act(() => kerjaFetch(`/kartu/${card.id}/pulihkan`, { method: "POST" }))}><ArchiveRestore className="h-4 w-4" aria-hidden="true" />Pulihkan</button> : null}
+function StatusBlock({ card, canWork, act }: { card: KartuDetail; canWork: boolean; act: (run: () => Promise<unknown>) => Promise<void> }) {
+  const [choosing, setChoosing] = useState(false);
+  if (card.selesai) {
+    return (
+      <div className="flex flex-col gap-2">
+        <p className="flex items-start gap-2 text-sm">
+          <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-success-ink" aria-hidden="true" />
+          <span><span className="font-semibold text-success-ink">{JENIS_SELESAI[card.selesai.jenis]}</span><span className="block text-xs text-muted-foreground">{card.selesai.oleh.nama} · {formatTanggal(card.selesai.pada)}</span></span>
+        </p>
+        {canWork ? <button type="button" className={secondaryButton} onClick={() => void act(() => kerjaFetch(`/kartu/${card.id}/buka`, { method: "POST" }))}><RotateCcw className="h-4 w-4" aria-hidden="true" />Buka kembali</button> : null}
       </div>
-      {menu === "tutup" ? (
-        <div className="flex flex-wrap gap-2 rounded-xl border border-border p-2" role="group" aria-label="Pilih jenis selesai">
-          {(Object.keys(JENIS_SELESAI) as JenisSelesai[]).map((jenis) => (
-            <button key={jenis} type="button" className={jenis === "tuntas" ? primaryButton : secondaryButton} onClick={() => { setMenu(null); void act(() => kerjaFetch(`/kartu/${card.id}/tutup`, { method: "POST", body: { jenis } })); }}>
-              {JENIS_SELESAI[jenis]}
-            </button>
-          ))}
-        </div>
+    );
+  }
+  if (!canWork) return null;
+  if (!choosing) {
+    return <button type="button" className={`${primaryButton} w-full`} onClick={() => setChoosing(true)}><CheckCircle2 className="h-4 w-4" aria-hidden="true" />Tutup kartu</button>;
+  }
+  return (
+    <div className="flex flex-col gap-2" role="group" aria-label="Pilih jenis selesai">
+      <p className="text-xs text-muted-foreground">Selesai sebagai</p>
+      {(Object.keys(JENIS_SELESAI) as JenisSelesai[]).map((jenis) => (
+        <button key={jenis} type="button" className={jenis === "tuntas" ? `${primaryButton} w-full` : `${secondaryButton} w-full`} onClick={() => { setChoosing(false); void act(() => kerjaFetch(`/kartu/${card.id}/tutup`, { method: "POST", body: { jenis } })); }}>
+          {JENIS_SELESAI[jenis]}
+        </button>
+      ))}
+      <button type="button" className="min-h-10 text-sm text-muted-foreground hover:underline" onClick={() => setChoosing(false)}>Jangan tutup</button>
+    </div>
+  );
+}
+
+function CardMenu({ card, papan, canWork, canRestore, act }: { card: KartuDetail; papan: Papan | null; canWork: boolean; canRestore: boolean; act: (run: () => Promise<unknown>) => Promise<void> }) {
+  const [open, setOpen] = useState(false);
+  const [form, setForm] = useState<"salin" | "pindah" | null>(null);
+  const rootRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const close = useCallback(() => setOpen(false), []);
+  useDismiss(open, close, rootRef, triggerRef);
+  const columns = papan?.kolom ?? [];
+  const items: Array<{ key: string; label: string; icon: typeof Copy; run: () => void }> = [
+    ...(canWork && columns.length > 0 ? [{ key: "pindah", label: "Pindahkan", icon: MoveRight, run: () => setForm("pindah") }] : []),
+    ...(canWork ? [{ key: "salin", label: "Salin", icon: Copy, run: () => setForm("salin") }] : []),
+    ...(canWork ? [{ key: "arsip", label: "Arsipkan", icon: Archive, run: () => void act(() => kerjaFetch(`/kartu/${card.id}/arsip`, { method: "POST" })) }] : []),
+    ...(card.arsip && canRestore ? [{ key: "pulihkan", label: "Pulihkan", icon: ArchiveRestore, run: () => void act(() => kerjaFetch(`/kartu/${card.id}/pulihkan`, { method: "POST" })) }] : []),
+  ];
+  if (items.length === 0) return null;
+  return (
+    <div className="relative" ref={rootRef}>
+      <button ref={triggerRef} type="button" aria-label="Tindakan lain" aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen((value) => !value)} className="inline-flex h-10 w-10 items-center justify-center rounded-xl text-muted-foreground transition-colors hover:bg-muted">
+        <MoreHorizontal className="h-5 w-5" aria-hidden="true" />
+      </button>
+      {open ? (
+        <ul role="menu" className="absolute right-0 top-11 z-10 w-48 rounded-xl border border-border bg-surface-raised p-1 shadow-[0_8px_24px_rgba(0,0,0,0.08)]">
+          {items.map((item) => {
+            const Icon = item.icon;
+            return (
+              <li key={item.key} role="none">
+                <button type="button" role="menuitem" className="flex min-h-10 w-full items-center gap-2.5 rounded-lg px-3 text-left text-sm text-foreground transition-colors hover:bg-muted" onClick={() => { setOpen(false); item.run(); }}>
+                  <Icon className="h-4 w-4 text-muted-foreground" aria-hidden="true" />{item.label}
+                </button>
+              </li>
+            );
+          })}
+        </ul>
       ) : null}
-      {menu === "pindah" ? <MoveForm card={card} columns={openColumns} onMove={(kolomId, jenis) => { setMenu(null); return act(() => kerjaFetch(`/kartu/${card.id}/pindah`, { method: "POST", body: { kolom_id: kolomId, indeks: 100000, ...(jenis ? { selesai_jenis: jenis } : {}) } })); }} /> : null}
-      {menu === "salin" ? <CopyForm card={card} onCopy={(options) => { setMenu(null); return act(() => kerjaFetch(`/kartu/${card.id}/salin`, { method: "POST", body: options })); }} /> : null}
+      {form ? (
+        <DetailDialog label={form === "salin" ? "Salin kartu" : "Pindahkan kartu"} onClose={() => setForm(null)}>
+          <div className="mb-4 flex items-start justify-between gap-3">
+            <h2 className="font-display text-lg font-semibold text-brand-heading">{form === "salin" ? "Salin kartu" : "Pindahkan kartu"}</h2>
+            <button type="button" aria-label="Tutup" onClick={() => setForm(null)} className="inline-flex h-10 w-10 items-center justify-center rounded-xl text-muted-foreground hover:bg-muted"><X className="h-5 w-5" aria-hidden="true" /></button>
+          </div>
+          {form === "pindah" ? <MoveForm card={card} columns={columns} onMove={(kolomId, jenis) => { setForm(null); return act(() => kerjaFetch(`/kartu/${card.id}/pindah`, { method: "POST", body: { kolom_id: kolomId, indeks: 100000, ...(jenis ? { selesai_jenis: jenis } : {}) } })); }} /> : null}
+          {form === "salin" ? <CopyForm card={card} onCopy={(options) => { setForm(null); return act(() => kerjaFetch(`/kartu/${card.id}/salin`, { method: "POST", body: options })); }} /> : null}
+        </DetailDialog>
+      ) : null}
     </div>
   );
 }
@@ -241,7 +298,7 @@ function CopyForm({ card, onCopy }: { card: KartuDetail; onCopy: (options: Recor
           </label>
         ))}
       </fieldset>
-      <p className="mt-2 text-xs text-muted-foreground">Komentar, riwayat, dan status selesai tidak pernah ikut disalin.</p>
+      <p className="mt-2 text-xs text-muted-foreground">Komentar, riwayat, dan status selesai tidak pernah ikut disalin</p>
       <button type="submit" className={`${primaryButton} mt-3`} disabled={!judul.trim()}>Buat salinan</button>
     </form>
   );
@@ -255,13 +312,13 @@ function DateField({ label, value, disabled, onSave }: { label: string; value: s
     void onSave(fromWibInput(draft));
   };
   return (
-    <label className="block text-xs font-bold text-brand-heading">
-      {label}
-      <span className="mt-1 flex gap-2">
-        <input type="datetime-local" className="sq-admin-input" value={draft} disabled={disabled} onChange={(event) => setDraft(event.target.value)} onBlur={commit} />
-        {!disabled && value ? <button type="button" className={secondaryButton} aria-label={`Hapus ${label.toLowerCase()}`} onClick={() => { setDraft(""); void onSave(null); }}><X className="h-4 w-4" aria-hidden="true" /></button> : null}
-      </span>
-    </label>
+    <div>
+      <label className="block text-xs text-muted-foreground">
+        {label}
+        <input type="datetime-local" className="sq-admin-input mt-1 min-w-0 tabular-nums" value={draft} disabled={disabled} onChange={(event) => setDraft(event.target.value)} onBlur={commit} />
+      </label>
+      {!disabled && value ? <button type="button" className="mt-1 text-xs text-muted-foreground hover:text-foreground hover:underline" onClick={() => { setDraft(""); void onSave(null); }}>Kosongkan {label.toLowerCase()}</button> : null}
+    </div>
   );
 }
 
@@ -276,7 +333,7 @@ function PeoplePicker({ selected, options, disabled, onSave, compact = false }: 
             <Avatar orang={person} /> {person.nama}{person.aktif ? "" : " (tidak aktif)"}
           </span>
         ))}
-        {selected.length === 0 && !compact ? <span className="text-sm text-muted-foreground">Belum ada.</span> : null}
+        {selected.length === 0 && !compact ? <span className="text-sm text-muted-foreground">Belum ada</span> : null}
         {!disabled ? <button type="button" className="text-xs font-bold text-brand-primary-deep hover:underline" onClick={() => setOpen(!open)}>{open ? "Selesai" : "Atur"}</button> : null}
       </div>
       {open ? (
@@ -292,7 +349,7 @@ function PeoplePicker({ selected, options, disabled, onSave, compact = false }: 
               </li>
             );
           })}
-          {options.length === 0 ? <li className="px-2 py-1.5 text-sm text-muted-foreground">Belum ada anggota yang bisa ditugaskan.</li> : null}
+          {options.length === 0 ? <li className="px-2 py-1.5 text-sm text-muted-foreground">Belum ada anggota yang bisa ditugaskan</li> : null}
         </ul>
       ) : null}
     </div>
@@ -305,7 +362,7 @@ function DescriptionEditor({ html, members, editable, onSave }: { html: string; 
   if (!editing) {
     return (
       <div>
-        <RichText html={html} empty={editable ? "Belum ada uraian. Tulis tujuan, langkah, atau bahan yang dibutuhkan." : "Belum ada uraian."} />
+        <RichText html={html} empty={editable ? "Belum ada uraian. Tulis tujuan, langkah, atau bahan yang dibutuhkan" : "Belum ada uraian."} />
         {editable ? <button type="button" className="mt-2 inline-flex items-center gap-1 text-xs font-bold text-brand-primary-deep hover:underline" onClick={() => setEditing(true)}><Pencil className="h-3.5 w-3.5" aria-hidden="true" />Ubah uraian</button> : null}
       </div>
     );
@@ -355,7 +412,7 @@ function Checklists({ card, members, canWork, act }: { card: KartuDetail; member
           {canWork ? <AddLine label="Tambah butir" placeholder="Butir baru" onAdd={(nama) => act(() => kerjaFetch(`/ceklis/${list.id}/butir`, { method: "POST", body: { nama } }))} /> : null}
         </div>
       ))}
-      {card.ceklis.length === 0 && !canWork ? <p className="text-sm text-muted-foreground">Belum ada ceklis.</p> : null}
+      {card.ceklis.length === 0 && !canWork ? <p className="text-sm text-muted-foreground">Belum ada ceklis</p> : null}
       {canWork ? (
         <form className="flex gap-2" onSubmit={(event) => { event.preventDefault(); if (newList.trim()) { void act(() => kerjaFetch(`/kartu/${card.id}/ceklis`, { method: "POST", body: { nama: newList.trim() } })); setNewList(""); } }}>
           <input className="sq-admin-input" placeholder="Nama ceklis baru, misalnya Persiapan" aria-label="Nama ceklis baru" value={newList} maxLength={120} onChange={(event) => setNewList(event.target.value)} />
@@ -406,7 +463,7 @@ export function Attachments({ items, canWork, canDeleteAll, uploadPath, act, set
   const viewerId = useViewerId();
   return (
     <div>
-      {items.length === 0 ? <p className="text-sm text-muted-foreground">Belum ada lampiran.</p> : null}
+      {items.length === 0 ? <p className="text-sm text-muted-foreground">Belum ada lampiran</p> : null}
       <ul className="space-y-1.5">
         {items.map((file) => (
           <li key={file.id} className="flex items-center gap-2 rounded-lg border border-border px-2.5 py-2">
@@ -439,7 +496,7 @@ export function Attachments({ items, canWork, canDeleteAll, uploadPath, act, set
             }}
           />
           <button type="button" className={`${secondaryButton} mt-2`} disabled={busy} onClick={() => fileRef.current?.click()}><Upload className="h-4 w-4" aria-hidden="true" />{busy ? "Mengunggah…" : "Unggah lampiran"}</button>
-          <p className="mt-1 text-xs text-muted-foreground">PDF, gambar, dokumen Office, teks, atau zip; paling besar 25 MB.</p>
+          <p className="mt-1 text-xs text-muted-foreground">PDF, gambar, dokumen Office, teks, atau zip; paling besar 25 MB</p>
         </>
       ) : null}
     </div>
@@ -461,7 +518,7 @@ function Comments({ card, members, canWork, act }: { card: KartuDetail; members:
   };
   return (
     <div className="space-y-3">
-      {card.komentar.length === 0 ? <p className="text-sm text-muted-foreground">Belum ada komentar. Diskusi tentang kartu ini ditulis di sini, bukan di grup WhatsApp.</p> : null}
+      {card.komentar.length === 0 ? <p className="text-sm text-muted-foreground">Belum ada komentar. Diskusi tentang kartu ini ditulis di sini, bukan di grup WhatsApp</p> : null}
       {card.komentar.map((comment) => (
         <div key={comment.id}>
           <CommentItem comment={comment} card={card} members={members} canWork={canWork} act={act} />
@@ -494,7 +551,7 @@ function Comments({ card, members, canWork, act }: { card: KartuDetail; members:
 function CommentItem({ comment, card, members, canWork, act }: { comment: KartuDetail["komentar"][number] | KartuDetail["komentar"][number]["balasan"][number]; card: KartuDetail; members: Orang[]; canWork: boolean; act: (run: () => Promise<unknown>) => Promise<void> }) {
   const [editing, setEditing] = useState(false);
   const draft = useRef(comment.isi);
-  if (comment.dihapus) return <p className="text-sm italic text-muted-foreground">Komentar dihapus.</p>;
+  if (comment.dihapus) return <p className="text-sm text-muted-foreground">Komentar dihapus</p>;
   return (
     <div className="flex gap-2.5">
       <Avatar orang={comment.penulis} size="md" />
