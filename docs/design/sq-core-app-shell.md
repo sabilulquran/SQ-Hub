@@ -67,8 +67,28 @@ Aset SQ and SQ Hub's ordinary users get the same header without the switcher (ar
 
 Between 768 and 1023 px the sidebar collapses to an icon rail (56 px) with labels in tooltips. The header stays as on desktop.
 
+## Detail views open as a pop-up
+
+**Owner decision 2026-11-13.** Opening the detail of one item (a card, a row, a person, a request, an application) or a form to edit it **never changes the page layout**. The list or board behind stays exactly where it was; the detail appears on top of it.
+
+| Width | Form |
+| --- | --- |
+| 768 px and wider | Centred dialog over a dimmed backdrop. Width up to 720 px (up to 960 px for wide content such as tables), height up to 90 % of the window, with its own scroll. |
+| Below 768 px | Full-screen sheet with a close button in its header; short content may use a bottom sheet instead. |
+
+Behaviour:
+
+- `role="dialog"` with `aria-modal="true"` and a label from the dialog's title.
+- Focus moves into the dialog on open and returns to the element that opened it on close.
+- Escape, the close button and a click on the backdrop close it. The page behind does not scroll while it is open.
+- The open item is in the URL (for example `?kartu=<id>`), so a link opens the same dialog and the browser's Back closes it.
+- A dialog does not open a second dialog on top of itself for the same purpose. Confirmations inside it (for example "Alasan") may stack once.
+
+Still allowed in place: editing a single field inline, dropdown menus and popovers, and short confirmations (which are dialogs already).
+
 ## Not allowed
 
+- A side panel or inline expansion that squeezes, shifts or reflows the page to show an item's detail or edit form (use the pop-up above).
 - Profile cards, avatars or Keluar buttons inside the sidebar.
 - Info or explanation boxes in the sidebar.
 - Admin entry or exit controls anywhere except the space switcher.

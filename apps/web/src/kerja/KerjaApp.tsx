@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 
 import { AdminPage } from "@/kerja/AdminPage";
 import { kerjaFetch, KerjaRequestError, loadKerjaLauncher, type KerjaContext } from "@/kerja/api";
-import { KartuPanel } from "@/kerja/KartuPanel";
+import { KartuRedirect } from "@/kerja/KartuRedirect";
 import { KerjaShell } from "@/kerja/KerjaShell";
 import { PapanPage, RuangRedirect } from "@/kerja/PapanPage";
 import { PengaturanPage } from "@/kerja/PengaturanPage";
@@ -53,8 +53,11 @@ export function KerjaApp() {
 
   useEffect(() => {
     document.title = "Kerja · Yayasan Sabilul Qur'an";
+    let path = window.location.pathname;
     const sync = () => {
-      setRoute(resolveKerjaRoute(window.location.pathname));
+      if (window.location.pathname === path) return;
+      path = window.location.pathname;
+      setRoute(resolveKerjaRoute(path));
       window.scrollTo({ top: 0 });
     };
     window.addEventListener("popstate", sync);
@@ -120,7 +123,7 @@ function Page({ route }: { route: KerjaRoute }) {
     case "ruang-daftar": return <RuangListPage />;
     case "ruang": return <RuangRedirect key={route.ruangId} ruangId={route.ruangId} />;
     case "papan": return <PapanPage key={route.papanId} papanId={route.papanId} />;
-    case "kartu": return <div className="mx-auto max-w-3xl"><KartuPanel key={route.kartuId} kartuId={route.kartuId} /></div>;
+    case "kartu": return <KartuRedirect key={route.kartuId} kartuId={route.kartuId} />;
     case "cari": return <CariPage key={route.ruangId} ruangId={route.ruangId} />;
     case "berkas": return <BerkasPage key={route.ruangId} ruangId={route.ruangId} />;
     case "arsip": return <ArsipPage key={route.ruangId} ruangId={route.ruangId} />;

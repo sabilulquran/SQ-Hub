@@ -1,6 +1,7 @@
 import { AlertTriangle, CalendarClock, CheckSquare, MessageSquare, Paperclip, Users } from "lucide-react";
 import { useEffect, useState } from "react";
 
+import { CardDialog, CardLink } from "@/kerja/CardDialog";
 import { kerjaFetch, type RuangRingkas, type TugasSaya } from "@/kerja/api";
 import { formatTanggal, JENIS_SELESAI, PERAN, relatifTenggat } from "@/kerja/format";
 import { AvatarStack, LabelChip, Link, PageHeader, StateCard, useLoad } from "@/kerja/ui";
@@ -61,6 +62,7 @@ export function TugasPage({ preview }: { preview?: TugasData }) {
           <TaskList items={lain} />
         </section>
       ) : null}
+      <CardDialog />
     </>
   );
 }
@@ -72,7 +74,7 @@ function TaskList({ items }: { items: TugasSaya[] }) {
         const due = relatifTenggat(item.tenggatEfektif);
         return (
           <li key={item.id}>
-            <Link href={`/kartu/${item.id}`} className="block rounded-2xl border border-border/70 bg-surface-raised p-3 shadow-[var(--shadow-soft)] hover:border-brand-primary/50 sm:p-4">
+            <CardLink kartuId={item.id} className="block rounded-2xl border border-border/70 bg-surface-raised p-3 shadow-[var(--shadow-soft)] hover:border-brand-primary/50 sm:p-4">
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
                   <p className="truncate text-xs font-semibold text-muted-foreground">{item.ruangNama} · {item.papanNama} · {item.kolomNama}</p>
@@ -101,7 +103,7 @@ function TaskList({ items }: { items: TugasSaya[] }) {
                 {item.label.map((label) => <LabelChip key={label.id} label={label} />)}
                 <CardCounters ceklis={item.ceklis} komentar={item.komentar} lampiran={item.lampiran} />
               </div>
-            </Link>
+            </CardLink>
           </li>
         );
       })}

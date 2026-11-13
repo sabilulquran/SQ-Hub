@@ -237,7 +237,7 @@ Shell SQ Core dengan lockup **"Kerja"** (tanpa singkatan "SQ" di tampilan; nama 
 | **Tugas Saya** | Halaman pertama setelah masuk. Kartu dari semua ruang yang diikuti; lewat tenggat di atas dan ditandai, lalu tenggat terdekat, lalu tanpa tenggat. Penyaring ruang, label, status | semua |
 | **Daftar ruang** | Ruang tetap dan panitia dipisah; ruang yang akan berakhir dalam 30 hari ditandai | semua |
 | **Papan** | Kolom dan kartu, geser antar kolom, penyaring label dan penanggung jawab | anggota dan peninjau (baca) |
-| **Kartu** | Panel di sisi papan pada layar lebar, halaman penuh di ponsel. Uraian, ceklis, komentar, lampiran, riwayat | anggota dan peninjau (baca) |
+| **Kartu** | Pop-up di atas halaman (dialog di tengah pada layar lebar, layar penuh di ponsel); papan di belakangnya tidak bergeser (sq-core-app-shell.md, keputusan owner 2026-11-13). Uraian, ceklis, komentar, lampiran, riwayat | anggota dan peninjau (baca) |
 | **Pencarian** | Dalam satu ruang, dengan penyaring §6 | anggota dan peninjau |
 | **Berkas ruang** | Lampiran yang tidak menempel kartu, dengan sisa kuota ruang | anggota |
 | **Arsip ruang** | Kartu terarsip | anggota |

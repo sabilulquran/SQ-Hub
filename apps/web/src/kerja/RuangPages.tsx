@@ -1,6 +1,7 @@
 import { ArrowLeft, Search } from "lucide-react";
 import { useState, type ReactNode } from "react";
 
+import { CardDialog, CardLink } from "@/kerja/CardDialog";
 import { kerjaFetch, type KartuRingkas, type Lampiran, type RuangDetail } from "@/kerja/api";
 import { formatTanggal, JENIS_SELESAI, ukuranBerkas } from "@/kerja/format";
 import { Attachments } from "@/kerja/KartuPanel";
@@ -28,10 +29,11 @@ function RoomFrame({ ruangId, title, children }: { ruangId: string; title: strin
 export function CardRows({ items, empty }: { items: KartuRingkas[]; empty: string }) {
   if (items.length === 0) return <p className="rounded-xl bg-muted px-3 py-6 text-center text-sm text-muted-foreground">{empty}</p>;
   return (
+    <>
     <ul className="space-y-2">
       {items.map((card) => (
         <li key={card.id}>
-          <Link href={`/papan/${card.papanId}?kartu=${card.id}`} className="block rounded-2xl border border-border/70 bg-surface-raised p-3 hover:border-brand-primary/50">
+          <CardLink kartuId={card.id} className="block rounded-2xl border border-border/70 bg-surface-raised p-3 hover:border-brand-primary/50">
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
                 <p className="truncate text-xs font-semibold text-muted-foreground">{card.papanNama} · {card.kolomNama}</p>
@@ -45,10 +47,12 @@ export function CardRows({ items, empty }: { items: KartuRingkas[]; empty: strin
               {card.label.map((label) => <LabelChip key={label.id} label={label} />)}
               <CardCounters ceklis={card.ceklis} komentar={card.komentar} lampiran={card.lampiran} />
             </div>
-          </Link>
+          </CardLink>
         </li>
       ))}
     </ul>
+    <CardDialog />
+    </>
   );
 }
 
