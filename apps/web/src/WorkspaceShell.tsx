@@ -67,6 +67,17 @@ function HomePage({ workspace }: { workspace: WorkspaceSnapshot }) {
         </p>
       </section>
 
+      {workspace.capabilities.organPortalUrl ? (
+        // ORGAN-IMPL-001 §1.3: members who are also staff reach the portal from Beranda.
+        <a
+          href={workspace.capabilities.organPortalUrl}
+          className="mt-6 flex min-h-12 items-center justify-between gap-3 rounded-2xl border border-brand-primary/15 bg-brand-primary-pale/50 px-4 py-3 text-sm font-bold text-brand-primary-deep hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          <span>Portal Organ Yayasan<span className="block text-xs font-normal text-muted-foreground">Ringkasan dan keputusan untuk Organ Yayasan</span></span>
+          <span aria-hidden="true">→</span>
+        </a>
+      ) : null}
+
       <section className="mt-9" aria-labelledby="your-apps-heading">
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div>

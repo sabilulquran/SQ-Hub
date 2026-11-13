@@ -95,6 +95,7 @@ export function createKerjaModule(input: {
       transactionTtlMinutes: 10,
       secureCookies: input.secureCookies ?? true,
       cookieNames: { session: KERJA_SESSION_COOKIE_NAME, transaction: KERJA_OIDC_TRANSACTION_COOKIE_NAME },
+      sessionClientId: config.oidc.clientId,
     },
     new HubTokenVault(config.oidc.clientSecret),
   );

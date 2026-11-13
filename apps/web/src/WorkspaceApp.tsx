@@ -96,6 +96,11 @@ export function WorkspaceApp() {
         window.location.replace("/");
         return null;
       }
+      // ORGAN-IMPL-001 §1.3: with the portal live, Ringkasan Yayasan lives at organ.
+      if (state.workspace.capabilities.organPortalUrl) {
+        window.location.replace(state.workspace.capabilities.organPortalUrl);
+        return null;
+      }
       return <GovernanceRoute workspace={state.workspace} onLogout={logout} />;
     }
     if (route === "home" || route === "apps") {

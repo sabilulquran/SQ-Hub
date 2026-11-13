@@ -162,6 +162,7 @@ export function createKirimModule(input: {
           transactionTtlMinutes: 10,
           secureCookies: input.secureCookies ?? true,
           cookieNames: { session: KIRIM_SESSION_COOKIE_NAME, transaction: KIRIM_OIDC_TRANSACTION_COOKIE_NAME },
+          sessionClientId: config.admin.clientId,
         },
         new HubTokenVault(config.admin.clientSecret),
       )

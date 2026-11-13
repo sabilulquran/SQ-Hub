@@ -7,6 +7,7 @@ import type {
   HubSessionRecord,
 } from "./repository.js";
 import { HubTokenVault } from "./token-vault.js";
+import type { HubSessionClient } from "./repository.js";
 import type { HubWorkspaceApplicationSource } from "./workspace-repository.js";
 
 export const HUB_SESSION_COOKIE_NAME = "sq_hub_session";
@@ -28,6 +29,8 @@ export interface HubWorkspaceSnapshot {
     platformAdministration: boolean;
     /** HUB-IMPL-021: the user has an effective Organ Yayasan membership. */
     governanceView: boolean;
+    /** ORGAN-IMPL-001 §1.3: set for members while the portal is live; `/yayasan` redirects here. */
+    organPortalUrl?: string;
   };
 }
 
@@ -94,6 +97,15 @@ export class HubAuthService implements HubAuthRuntime {
       secureCookies: boolean;
       /** KIRIM-IMPL-001 D-1: a second configuration uses its own host-only cookies. */
       cookieNames?: { session: string; transaction: string };
+      /**
+       * ORGAN-IMPL-001 §1.2: the OIDC client this configuration signs in with. Sessions are written
+       * with it and read back only by it; `acceptLegacySessions` is for SQ Hub alone, whose rows
+       * predate the column.
+       */
+      sessionClientId?: string;
+      acceptLegacySessions?: boolean;
+      /** ORGAN-IMPL-001 §1.3: when set, organ members are pointed here instead of `/yayasan`. */
+      organPortalUrl?: string;
     },
     private readonly tokenVault: HubTokenVault,
     private readonly platformAdmin?: HubPlatformAdminCapabilitySource,
@@ -105,7 +117,14 @@ export class HubAuthService implements HubAuthRuntime {
     this.secureCookies = options.secureCookies;
     this.sessionCookieName = options.cookieNames?.session ?? HUB_SESSION_COOKIE_NAME;
     this.transactionCookieName = options.cookieNames?.transaction ?? HUB_OIDC_TRANSACTION_COOKIE_NAME;
+    this.sessionClient = options.sessionClientId
+      ? { clientId: options.sessionClientId, acceptLegacy: options.acceptLegacySessions ?? false }
+      : undefined;
+    this.organPortalUrl = options.organPortalUrl;
   }
+
+  private readonly sessionClient: HubSessionClient | undefined;
+  private readonly organPortalUrl: string | undefined;
 
   async beginLogin(
     action?: HubOidcAction,
@@ -204,6 +223,7 @@ export class HubAuthService implements HubAuthRuntime {
       replaceSessionTokenHash: stored.transaction.replaceSessionTokenHash ?? null,
       expiresAt: new Date(Date.now() + this.maxSeconds * 1000),
       context,
+      clientId: this.sessionClient?.clientId ?? null,
     });
     const sessionCookieMaxAge = Math.max(
       1,
@@ -254,6 +274,7 @@ export class HubAuthService implements HubAuthRuntime {
       capabilities: {
         platformAdministration,
         governanceView: Boolean(membership),
+        ...(membership && this.organPortalUrl ? { organPortalUrl: this.organPortalUrl } : {}),
       },
     };
   }
@@ -266,7 +287,8 @@ export class HubAuthService implements HubAuthRuntime {
     returnPath: "/" | "/account",
     identity: { issuer: string; subject: string },
   ): Promise<"/" | "/account" | "/yayasan"> {
-    if (returnPath !== "/" || !this.governanceMembership) return returnPath;
+    // ORGAN-IMPL-001 §1.3: with the portal live, members land on Beranda and reach the portal by link.
+    if (returnPath !== "/" || !this.governanceMembership || this.organPortalUrl) return returnPath;
     try {
       const membership = await this.governanceMembership.getEffective({ issuer: identity.issuer, subject: identity.subject });
       return membership ? "/yayasan" : "/";
@@ -346,6 +368,7 @@ export class HubAuthService implements HubAuthRuntime {
     const session = await this.repository.getSession(
       hashOpaqueToken(sessionToken),
       this.idleSeconds,
+      this.sessionClient,
     );
     if (!session) {
       throw new HubAuthError(401, "UNAUTHENTICATED", "Sesi SQ Hub sudah berakhir.");

@@ -165,3 +165,17 @@ describe("Hub session replacement persistence", () => {
     expect(result.rows[0]?.count).toBe("0");
   });
 });
+
+describe("ORGAN-IMPL-001 §1.2 sessions bound to their client", () => {
+  it("returns a session only to the client that issued it, and legacy rows only to SQ Hub", async () => {
+    await repository.createSession({ tokenHash: "c".repeat(64), identity, accountRefreshTokenCiphertext: null, expiresAt: new Date(Date.now() + 3_600_000), context, clientId: "sq-organ" });
+    await repository.createSession({ tokenHash: "d".repeat(64), identity, accountRefreshTokenCiphertext: null, expiresAt: new Date(Date.now() + 3_600_000), context });
+
+    const organ = { clientId: "sq-organ", acceptLegacy: false };
+    const hub = { clientId: "sq-hub", acceptLegacy: true };
+    expect(await repository.getSession("c".repeat(64), 3600, organ)).toMatchObject({ subject: identity.subject });
+    expect(await repository.getSession("c".repeat(64), 3600, hub)).toBeNull();
+    expect(await repository.getSession("d".repeat(64), 3600, hub)).toMatchObject({ subject: identity.subject });
+    expect(await repository.getSession("d".repeat(64), 3600, organ)).toBeNull();
+  });
+});
