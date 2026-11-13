@@ -674,9 +674,44 @@ input[type="checkbox"] {
   min-height: 0 !important;
   margin: 0 !important;
   flex: 0 0 auto;
-  accent-color: var(--sq-primary);
   cursor: pointer;
+  -webkit-appearance: none;
+  appearance: none;
+  display: inline-grid;
+  place-content: center;
+  border: 1.5px solid var(--sq-line-strong) !important;
+  border-radius: .375rem !important;
+  background: var(--sq-field) !important;
+  transition: background-color .15s ease, border-color .15s ease;
 }
+
+/* The tick is drawn from the control itself, so the box matches the SQ fields
+   instead of the browser's own checkbox glyph. */
+.pf-v5-c-check__input::before,
+input[type="checkbox"]::before {
+  width: .75rem;
+  height: .75rem;
+  background: var(--sq-on-primary);
+  clip-path: polygon(13% 48%, 5% 58%, 38% 88%, 95% 23%, 86% 15%, 37% 70%);
+  content: "";
+  transform: scale(0);
+  transition: transform .12s ease-in-out;
+}
+
+.pf-v5-c-check__input:hover,
+input[type="checkbox"]:hover { border-color: var(--sq-primary) !important; }
+
+.pf-v5-c-check__input:checked,
+input[type="checkbox"]:checked {
+  border-color: var(--sq-primary) !important;
+  background: var(--sq-primary) !important;
+}
+
+.pf-v5-c-check__input:checked::before,
+input[type="checkbox"]:checked::before { transform: scale(1); }
+
+.pf-v5-c-check__input:disabled,
+input[type="checkbox"]:disabled { cursor: not-allowed; opacity: .55; }
 
 input[type="checkbox"]:focus-visible {
   outline: 2px solid var(--sq-primary) !important;
