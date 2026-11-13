@@ -15,18 +15,22 @@
     "platform:admin": "node --env-file-if-exists=.env.local --import tsx src/cli/platform-admin.ts",
     "directory:admin": "node --env-file-if-exists=.env.local --import tsx src/cli/organization-directory.ts",
     "kirim:admin": "node --env-file-if-exists=.env.local --import tsx src/cli/kirim-admin.ts",
-    "kerja:admin": "node --env-file-if-exists=.env.local --import tsx src/cli/kerja-admin.ts"
+    "kerja:admin": "node --env-file-if-exists=.env.local --import tsx src/cli/kerja-admin.ts",
+    "sekretariat:admin": "node --env-file-if-exists=.env.local --import tsx src/cli/sekretariat-admin.ts"
   },
   "dependencies": {
     "@fastify/multipart": "10.1.2",
     "fastify": "5.12.5",
+    "imapflow": "1.2.1",
     "jose": "6.2.10",
+    "mailparser": "3.9.1",
     "openid-client": "6.8.7",
     "pg": "8.16.3",
     "zod": "4.6.7"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",
+    "@types/mailparser": "3.4.6",
     "@types/node": "22.16.5",
     "@types/pg": "8.15.5",
     "eslint": "10.9.0",
