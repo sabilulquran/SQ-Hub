@@ -1,35 +1,36 @@
-# Struktur SQ Hub (STRUKTUR-001)
+# Struktur SQ Suite (STRUKTUR-001)
 
 **Status:** ACCEPTED oleh Product Owner pada 2026-11-16 (ADR-0014). Butir bertanda `DRAFT` adalah default agent yang menunggu konfirmasi.
 **Kondisi per:** 2026-11-16 (alamat dan rilis diperiksa langsung di server hari itu; lihat §9).
-**Keputusan:** [ADR-0014](../architecture/adr/0014-sq-hub-ecosystem-structure.md).
+**Keputusan:** [ADR-0014](../architecture/adr/0014-sq-suite-ecosystem-structure.md).
 
-Dokumen ini adalah **satu-satunya sumber** untuk pertanyaan "apa saja isi SQ Hub, untuk siapa, dan bagaimana keadaannya". Dokumen lain menautkan ke sini dan tidak menyimpan daftar sendiri. Setiap rilis yang mengubah status sebuah aplikasi memperbarui §5.
+Dokumen ini adalah **satu-satunya sumber** untuk pertanyaan "apa saja isi SQ Suite, untuk siapa, dan bagaimana keadaannya". Dokumen lain menautkan ke sini dan tidak menyimpan daftar sendiri. Setiap rilis yang mengubah status sebuah aplikasi memperbarui §5.
 
 ## 1. Istilah
 
 | Istilah | Arti | Contoh |
 | --- | --- | --- |
-| **SQ Hub** | Seluruh ekosistem aplikasi Yayasan Sabilul Qur'an | — |
+| **SQ Suite** | Seluruh ekosistem aplikasi Yayasan Sabilul Qur'an: aplikasi-aplikasi terpisah yang dirancang untuk dipakai bersama | — |
+| **SQ Hub** | Halaman awal dan peluncur aplikasi di `hub.sabilulquran.or.id`; bukan nama keseluruhan | — |
 | **Portal** | Pintu masuk untuk satu kelompok pengguna, dengan jenis akunnya | Portal Pegawai, Portal Organ |
 | **Aplikasi** | Sistem yang mengurus satu bidang dan memegang data serta aturannya | HCIS, Aset SQ, Karir SQ |
 | **Modul** | Bagian di dalam satu aplikasi | Cuti dan Payroll di dalam HCIS |
 | **Wajah** | Cara satu aplikasi tampil di satu portal (§3) | Wajah Laporan Karir SQ di Portal Organ |
 
-"SQ Core" adalah istilah lama untuk SQ Hub dan tidak dipakai lagi, kecuali pada nama teknis (§8) dan catatan lama.
+"SQ Core" adalah istilah lama untuk SQ Suite dan tidak dipakai lagi, kecuali pada nama teknis (§8) dan catatan lama.
 
 ## 2. Portal
 
 | Portal | Pengguna | Akun | Alamat |
 | --- | --- | --- | --- |
 | **Portal Admin** | Admin akun, akses, dan peran | Akun staf dengan peran admin | `hub.sabilulquran.or.id` (Pusat Admin) |
-| **Portal Pegawai** | Pegawai | Akun staf | `hub.sabilulquran.or.id` (Beranda), lalu alamat tiap aplikasi |
+| **Portal Pegawai** | Pegawai | Akun staf | `hub.sabilulquran.or.id` (SQ Hub), lalu alamat tiap aplikasi |
 | **Portal Organ** | Pembina, Pengurus, Pengawas | Keanggotaan organ pada akun realm staf | `organ.sabilulquran.or.id` |
 | **Portal Keluarga** (Keluarga SQ) | Orang tua dan wali | Akun keluarga | `keluarga.sabilulquran.or.id` |
 | **Portal Pelamar** | Pelamar kerja | Akun pelamar | `karir.sabilulquran.or.id` |
 | **Situs publik** | Siapa saja | Tanpa login | `sabilulquran.or.id` dan halaman publik aplikasi |
 
-- Portal Admin berdiri sendiri karena mengatur akses ke semua portal lain. Saat ini ia masih satu alamat dengan Beranda; pemisahan alamat adalah target (§7).
+- Portal Admin berdiri sendiri karena mengatur akses ke semua portal lain. Saat ini ia masih satu alamat dengan SQ Hub; pemisahan alamat adalah target (§7).
 - Pengurus yang juga pegawai bergaji memakai Portal Organ untuk perannya sebagai organ dan Portal Pegawai untuk urusan kepegawaiannya sendiri.
 - Login semua portal lewat `login.sabilulquran.or.id`.
 
@@ -75,11 +76,11 @@ Status: **Jalan** (dipakai di production) · **Terpasang** (di production, belum
 
 | Nama | Isi | Alamat | Status |
 | --- | --- | --- | --- |
-| Beranda | Halaman awal dan peluncur aplikasi | `hub.` | Jalan |
+| SQ Hub | Halaman awal dan peluncur aplikasi | `hub.` | Jalan |
 | Akun SQ | Login, SSO, MFA, kelola akun sendiri (Keycloak) | `login.`, `hub.` | Jalan |
 | Admin SQ (Pusat Admin) | Daftar aplikasi, Application Access, peran, siklus akun pegawai | `hub.` | Jalan; siklus akun belum lengkap |
 | Direktori Organisasi | Salinan baca struktur organisasi dari HCIS untuk aplikasi lain | — | Jalan |
-| Bilah atas bersama | Tanda SQ Hub, nama aplikasi, peluncur, menu akun di semua aplikasi | — | Target (§7); peluncur sudah ada di HCIS, Aset SQ, Karir SQ, SPMB SQ |
+| Bilah atas bersama | Tanda SQ, nama aplikasi, peluncur, menu akun di semua aplikasi | — | Target (§7); peluncur sudah ada di HCIS, Aset SQ, Karir SQ, SPMB SQ |
 
 ### 5.2 Aplikasi
 
@@ -89,7 +90,7 @@ Status: **Jalan** (dipakai di production) · **Terpasang** (di production, belum
 | Aset SQ | Aset dan serah terima | `aset.` | `Aset-SQ` | Program sendiri | Jalan | Ada |
 | Karir SQ | Rekrutmen | `karir.` | `karir-sq` | Program sendiri | Jalan | Ada (kartu belum dicek di portal) |
 | SPMB SQ | Penerimaan murid baru, termasuk aplikasi CS Android | `spmb.` | `spmb-sq` | Program sendiri | Jalan | Belum |
-| Keluarga SQ | Portal keluarga: akun, Kartu Siswa | `keluarga.` | `keluarga-sq` | Program sendiri | Jalan (tahap awal) | Belum |
+| Keluarga SQ | Portal keluarga: akun, Kartu Siswa | `keluarga.` | `keluarga-sq` | Program sendiri | Jalan (tahap awal; KEL-IMPL-004 masih rancangan) | Belum |
 | Kirim SQ | Kirim WhatsApp resmi untuk semua aplikasi | `kirim.` | `SQ-Hub` | Proses Hub (alasan 1) | Jalan | Tidak perlu |
 | Portal Organ | Ringkasan, keputusan, laporan untuk organ | `organ.` | `SQ-Hub` | Proses Hub (alasan 2) | Ringkasan jalan; keputusan dan laporan bulanan belum | — |
 | Kerja SQ | Papan kerja unit dan kepanitiaan | `kerja.` | `SQ-Hub` | Proses Hub (alasan 3, kompromi) | Jalan (tahap 1) | Belum |
@@ -106,12 +107,12 @@ Status: **Jalan** (dipakai di production) · **Terpasang** (di production, belum
 
 Presensi (ATT) · Cuti dan mesin persetujuan (LEAVE, APR) · Payroll (PAY) · Reimbursement dan pinjaman (REIMB, LOAN) · Kinerja (PERF) · Pelatihan (TRAIN) · Penghargaan (REWARD) · Administrasi kepegawaian (EMP) · Dokumen HR (DOC) · Perjalanan dinas (TRIP) · Aset pegawai (ASSET) · Notifikasi dan pengumuman (NOTIF) · Struktur organisasi (ORG) · Laporan (RPT) · Pusat bantuan (HELP). Rinciannya ada di `docs/product/hcis-capability-map.md` pada repo HCIS.
 
-## 6. Di luar SQ Hub
+## 6. Di luar SQ Suite
 
 | Sistem | Keadaan | Rencana |
 | --- | --- | --- |
-| Website `sabilulquran.or.id` (WordPress) | Jalan; dikelola tim publikasi; sedang dipindah hosting | Tetap sebagai situs publik; aplikasi SQ Hub menyediakan halaman publiknya sendiri |
-| Email yayasan | Sedang direncanakan pindah layanan | Di luar SQ Hub |
+| Website `sabilulquran.or.id` (WordPress) | Jalan; dikelola tim publikasi; sedang dipindah hosting | Tetap sebagai situs publik; aplikasi SQ Suite menyediakan halaman publiknya sendiri |
+| Email yayasan | Sedang direncanakan pindah layanan | Di luar SQ Suite |
 | Payroll Tools (Google Apps Script) | Alat lama, masih dipakai | Digantikan Payroll HCIS setelah parallel run lulus |
 | Presensi QR (`absensi-temp`) | **Tidak dipakai** (Product Owner, 2026-11-16) | Tidak dilanjutkan; presensi resmi ada di HCIS |
 | JalurPesan | Mesin WhatsApp di belakang Kirim SQ; proyek terpisah | Tetap terpisah |
@@ -121,9 +122,9 @@ Presensi (ATT) · Cuti dan mesin persetujuan (LEAVE, APR) · Payroll (PAY) · Re
 
 Ini pekerjaan tersendiri, bukan bagian dari perapian dokumen ini:
 
-1. **Bilah atas bersama** di semua aplikasi: tanda SQ Hub, nama aplikasi, peluncur, menu akun.
+1. **Bilah atas bersama** di semua aplikasi: tanda SQ, nama aplikasi, peluncur, menu akun.
 2. **Satu konsol peran** di Admin SQ. Saat ini akses aplikasi diatur di Admin SQ, tetapi peran diatur di tiap aplikasi (HCIS, Karir SQ, Aset SQ).
-3. **Alamat sendiri untuk Portal Admin**, terpisah dari Beranda.
+3. **Alamat sendiri untuk Portal Admin**, terpisah dari SQ Hub.
 4. **Standar tampilan** yang wajib di semua aplikasi.
 5. **Wajah Laporan** untuk SPMB SQ, Sekretariat SQ, Kerja SQ, dan Keluarga SQ.
 
@@ -145,6 +146,6 @@ Repo `sq-core-ops`, nama skrip dan berkas di server (`sq-core-launch.sh`, `sq-co
 
 - Alamat: `curl -s -o /dev/null -w '%{http_code}' https://<nama>.sabilulquran.or.id/`.
 - Rilis yang berjalan: `cwd` proses di Mi8 (`/srv/<aplikasi>/releases/...`), bukan isi repo.
-- Aplikasi di proses Hub: flag `*_ENABLED` pada `final.env` SQ Hub.
+- Aplikasi di proses Hub: flag `*_ENABLED` pada `final.env` platform SQ Hub.
 
 Pemeriksaan 2026-11-16: `hub`, `organ`, `kirim`, `kerja`, `sekretariat`, `hcis`, `aset`, `karir`, `spmb`, `keluarga` menjawab 200; `login` 302; `quran` dan `keuangan` 421 (belum dilayani); `sosialdakwah` dan `rapat` belum punya DNS. Flag Hub yang menyala: `KIRIM_ENABLED`, `KERJA_ENABLED`, `PORTAL_ORGAN_ENABLED`.
