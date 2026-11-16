@@ -25,7 +25,7 @@ The whole ecosystem of Yayasan Sabilul Qur'an applications is called **SQ Suite*
 
 **SQ Hub keeps one meaning:** the landing page and launcher at `hub.sabilulquran.or.id`, where a person sees the applications they may open. In technical documents "the SQ Hub platform" also names the shared services in the `SQ-Hub` repository (D5). SQ Hub is never the name of the whole.
 
-### D2 Four terms, one meaning each
+### D2 Terms, one meaning each
 
 | Term | Meaning | Example |
 | --- | --- | --- |
@@ -33,6 +33,8 @@ The whole ecosystem of Yayasan Sabilul Qur'an applications is called **SQ Suite*
 | **Portal** | The entry point for one group of users, with that group's account type | Portal Pegawai, Portal Organ |
 | **Aplikasi** (application) | A system that looks after one domain and owns its data and rules | HCIS, Aset SQ, Karir SQ |
 | **Modul** (module) | A part inside one application | Cuti and Payroll inside HCIS |
+| **Wajah** (face) | How one application appears in one portal (D4) | The Laporan face of Karir SQ in Portal Organ |
+| **SQ Hub** | The landing page and launcher (D1) | — |
 
 HCIS, Aset SQ, Kirim SQ, Kerja SQ and the rest are **applications**, never "modules", whatever process they run in.
 
@@ -48,7 +50,9 @@ There is one portal per group of users:
 | **Portal Pelamar** | Job applicants | Applicant account (recruitment realm) |
 | **Situs publik** | Anyone | No sign-in |
 
-Portal Admin stands on its own because it governs access to every other portal. "Keluarga SQ" and "Portal Organ" are the portals themselves, not applications inside them.
+Portal Admin stands on its own because it governs access to every other portal.
+
+Each portal has one **home application**, the first thing its users open: Admin SQ for Portal Admin, SQ Hub for Portal Pegawai, the Portal Organ application for Portal Organ, Keluarga SQ for Portal Keluarga, and the applicant side of Karir SQ for Portal Pelamar. Keluarga SQ and Portal Organ are therefore applications too (they appear in the register), and other applications show their faces inside them.
 
 ### D4 An application has up to four faces
 
@@ -60,7 +64,7 @@ Portal Admin stands on its own because it governs access to every other portal. 
 | **Publik** | Anyone, without sign-in | Situs publik |
 
 Rules:
-1. Every application that holds foundation data must provide a **Laporan** face (the governance summary contract of ADR-0009/ADR-0012). Organ members never operate an application.
+1. Every application that holds foundation data must provide a **Laporan** face (the governance summary contract of ADR-0009/ADR-0012). Organ members never operate an application. Exempt: applications with nothing for the organs to oversee, namely a portal's home application (it only shows other applications' data), Kirim SQ (a sending service; the sending applications report), Akun SQ and Admin SQ, and Al-Qur'an (personal reading).
 2. The **Kelola** face is only for staff who were given that authority. Other staff do not see the application unless it has a Layanan mandiri face for them.
 3. The data stays in one place. Faces are ways of showing it; they never copy it into another owner.
 
@@ -103,7 +107,7 @@ Accepted ADRs, specifications, release records, and runbooks are history and are
 Living documents (README, AGENTS, vision, glossary, ownership table, roadmap, the specification index, and text shown to users) use the new terms.
 
 ### D9 Names
-Applications follow the pattern **"<Nama> SQ"**. Exceptions kept by decision: **HCIS**, **Portal Organ**, and **Al-Qur'an** (ADR-0013). `DRAFT`: HCIS and Portal Organ keep their names rather than becoming "SDM SQ" or "Organ SQ".
+Applications follow the pattern **"<Nama> SQ"**. Exceptions kept by decision: **HCIS**, **Portal Organ**, and **Al-Qur'an** (ADR-0013). `DRAFT`: HCIS and Portal Organ keep their names rather than becoming "SDM SQ" or "Organ SQ"; **Keuangan**, **Sekolah**, and **Sosial & Dakwah** are working names of applications that are not built yet, and get their final names when their designs are accepted.
 
 ## Consequences
 

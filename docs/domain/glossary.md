@@ -77,4 +77,4 @@ ADR, specification, catatan rilis, dan runbook lama tidak ditulis ulang. Saat me
 - Shared capability != business logic yang kebetulan dipakai di dua file.
 - Aplikasi != Modul. Tempat kode berjalan (proses Hub atau program sendiri) tidak mengubah sebutannya.
 - SQ Suite (ekosistem) != SQ Hub (halaman awal dan peluncur) != platform SQ Hub (layanan bersama di repo `SQ-Hub`).
-- Portal != Aplikasi. Keluarga SQ dan Portal Organ adalah portal.
+- Portal != Aplikasi. Setiap portal punya satu aplikasi beranda: Keluarga SQ adalah aplikasi beranda Portal Keluarga, dan aplikasi Portal Organ adalah beranda Portal Organ.

@@ -1,7 +1,7 @@
 # Struktur SQ Suite (STRUKTUR-001)
 
 **Status:** ACCEPTED oleh Product Owner pada 2026-11-16 (ADR-0014). Butir bertanda `DRAFT` adalah default agent yang menunggu konfirmasi.
-**Kondisi per:** 2026-11-16 (alamat dan rilis diperiksa langsung di server hari itu; lihat §9).
+**Kondisi per:** 2026-11-16 (alamat dan rilis diperiksa langsung di server hari itu; lihat §10).
 **Keputusan:** [ADR-0014](../architecture/adr/0014-sq-suite-ecosystem-structure.md).
 
 Dokumen ini adalah **satu-satunya sumber** untuk pertanyaan "apa saja isi SQ Suite, untuk siapa, dan bagaimana keadaannya". Dokumen lain menautkan ke sini dan tidak menyimpan daftar sendiri. Setiap rilis yang mengubah status sebuah aplikasi memperbarui §5.
@@ -30,6 +30,7 @@ Dokumen ini adalah **satu-satunya sumber** untuk pertanyaan "apa saja isi SQ Sui
 | **Portal Pelamar** | Pelamar kerja | Akun pelamar | `karir.sabilulquran.or.id` |
 | **Situs publik** | Siapa saja | Tanpa login | `sabilulquran.or.id` dan halaman publik aplikasi |
 
+- Setiap portal punya satu **aplikasi beranda**, yang pertama dibuka penggunanya: Admin SQ (Portal Admin), SQ Hub (Portal Pegawai), aplikasi Portal Organ (Portal Organ), Keluarga SQ (Portal Keluarga), dan sisi pelamar Karir SQ (Portal Pelamar). Aplikasi lain menampilkan wajahnya di dalam portal itu.
 - Portal Admin berdiri sendiri karena mengatur akses ke semua portal lain. Saat ini ia masih satu alamat dengan SQ Hub; pemisahan alamat adalah target (§7).
 - Pengurus yang juga pegawai bergaji memakai Portal Organ untuk perannya sebagai organ dan Portal Pegawai untuk urusan kepegawaiannya sendiri.
 - Login semua portal lewat `login.sabilulquran.or.id`.
@@ -44,13 +45,13 @@ Dokumen ini adalah **satu-satunya sumber** untuk pertanyaan "apa saja isi SQ Sui
 | **Publik** | Siapa saja, tanpa login | Situs publik |
 
 Aturan:
-1. Setiap aplikasi yang memegang data yayasan **wajib** punya wajah Laporan. Organ tidak pernah mengoperasikan aplikasi.
+1. Setiap aplikasi yang memegang data yayasan **wajib** punya wajah Laporan. Organ tidak pernah mengoperasikan aplikasi. Dikecualikan: aplikasi yang tidak punya hal untuk diawasi organ, yaitu aplikasi beranda portal (hanya menampilkan data aplikasi lain), Kirim SQ (layanan kirim; yang melapor adalah aplikasi pengirimnya), Akun SQ dan Admin SQ, serta Al-Qur'an (bacaan pribadi).
 2. Wajah Kelola hanya untuk pegawai yang diberi wewenang.
 3. Datanya tetap satu. Wajah hanya cara menampilkan.
 
 ## 4. Matriks aplikasi × portal
 
-Target. Kolom "Ada?" di §5 menunjukkan mana yang sudah berjalan.
+Target. Kolom "Status" dan "Wajah Laporan" di §5.2 menunjukkan mana yang sudah berjalan. Portal Admin tidak punya kolom: ia tidak menampilkan wajah aplikasi, melainkan mengatur siapa mendapat wajah yang mana.
 
 | Aplikasi | Portal Pegawai | Portal Organ | Portal Keluarga | Portal Pelamar | Publik |
 | --- | --- | --- | --- | --- | --- |
@@ -66,6 +67,7 @@ Target. Kolom "Ada?" di §5 menunjukkan mana yang sudah berjalan.
 | Kerja SQ | Papan kerja | Pekerjaan lewat tenggat `DRAFT` | — | — | — |
 | Al-Qur'an | Mushaf, papan tilawah | — | Mushaf (nanti) | — | — |
 | Kirim SQ | Kelola oleh petugas berwenang | — | — | — | — |
+| Keluarga SQ | Kelola data keluarga oleh petugas berwenang | Jumlah keluarga dan siswa `DRAFT` | Beranda keluarga, Kartu Siswa | — | Cek keaslian Kartu Siswa |
 | Akun SQ | Ada | Ada | Ada | Ada | — |
 
 ## 5. Daftar aplikasi
@@ -89,10 +91,10 @@ Status: **Jalan** (dipakai di production) · **Terpasang** (di production, belum
 | HCIS | Kepegawaian | `hcis.` (mesin presensi: `adms.`) | `hcisysq` | Program sendiri | Terpasang; belum dibuka ke pegawai | Ada |
 | Aset SQ | Aset dan serah terima | `aset.` | `Aset-SQ` | Program sendiri | Jalan | Ada |
 | Karir SQ | Rekrutmen | `karir.` | `karir-sq` | Program sendiri | Jalan | Ada (kartu belum dicek di portal) |
-| SPMB SQ | Penerimaan murid baru, termasuk aplikasi CS Android | `spmb.` | `spmb-sq` | Program sendiri | Jalan | Belum |
-| Keluarga SQ | Portal keluarga: akun, Kartu Siswa | `keluarga.` | `keluarga-sq` | Program sendiri | Jalan (tahap awal; KEL-IMPL-004 masih rancangan) | Belum |
+| SPMB SQ | Penerimaan murid baru, termasuk aplikasi CS Android | `spmb.` | `spmb-sq` | Program sendiri | Jalan untuk panitia (peminat, kotak masuk WhatsApp); pendaftaran keluarga terpasang, pembukaannya `TBD` (catatan ops terakhir, 26 Okt 2026: belum dibuka) | Belum |
+| Keluarga SQ | Portal keluarga: akun, Kartu Siswa | `keluarga.` | `keluarga-sq` | Program sendiri | Terpasang (akun keluarga, Kartu Siswa); pembukaan ke keluarga `TBD`; KEL-IMPL-004 masih rancangan | Belum |
 | Kirim SQ | Kirim WhatsApp resmi untuk semua aplikasi | `kirim.` | `SQ-Hub` | Proses Hub (alasan 1) | Jalan | Tidak perlu |
-| Portal Organ | Ringkasan, keputusan, laporan untuk organ | `organ.` | `SQ-Hub` | Proses Hub (alasan 2) | Ringkasan jalan; keputusan dan laporan bulanan belum | — |
+| Portal Organ | Aplikasi beranda Portal Organ: ringkasan, keputusan, laporan | `organ.` | `SQ-Hub` | Proses Hub (alasan 2) | Ringkasan jalan; keputusan dan laporan bulanan belum | Tidak perlu |
 | Kerja SQ | Papan kerja unit dan kepanitiaan | `kerja.` | `SQ-Hub` | Proses Hub (alasan 3, kompromi) | Jalan (tahap 1) | Belum |
 | Sekretariat SQ | Nomor surat, surat masuk, arsip SK | `sekretariat.` | `SQ-Hub` | Proses Hub (alasan 3, kompromi) | Dibangun; belum dinyalakan | Belum |
 | Al-Qur'an | Mushaf Madinah dan papan tilawah | `quran.` | `SQ-Hub` | Proses Hub (alasan 3, kompromi) | Disetujui (ADR-0013) | Tidak perlu |
