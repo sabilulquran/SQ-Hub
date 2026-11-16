@@ -19,6 +19,9 @@ import { assertOrganPortalDistinct, loadOrganPortalConfig } from "./modules/orga
 import { createOrganPortalModule } from "./modules/organ-portal/module.js";
 import { loadKerjaConfig } from "./modules/kerja/config.js";
 import { createKerjaModule } from "./modules/kerja/module.js";
+import { loadSekretariatConfig } from "./modules/sekretariat/config.js";
+import { createSekretariatModule } from "./modules/sekretariat/module.js";
+import { ImapMailFetcher } from "./modules/sekretariat/mail-imap.js";
 import {
   GovernanceService,
   PgGovernanceApplicationSource,
@@ -46,6 +49,7 @@ const directoryConfig = loadDirectoryConfig();
 const kirimConfig = loadKirimConfig();
 const organPortalConfig = loadOrganPortalConfig();
 const kerjaConfig = loadKerjaConfig();
+const sekretariatConfig = loadSekretariatConfig();
 const directory = new PgOrganizationDirectory(pool);
 const repository = new PgApplicationAccessRepository(pool);
 const accessService = new ApplicationAccessService(repository);
@@ -60,8 +64,8 @@ const workspaceApplications = new PgHubWorkspaceRepository(pool);
 const hubOrigin = new URL(config.hubOidcRedirectUri).origin;
 if (organPortalConfig) {
   assertOrganPortalDistinct(organPortalConfig, {
-    clientIds: [config.hubOidcClientId, kirimConfig?.admin?.clientId, kerjaConfig?.oidc.clientId],
-    origins: [hubOrigin, kirimConfig?.admin?.publicOrigin, kerjaConfig?.publicOrigin],
+    clientIds: [config.hubOidcClientId, kirimConfig?.admin?.clientId, kerjaConfig?.oidc.clientId, sekretariatConfig?.oidc.clientId],
+    origins: [hubOrigin, kirimConfig?.admin?.publicOrigin, kerjaConfig?.publicOrigin, sekretariatConfig?.publicOrigin],
   });
 }
 const identityDirectory = new KeycloakIdentityDirectory({
@@ -238,6 +242,35 @@ const kerja = kerjaConfig
     })
   : undefined;
 
+// SEK-IMPL-001 §10: SEKRETARIAT_ENABLED=false means no route, no timer and no tile. The machine
+// allocation route appears only when the client allowlist is set (§14 langkah 9), and only
+// service-account (client-credentials) tokens pass, as in HUB-IMPL-024.
+let sekretariatLog: (entry: Record<string, unknown>, message: string) => void = () => undefined;
+const sekretariat = sekretariatConfig
+  ? createSekretariatModule({
+      pool,
+      config: sekretariatConfig,
+      keycloakIssuer: config.keycloakIssuer,
+      access: accessService,
+      directorySource: directory,
+      workspaceApplications,
+      hubOrigin,
+      secureCookies: config.hubCookieSecure,
+      ...(sekretariatConfig.mail.mode === "imap" ? { mailFetcher: new ImapMailFetcher(sekretariatConfig.mail) } : {}),
+      ...(sekretariatConfig.allowedMachineClients.size > 0
+        ? {
+            verifyMachineToken: createKeycloakMachineTokenVerifier({
+              issuer: config.keycloakIssuer,
+              audience: config.machineTokenAudience,
+              allowedClients: sekretariatConfig.allowedMachineClients,
+              requireServiceAccount: true,
+            }),
+          }
+        : {}),
+      log: (entry, message) => sekretariatLog(entry, message),
+    })
+  : undefined;
+
 const app = buildApp({
   accessService,
   verifyMachineToken,
@@ -263,11 +296,13 @@ const app = buildApp({
   } } : {}),
   ...(kirim ? { kirim } : {}),
   ...(kerja ? { kerja } : {}),
+  ...(sekretariat ? { sekretariat } : {}),
   ...(organPortal ? { organPortal } : {}),
 });
 organLog = (entry) => app.log.info({ event: "organ.summary", ...entry }, "organ portal summary request");
 kirimLog = (entry, message) => app.log.info(entry, message);
 kerjaLog = (entry, message) => app.log.info(entry, message);
+sekretariatLog = (entry, message) => app.log.info(entry, message);
 
 roleAdministrationLog = (entry) => app.log.info({ ...entry }, "role administration request");
 governanceLog = (entry) => app.log.info({ event: "governance.summary", ...entry }, "governance summary request");
@@ -276,12 +311,14 @@ const pullDirectory = directoryConfig.sync ? createDirectoryPull(directoryConfig
 let stopDirectory: (() => Promise<void>) | undefined;
 let stopKirim: (() => Promise<void>) | undefined;
 let stopKerja: (() => Promise<void>) | undefined;
+let stopSekretariat: (() => Promise<void>) | undefined;
 
 const shutdown = async (signal: string) => {
   app.log.info({ signal }, "shutting down");
   await stopDirectory?.();
   await stopKirim?.();
   await stopKerja?.();
+  await stopSekretariat?.();
   await app.close();
   await pool.end();
   process.exit(0);
@@ -294,6 +331,7 @@ try {
   // §9: refuse to start when a Kirim SQ key cannot open its canary; no plaintext fallback.
   if (kirim) stopKirim = await kirim.start((entry, message) => app.log.warn(entry, message));
   if (kerja) stopKerja = await kerja.start((entry, message) => app.log.info(entry, message));
+  if (sekretariat) stopSekretariat = await sekretariat.start((entry, message) => app.log.info(entry, message));
   await app.listen({ port: config.port, host: config.host });
   if (pullDirectory) stopDirectory = startDirectoryScheduler({
     reconcile: (asOf) => directory.synchronize(asOf, pullDirectory),

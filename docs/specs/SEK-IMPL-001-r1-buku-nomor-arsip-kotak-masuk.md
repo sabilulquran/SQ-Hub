@@ -1,4 +1,4 @@
-# SEK-IMPL-001 — Sekretariat R1: buku nomor, arsip surat, kotak masuk
+﻿# SEK-IMPL-001 — Sekretariat R1: buku nomor, arsip surat, kotak masuk
 
 **Status:** ACCEPTED (Product Owner, 2026-11-13). Keputusan §16 dikunci; implementasi di repository diizinkan. Langkah production §14 mengikuti aturan rilis owner 2026-10-27.
 **Produk:** SQ Hub — modul `sekretariat` (Sekretariat)
@@ -41,7 +41,7 @@ Di luar R1 (SEK-001 §11):
 | Letak kode | `apps/api/src/modules/sekretariat/` dan layar di `apps/web/src/sekretariat/` | ADR-0011; pola kirim/kerja |
 | Proses | **Tidak ada proses baru.** Penarik email berjalan sebagai timer di proses SQ Hub API (3302 Mi8) | SEK-001 §3; memori Mi8 |
 | Stack | ADR-0006. Dependensi baru: **`imapflow`** (klien IMAP) dan **`mailparser`** (baca MIME) — keduanya murni Node tanpa binary native | Penarik email §7 |
-| Database | Tabel berawalan `sekretariat_`, migration `0020_sekretariat_r1.sql` (setelah `0019_kerja_r1.sql`) | ADR-0011 |
+| Database | Tabel berawalan `sekretariat_`, migration `0021_sekretariat_r1.sql` (setelah `0020_hub_session_client.sql`) | ADR-0011 |
 | Rute | `/api/sekretariat/*` (sesi `sekretariat-sq`), `/api/admin/sekretariat/*` (admin), `/internal/sekretariat/*` untuk konsumen mesin — **diblokir di edge**, hanya terjangkau dari dalam Mi8 | Pola KERJA-IMPL-001 |
 | Hostname | `sekretariat.sabilulquran.or.id` → edge 3180 → web 3202 / API 3302 | SEK-001 §3; DNS NXDOMAIN, dibuat saat rilis |
 | Login | Client OIDC `sekretariat-sq` (realm `sq-staff`, confidential, PKCE S256), cookie host-only `sq_sekretariat_session`, memakai ulang hub-auth — pola `kirim-sq`/`kerja-sq` | AGENTS.md §5 |
@@ -173,7 +173,7 @@ Setiap layar punya keadaan memuat, kosong (dengan langkah pertama), galat, terla
 - **Unit:** perakit nomor (contoh pedoman persis: `01.001/PENG.YSQ/I/2026`, `12.003/PAN.MILAD/X/2026`; urut 1000 tanpa padding); pergantian tahun Jakarta 31 Des 23:59 vs 1 Jan 00:00 WIB; nomor awal hanya naik; retroaktif tidak menyentuh penghitung; parser email (teks, multipart, lampiran besar dilewati dengan catatan).
 - **API (PostgreSQL uji):** dua alokasi bersamaan → dua nomor berurutan tanpa celah/ganda; validasi gagal tidak memakan nomor; batal tidak melepaskan urut; petugas penerbit lain → 404; tanpa Application Access → 403; `/internal/.../alokasi-nomor` tanpa client terdaftar → 401/403, dengan client → nomor + idempoten per `rujukan_modul+rujukan_id` (panggilan ulang mengembalikan nomor yang sama, bukan nomor baru); terbit mengunci berkas (unggah ulang → 409); penarik email idempoten (UID sama dua kali → satu baris); UIDVALIDITY berubah → tanpa duplikat; disposisi hanya oleh pemegangnya; MFA ditegakkan untuk kotak yayasan; setiap tindakan admin menulis tepat satu `sekretariat_audit`.
 - **Migrasi DOC-003 (CLI, fixture ekspor):** jumlah baris sama, penghitung tujuan ≥ maksimum urut sumber per penerbit×jenis×tahun, `nomor_lengkap` lama tidak berubah, jalan dua kali tanpa duplikat (idempoten per id sumber).
-- **Migration SQL:** `0020` dijalankan dua kali pada database kosong dan berisi.
+- **Migration SQL:** `0021` dijalankan dua kali pada database kosong dan berisi.
 
 **Manual sebelum rilis:** kirim email uji nyata ke `sekretariat@` (teks, lampiran PDF, lampiran > 10 MiB) dan buktikan ketiganya tampil benar; buka di ponsel.
 
@@ -208,7 +208,7 @@ Mengikuti aturan rilis owner 2026-10-27 (dry-run dulu, backup sebelum migration,
 | # | Langkah | Siapa | Rollback |
 | --- | --- | --- | --- |
 | 1 | Keycloak: `reconcile-sekretariat-clients.sh` (client `sekretariat-sq` + `hcis-sekretariat`), idempoten, dijalankan dua kali | Operator | Nonaktifkan client |
-| 2 | Rilis SQ Hub dengan modul, `SEKRETARIAT_ENABLED=false`; backup lalu migrate `0020` | Operator | Release sebelumnya; migration aditif |
+| 2 | Rilis SQ Hub dengan modul, `SEKRETARIAT_ENABLED=false`; backup lalu migrate `0021` | Operator | Release sebelumnya; migration aditif |
 | 3 | Buat `SEKRETARIAT_MEDIA_ROOT`, isi env §10 (`SEKRETARIAT_MAIL_MODE=log`), `SEKRETARIAT_ENABLED=true`; ukur gate memori | Operator | `SEKRETARIAT_ENABLED=false` |
 | 4 | Mailbox `sekretariat@sabilulquran.or.id` dibuat di cPanel; kredensial ke env Mi8 (owner yang memegang kredensial hosting); `SEKRETARIAT_MAIL_MODE=imap`, uji email nyata | Owner + operator | Kembali ke `log` |
 | 5 | Remote rclone crypt `sekretariat_media:`; pasang `sq-core-sekretariat-media-offhost`, uji `cryptcheck` | Operator + owner (kunci) | Nonaktifkan cron |
@@ -240,9 +240,37 @@ Diputuskan Product Owner 2026-11-13 ("Ya, ACCEPTED"), semuanya mengikuti usulan.
 | D-5 | Berkas di disk Mi8 dienkripsi? | Tidak — pola Karir/Kerja (0700 + crypt di salinan Drive); isi email bukan dokumen identitas |
 | D-6 | Retensi surat masuk spam | Tetap tersimpan, ditinjau setahun |
 
+## 17. Catatan implementasi (2026-11-13)
+
+Dibangun di repository pada 2026-11-13. Butir di bawah adalah keputusan teknis yang tidak tertulis di bagian sebelumnya; yang berlabel `DRAFT` boleh diubah tanpa mengubah skema.
+
+| Topik | Yang dibangun |
+| --- | --- |
+| Pembaca Directory | Memakai ulang kelas pembaca `KerjaDirectory` dari modul kerja (impor lintas modul yang sama-sama "pembaca Organization Directory" ADR-0007); dipindah ke tempat bersama begitu konsumen ketiga lahir |
+| Letak surat masuk setelah disposisi | Baris surat tetap di kotak yayasan; tampilan kotak penerbit menggabungkan isi kotaknya dengan surat yang terdisposisi kepadanya, dan petugasnya ikut boleh membuka detailnya |
+| Penutupan surat masuk | Surat berstatus `selesai` saat disposisi terakhirnya ditandai selesai |
+| Idempotensi penarik email | Satu transaksi per pesan (insert + maju UID); `UIDVALIDITY` berganti → baca ulang dengan dedup Message-ID |
+| Lampiran email | Jenis yang tidak dikenali atau melebihi 10 MiB dicatat sebagai keterangan pada isi surat ("buka di webmail"), bukan kegagalan pesan (D-2) |
+| Batal draf | Draf dihapus beserta berkasnya tanpa alasan; surat terbit dibatalkan dengan alasan dan nomornya ikut berstatus Dibatalkan |
+| Ekspor migrasi | Bentuk JSON di `migrasi.ts` (`eksporDoc003Schema`); penghitung bulanan warisan dilipat ke tahunnya dengan GREATEST (D-17); baris lama unik per `migrasi_sumber_id`, format dan nomor aslinya tidak diubah |
+| Keamanan unduhan | `inline` hanya PDF/PNG/JPEG dengan `Content-Security-Policy: sandbox`; selain itu `attachment`; `X-Content-Type-Options: nosniff` selalu |
+| Klien Keycloak | `infra/keycloak/clients/sekretariat-sq.json` + `scripts/reconcile-sekretariat-clients.sh` (dua klien: sekretariat-sq + hcis-sekretariat dengan satu audience mapper), diuji dua kali jalan di workflow `keycloak-infra` |
+| Migration | `0021_sekretariat_r1.sql` (0020 sudah dipakai `hub_session_client` ORGAN-IMPL-001) |
+
+Rute yang dibangun:
+
+```text
+/api/sekretariat/context · /launcher · /ringkasan · /jenis · /penerbit
+/api/sekretariat/kotak[/:id/surat] · /surat-masuk/:id[/berkas|/disposisi|/spam] · /disposisi/:id/selesai
+/api/sekretariat/penerbit/:id/{surat,retroaktif} · /surat/:id[/berkas|/terbit|/batal] · /register · /nomor/:id/batal · /berkas/:id
+/api/admin/sekretariat/{penerbit[/:id],petugas[/:id/cabut],disposisi-pemegang[/:id/cabut],jenis,nomor-awal,mail,register/export}
+/internal/sekretariat/v1/alokasi-nomor   (client credentials; diblokir di edge)
+```
+
 ## Riwayat
 
 | Tanggal | Perubahan |
 | --- | --- |
 | 2026-11-12 | DRAFT pertama untuk R1 dari SEK-001 revisi 5 |
 | 2026-11-13 | ACCEPTED oleh Product Owner; keputusan §16 dikunci sesuai usulan |
+| 2026-11-13 | Dibangun di repository (bawaan `SEKRETARIAT_ENABLED=false`); catatan implementasi di §17; migration menjadi `0021` |
