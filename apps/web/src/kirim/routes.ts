@@ -1,5 +1,5 @@
 /** Kirim SQ pages on the kirim. host (KIRIM-IMPL-001 §8, KIRIM-IMPL-002 §12). */
-export type KirimRoute = "nomor" | "antrean" | "jangan-hubungi" | "aktivitas" | "impor" | "not-found";
+export type KirimRoute = "nomor" | "antrean" | "jangan-hubungi" | "aktivitas" | "impor" | "dokumentasi-api" | "not-found";
 
 export function resolveKirimRoute(pathname: string): KirimRoute {
   const path = pathname.replace(/\/+$/, "") || "/";
@@ -8,6 +8,8 @@ export function resolveKirimRoute(pathname: string): KirimRoute {
   if (path === "/jangan-hubungi") return "jangan-hubungi";
   if (path === "/aktivitas") return "aktivitas";
   if (path === "/impor") return "impor";
+  // ADR-0011 amendment 2026-11-17: the API guide for applications outside SQ Suite; public, no sign-in.
+  if (path === "/dokumentasi-api") return "dokumentasi-api";
   return "not-found";
 }
 

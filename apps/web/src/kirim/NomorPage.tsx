@@ -13,6 +13,7 @@ import {
   type LiveStatus,
   type PairingResult,
 } from "@/kirim/api";
+import { GerbangCard, GerbangDialog, type GerbangDeviceAction } from "@/kirim/GerbangCard";
 import { deviceStatusLabel, deviceStatusTone } from "@/kirim/labels";
 import { dangerButton, Field, Panel, primaryButton, ReasonDialog, secondaryButton, StateCard } from "@/kirim/KirimShell";
 
@@ -31,7 +32,8 @@ type Dialog =
   | { kind: "gabung"; device: KirimDevice; ke: { kode: string; label: string } }
   | { kind: "tambah"; card: KirimModuleCard }
   | { kind: "ubah-pemakai"; card: KirimModuleCard }
-  | { kind: "putuskan-modul"; card: KirimModuleCard };
+  | { kind: "putuskan-modul"; card: KirimModuleCard }
+  | { kind: "gerbang" };
 
 const POLL_MS = 3_000;
 const POLL_LIMIT_MS = 2 * 60_000;
@@ -102,12 +104,18 @@ export function NomorPage({ preview }: { preview?: NomorState }) {
     return card && canReconnect(device) ? () => { setError(null); setDialog({ kind: "ganti-nomor", device, modul: card.nama }); } : undefined;
   };
 
+  /** A number of the Aplikasi luar card: its dialogs return to the card's pop-up, not to the page. */
+  const isGerbang = (device: KirimDevice) => device.pemilik === "aplikasi-luar";
+  const afterDevice = (device: KirimDevice) => { if (isGerbang(device)) setDialog({ kind: "gerbang" }); else close(); void load(); };
+  const openGerbangDevice = (action: GerbangDeviceAction) => { setError(null); setDialog(action); };
+
   return (
     <>
       <NomorView state={state} onOpen={(next) => { setError(null); setDialog(next); }} onRetry={() => { setState({ status: "loading" }); void load(); }} />
+      {dialog?.kind === "gerbang" ? <GerbangDialog onDevice={openGerbangDevice} onClose={close} onChanged={load} /> : null}
       {dialog?.kind === "disconnect" ? (
         <ReasonDialog title={`Putuskan ${dialog.device.label}?`} body={sharedBody(shared(dialog.device), "Sesi WhatsApp di mesin dilepas. Nomor perlu dipasang ulang sebelum bisa mengirim lagi.")} confirmLabel="Putuskan" danger busy={busy} error={error} onClose={close}
-          onConfirm={(alasan) => void run(() => kirimFetch(`/devices/${dialog.device.kode}/disconnect`, { method: "POST", body: { alasan } }))}>
+          onConfirm={(alasan) => void run(() => kirimFetch(`/devices/${dialog.device.kode}/disconnect`, { method: "POST", body: { alasan } }), () => (isGerbang(dialog.device) ? { kind: "gerbang" } : null))}>
           <GantiHint onGanti={ganti(dialog.device)} />
         </ReasonDialog>
       ) : null}
@@ -187,7 +195,7 @@ export function NomorPage({ preview }: { preview?: NomorState }) {
           ganti={dialog.kind === "ganti-nomor" ? dialog.modul : undefined}
           sharers={dialog.kind === "ganti-nomor" ? shared(dialog.device) : []}
           onDuplicate={(ke) => { setError(null); setDialog({ kind: "gabung", device: dialog.device, ke }); void load(); }}
-          onClose={() => { close(); void load(); }}
+          onClose={() => afterDevice(dialog.device)}
         />
       ) : null}
     </>
@@ -297,13 +305,14 @@ export function NomorView({ state, onOpen, onRetry }: { state: NomorState; onOpe
         {state.status === "ready" ? (
           <>
             <Warnings list={state.list} />
-            {state.list.modules.length === 0 ? (
+            {state.list.modules.length === 0 && !state.list.gerbang ? (
               <StateCard kind="empty" title="Belum ada aplikasi yang memakai WhatsApp" body="Aplikasi muncul di sini begitu ditandai bisa memakai WhatsApp di registry aplikasi SQ Hub." />
             ) : (
               <ul className="grid gap-4 lg:grid-cols-2 xl:grid-cols-3">
                 {state.list.modules.map((card) => (
                   <li key={card.application_key}><ModuleCard card={card} onOpen={onOpen} /></li>
                 ))}
+                {state.list.gerbang ? <li key="gerbang"><GerbangCard card={state.list.gerbang} onOpen={() => onOpen({ kind: "gerbang" })} /></li> : null}
               </ul>
             )}
           </>
@@ -322,12 +331,6 @@ function ModuleIcon({ applicationKey, large = false }: { applicationKey: string;
   );
 }
 
-/** ADR-0011 amendment 2026-11-16: an application outside SQ Core gets the same card, with this small label. */
-function ExternalAppLabel({ card }: { card: KirimModuleCard }) {
-  if (card.jenis_aplikasi !== "luar") return null;
-  return <span className="mt-1 inline-flex rounded-full bg-muted px-2 py-0.5 text-[10px] font-bold text-muted-foreground">aplikasi luar</span>;
-}
-
 export function ModuleCard({ card, onOpen }: { card: KirimModuleCard; onOpen: (dialog: Dialog) => void }) {
   const device = card.nomor;
   if (card.peran === "kosong" || !device) {
@@ -336,7 +339,6 @@ export function ModuleCard({ card, onOpen }: { card: KirimModuleCard; onOpen: (d
         <ModuleIcon applicationKey={card.application_key} large />
         <div>
           <h2 className="font-display text-lg font-bold text-brand-heading">{card.nama}</h2>
-          <ExternalAppLabel card={card} />
           <p className="mt-0.5 text-sm text-muted-foreground">Belum memakai WhatsApp</p>
         </div>
         <button type="button" className={primaryButton} onClick={() => onOpen({ kind: "tambah", card })}>
@@ -353,7 +355,6 @@ export function ModuleCard({ card, onOpen }: { card: KirimModuleCard; onOpen: (d
         <ModuleIcon applicationKey={card.application_key} />
         <div className="min-w-0 flex-1">
           <h2 className="truncate font-display text-lg font-bold text-brand-heading">{card.nama}</h2>
-          <ExternalAppLabel card={card} />
           <p className="mt-0.5 text-xs text-muted-foreground">{owner ? `Pemilik ${device.label}` : `Memakai nomor milik ${card.pemilik_nomor ?? device.pemilik}`}</p>
         </div>
         <span className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-bold ${deviceStatusTone[device.status]}`}>{deviceStatusLabel[device.status]}</span>

@@ -172,11 +172,14 @@ describe("Application Access", () => {
 describe("Application registry: kind and WhatsApp lewat Kirim", () => {
   const samijaya = { applicationKey: "samijaya", name: "Samijaya", canonicalUrl: "https://samijaya.example.test", status: "active" as const, actor };
 
-  it("stores kind luar with the machine client and lists the application for a Kirim card", async () => {
+  it("stores kind luar, but only a Suite application (kind modul) gets a Kirim card", async () => {
     const stored = await service.upsertApplication({ ...samijaya, kind: "luar", whatsapp: { capable: true, machineClientId: "samijaya" } });
     expect(stored).toMatchObject({ kind: "luar", whatsappCapable: true, machineClientId: "samijaya" });
+    // ADR-0011 amendment 2026-11-17: outside applications use the gateway card and API keys, so no card here.
+    await expect(listWhatsAppApplications(pool)).resolves.toEqual([]);
+    await service.upsertApplication({ ...samijaya, kind: "modul" });
     await expect(listWhatsAppApplications(pool)).resolves.toEqual([
-      expect.objectContaining({ applicationKey: "samijaya", name: "Samijaya", machineClientId: "samijaya", status: "active", kind: "luar" }),
+      expect.objectContaining({ applicationKey: "samijaya", name: "Samijaya", machineClientId: "samijaya", status: "active" }),
     ]);
     // The existing module stays `modul` and off the Kirim list.
     const hcis = (await service.listApplications()).find((application) => application.applicationKey === "hcis");
@@ -187,8 +190,8 @@ describe("Application registry: kind and WhatsApp lewat Kirim", () => {
     await service.upsertApplication({ ...samijaya, kind: "luar", whatsapp: { capable: true, machineClientId: "samijaya" } });
     const again = await service.upsertApplication({ ...samijaya, name: "Samijaya Store" });
     expect(again).toMatchObject({ name: "Samijaya Store", kind: "luar", whatsappCapable: true, machineClientId: "samijaya" });
-    const off = await service.upsertApplication({ ...samijaya, whatsapp: { capable: false, machineClientId: null } });
-    expect(off).toMatchObject({ kind: "luar", whatsappCapable: false, machineClientId: null });
+    const off = await service.upsertApplication({ ...samijaya, kind: "modul", whatsapp: { capable: false, machineClientId: null } });
+    expect(off).toMatchObject({ kind: "modul", whatsappCapable: false, machineClientId: null });
     await expect(listWhatsAppApplications(pool)).resolves.toEqual([]);
   });
 

@@ -24,6 +24,7 @@ import {
   type KirimAdminService,
 } from "./admin.js";
 import { cardReasonSchema, newNumberSchema, ownNumberSchema, useNumberSchema, type KirimModuleCards } from "./cards.js";
+import { createKeySchema, revokeKeySchema, type KirimGateway } from "./gateway.js";
 import { deviceImportSchema, EXPORT_MAX_BYTES, exportImportSchema, exportPreviewSchema, storedImportSchema, type KirimHistoryImport } from "./history-import.js";
 import { handleKirimError, sendKirimError } from "./routes-internal.js";
 import { KirimApiError } from "./service.js";
@@ -51,6 +52,8 @@ export function registerKirimAdminRoutes(
     access: Pick<ApplicationAccessService, "checkAccess">;
     admin: KirimAdminService;
     cards: KirimModuleCards;
+    /** ADR-0011 amendment 2026-11-17: the "Aplikasi luar" card, its numbers and API keys. */
+    gateway?: KirimGateway;
     history?: KirimHistoryImport;
     publicOrigin: string;
     /** HUB-IMPL-022: the user's applications for the header launcher. */
@@ -154,7 +157,14 @@ export function registerKirimAdminRoutes(
     });
   }
   // KIRIM-IMPL-003 §4: one card per WhatsApp-capable registry application.
-  read("/modules", () => input.cards.list());
+  read("/modules", async () => ({ ...(await input.cards.list()), ...(input.gateway ? { gerbang: await input.gateway.card() } : {}) }));
+  const gateway = input.gateway;
+  if (gateway) {
+    read("/gerbang", () => gateway.detail());
+    write("POST", "/gerbang/nomor-baru", (_request, actor) => gateway.connectNewNumber(actor), 201);
+    write("POST", "/gerbang/kunci", (request, actor) => gateway.createKey(actor, createKeySchema.parse(body(request))), 201);
+    write("POST", "/gerbang/kunci/:id/cabut", (request, actor) => gateway.revokeKey(actor, params(request).id!, revokeKeySchema.parse(body(request)).alasan));
+  }
   write("POST", "/modules/:app/nomor-baru", (request, actor) => input.cards.connectNewNumber(actor, params(request).app!, newNumberSchema.parse(body(request))));
   write("POST", "/modules/:app/pakai-nomor-lama", (request, actor) => input.cards.useOwnNumber(actor, params(request).app!, ownNumberSchema.parse(body(request))));
   write("POST", "/modules/:app/pakai-nomor", (request, actor) => input.cards.useNumber(actor, params(request).app!, useNumberSchema.parse(body(request))));

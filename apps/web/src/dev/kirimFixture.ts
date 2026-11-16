@@ -1,5 +1,5 @@
 import type { AntreanState } from "@/kirim/AntreanPage";
-import type { KirimDevice } from "@/kirim/api";
+import type { KirimDevice, KirimGatewayDetail } from "@/kirim/api";
 import type { NomorState } from "@/kirim/NomorPage";
 
 /** Synthetic Kirim SQ data for previews and tests; numbers are masked, no message bodies exist here. */
@@ -19,6 +19,23 @@ const ujiDevice: KirimDevice = {
   status_berubah_at: "2026-10-17T02:00:00.000Z", antrean: { antre: 0, gagal_hari_ini: 0 },
 };
 
+/** ADR-0011 amendment 2026-11-17: a number on the "Aplikasi luar" card; no application name on the card. */
+const luarDevice: KirimDevice = {
+  kode: "luar", label: "Aplikasi luar", pemilik: "aplikasi-luar", provider: "jalurpesan", provider_ref: "luar", status: "tersambung",
+  nomor_tersamar: "+62 851-••••-2504", antrean_dijeda: false, rate_per_menit: 10, jam_kirim_mulai: "06:00", jam_kirim_selesai: "21:00",
+  status_berubah_at: "2026-11-17T01:00:00.000Z", antrean: { antre: 0, gagal_hari_ini: 0 },
+};
+
+export const kirimGerbangDetailFixture: KirimGatewayDetail = {
+  nama: "Aplikasi luar",
+  keterangan: "Portal atau aplikasi di luar Sabilul Qur'an Suite yang memakai API",
+  nomor: [{ ...luarDevice, kunci_aktif: 1 }],
+  kunci: [
+    { id: "7a3d5f40-0000-4000-8000-00000000aa01", nama_aplikasi: "Toko online", awalan: "krm_Ab12Cd34", nomor: { kode: "luar", label: "Aplikasi luar" }, dibuat_at: "2026-11-17T01:05:00.000Z", dibuat_oleh: "staff:abc", terakhir_dipakai_at: "2026-11-17T02:00:00.000Z", dicabut_at: null },
+    { id: "7a3d5f40-0000-4000-8000-00000000aa02", nama_aplikasi: "Uji coba", awalan: "krm_Zz98Yy76", nomor: { kode: "luar", label: "Aplikasi luar" }, dibuat_at: "2026-11-16T01:05:00.000Z", dibuat_oleh: "staff:abc", terakhir_dipakai_at: null, dicabut_at: "2026-11-16T09:00:00.000Z" },
+  ],
+};
+
 export const kirimNomorFixture: NomorState = {
   status: "ready",
   consumers: [
@@ -32,10 +49,10 @@ export const kirimNomorFixture: NomorState = {
       { application_key: "hcis", nama: "HCIS", peran: "pemilik", nomor: hcisDevice, jenis: ["notifikasi"], antrean: { antre: 2, gagal_hari_ini: 0 }, dipakai_juga_oleh: ["Karir SQ"], pemilik_nomor: null },
       { application_key: "karir-sq", nama: "Karir SQ", peran: "pemakai", nomor: hcisDevice, jenis: ["notifikasi", "kode"], antrean: { antre: 1, gagal_hari_ini: 0 }, dipakai_juga_oleh: [], pemilik_nomor: "HCIS" },
       { application_key: "keuangan", nama: "Keuangan", peran: "kosong", nomor: null, jenis: [], antrean: { antre: 0, gagal_hari_ini: 0 }, dipakai_juga_oleh: [], pemilik_nomor: null },
-      { application_key: "samijaya", nama: "Samijaya", jenis_aplikasi: "luar", peran: "kosong", nomor: null, jenis: [], antrean: { antre: 0, gagal_hari_ini: 0 }, dipakai_juga_oleh: [], pemilik_nomor: null },
       { application_key: "spmb-sq", nama: "SPMB SQ", peran: "pemilik", nomor: spmbDevice, jenis: ["notifikasi", "kode"], antrean: { antre: 12, gagal_hari_ini: 1 }, dipakai_juga_oleh: ["Keluarga"], pemilik_nomor: null },
     ],
-    devices: [hcisDevice, spmbDevice, ujiDevice],
+    devices: [hcisDevice, spmbDevice, ujiDevice, luarDevice],
+    gerbang: { nama: kirimGerbangDetailFixture.nama, keterangan: kirimGerbangDetailFixture.keterangan, nomor: kirimGerbangDetailFixture.nomor, kunci_aktif: 1 },
   },
 };
 

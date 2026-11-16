@@ -108,6 +108,8 @@ export class KirimService {
       }
     }
     if (!consumer || !consumer.aktif) throw new KirimApiError(403, "consumer_unknown", "Pemakai tidak terdaftar.");
+    // The gateway consumer is reached only with an API key (ADR-0011 amendment 2026-11-17), never a Keycloak token.
+    if (consumer.gerbang) throw new KirimApiError(403, "consumer_unknown", "Pemakai tidak terdaftar.");
     if (consumer.applicationKey) {
       // A card's consumer sends only with the client the registry names for it today, and only
       // while its application is active and may use WhatsApp.
@@ -255,7 +257,8 @@ export class KirimService {
     }
   }
 
-  async getMessage(consumer: ConsumerRow, id: string) {
+  /** `deviceId`: an API key reads only messages sent through its own number. */
+  async getMessage(consumer: ConsumerRow, id: string, deviceId?: string) {
     if (!z.guid().safeParse(id).success) throw new KirimApiError(404, "not_found", "Pesan tidak ditemukan.");
     const result = await this.pool.query<{
       id: string;
@@ -267,8 +270,8 @@ export class KirimService {
     }>(
       `SELECT m.id, o.ref, o.status, o.error_code AS "errorCode", m.dry_run AS "dryRun", o.updated_at AS "updatedAt"
        FROM kirim_outbox o JOIN kirim_messages m ON m.id = o.message_id
-       WHERE o.message_id = $1 AND o.consumer_id = $2`,
-      [id, consumer.id],
+       WHERE o.message_id = $1 AND o.consumer_id = $2 AND ($3::uuid IS NULL OR o.device_id = $3::uuid)`,
+      [id, consumer.id, deviceId ?? null],
     );
     const row = result.rows[0];
     if (!row) throw new KirimApiError(404, "not_found", "Pesan tidak ditemukan.");

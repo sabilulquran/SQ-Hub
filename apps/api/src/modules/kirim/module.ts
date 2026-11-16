@@ -11,6 +11,7 @@ import { PgHubWorkspaceRepository, type HubWorkspaceApplicationSource } from "..
 import { KirimMessageActions } from "./actions.js";
 import { KirimAdminService } from "./admin.js";
 import { KirimModuleCards } from "./cards.js";
+import { KirimGateway } from "./gateway.js";
 import { KIRIM_K32_DEFAULTS, type KirimConfig } from "./config.js";
 import { KirimConversations } from "./conversations.js";
 import { KirimHistoryImport } from "./history-import.js";
@@ -50,6 +51,7 @@ export interface KirimModule {
   history: KirimHistoryImport;
   admin: KirimAdminService;
   cards: KirimModuleCards;
+  gateway: KirimGateway;
   worker: KirimSendWorker;
   webhooks: KirimWebhookSender;
   ingest?: KirimIngest;
@@ -109,6 +111,7 @@ export function createKirimModule(input: {
     : undefined;
   const admin = new KirimAdminService(pool, crypto, service, providers, ingest);
   const cards = new KirimModuleCards(pool, crypto, admin, providers);
+  const gateway = new KirimGateway(pool, crypto, providers);
   const history = new KirimHistoryImport(pool, crypto, service, providers, {
     enabled: config.historyImportEnabled ?? false,
     inboundMediaMaxBytes: config.inboundMediaMaxBytes,
@@ -179,6 +182,7 @@ export function createKirimModule(input: {
     history,
     admin,
     cards,
+    gateway,
     worker,
     webhooks,
     ...(ingest ? { ingest } : {}),
@@ -186,6 +190,7 @@ export function createKirimModule(input: {
       registerKirimInternalRoutes(app, {
         service,
         cards,
+        gateway,
         conversations,
         actions,
         photos,
@@ -203,6 +208,7 @@ export function createKirimModule(input: {
           access: input.access,
           admin,
           cards,
+          gateway,
           history,
           publicOrigin: config.admin.publicOrigin,
           launcher: { applications: workspaceApplications, ...(input.hubOrigin ? { hubOrigin: input.hubOrigin } : {}) },

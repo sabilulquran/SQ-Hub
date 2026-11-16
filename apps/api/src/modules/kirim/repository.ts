@@ -22,6 +22,8 @@ export interface ConsumerRow {
   applicationKey: string | null;
   /** The card's number: used when a send names no `device`. */
   nomorDeviceId: string | null;
+  /** ADR-0011 amendment 2026-11-17: the "Aplikasi luar" gateway consumer, reached only with an API key. */
+  gerbang: boolean;
 }
 
 export interface DeviceRow {
@@ -45,7 +47,7 @@ export interface DeviceRow {
 const CONSUMER_COLUMNS = `
   id, client_id AS "clientId", nama, webhook_url AS "webhookUrl",
   webhook_secret_ref AS "webhookSecretRef", kuota_harian AS "kuotaHarian", aktif,
-  application_key AS "applicationKey", nomor_device_id AS "nomorDeviceId"
+  application_key AS "applicationKey", nomor_device_id AS "nomorDeviceId", gerbang
 `;
 
 const DEVICE_COLUMNS = `
@@ -92,15 +94,17 @@ export interface RegistryApplication {
   name: string;
   machineClientId: string;
   status: string;
-  /** ADR-0011 amendment 2026-11-16: `luar` is an application outside SQ Core. A card label only. */
-  kind: "modul" | "luar";
 }
 
-/** KIRIM-IMPL-003 K-2: registry applications that get a card, i.e. may use WhatsApp. */
+/**
+ * KIRIM-IMPL-003 K-2: registry applications that get a card, i.e. may use WhatsApp. Only SQ Suite
+ * applications (`kind = 'modul'`): outside applications use the gateway card and API keys instead
+ * (ADR-0011 amendment 2026-11-17).
+ */
 export async function listWhatsAppApplications(db: Queryable): Promise<RegistryApplication[]> {
   const result = await db.query<RegistryApplication>(
-    `SELECT application_key AS "applicationKey", name, machine_client_id AS "machineClientId", status, kind
-       FROM applications WHERE whatsapp_capable ORDER BY name, application_key`,
+    `SELECT application_key AS "applicationKey", name, machine_client_id AS "machineClientId", status
+       FROM applications WHERE whatsapp_capable AND kind = 'modul' ORDER BY name, application_key`,
   );
   return result.rows;
 }
@@ -108,8 +112,8 @@ export async function listWhatsAppApplications(db: Queryable): Promise<RegistryA
 export async function findWhatsAppApplication(db: Queryable, key: { applicationKey: string } | { machineClientId: string }): Promise<RegistryApplication | null> {
   const byKey = "applicationKey" in key;
   const result = await db.query<RegistryApplication>(
-    `SELECT application_key AS "applicationKey", name, machine_client_id AS "machineClientId", status, kind
-       FROM applications WHERE whatsapp_capable AND ${byKey ? "application_key" : "machine_client_id"} = $1`,
+    `SELECT application_key AS "applicationKey", name, machine_client_id AS "machineClientId", status
+       FROM applications WHERE whatsapp_capable AND kind = 'modul' AND ${byKey ? "application_key" : "machine_client_id"} = $1`,
     [byKey ? key.applicationKey : key.machineClientId],
   );
   return result.rows[0] ?? null;
@@ -399,7 +403,7 @@ export async function enqueueDeviceWebhook(
   except?: string,
 ): Promise<void> {
   for (const consumerId of await deviceListeners(db, device)) {
-    if (consumerId !== except) await enqueueWebhook(db, crypto, consumerId, type, data);
+    if (consumerId !== except) await enqueueWebhook(db, crypto, consumerId, type, data, device.id);
   }
 }
 
@@ -413,18 +417,30 @@ export async function enqueueWebhook(
   consumerId: string,
   type: WebhookEventType,
   data: Record<string, unknown>,
+  /** The number the event is about: for the gateway consumer the webhook belongs to the number (ADR-0011 2026-11-17). */
+  deviceId?: string,
 ): Promise<string | null> {
-  const consumer = await db.query<{ webhookUrl: string | null }>(
-    `SELECT webhook_url AS "webhookUrl" FROM kirim_consumers WHERE id = $1`,
+  const consumer = await db.query<{ webhookUrl: string | null; gerbang: boolean }>(
+    `SELECT webhook_url AS "webhookUrl", gerbang FROM kirim_consumers WHERE id = $1`,
     [consumerId],
   );
-  if (!consumer.rows[0]?.webhookUrl) return null;
+  const row = consumer.rows[0];
+  if (!row) return null;
+  let target: string | null = null;
+  if (row.gerbang) {
+    if (!deviceId) return null;
+    const device = await db.query<{ webhookUrl: string | null }>("SELECT webhook_url AS \"webhookUrl\" FROM kirim_devices WHERE id = $1", [deviceId]);
+    if (!device.rows[0]?.webhookUrl) return null;
+    target = deviceId;
+  } else if (!row.webhookUrl) {
+    return null;
+  }
   const id = randomUUID();
   const occurredAt = (await dbNow(db)).toISOString();
   const body = JSON.stringify({ event_id: id, type, occurred_at: occurredAt, data });
   await db.query(
-    `INSERT INTO kirim_webhook_deliveries (id, consumer_id, event_type, payload_enc) VALUES ($1, $2, $3, $4)`,
-    [id, consumerId, type, crypto.seal(body, columnAad("kirim_webhook_deliveries", "payload_enc", id))],
+    `INSERT INTO kirim_webhook_deliveries (id, consumer_id, event_type, payload_enc, device_id) VALUES ($1, $2, $3, $4, $5)`,
+    [id, consumerId, type, crypto.seal(body, columnAad("kirim_webhook_deliveries", "payload_enc", id)), target],
   );
   return id;
 }
@@ -436,7 +452,7 @@ export async function enqueueDeviceStatus(
   status: string,
 ): Promise<void> {
   for (const consumerId of await deviceStatusRecipients(db, device)) {
-    await enqueueWebhook(db, crypto, consumerId, "device.status", { device: device.kode, status });
+    await enqueueWebhook(db, crypto, consumerId, "device.status", { device: device.kode, status }, device.id);
   }
 }
 
@@ -534,7 +550,7 @@ export interface OutboxStatusChange {
 export async function enqueueMessageStatus(db: Queryable, crypto: KirimCrypto, change: OutboxStatusChange): Promise<void> {
   const where = change.groupId ? { group_id: change.groupId } : change.conversationId ? { conversation_id: change.conversationId } : {};
   const data = { id: change.messageId, status: change.status, error_code: change.errorCode, dry_run: change.dryRun, ...where };
-  await enqueueWebhook(db, crypto, change.consumerId, "message.status", { ...data, ref: change.ref });
+  await enqueueWebhook(db, crypto, change.consumerId, "message.status", { ...data, ref: change.ref }, change.deviceId);
   if (change.ownerConsumerId && change.deviceId) {
     await enqueueDeviceWebhook(db, crypto, { id: change.deviceId, pemilikConsumerId: change.ownerConsumerId }, "message.status", { ...data, ref: null }, change.consumerId);
   } else if (change.ownerConsumerId && change.ownerConsumerId !== change.consumerId) {
