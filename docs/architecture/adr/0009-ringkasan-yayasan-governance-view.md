@@ -4,6 +4,8 @@
 **Date:** 2026-10-17
 **Specification:** HUB-IMPL-021 (ACCEPTED)
 
+> **Note — 2026-11-16 (ADR-0014).** The decision text below is not rewritten. Two things to keep in mind when reading it: (1) its entry point for organ members, the Ringkasan Yayasan page on the Hub host, is superseded by ADR-0012: organ members enter through Portal Organ at `organ.sabilulquran.or.id`; (2) the governance summary contract it defines is the **Laporan** face of ADR-0014 D4, which every application that holds foundation data must provide. "SQ Core" below means SQ Suite (the ecosystem), "module" means application, and "SQ Hub"/"Hub" keeps its meaning, the SQ Hub platform.
+
 ## Context
 The Yayasan organs (Pembina, Pengurus, Pengawas) need read-only oversight across SQ Core. Today only HCIS has it: the `FOUNDATION_BOARD` principal and the `/board` aggregate dashboard (HCIS ORG-003). Aset SQ has no governance role, and Karir SQ, Keuangan, and SPMB are coming.
 

@@ -118,7 +118,7 @@ export function ImporView({
           Memindahkan chat lama nomor ini ke Kirim SQ. Pesan hasil impor ditandai &ldquo;impor&rdquo; dan tidak memicu pemberitahuan atau balasan otomatis.
         </p>
       </div>
-      {state.status === "missing" ? <StateCard kind="empty" title="Pilih nomor dari halaman Modul" action={<a className={secondaryButton} href="/nomor">Ke Modul</a>} /> : null}
+      {state.status === "missing" ? <StateCard kind="empty" title="Pilih nomor dari halaman Aplikasi" action={<a className={secondaryButton} href="/nomor">Ke Aplikasi</a>} /> : null}
       {state.status === "loading" ? <StateCard kind="loading" title="Memuat riwayat impor" /> : null}
       {state.status === "forbidden" ? <StateCard kind="forbidden" title="Anda belum ditetapkan sebagai pengelola Kirim SQ" /> : null}
       {state.status === "error" ? (
@@ -143,7 +143,7 @@ export function ImporView({
           <Panel>
             <h2 className="font-display text-base font-bold text-brand-heading">Dari salinan awal</h2>
             <p className="mt-1 text-sm leading-6 text-muted-foreground">
-              Memasukkan semua chat pribadi dari salinan riwayat yang diterima mesin saat nomor ditautkan, termasuk chat yang belum pernah aktif di Kirim SQ. Pesan yang sudah ada tidak dimasukkan dua kali, dan tidak ada notifikasi ke modul atau tanda belum dibaca.
+              Memasukkan semua chat pribadi dari salinan riwayat yang diterima mesin saat nomor ditautkan, termasuk chat yang belum pernah aktif di Kirim SQ. Pesan yang sudah ada tidak dimasukkan dua kali, dan tidak ada notifikasi ke aplikasi atau tanda belum dibaca.
             </p>
             <button type="button" className={`${primaryButton} mt-3`} disabled={busy || !state.imports.impor_salinan_tersedia} onClick={onStoredImport}>
               <History className="h-4 w-4" aria-hidden="true" /> Impor semua dari salinan awal

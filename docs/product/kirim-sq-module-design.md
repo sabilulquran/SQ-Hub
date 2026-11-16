@@ -1,6 +1,8 @@
-# Kirim SQ — Desain modul
+# Kirim SQ — Desain aplikasi
 
-**Status:** DRAFT / DISCOVERY. Dokumen ini tidak mengizinkan implementasi atau perubahan production.
+> **Istilah (ADR-0014, 2026-11-16).** Kirim SQ adalah **aplikasi** di SQ Suite, bukan "modul"; modul adalah bagian di dalam satu aplikasi. Ia berjalan di dalam proses Hub (ADR-0014 D6, alasan 1) dan tetap memiliki tabel, aturan, dan flag rilisnya sendiri. Isi dokumen di bawah ditulis sebelum keputusan itu dan tidak ditulis ulang: baca "modul" untuk Kirim SQ sebagai "aplikasi", "modul SQ Hub"/"modul bersama" sebagai "aplikasi yang berjalan di proses Hub", dan "SQ Core" sebagai "SQ Suite". Nama berkas ini tetap. Status terkini ada di [`struktur-sq-suite.md`](struktur-sq-suite.md) §5.
+
+**Status:** Rancangan produk (revisi 3). Bagian yang diterima untuk dibangun ada di KIRIM-IMPL-001 s.d. -004; Kirim SQ sudah berjalan di production (STRUKTUR-001 §5.2). Dokumen ini sendiri tidak mengizinkan implementasi atau perubahan production.
 **Spesifikasi:** KIRIM-001; spesifikasi implementasi R1: KIRIM-IMPL-001 (ACCEPTED 2026-10-17); R2: KIRIM-IMPL-002 (ACCEPTED 2026-10-19)
 **Tanggal:** 2026-10-19 (revisi 3)
 **Terkait:** ADR-0001, ADR-0006, ADR-0010, ADR-0011 (dengan amandemen 2026-10-19); SPMB SQ `sq-spmb/docs/product/kelola-peminat-dan-whatsapp.md` (SPMB-002), `sq-spmb/docs/product/module-design.md` (§6.8, §8), `sq-spmb/docs/specs/SPMB-IMPL-001-r0-fondasi-pengaturan-publik.md`; JalurPesan `jalurpesan.web.id/README.md`

@@ -1,10 +1,12 @@
-# SQ Core app shell
+# SQ Suite app shell
 
-**Status:** ACCEPTED by the Product Owner on 2026-10-16. Every SQ Core app follows it (SQ Hub, HCIS, Aset SQ, and future apps).
+**Status:** ACCEPTED by the Product Owner on 2026-10-16. Every application in SQ Suite follows it (the SQ Hub platform's own pages, HCIS, Aset SQ, and future applications).
 
-**Part of:** [SQ Core design system, direction C](sq-core-design-system-c.md), which covers colour, type, logo and components. This document covers the **shell**: where account, app switching, the way back to SQ Hub, and admin areas live.
+**Terms (ADR-0014, 2026-11-16):** "SQ Core" was the earlier name for the ecosystem now called SQ Suite; this file keeps its name `sq-core-app-shell.md` because file names do not change. In the rules below "SQ Hub" keeps its meaning: the launcher row and links labelled "SQ Hub" lead to the landing page and launcher at `hub.sabilulquran.or.id`, and "SQ Hub" in the migration tables means the SQ Hub platform's own web pages (the landing page, Akun SQ, Admin SQ). The launcher row reads the same in every application: title "SQ Hub", subtitle "Beranda semua aplikasi Anda". The shared top bar of ADR-0014 D5 is the target this shell grows into.
 
-**Mockup:** "SQ Core Design System Mockup", artboards 5a–5e (private design canvas).
+**Part of:** [SQ Suite design system, direction C](sq-core-design-system-c.md), which covers colour, type, logo and components. This document covers the **shell**: where account, app switching, the way back to SQ Hub, and admin areas live.
+
+**Mockup:** "SQ Core Design System Mockup", artboards 5a–5e (private design canvas; the canvas keeps its original title).
 
 ## Why
 

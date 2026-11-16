@@ -10,7 +10,7 @@
 
 **Akun SQ** is the only user-facing name for the shared sign-in and account-security experience. Keycloak remains the identity engine. Existing technical identifiers such as realm key `sq-staff-staging`, issuer URLs, client IDs, service names, and network aliases remain stable because they are integration contracts rather than product copy.
 
-The authentication host must look like a focused account system. It must not present an HCIS application shell, SQ Hub workspace, organizational value board, or generic Keycloak branding.
+The authentication host must look like a focused account system. It must not present an HCIS application shell, the SQ Hub workspace, organizational value board, or generic Keycloak branding.
 
 ## Login theme
 
@@ -39,7 +39,7 @@ Required-action and status pages (authenticator setup, new password, profile, em
 
 ## Native Akun SQ account
 
-HUB-IMPL-019 supersedes the Keycloak Account Console as the normal user-facing account destination. `hub.sabilulquran.or.id/account` is a native SQ Hub surface with Profil Saya, Keamanan, Login & perangkat, and Aplikasi Saya.
+HUB-IMPL-019 supersedes the Keycloak Account Console as the normal user-facing account destination. `hub.sabilulquran.or.id/account` is a native surface of the SQ Hub platform with Profil Saya, Keamanan, Login & perangkat, and Aplikasi Saya.
 
 Keycloak still owns credentials, MFA, recovery, brokering, and IdP sessions. Native Akun SQ may launch supported Keycloak Application Initiated Actions through an explicit server-side allowlist, while the user-facing required-action screens remain Akun SQ themed.
 

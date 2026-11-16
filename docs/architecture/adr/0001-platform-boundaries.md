@@ -30,3 +30,13 @@ The current boundary is:
 - approval/workflow policy -> each domain application.
 
 All other platform-boundary decisions in ADR-0001 remain in force. The original decision text above is intentionally retained as architectural history.
+
+## Amendment note — 2026-11-16
+
+ADR-0014 D6 amends the placement rule of this ADR. The original decision text above is retained as architectural history.
+
+- The default stays as decided here: an application is its own program and database, and its business logic belongs to it. This always applies to applications that hold sensitive personal data, payroll, finance, or student records.
+- An application may run inside the SQ Hub process only when (1) it is a capability other applications call (Kirim SQ, ADR-0011), (2) it only shows data owned by others (Portal Organ, ADR-0012), or (3) it is small, its data is not sensitive, and server memory is the constraint — a recorded compromise (Kerja SQ, Sekretariat SQ, Rapat SQ, Al-Qur'an).
+- Sharing a process never changes ownership: the application keeps its own tables, rules, and release flag, and is reached only through a contract.
+
+Terms: since ADR-0014 the whole ecosystem is called SQ Suite. "SQ Hub" in this ADR keeps its meaning, the SQ Hub platform (the landing page and launcher, Akun SQ, Admin SQ, the directory and registry); "Finance", "Workspace", and "Academic" are Keuangan, Kerja SQ, and Sekolah.

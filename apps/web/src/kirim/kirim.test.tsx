@@ -48,15 +48,15 @@ describe("Kirim SQ host routing (KIRIM-IMPL-001 §2, §8)", () => {
   });
 });
 
-describe("WhatsApp modul screen (KIRIM-IMPL-003)", () => {
+describe("WhatsApp aplikasi screen (KIRIM-IMPL-003)", () => {
   it("renders loading, error, forbidden and empty states", () => {
     expect(renderToStaticMarkup(<NomorView state={{ status: "loading" }} onOpen={noop} onRetry={noop} />)).toContain('data-state="loading"');
-    expect(renderToStaticMarkup(<NomorView state={{ status: "error" }} onOpen={noop} onRetry={noop} />)).toContain("Modul belum dapat dimuat");
+    expect(renderToStaticMarkup(<NomorView state={{ status: "error" }} onOpen={noop} onRetry={noop} />)).toContain("Aplikasi belum dapat dimuat");
     expect(renderToStaticMarkup(<NomorView state={{ status: "forbidden" }} onOpen={noop} onRetry={noop} />)).toContain("Anda belum ditetapkan sebagai pengelola Kirim SQ");
     const empty = renderToStaticMarkup(
       <NomorView state={{ ...kirimNomorFixture, list: { modules: [], devices: [], peringatan: { terputus: [], webhook_habis: 0 } } } as typeof kirimNomorFixture} onOpen={noop} onRetry={noop} />,
     );
-    expect(empty).toContain("Belum ada modul yang memakai WhatsApp");
+    expect(empty).toContain("Belum ada aplikasi yang memakai WhatsApp");
     expect(empty).not.toContain('role="status"');
   });
 
@@ -70,7 +70,7 @@ describe("WhatsApp modul screen (KIRIM-IMPL-003)", () => {
     expect(html).toContain("Putuskan dari Karir SQ");
     expect(html).toContain("notifikasi, kode verifikasi");
     // Module cards only: a number no card shows is not listed (§13).
-    expect(html).not.toContain("Nomor tanpa kartu modul");
+    expect(html).not.toContain("Nomor tanpa kartu aplikasi");
     expect(html).not.toContain("Nomor uji");
     expect(html).not.toContain("Tambah nomor");
   });
@@ -94,7 +94,7 @@ describe("WhatsApp modul screen (KIRIM-IMPL-003)", () => {
     expect(html).toContain("+62 812-••••-7890");
     expect(html).toContain("12 antre · 1 gagal hari ini");
     expect(html).toContain("Nomor terputus:");
-    expect(html).toContain("gagal dikirim ke modul pemakai setelah 8 percobaan");
+    expect(html).toContain("gagal dikirim ke aplikasi pemakai setelah 8 percobaan");
     // KIRIM-IMPL-003 §11.1: a number paired before gets Sambungkan ulang, not Pasang.
     expect(html).toContain("Sambungkan ulang");
     expect(html).toContain("Pakai <strong>Sambungkan ulang</strong> di kartunya");
@@ -119,7 +119,7 @@ describe("WhatsApp modul screen (KIRIM-IMPL-003)", () => {
     const device = kirimNomorFixture.status === "ready" ? kirimNomorFixture.list.devices.find((item) => item.kode === "spmb")! : null!;
     const reconnect = (status: KirimDevice["status"], alasan = "") => ({ device: { ...device, status }, alasan, onAlasan: noop, perangkatBaru: false, onPerangkatBaru: noop });
     const choose = renderToStaticMarkup(<PairingContent view={{ step: "choose" }} phone="" onPhone={noop} onStart={noop} reconnect={reconnect("terputus")} />);
-    expect(choose).toContain("Kode nomor, percakapan, kartu modul, dan rute tetap sama");
+    expect(choose).toContain("Kode nomor, percakapan, kartu aplikasi, dan rute tetap sama");
     expect(choose).toContain("Tidak ada nomor baru yang dibuat");
     expect(choose).toContain("Pakai perangkat mesin baru");
     expect(choose).toMatch(/<button[^>]*disabled=""[^>]*>.*Pindai kode QR/);
@@ -242,7 +242,7 @@ describe("WhatsApp modul screen (KIRIM-IMPL-003)", () => {
     const html = renderToStaticMarkup(<NomorView state={state} onOpen={noop} onRetry={noop} />);
     // The card shows the number it sends through; its own deactivated number gets no card and no warning.
     expect(html).toContain("Memakai nomor milik HCIS");
-    expect(html).not.toContain("Nomor tanpa kartu modul");
+    expect(html).not.toContain("Nomor tanpa kartu aplikasi");
     expect(html).not.toContain("Pakai lagi");
     expect(html).not.toContain("SPMB resmi");
     const loose = renderToStaticMarkup(<NomorView state={{ ...state, list: { ...state.list, devices: state.list.devices.map((item) => (item.kode === "spmb" ? { ...item, status: "terputus" as const } : item)) } }} onOpen={noop} onRetry={noop} />);
@@ -254,7 +254,7 @@ describe("WhatsApp modul screen (KIRIM-IMPL-003)", () => {
     );
     expect(ubah).toContain("Pakai nomor lama SPMB SQ");
     expect(ubah).toContain("SPMB SQ berhenti memakai HCIS");
-    expect(ubah).toContain("Tetap memakai nomor modul lain");
+    expect(ubah).toContain("Tetap memakai nomor aplikasi lain");
     // The number in use and another active one can both be picked.
     expect(ubah).toContain("HCIS · ");
     expect(ubah).toContain("Nomor uji · ");
@@ -329,7 +329,7 @@ describe("KIRIM-IMPL-002 §12 screens", () => {
     expect(html).toContain('href="/jangan-hubungi"');
     expect(html).toContain('href="/aktivitas"');
     expect(html).toMatch(/href="\/nomor"[^>]*aria-current="page"|aria-current="page"[^>]*href="\/nomor"/);
-    expect(html).toContain("Pilih nomor dari halaman Modul");
+    expect(html).toContain("Pilih nomor dari halaman Aplikasi");
   });
 
   it("lists opt-outs masked and lets the admin remove only its own", () => {
@@ -348,7 +348,7 @@ describe("KIRIM-IMPL-002 §12 screens", () => {
     const html = renderToStaticMarkup(<JanganHubungiView state={state} filter={filterAll} busy={false} error={null} onFilter={noop} onAdd={async () => true} onRemove={noop} onReload={noop} />);
     expect(html).toContain("+62 812-••••-7890");
     expect(html).toContain("Nomor spmb");
-    expect(html).toContain("Dicabut oleh modulnya");
+    expect(html).toContain("Dicabut oleh aplikasinya");
     expect(html.match(/>.*Hapus<\/button>/g)).toHaveLength(1);
     for (const status of ["loading", "error", "forbidden"] as const) {
       expect(renderToStaticMarkup(<JanganHubungiView state={{ status }} filter={filterAll} busy={false} error={null} onFilter={noop} onAdd={async () => true} onRemove={noop} onReload={noop} />)).toContain(`data-state="${status}"`);

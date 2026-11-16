@@ -196,7 +196,7 @@ export function NomorPage({ preview }: { preview?: NomorState }) {
 
 function sharedBody(sharers: string[], body: string): string {
   return sharers.length > 0
-    ? `Nomor ini masih dipakai ${sharers.join(", ")}. Putuskan modul itu dulu dari kartunya, atau pindahkan pemilik nomor lewat Ubah. Untuk menghentikan semua pengiriman sementara, pakai Jeda antrean.`
+    ? `Nomor ini masih dipakai ${sharers.join(", ")}. Putuskan aplikasi itu dulu dari kartunya, atau pindahkan pemilik nomor lewat Ubah. Untuk menghentikan semua pengiriman sementara, pakai Jeda antrean.`
     : body;
 }
 
@@ -250,8 +250,8 @@ export function DeactivateWarning({ device, usage, paham, onPaham, onReconnect, 
   return (
     <div className="mt-3 space-y-2 text-sm">
       <div role="alert" className="rounded-xl bg-warning-soft px-3 py-2 text-warning-ink">
-        {usage === null ? <p>Memeriksa modul yang memakai nomor ini…</p> : null}
-        {usage && usage.kartu.length > 0 ? <p>Kartu yang dikosongkan: <strong>{usage.kartu.join(", ")}</strong>. Modul itu berhenti mengirim.</p> : null}
+        {usage === null ? <p>Memeriksa aplikasi yang memakai nomor ini…</p> : null}
+        {usage && usage.kartu.length > 0 ? <p>Kartu yang dikosongkan: <strong>{usage.kartu.join(", ")}</strong>. Aplikasi itu berhenti mengirim.</p> : null}
         {usage && routes.length > 0 ? <p>Rute yang ikut berhenti: <strong>{routes.join(", ")}</strong>.</p> : null}
         {usage && usage.kartu.length === 0 && routes.length === 0 ? <p>Tidak ada kartu atau rute yang memakai nomor ini.</p> : null}
         <p className="mt-1">Percakapan tetap tersimpan di {device.label}. Jangan membuat nomor baru untuk WhatsApp yang sama.</p>
@@ -264,7 +264,7 @@ export function DeactivateWarning({ device, usage, paham, onPaham, onReconnect, 
       ) : null}
       <label className="flex items-start gap-2">
         <input type="checkbox" className="mt-1" checked={paham} onChange={(event) => onPaham(event.target.checked)} />
-        <span>Saya paham {device.label} dinonaktifkan dan modul di atas berhenti mengirim lewat nomor ini.</span>
+        <span>Saya paham {device.label} dinonaktifkan dan aplikasi di atas berhenti mengirim lewat nomor ini.</span>
       </label>
     </div>
   );
@@ -275,7 +275,7 @@ export function GantiHint({ onGanti }: { onGanti?: (() => void) | undefined }) {
   if (!onGanti) return null;
   return (
     <p className="mt-3 rounded-xl bg-info-soft px-3 py-2 text-sm text-info-ink">
-      Mau memakai nomor WhatsApp lain untuk modul ini? <button type="button" className="font-bold underline" onClick={onGanti}>Ganti nomor WhatsApp</button> saja: kartu, percakapan, dan rutenya tetap.
+      Mau memakai nomor WhatsApp lain untuk aplikasi ini? <button type="button" className="font-bold underline" onClick={onGanti}>Ganti nomor WhatsApp</button> saja: kartu, percakapan, dan rutenya tetap.
     </p>
   );
 }
@@ -284,21 +284,21 @@ export function NomorView({ state, onOpen, onRetry }: { state: NomorState; onOpe
   return (
     <>
       <div>
-        <h1 className="font-display text-2xl font-bold tracking-[-0.025em] text-brand-heading">WhatsApp modul</h1>
-        <p className="mt-1 text-sm text-muted-foreground">Satu kartu untuk setiap modul SQ Core yang bisa memakai WhatsApp.</p>
+        <h1 className="font-display text-2xl font-bold tracking-[-0.025em] text-brand-heading">WhatsApp aplikasi</h1>
+        <p className="mt-1 text-sm text-muted-foreground">Satu kartu untuk setiap aplikasi yang bisa memakai WhatsApp.</p>
       </div>
 
       <div className="mt-5 space-y-4">
-        {state.status === "loading" ? <StateCard kind="loading" title="Memuat modul" /> : null}
+        {state.status === "loading" ? <StateCard kind="loading" title="Memuat aplikasi" /> : null}
         {state.status === "error" ? (
-          <StateCard kind="error" title="Modul belum dapat dimuat" body="Kirim SQ sedang tidak dapat dihubungi." action={<button type="button" className={secondaryButton} onClick={onRetry}><RefreshCw className="h-4 w-4" aria-hidden="true" /> Coba lagi</button>} />
+          <StateCard kind="error" title="Aplikasi belum dapat dimuat" body="Kirim SQ sedang tidak dapat dihubungi." action={<button type="button" className={secondaryButton} onClick={onRetry}><RefreshCw className="h-4 w-4" aria-hidden="true" /> Coba lagi</button>} />
         ) : null}
         {state.status === "forbidden" ? <StateCard kind="forbidden" title="Anda belum ditetapkan sebagai pengelola Kirim SQ" /> : null}
         {state.status === "ready" ? (
           <>
             <Warnings list={state.list} />
             {state.list.modules.length === 0 ? (
-              <StateCard kind="empty" title="Belum ada modul yang memakai WhatsApp" body="Modul muncul di sini begitu ditandai bisa memakai WhatsApp di registry aplikasi SQ Hub." />
+              <StateCard kind="empty" title="Belum ada aplikasi yang memakai WhatsApp" body="Aplikasi muncul di sini begitu ditandai bisa memakai WhatsApp di registry aplikasi SQ Hub." />
             ) : (
               <ul className="grid gap-4 lg:grid-cols-2 xl:grid-cols-3">
                 {state.list.modules.map((card) => (
@@ -476,7 +476,7 @@ export function TambahDialog({ card, numbers, owners = {}, editing, busy, error,
   const ownLabels = own.map((item) => item.label).join(", ");
   return (
     <DialogFrame title={editing ? `Ubah ${card.nama}` : `Tambah WhatsApp untuk ${card.nama}`}>
-      {!editing ? <p className="mt-1.5 text-sm text-muted-foreground">Pilih salah satu. Kode nomor, identitas modul, dan kunci webhook disiapkan otomatis.</p> : null}
+      {!editing ? <p className="mt-1.5 text-sm text-muted-foreground">Pilih salah satu. Kode nomor, identitas aplikasi, dan kunci webhook disiapkan otomatis.</p> : null}
       <div className="mt-3 space-y-3">
         {own.length > 0 ? (
           <label className={`${option} ${mode === "lama" ? "border-brand-primary bg-brand-primary-pale/40" : "border-border"}`}>
@@ -510,13 +510,13 @@ export function TambahDialog({ card, numbers, owners = {}, editing, busy, error,
         {!editing ? (
           <label className={`${option} ${mode === "pakai" ? "border-brand-primary bg-brand-primary-pale/40" : "border-border"}`}>
             <input type="radio" name="cara" className="mt-1" checked={mode === "pakai"} disabled={others.length === 0} onChange={() => setMode("pakai")} />
-            <span><strong>Pakai nomor yang sudah aktif</strong><br /><span className="text-muted-foreground">{others.length === 0 ? "Belum ada nomor aktif." : `${card.nama} ikut mengirim lewat nomor modul lain. Balasan tetap masuk ke pemilik nomor.`}</span></span>
+            <span><strong>Pakai nomor yang sudah aktif</strong><br /><span className="text-muted-foreground">{others.length === 0 ? "Belum ada nomor aktif." : `${card.nama} ikut mengirim lewat nomor aplikasi lain. Balasan tetap masuk ke pemilik nomor.`}</span></span>
           </label>
         ) : null}
         {editing && own.length > 0 ? (
           <label className={`${option} ${mode === "pakai" ? "border-brand-primary bg-brand-primary-pale/40" : "border-border"}`}>
             <input type="radio" name="cara" className="mt-1" checked={mode === "pakai"} onChange={() => setMode("pakai")} />
-            <span><strong>Tetap memakai nomor modul lain</strong><br /><span className="text-muted-foreground">Pilih nomornya di bawah. Balasan masuk ke pemilik nomor.</span></span>
+            <span><strong>Tetap memakai nomor aplikasi lain</strong><br /><span className="text-muted-foreground">Pilih nomornya di bawah. Balasan masuk ke pemilik nomor.</span></span>
           </label>
         ) : null}
         {mode === "pakai" && choices.length > 0 ? (
@@ -562,7 +562,7 @@ function Warnings({ list }: { list: KirimModuleList }) {
       <div className="space-y-1">
         {terputus.length > 0 ? <p><strong>Nomor terputus:</strong> {terputus.join(", ")}. Antreannya berhenti sampai tersambung lagi. Pakai <strong>Sambungkan ulang</strong> di kartunya.</p> : null}
         {ganda.length > 0 ? <p><strong>Nomor ganda:</strong> {ganda.join(", ")} tertaut ke WhatsApp yang sudah punya nomor. Pesan masuknya ditahan sampai digabung lewat <strong>Pakai nomor yang ada</strong>.</p> : null}
-        {list.peringatan.webhook_habis > 0 ? <p><strong>{list.peringatan.webhook_habis} event</strong> gagal dikirim ke modul pemakai setelah 8 percobaan.</p> : null}
+        {list.peringatan.webhook_habis > 0 ? <p><strong>{list.peringatan.webhook_habis} event</strong> gagal dikirim ke aplikasi pemakai setelah 8 percobaan.</p> : null}
       </div>
     </div>
   );
@@ -599,7 +599,7 @@ function EditDeviceDialog({ device, consumers, busy, error, onClose, onSave, onG
       <GantiHint onGanti={onGanti} />
       <div className="mt-3 space-y-3">
         <Field label="Label"><input className="sq-admin-input" value={form.label} onChange={(event) => setForm({ ...form, label: event.target.value })} /></Field>
-        <Field label="Modul pemilik">
+        <Field label="Aplikasi pemilik">
           <select className="sq-admin-input" value={form.pemilik} onChange={(event) => setForm({ ...form, pemilik: event.target.value })}>
             {consumers.map((consumer) => <option key={consumer.nama} value={consumer.nama}>{consumer.nama}</option>)}
           </select>
@@ -793,7 +793,7 @@ export function PairingContent({ view, phone, onPhone, onStart, reconnect, onRet
                 ) : null}
               </>
             ) : (
-              <p className="text-sm text-muted-foreground">Sesi WhatsApp lama di mesin diulang lalu QR baru dibuat untuk <strong>{reconnect.device.label}</strong>. Kode nomor, percakapan, kartu modul, dan rute tetap sama. Tidak ada nomor baru yang dibuat. Memindai dari HP lain berarti mengganti nomor WhatsApp-nya.</p>
+              <p className="text-sm text-muted-foreground">Sesi WhatsApp lama di mesin diulang lalu QR baru dibuat untuk <strong>{reconnect.device.label}</strong>. Kode nomor, percakapan, kartu aplikasi, dan rute tetap sama. Tidak ada nomor baru yang dibuat. Memindai dari HP lain berarti mengganti nomor WhatsApp-nya.</p>
             )}
             {reconnect.device.status === "tersambung" && !reconnect.ganti ? (
               <p role="alert" className="rounded-xl bg-warning-soft px-3 py-2 text-sm text-warning-ink">Nomor ini sedang tersambung. Sesi yang berjalan dilepas, dan pesan tidak terkirim sampai QR dipindai lagi.</p>

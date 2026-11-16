@@ -208,7 +208,7 @@ export class KirimConversations {
    */
   async ownedDevice(consumer: ConsumerRow, kode: string): Promise<DeviceRow> {
     const device = await findDevice(this.pool, kode);
-    if (!device || !usesNumber(consumer, device)) throw new KirimApiError(403, "not_owner", "Hanya modul yang kartunya memakai nomor ini yang boleh memakai ini.");
+    if (!device || !usesNumber(consumer, device)) throw new KirimApiError(403, "not_owner", "Hanya aplikasi yang kartunya memakai nomor ini yang boleh memakai ini.");
     return device;
   }
 

@@ -1,40 +1,51 @@
-> **RETIRED / ARCHIVED — DO NOT DEPLOY — DO NOT RECREATE.** Staging references and staging commands in this document are historical evidence. The production VPS is production-only by owner decision of 2 October 2026. See the permanent-retirement runbook; historical staging instructions do not authorize deployment.
+# SQ Suite Target Architecture
 
-# SQ Hub Target Architecture
+**Status:** LIVING description of the current architecture. The decisions themselves are in the accepted ADRs cited in each section; this document adds none. Aligned to ADR-0014 on 2026-11-16. (It was previously labelled DRAFT and also carried a blanket RETIRED banner; only its Wave 1 staging notes are retired, see "Deployment".)
 
-**Status:** DRAFT
+**Terms:** SQ Suite is the whole ecosystem; SQ Hub is its landing page and launcher at `hub.sabilulquran.or.id`. In this document "the platform" or "Hub" means the SQ Hub platform (the SQ Hub landing page and launcher, Akun SQ, Admin SQ, Direktori Organisasi) that lives in the `SQ-Hub` repository. The list of applications, where each runs, and their status is [`docs/product/struktur-sq-suite.md`](../product/struktur-sq-suite.md) (STRUKTUR-001).
 
 ## Context
-SQ Hub adalah shared foundation untuk ekosistem aplikasi Sabilul Qur'an. Aplikasi domain harus dapat berkembang dan dirawat secara independen, tetapi berbagi identity, Organization Directory, app access, dan design language.
+SQ Suite adalah ekosistem aplikasi Yayasan Sabilul Qur'an. Aplikasi harus dapat berkembang dan dirawat secara independen, tetapi berbagi platform SQ Hub: identity (Akun SQ), Organization Directory, app access (Admin SQ), halaman awal dan peluncur (SQ Hub), dan design language.
 
 ## Target logical architecture
 ```text
-                 HCIS workforce organization
-                 authoring / authority
-                           |
-             versioned authenticated contract
-                           v
-                         SQ Hub
-                           |
-       +-------------------+-------------------+
-       |                   |                   |
-   SQ Identity       Organization Directory  App Registry/Access
-   (Keycloak)         projection/distribution     |
-       |                   |                       |
-       +-------------------+-----------------------+
-                           |
-                    Hub Launcher
-                           |
-       +-------------------+-------------------+
-       |                   |                   |
-      HCIS                SPMB             future apps
-                                           Finance/Workspace/...
+                         SQ Suite (the ecosystem)
 
-Approval/workflow policy and transactions remain in each domain application.
+  Portals:  Admin | Pegawai | Organ | Keluarga | Pelamar | Situs publik
+                              |
+                  login.  Akun SQ (Keycloak realms)
+                              |
+  +-----------------------------------------------------------------+
+  | SQ Hub platform (repo SQ-Hub, one Node process + DB)           |
+  |   SQ Hub (launcher)    Admin SQ (App Registry/Access, roles)    |
+  |   Organization Directory  <- versioned contract <-  HCIS        |
+  |   Applications hosted in the Hub process (ADR-0014 D6):         |
+  |     Kirim SQ | Portal Organ | Kerja SQ | Sekretariat SQ | ...   |
+  |     each with its own table prefix, rules, and release flag     |
+  +-----------------------------------------------------------------+
+        |  OIDC, Application Access check, launcher list, Directory
+        |  read contract, Kirim SQ sending, governance summaries
+        v
+  Applications in their own program and database (ADR-0001 default):
+     HCIS | Aset SQ | Karir SQ | SPMB SQ | Keluarga SQ | Keuangan | ...
+
+Approval/workflow policy and transactions remain in each application.
+Each application that holds foundation data publishes a Laporan face
+(governance summary) that Portal Organ displays and never stores.
 
 SQ Design System is extracted from the accepted HCIS visual baseline
-and applies across SQ Identity and all application frontends.
+and applies across Akun SQ and all application frontends.
 ```
+
+The diagram names examples only. Which applications exist, which process each runs in, and whether it is live is recorded in STRUKTUR-001 §5.
+
+## Where an application runs
+ADR-0014 D6 (amending ADR-0001):
+
+- Default: its own program and database. This always applies to applications that hold sensitive personal data, payroll, finance, or student records.
+- An application may run inside the Hub process when (1) it is a capability other applications call (Kirim SQ, ADR-0011), (2) it only shows data owned by others (Portal Organ, ADR-0012), or (3) it is small, its data is not sensitive, and server memory is the constraint. Reason 3 is a recorded compromise; such an application moves to its own program when memory allows or its data grows more sensitive.
+- Hosting inside the Hub process never changes ownership. The application keeps its own tables (own prefix), rules, and release flag (`*_ENABLED`), imports nothing from other applications' code, and is reached by other applications only through a contract.
+- The code folders under `apps/api/src/modules/` and `apps/web/src/` are technical names; a folder there may be a platform part or a hosted application.
 
 ## Identity
 - Staff authentication is centralized through SQ Identity.
@@ -64,7 +75,7 @@ Access/refresh tokens are handled server-side and are not stored in browser loca
 Foundation v1 SSO baseline: idle 8 hours, maximum 12 hours, Remember Me disabled initially, access-token baseline 5 minutes.
 
 ## Authorization split
-SQ Hub owns Application Access: whether an Identity may enter an application.
+The platform (Admin SQ) owns Application Access: whether an Identity may enter an application.
 
 Each application owns its domain authorization: what the Identity may do inside that application.
 
@@ -106,13 +117,13 @@ Users activate/create new SQ Identity credentials. Production cutover changes HC
 ADR-0007 defines the organization boundary:
 
 - HCIS is system of authority and authoring for workforce organization: organizational units, positions/jobs, employee placements, manager relationships, effective dates, and related employment facts.
-- SQ Hub owns the shared Organization Directory projection/distribution layer.
+- The platform owns the shared Organization Directory projection/distribution layer.
 - Hub ingests organization facts through an authenticated controlled contract and does not edit HCIS-owned facts.
-- Finance, Workspace, and other domain applications should consume the Hub read contract instead of coupling directly to the HCIS database.
+- Keuangan, Kerja SQ, and other applications consume the Hub read contract instead of coupling directly to the HCIS database.
 - Hub is not a central approval engine. Domain apps own approval policy, workflow state, delegation, escalation, authorization, and decision audit.
 - Domain transactions snapshot the resolved approver plus organization version/effective time; later organization changes do not silently rewrite in-flight approvals unless the domain has an explicit rule.
 - Hub may serve last-known-good organization projection during temporary HCIS unavailability, with source/version/as-of/staleness metadata.
-- SLA, global identifier, snapshot/delta, conflict handling, and retention remain DISCOVERY/TBD in HUB-IMPL-018.
+- Identifier, full-snapshot pull, reconciliation, and freshness are set by HUB-IMPL-018 (ACCEPTED); deployment SLA and history retention remain TBD.
 
 ## Data boundaries
 - Ownership is defined in `docs/domain/ownership-and-integration.md`.
@@ -120,52 +131,43 @@ ADR-0007 defines the organization boundary:
 - Cross-domain operational writes use owned contracts/APIs by default.
 
 ## Engineering stack
-SQ Hub follows ADR-0006 and the HCIS engineering family:
+The `SQ-Hub` repository follows ADR-0006 and the HCIS engineering family:
 - TypeScript/Node.js;
 - Fastify + PostgreSQL for API;
 - React/Vite/Tailwind for web when required;
 - Vitest/typecheck/lint quality gates.
 
-Same technology family does not mean same runtime or repository. HCIS and SQ Hub remain independently deployable.
+Same technology family does not mean same runtime or repository. HCIS and the platform remain independently deployable.
 
 ## Design system
 - HCIS visual language at the accepted reference snapshot is the initial SQ Design System baseline (ADR-0004).
 - `docs/design/hcis-baseline.md` captures the foundation so routine agents do not need to rediscover HCIS styling.
-- SQ Hub becomes canonical owner of extracted cross-product design primitives once shared packages/tokens are created.
+- The `SQ-Hub` repository becomes canonical owner of extracted cross-product design primitives once shared packages/tokens are created.
 - SQ Identity/Keycloak receives an SQ-branded theme derived from the same baseline.
 - Domain-specific UI remains with domain applications.
 
-## Deployment direction
-Initial deployment may use one VPS and shared PostgreSQL server infrastructure. Logical database/service ownership and staging/production environments remain separate.
+## Deployment
+Production runs on the Mi8 host as plain Node processes with a shared PostgreSQL server, without containers (`docs/operations/vps-deployment-retired-2026-10-19.md`). Logical database and service ownership stay separate per application.
 
-Keycloak may run on the same VPS initially if measured capacity is sufficient, but it remains a separately operated shared service with its own production configuration, resource limits, backup/restore, and upgrade verification.
+Keycloak runs on the same host as a separately operated shared service with its own configuration, backup/restore, and upgrade verification.
 
-Target production naming:
-- `hub.sabilulquran.or.id` — Hub Launcher
-- `login.sabilulquran.or.id` — SQ Identity / Keycloak entry point
-- `hcis.sabilulquran.or.id` — HCIS
-- `spmb.sabilulquran.or.id` — SPMB
+There is **no staging environment**: staging on the production VPS was permanently retired on 2 October 2026 (`docs/operations/permanent-staging-retirement-2026-10-02.md`), and the earlier paid VPS itself was shut down after the move to Mi8. The Wave 1 staging names (`hub-staging`, `hcis-staging`, realm `sq-staff-staging`) are historical and must not be recreated.
 
-Wave 1 staging naming:
-- `hub-staging.sabilulquran.or.id`
-- `login.sabilulquran.or.id` — staging is isolated by the `sq-staff-staging` realm and separate staging data/configuration.
-- `hcis-staging.sabilulquran.or.id`
+Production addresses are not listed here. The portal and application addresses, and the last live check of each, are in STRUKTUR-001 §2, §5, and §10. Sign-in for every portal goes through `login.sabilulquran.or.id`.
 
-Staging and production may share a VPS but must not share mutable realm/database/configuration state.
-
-## Implementation Wave 1
-Implementation contracts:
+## Implementation Wave 1 (historical)
+The first implementation contracts, all delivered:
 - `HUB-IMPL-001` — Keycloak staging foundation;
 - `HUB-IMPL-002` — Application Registry and Application Access;
 - `HUB-IMPL-003` — HCIS OIDC consumer integration.
 
-See `docs/product/implementation-wave-1.md`.
+See `docs/product/implementation-wave-1.md`. The full specification index is `docs/specs/README.md`.
 
 ## Architecture constraints
 - Do not create an ERP monolith.
 - Do not build a universal Person Registry without proven need.
 - Do not create a central universal permission engine for all domain actions in Foundation v1.
-- Do not create a central approval engine in SQ Hub.
+- Do not create a central approval engine in the platform.
 - Do not create direct database coupling, dual-write, a parallel organization master, or a Keycloak organization master.
 - Do not move domain authorization to Keycloak only because Keycloak provides Authorization Services.
 - Do not require separate physical servers merely to preserve domain boundaries.
@@ -174,4 +176,5 @@ See `docs/product/implementation-wave-1.md`.
 - Do not migrate legacy HCIS password/MFA formats into Keycloak through custom compatibility plugins without a superseding ADR.
 - Do not silently fall back from failed OIDC authentication to legacy local login.
 - Do not make every domain request synchronously depend on SQ Hub merely to achieve faster access revocation.
+- Do not move an application into the Hub process outside the three reasons of ADR-0014 D6, and do not let a hosted application share tables or code with another application.
 - Do not invent a new cross-product visual language that conflicts with the accepted HCIS/SQ design baseline.

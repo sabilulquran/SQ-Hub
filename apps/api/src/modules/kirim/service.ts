@@ -122,7 +122,7 @@ export class KirimService {
   /** KIRIM-IMPL-003 §5: the named number, or the number on the consumer's card. */
   async resolveDevice(consumer: ConsumerRow, kode: string | undefined): Promise<DeviceRow> {
     if (kode === undefined && !consumer.nomorDeviceId) {
-      throw new KirimApiError(422, "device_not_connected", "Modul ini belum tersambung ke WhatsApp. Sambungkan di kartu modul di Kirim SQ.");
+      throw new KirimApiError(422, "device_not_connected", "Aplikasi ini belum tersambung ke WhatsApp. Sambungkan di kartu aplikasinya di Kirim SQ.");
     }
     const device = kode !== undefined ? await findDevice(this.pool, kode) : await findDeviceById(this.pool, consumer.nomorDeviceId!);
     if (!device || device.status === "nonaktif") throw new KirimApiError(422, "device_inactive", "Nomor tidak aktif.");
@@ -347,7 +347,7 @@ export class KirimService {
   /** The number's owner (KIRIM-001 §3.3) or a module whose card is on it (KIRIM-IMPL-003 §14); anyone else gets `403 not_owner`. */
   async ownedDeviceId(consumer: ConsumerRow, kode: string): Promise<string> {
     const device = await findDevice(this.pool, kode);
-    if (!device || !usesNumber(consumer, device)) throw new KirimApiError(403, "not_owner", "Hanya modul yang kartunya memakai nomor ini yang boleh memakai ini.");
+    if (!device || !usesNumber(consumer, device)) throw new KirimApiError(403, "not_owner", "Hanya aplikasi yang kartunya memakai nomor ini yang boleh memakai ini.");
     return device.id;
   }
 

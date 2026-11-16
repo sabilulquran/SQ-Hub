@@ -1,5 +1,7 @@
 # ADR-0011: Kirim SQ as an SQ Hub Shared WhatsApp Capability
 
+> **Terms: see ADR-0014 (2026-11-16).** Kirim SQ is an application that runs inside the Hub process (D6 reason 1); "module" below for Kirim SQ or for a consumer means application, and "SQ Core" means SQ Suite.
+
 **Status:** ACCEPTED (Product Owner, 2026-10-17); AMENDED 2026-10-19 (see [Amendment 2026-10-19](#amendment-2026-10-19-kirim-sq-is-the-engine-the-inbox-lives-in-the-owning-module))
 **Date:** 2026-10-17
 **Related:** ADR-0001, ADR-0006, ADR-0010; `docs/product/kirim-sq-module-design.md` (KIRIM-001, revision 2); SPMB SQ `sq-spmb/docs/product/module-design.md` (SPMB-001 §6.8, §8); JalurPesan `jalurpesan.web.id/README.md`
