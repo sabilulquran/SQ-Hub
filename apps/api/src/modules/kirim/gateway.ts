@@ -156,8 +156,9 @@ export class KirimGateway {
     return withTransaction(this.pool, async (client) => {
       const consumer = await this.consumer(client);
       const kode = await freeIdentifier(client, "kirim_devices", "luar");
-      const count = await client.query<{ count: string }>("SELECT count(*) AS count FROM kirim_devices WHERE pemilik_consumer_id = $1", [consumer.id]);
-      const n = Number(count.rows[0]?.count ?? 0) + 1;
+      const labels = new Set((await client.query<{ label: string }>("SELECT label FROM kirim_devices WHERE pemilik_consumer_id = $1", [consumer.id])).rows.map((row) => row.label));
+      let n = 1;
+      while (labels.has(n === 1 ? GATEWAY_CARD_NAME : `${GATEWAY_CARD_NAME} ${n}`)) n += 1;
       const provider: ProviderName = this.providers.jalurpesan ? "jalurpesan" : "log";
       const deviceId = randomUUID();
       await client.query(

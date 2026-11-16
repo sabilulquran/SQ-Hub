@@ -200,6 +200,12 @@ describe("Kunci API (konsumen)", () => {
 
     // A notification is allowed too (the gateway owns the number).
     expect((await withKey(kunci, "POST", "/messages", { jenis: "notifikasi", to: PHONE, text: "Pesanan diproses" }, "n:1")).statusCode).toBe(202);
+    // A 200-character client key still fits the stored (scoped, hashed) key, and replays the same message.
+    const long = "k".repeat(200);
+    const once = await withKey(kunci, "POST", "/messages", { jenis: "kode", to: PHONE, text: "Kode: 7" }, long);
+    const again = await withKey(kunci, "POST", "/messages", { jenis: "kode", to: PHONE, text: "Kode: 7" }, long);
+    expect(once.statusCode).toBe(202);
+    expect(again.json().id).toBe(once.json().id);
   });
 
   it("refuses an unknown key, a device field, and the conversation API", async () => {

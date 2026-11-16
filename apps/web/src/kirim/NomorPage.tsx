@@ -169,7 +169,7 @@ export function NomorPage({ preview }: { preview?: NomorState }) {
       {(dialog?.kind === "tambah" || dialog?.kind === "ubah-pemakai") && state.status === "ready" ? (
         <TambahDialog
           card={dialog.card}
-          numbers={state.list.devices.filter((device) => device.status !== "nonaktif" && device.kode !== dialog.card.nomor?.kode)}
+          numbers={state.list.devices.filter((device) => device.status !== "nonaktif" && device.kode !== dialog.card.nomor?.kode && !isGerbang(device))}
           owners={Object.fromEntries(state.list.modules.filter((card) => card.peran === "pemilik" && card.nomor).map((card) => [card.nomor!.kode, card.nama]))}
           editing={dialog.kind === "ubah-pemakai"}
           busy={busy}

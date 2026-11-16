@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+
 import multipart from "@fastify/multipart";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { z } from "zod";
@@ -183,8 +185,10 @@ export function registerKirimInternalRoutes(
         return sendKirimError(reply, 400, "invalid_request", "Kunci API selalu memakai nomornya sendiri; jangan kirim field device.", ["device"]);
       }
       try {
-        // Idempotency keys are per application: two keys may reuse the same value without clashing.
-        return reply.status(202).send(await input.service.acceptMessage(consumer, apiKey ? `${apiKey.id}:${key}` : key, parsed.data));
+        // Idempotency keys are per application: two keys may reuse the same value without clashing. The
+        // client's value is hashed so the stored key stays within the column's 200 characters.
+        const scopedKey = apiKey ? `krm:${apiKey.id}:${createHash("sha256").update(key, "utf8").digest("hex")}` : key;
+        return reply.status(202).send(await input.service.acceptMessage(consumer, scopedKey, parsed.data));
       } catch (error) {
         return handleKirimError(reply, error);
       }
