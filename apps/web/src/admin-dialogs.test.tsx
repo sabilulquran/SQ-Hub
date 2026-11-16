@@ -16,6 +16,7 @@ import type { AdminApplication, AdminStaff } from "@/types";
 
 const applications: AdminApplication[] = [
   { key: "hcis", name: "HCIS", canonicalUrl: "https://hcis.example", status: "active", governanceSummaryPath: null, governanceAudience: null, governanceOrder: 0 },
+  { key: "samijaya", name: "Samijaya", canonicalUrl: "https://samijaya.example", status: "active", governanceSummaryPath: null, governanceAudience: null, governanceOrder: 0, kind: "luar", whatsappCapable: true, machineClientId: "samijaya" },
 ];
 
 function at(href: string) {
@@ -160,5 +161,36 @@ describe("answerStillWanted", () => {
     expect(answerStillWanted("A", "B", true)).toBe(false);
     expect(answerStillWanted("A", null, true)).toBe(true);
     expect(answerStillWanted("A", "A", true)).toBe(true);
+  });
+});
+
+// ADR-0011 amendment 2026-11-16: an application outside SQ Core is registered here with its kind,
+// the WhatsApp switch and its Keycloak machine client; nothing about numbers is asked.
+describe("Registry aplikasi: jenis aplikasi dan WhatsApp lewat Kirim", () => {
+  it("labels an outside application and its WhatsApp use on the card", () => {
+    at("/admin");
+    const html = renderToStaticMarkup(<AdminCenterPage workspace={workspaceFixture} previewApplications={applications} />);
+    expect(html).toContain("Aplikasi luar");
+    expect(html).toContain("WhatsApp lewat Kirim");
+    expect(html.split("Aplikasi luar").length - 1).toBe(1);
+  });
+
+  it("offers the kind, the WhatsApp switch and the machine client in the form, filled from the application", () => {
+    at("/admin?aplikasi=samijaya");
+    const html = renderToStaticMarkup(<AdminCenterPage workspace={workspaceFixture} previewApplications={applications} />);
+    expect(html).toContain("Jenis aplikasi");
+    expect(html).toContain('<option value="luar" selected="">Aplikasi luar</option>');
+    expect(html).toContain("Pakai WhatsApp lewat Kirim");
+    expect(html).toMatch(/<input type="checkbox"[^>]*checked=""/);
+    expect(html).toContain("Client ID Keycloak (client mesin)");
+    expect(html).toContain('value="samijaya"');
+    expect(html).not.toContain("SQ Core");
+  });
+
+  it("starts a new application as a module without WhatsApp", () => {
+    at("/admin?aplikasi=baru");
+    const html = renderToStaticMarkup(<AdminCenterPage workspace={workspaceFixture} previewApplications={applications} />);
+    expect(html).toContain('<option value="modul" selected="">Modul platform</option>');
+    expect(html).not.toMatch(/<input type="checkbox"[^>]*checked=""/);
   });
 });

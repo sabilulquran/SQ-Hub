@@ -36,6 +36,8 @@ export interface KirimDeviceList {
 export interface KirimModuleCard {
   application_key: string;
   nama: string;
+  /** ADR-0011 amendment 2026-11-16: `luar` is an application outside SQ Core; the card shows a small label. */
+  jenis_aplikasi?: "modul" | "luar";
   peran: "kosong" | "pemilik" | "pemakai";
   nomor: KirimDevice | null;
   jenis: Array<"notifikasi" | "kode">;

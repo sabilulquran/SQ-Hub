@@ -92,12 +92,14 @@ export interface RegistryApplication {
   name: string;
   machineClientId: string;
   status: string;
+  /** ADR-0011 amendment 2026-11-16: `luar` is an application outside SQ Core. A card label only. */
+  kind: "modul" | "luar";
 }
 
 /** KIRIM-IMPL-003 K-2: registry applications that get a card, i.e. may use WhatsApp. */
 export async function listWhatsAppApplications(db: Queryable): Promise<RegistryApplication[]> {
   const result = await db.query<RegistryApplication>(
-    `SELECT application_key AS "applicationKey", name, machine_client_id AS "machineClientId", status
+    `SELECT application_key AS "applicationKey", name, machine_client_id AS "machineClientId", status, kind
        FROM applications WHERE whatsapp_capable ORDER BY name, application_key`,
   );
   return result.rows;
@@ -106,7 +108,7 @@ export async function listWhatsAppApplications(db: Queryable): Promise<RegistryA
 export async function findWhatsAppApplication(db: Queryable, key: { applicationKey: string } | { machineClientId: string }): Promise<RegistryApplication | null> {
   const byKey = "applicationKey" in key;
   const result = await db.query<RegistryApplication>(
-    `SELECT application_key AS "applicationKey", name, machine_client_id AS "machineClientId", status
+    `SELECT application_key AS "applicationKey", name, machine_client_id AS "machineClientId", status, kind
        FROM applications WHERE whatsapp_capable AND ${byKey ? "application_key" : "machine_client_id"} = $1`,
     [byKey ? key.applicationKey : key.machineClientId],
   );

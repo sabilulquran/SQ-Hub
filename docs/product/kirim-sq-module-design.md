@@ -162,6 +162,8 @@ Tambahan dari KIRIM-IMPL-001 (ACCEPTED 2026-10-17, §4): `kirim_webhook_deliveri
 
 Autentikasi backend: token **client credentials** realm `sq-staff` (pola `spmb-api`), dengan audience `sq-hub-kirim`. Kirim SQ memetakan `client_id` ke `kirim_consumers`.
 
+> **Aplikasi di luar SQ Core (sejak 2026-11-16).** Kontrak yang sama berlaku untuk aplikasi luar seperti Samijaya: didaftarkan dari Pusat Admin sebagai jenis *Aplikasi luar* dengan client Keycloak-nya, mendapat kartu di Kirim berlabel "aplikasi luar", dan mengirim tanpa menyebut nomor. Panduan lengkap untuk developer aplikasi lain, bisa diikuti tanpa membaca kode: [Panduan API gateway WhatsApp lewat Kirim untuk aplikasi luar](../kirim/panduan-api-gateway-aplikasi-luar.md). Amandemen ADR-0011 2026-11-16.
+
 ### 5.1 Kirim pesan otomatis
 
 `POST /internal/kirim/messages` dengan header `Idempotency-Key`:
@@ -318,7 +320,8 @@ Modul pemakai tidak berubah sama sekali.
 - **HCIS:** "inbox admin HCIS" yang direncanakan mengikuti pola yang sama: dibangun di HCIS di atas API percakapan nomor `hcis`, atau sebagai komponen tampilan bersama bila SPMB dan HCIS sama-sama memakainya (SPMB-002 §12 no. 7). Bukan layar Kirim SQ.
 - **Keluarga SQ (KEL-IMPL-001):** relay kode `POST /internal/otp-deliveries` mengirim lewat Kirim SQ dengan `jenis: "kode"` di nomor `spmb`.
 - **KIRIM-IMPL-001 (R1, ACCEPTED):** tidak diubah. Daftar "Di luar R1" yang menyebut inbox, menu WhatsApp, `kirim_device_members`, dan `kirim_actions` untuk R2 digantikan dokumen ini. Kolom `kirim_conversations.ditangani_oleh` yang sudah ada di database tetap kosong (§13 no. 1). R2 butuh spesifikasi implementasi baru (usulan KIRIM-IMPL-002).
-- **ADR-0011:** diberi amandemen 2026-10-19 (Kirim SQ hanya mesin dan API; kotak masuk di modul pemilik nomor).
+- **ADR-0011:** diberi amandemen 2026-10-19 (Kirim SQ hanya mesin dan API; kotak masuk di modul pemilik nomor), dan amandemen 2026-11-16 (aplikasi luar boleh punya kartu, aturan sama dengan modul).
+- **Aplikasi luar (Samijaya dan berikutnya):** memakai [panduan API gateway](../kirim/panduan-api-gateway-aplikasi-luar.md); pendaftaran dari Pusat Admin (jenis aplikasi, sakelar WhatsApp lewat Kirim, client ID Keycloak), tanpa perubahan di Kirim untuk tiap aplikasi baru.
 
 ## 12. Operasional dan gate Mi8
 
@@ -366,4 +369,5 @@ adanya. Tidak ada pertanyaan terbuka yang tersisa, jadi KIRIM-IMPL-002 boleh dit
 | 2026-10-19 (revisi 3) | **Kirim SQ hanya mesin di balik layar** (API WhatsApp: nomor, kirim, terima, simpan chat dan media, status, jangan-hubungi, batas laju). Kotak masuk staf dan pengelolaan peminat dibangun di modul pemilik nomor, SPMB lebih dulu (SPMB-002). Kirim SQ R2 menjadi API percakapan. |
 | 2026-10-19 | Isi chat tetap di Kirim SQ (dikonfirmasi PO). Tambahan: API grup — baca dan balas di R2, buat grup dan tambah anggota di R3 — dan impor riwayat chat lama (SPMB-002 §7.6, §7.8). |
 | 2026-10-19 | **Enam pertanyaan teknis §13 no. 1–6 dijawab PO, seluruh saran disetujui:** kolom `ditangani_oleh` dihapus di migration R2; opt-out bertambah cakupan `device` yang hanya boleh dibuat pemilik nomor, sehingga "jangan hubungi" dari SPMB menghentikan semua pesan otomatis lewat nomor itu kecuali `kode`; petugas boleh membalas nomor ber-opt-out hanya bila orang itu menyapa dalam 24 jam terakhir; syarat sebelum memulai chat diperiksa modul pemilik nomor; pembacaan isi percakapan diaudit di Kirim SQ dan di modul; media petugas di R2 adalah PDF, JPEG dan PNG maksimal 5 MiB, voice note menyusul. KIRIM-IMPL-002 boleh ditulis. |
+| 2026-11-16 | **Kirim menjadi API gateway WhatsApp untuk aplikasi di luar SQ Core** (keputusan owner; amandemen ADR-0011). Aplikasi luar didaftarkan dari Pusat Admin (jenis `luar`, sakelar WhatsApp, client ID Keycloak; migration `0022_applications_kind.sql`) dan mendapat kartu berlabel "aplikasi luar" dengan aturan modul. Kasus pertama Samijaya (OTP admin). Panduan developer: `docs/kirim/panduan-api-gateway-aplikasi-luar.md`. |
 | 2026-10-19 | **KIRIM-IMPL-002 ACCEPTED.** Perubahan JalurPesan J-1 (pesan yang diketik di HP nomor itu ikut tercatat; gate kerja harian kotak masuk SPMB), J-2 (impor riwayat lewat platform API), J-3 (nama profil, nomor kontak LID, sebutan di grup); balasan petugas kedaluwarsa 72 jam dan tidak dihitung kuota harian; delegasi `kirim_admin` tetap CLI; Ekspor chat teks saja di R2; percakapan ganda LID/nomor tidak digabung otomatis. |

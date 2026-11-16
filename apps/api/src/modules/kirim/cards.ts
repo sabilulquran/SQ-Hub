@@ -51,6 +51,8 @@ type Jenis = "notifikasi" | "kode";
 export interface ModuleCard {
   application_key: string;
   nama: string;
+  /** ADR-0011 amendment 2026-11-16: `luar` shows the small "aplikasi luar" label; rules are the same as a module's. */
+  jenis_aplikasi: "modul" | "luar";
   peran: "kosong" | "pemilik" | "pemakai";
   nomor: ReturnType<typeof toBrowserDevice> | null;
   jenis: Jenis[];
@@ -278,7 +280,7 @@ export class KirimModuleCards {
         )).rows
       : [];
     const empty: ModuleCard = {
-      application_key: application.applicationKey, nama: application.name, peran: "kosong", nomor: null, jenis: [],
+      application_key: application.applicationKey, nama: application.name, jenis_aplikasi: application.kind, peran: "kosong", nomor: null, jenis: [],
       antrean: { antre: 0, gagal_hari_ini: 0 }, dipakai_juga_oleh: [], pemilik_nomor: null, nomor_lama: nomorLama,
     };
     if (!consumer || !device) return empty;

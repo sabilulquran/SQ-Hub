@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 
 import { buildApp } from "../src/app.js";
+import { MachineClientInUseError } from "../src/modules/application-access/repository.js";
+import type { ApplicationAccessService } from "../src/modules/application-access/service.js";
 import { HubAuthError, type HubAuthRuntime } from "../src/modules/hub-auth/service.js";
 import type { IdentityDirectory } from "../src/modules/identity-directory/client.js";
 import { PlatformAdminAuthorizationError } from "../src/modules/platform-admin/service.js";
@@ -65,6 +67,7 @@ function fakeDirectory(): IdentityDirectory {
 function makeApp(input: {
   hubAuth?: HubAuthRuntime;
   authorize?: () => Promise<void>;
+  upsertApplication?: ApplicationAccessService["upsertApplication"];
 }) {
   const applications = [
     {
@@ -93,13 +96,21 @@ function makeApp(input: {
     },
     adminApplicationRegistry: {
       listApplications: async () => applications,
-      upsertApplication: async (payload) => ({
-        id: "app-created",
-        applicationKey: payload.applicationKey,
-        name: payload.name,
-        canonicalUrl: payload.canonicalUrl,
-        status: payload.status,
-      }),
+      upsertApplication:
+        input.upsertApplication ??
+        (async (payload) => ({
+          id: "app-created",
+          applicationKey: payload.applicationKey,
+          name: payload.name,
+          canonicalUrl: payload.canonicalUrl,
+          status: payload.status,
+          governanceSummaryPath: null,
+          governanceAudience: null,
+          governanceOrder: 0,
+          kind: payload.kind ?? "modul",
+          whatsappCapable: payload.whatsapp?.capable ?? false,
+          machineClientId: payload.whatsapp?.machineClientId ?? null,
+        })),
     },
     adminApplicationAccess: {
       listApplications: async () => applications,
@@ -223,6 +234,9 @@ describe("SQ Admin Center routes", () => {
           governanceSummaryPath: null,
           governanceAudience: null,
           governanceOrder: 0,
+          kind: "modul",
+          whatsappCapable: false,
+          machineClientId: null,
         },
       ],
     });
@@ -339,5 +353,110 @@ describe("SQ Admin Center routes", () => {
     expect(response.body).not.toContain("opaque-staff-subject");
     expect(response.body).not.toContain("targetRef");
     expect(response.json().audit[0].payload).toEqual({ applicationKey: "hcis", reason: "UAT" });
+  });
+});
+
+// ADR-0011 amendment 2026-11-16: an application outside SQ Core is registered from the GUI with its
+// kind, the WhatsApp switch and the Keycloak machine client it sends with (KIRIM-IMPL-003 K-2).
+describe("Registry: aplikasi luar and WhatsApp lewat Kirim", () => {
+  it("passes kind and the WhatsApp registration to the registry and echoes them back", async () => {
+    const calls: Array<Parameters<ApplicationAccessService["upsertApplication"]>[0]> = [];
+    const app = makeApp({
+      upsertApplication: async (payload) => {
+        calls.push(payload);
+        return {
+          id: "app-samijaya",
+          applicationKey: payload.applicationKey,
+          name: payload.name,
+          canonicalUrl: payload.canonicalUrl,
+          status: payload.status,
+          governanceSummaryPath: null,
+          governanceAudience: null,
+          governanceOrder: 0,
+          kind: payload.kind ?? "modul",
+          whatsappCapable: payload.whatsapp?.capable ?? false,
+          machineClientId: payload.whatsapp?.machineClientId ?? null,
+        };
+      },
+    });
+    const response = await app.inject({
+      method: "PUT",
+      url: "/admin/applications/samijaya",
+      headers: mutationHeaders,
+      payload: {
+        name: "Samijaya",
+        canonicalUrl: "https://samijaya.example.test",
+        status: "active",
+        kind: "luar",
+        whatsappCapable: true,
+        machineClientId: "samijaya",
+      },
+    });
+    await app.close();
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json().application).toMatchObject({ key: "samijaya", kind: "luar", whatsappCapable: true, machineClientId: "samijaya" });
+    expect(calls).toHaveLength(1);
+    expect(calls[0]).toMatchObject({ kind: "luar", whatsapp: { capable: true, machineClientId: "samijaya" } });
+    expect(calls[0]?.actor.kind).toBe("human");
+  });
+
+  it("keeps the stored WhatsApp registration when the body leaves both fields out", async () => {
+    const calls: Array<Parameters<ApplicationAccessService["upsertApplication"]>[0]> = [];
+    const app = makeApp({
+      upsertApplication: async (payload) => {
+        calls.push(payload);
+        return {
+          id: "app-hcis", applicationKey: payload.applicationKey, name: payload.name, canonicalUrl: payload.canonicalUrl, status: payload.status,
+          governanceSummaryPath: null, governanceAudience: null, governanceOrder: 0, kind: "modul", whatsappCapable: true, machineClientId: "hcis-api",
+        };
+      },
+    });
+    const response = await app.inject({
+      method: "PUT",
+      url: "/admin/applications/hcis",
+      headers: mutationHeaders,
+      payload: { name: "HCIS", canonicalUrl: "https://hcis-staging.example.test", status: "active" },
+    });
+    await app.close();
+
+    expect(response.statusCode).toBe(200);
+    expect(calls[0]).not.toHaveProperty("whatsapp");
+    expect(calls[0]).not.toHaveProperty("kind");
+  });
+
+  it("refuses WhatsApp without a machine client, a malformed client id, and an unknown kind", async () => {
+    const app = makeApp({});
+    const base = { name: "Samijaya", canonicalUrl: "https://samijaya.example.test", status: "active" };
+    for (const extra of [
+      { whatsappCapable: true },
+      { whatsappCapable: true, machineClientId: "" },
+      { whatsappCapable: true, machineClientId: "sami jaya" },
+      { machineClientId: "a".repeat(256) },
+      { kind: "eksternal" },
+    ]) {
+      const response = await app.inject({ method: "PUT", url: "/admin/applications/samijaya", headers: mutationHeaders, payload: { ...base, ...extra } });
+      expect(response.statusCode, JSON.stringify(extra)).toBe(400);
+      expect(response.json()).toEqual({ error: "INVALID_REQUEST" });
+    }
+    await app.close();
+  });
+
+  it("answers 409 MACHINE_CLIENT_IN_USE when the client id belongs to another application", async () => {
+    const app = makeApp({
+      upsertApplication: async () => {
+        throw new MachineClientInUseError("hcis-api");
+      },
+    });
+    const response = await app.inject({
+      method: "PUT",
+      url: "/admin/applications/samijaya",
+      headers: mutationHeaders,
+      payload: { name: "Samijaya", canonicalUrl: "https://samijaya.example.test", status: "active", whatsappCapable: true, machineClientId: "hcis-api" },
+    });
+    await app.close();
+
+    expect(response.statusCode).toBe(409);
+    expect(response.json()).toEqual({ error: "MACHINE_CLIENT_IN_USE" });
   });
 });

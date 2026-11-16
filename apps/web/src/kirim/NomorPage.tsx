@@ -322,6 +322,12 @@ function ModuleIcon({ applicationKey, large = false }: { applicationKey: string;
   );
 }
 
+/** ADR-0011 amendment 2026-11-16: an application outside SQ Core gets the same card, with this small label. */
+function ExternalAppLabel({ card }: { card: KirimModuleCard }) {
+  if (card.jenis_aplikasi !== "luar") return null;
+  return <span className="mt-1 inline-flex rounded-full bg-muted px-2 py-0.5 text-[10px] font-bold text-muted-foreground">aplikasi luar</span>;
+}
+
 export function ModuleCard({ card, onOpen }: { card: KirimModuleCard; onOpen: (dialog: Dialog) => void }) {
   const device = card.nomor;
   if (card.peran === "kosong" || !device) {
@@ -330,6 +336,7 @@ export function ModuleCard({ card, onOpen }: { card: KirimModuleCard; onOpen: (d
         <ModuleIcon applicationKey={card.application_key} large />
         <div>
           <h2 className="font-display text-lg font-bold text-brand-heading">{card.nama}</h2>
+          <ExternalAppLabel card={card} />
           <p className="mt-0.5 text-sm text-muted-foreground">Belum memakai WhatsApp</p>
         </div>
         <button type="button" className={primaryButton} onClick={() => onOpen({ kind: "tambah", card })}>
@@ -346,6 +353,7 @@ export function ModuleCard({ card, onOpen }: { card: KirimModuleCard; onOpen: (d
         <ModuleIcon applicationKey={card.application_key} />
         <div className="min-w-0 flex-1">
           <h2 className="truncate font-display text-lg font-bold text-brand-heading">{card.nama}</h2>
+          <ExternalAppLabel card={card} />
           <p className="mt-0.5 text-xs text-muted-foreground">{owner ? `Pemilik ${device.label}` : `Memakai nomor milik ${card.pemilik_nomor ?? device.pemilik}`}</p>
         </div>
         <span className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-bold ${deviceStatusTone[device.status]}`}>{deviceStatusLabel[device.status]}</span>

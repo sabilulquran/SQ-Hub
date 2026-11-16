@@ -116,3 +116,11 @@ On 2026-10-19 the Product Owner decided that the admissions committee's WhatsApp
 - **Consumer contract change:** the consumer token may carry audience `sq-hub-kirim` **or** the SQ Hub machine audience `sq-hub-api`. Which client may send through which number is decided by Kirim SQ (registry `machine_client_id` plus the card), not by a per-client Keycloak audience mapper. A module uses the client credentials it already holds for SQ Hub; no Kirim secret is copied into its environment.
 - `device` in `POST /internal/kirim/messages` becomes optional (the card's number), and a module reads its number and webhook secret from `GET /internal/kirim/sambungan`. Webhook secrets may be kept encrypted by Kirim SQ instead of in the Hub environment.
 - An owner cannot disconnect or deactivate a number other modules still use; pausing the queue remains the emergency stop.
+
+## Amendment 2026-11-16: applications outside SQ Core may have a card
+**Status:** ACCEPTED (Product Owner decision of 2026-11-16). First case: Samijaya.
+
+- Kirim SQ is also the Yayasan's **WhatsApp API gateway for applications outside SQ Core**. Such an application is registered in the SQ Hub registry from Pusat Admin with kind `luar`, the WhatsApp switch and its Keycloak machine client, and gets a Kirim SQ card like a module. The card carries a small "aplikasi luar" label; **the rules are the same as for a module**: the card's number, the consumer token (audience `sq-hub-kirim` or `sq-hub-api`, service account), quotas, send hours, opt-outs, webhooks and audit. There is no number card and no "whose number" logic (KIRIM-IMPL-003 §13 and §15 stay).
+- The kind is a label for the card and the documentation only; it never changes which number an application sends with.
+- The consumer API stays loopback-only (`/internal/*` is blocked at the edge), so an outside application must run on the same host as SQ Hub, as Samijaya does on Mi8.
+- Developer guide: `docs/kirim/panduan-api-gateway-aplikasi-luar.md`.
