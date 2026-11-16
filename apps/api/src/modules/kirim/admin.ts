@@ -318,7 +318,7 @@ export class KirimAdminService {
    */
   async reconnect(actor: AdminActor, kode: string, input: z.infer<typeof reconnectSchema>) {
     const device = await this.requireDevice(kode);
-    if (device.status === "nonaktif") throw new KirimApiError(422, "device_inactive", "Nomor nonaktif. Pakai lagi dari kartu modulnya dulu.");
+    if (device.status === "nonaktif") throw new KirimApiError(422, "device_inactive", "Nomor nonaktif. Pakai lagi dari kartu aplikasinya dulu.");
     if (device.provider === "log") throw new KirimApiError(409, "pairing_not_applicable", "Provider log tidak perlu dipasang.");
     if (!RECONNECT_STATUSES.has(device.status)) throw new KirimApiError(409, "belum_dipasang", "Nomor ini belum pernah dipasang. Pakai Pasang.");
     const provider = this.provider(device);
@@ -466,7 +466,7 @@ export class KirimAdminService {
         throw new KirimApiError(409, "pairing_not_applicable", "Hanya nomor JalurPesan yang bisa digabung.");
       }
       if (source.pemilikConsumerId !== target.pemilikConsumerId) {
-        throw new KirimApiError(409, "pemilik_berbeda", `${target.label} milik modul lain. Putuskan nomor baru ini, lalu pakai "Pakai nomor yang sudah aktif" di kartu modulnya.`);
+        throw new KirimApiError(409, "pemilik_berbeda", `${target.label} milik aplikasi lain. Putuskan nomor baru ini, lalu pakai "Pakai nomor yang sudah aktif" di kartu aplikasinya.`);
       }
       const counts = await client.query<{ n: string }>(
         `SELECT (${DEVICE_DATA_TABLES.map((table) => `(SELECT count(*) FROM ${table} WHERE device_id = $1)`).join(" + ")})::text AS n`,
@@ -515,7 +515,7 @@ export class KirimAdminService {
   async assertNotShared(device: DeviceRow, db: Queryable = this.pool) {
     const sharers = await deviceSharers(db, device);
     if (sharers.length > 0) {
-      throw new KirimApiError(409, "nomor_dipakai_modul_lain", `Nomor ini masih dipakai ${sharers.join(", ")}. Putuskan modul itu dulu dari kartunya, atau pindahkan pemilik nomor lewat Ubah.`);
+      throw new KirimApiError(409, "nomor_dipakai_modul_lain", `Nomor ini masih dipakai ${sharers.join(", ")}. Putuskan aplikasi itu dulu dari kartunya, atau pindahkan pemilik nomor lewat Ubah.`);
     }
   }
 
@@ -795,7 +795,7 @@ export class KirimAdminService {
         [id],
       );
       const row = removed.rows[0];
-      if (!row) throw new KirimApiError(404, "not_found", "Opt-out tidak ditemukan atau dibuat oleh modul.");
+      if (!row) throw new KirimApiError(404, "not_found", "Opt-out tidak ditemukan atau dibuat oleh aplikasi.");
       await writeAudit(client, {
         actorKind: "human",
         actorRef: actor.ref,

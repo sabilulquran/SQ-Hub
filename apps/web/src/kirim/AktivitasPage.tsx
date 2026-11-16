@@ -49,7 +49,7 @@ export function AktivitasView({ state, filter, onFilter, onReload }: { state: Ak
     <div className="space-y-4">
       <div>
         <h1 className="font-display text-2xl font-bold text-brand-heading">Aktivitas</h1>
-        <p className="mt-1 text-sm leading-6 text-muted-foreground">Jejak tindakan pengelola dan modul. Isi pesan dan nomor utuh tidak pernah tampil di sini.</p>
+        <p className="mt-1 text-sm leading-6 text-muted-foreground">Jejak tindakan pengelola dan aplikasi. Isi pesan dan nomor utuh tidak pernah tampil di sini.</p>
       </div>
       {state.status === "loading" ? <StateCard kind="loading" title="Memuat aktivitas" /> : null}
       {state.status === "forbidden" ? <StateCard kind="forbidden" title="Anda belum ditetapkan sebagai pengelola Kirim SQ" /> : null}
@@ -72,7 +72,7 @@ export function AktivitasView({ state, filter, onFilter, onReload }: { state: Ak
               <div className="mt-3 overflow-x-auto">
                 <table className="w-full min-w-[32rem] text-left text-sm">
                   <thead className="text-xs text-muted-foreground">
-                    <tr><th className="py-1.5 pr-3">Hari</th><th className="pr-3">Nomor</th><th className="pr-3">Modul</th><th className="pr-3">Otomatis</th><th className="pr-3">Petugas</th><th className="pr-3">Dari HP</th><th className="pr-3">Masuk</th><th>Gagal</th></tr>
+                    <tr><th className="py-1.5 pr-3">Hari</th><th className="pr-3">Nomor</th><th className="pr-3">Aplikasi</th><th className="pr-3">Otomatis</th><th className="pr-3">Petugas</th><th className="pr-3">Dari HP</th><th className="pr-3">Masuk</th><th>Gagal</th></tr>
                   </thead>
                   <tbody>
                     {state.summary.harian.map((row) => (
@@ -111,7 +111,7 @@ export function AktivitasView({ state, filter, onFilter, onReload }: { state: Ak
                       <p className="text-xs text-muted-foreground">{formatTime(row.waktu)}</p>
                     </div>
                     <p className="mt-1 break-words text-sm text-muted-foreground">
-                      {row.aktor.jenis === "service" ? `Modul ${row.aktor.ref}` : row.aktor.jenis === "human" ? "Pengelola" : "Sistem"}
+                      {row.aktor.jenis === "service" ? `Aplikasi ${row.aktor.ref}` : row.aktor.jenis === "human" ? "Pengelola" : "Sistem"}
                       {row.petugas ? ` · ${row.petugas}` : ""} · {row.objek.jenis} {row.objek.ref.slice(0, 16)}
                       {row.hasil === "gagal" ? <span className="ml-1 rounded-full bg-danger-soft px-2 py-0.5 text-[11px] font-bold text-danger-ink">gagal</span> : null}
                     </p>

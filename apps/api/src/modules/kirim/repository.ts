@@ -147,7 +147,7 @@ export async function ensureApplicationConsumer(db: Queryable, application: Regi
   if (linked.rows[0]) return linked.rows[0];
   const byClient = await findConsumerByClientId(db, application.machineClientId);
   if (byClient) {
-    if (byClient.applicationKey) throw new KirimApiError(409, "client_dipakai_kartu_lain", "Client mesin ini sudah dipakai kartu modul lain.");
+    if (byClient.applicationKey) throw new KirimApiError(409, "client_dipakai_kartu_lain", "Client mesin ini sudah dipakai kartu aplikasi lain.");
     await db.query("UPDATE kirim_consumers SET application_key = $2, updated_at = now() WHERE id = $1", [byClient.id, application.applicationKey]);
     return { ...byClient, applicationKey: application.applicationKey };
   }
