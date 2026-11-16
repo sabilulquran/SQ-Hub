@@ -5,7 +5,7 @@
 **Reference commit:** `a1117ce0899d97824955feadf72c5b68d6e9f9e5`
 
 ## Purpose
-Dokumen ini membekukan baseline visual HCIS yang telah disetujui sebagai arah brand seluruh SQ Hub (ekosistem, ADR-0014). Tujuannya agar agent tidak perlu membaca seluruh frontend HCIS untuk task desain biasa, sekaligus mencegah visual drift antar aplikasi.
+Dokumen ini membekukan baseline visual HCIS yang telah disetujui sebagai arah brand seluruh SQ Suite (ekosistem, ADR-0014). Tujuannya agar agent tidak perlu membaca seluruh frontend HCIS untuk task desain biasa, sekaligus mencegah visual drift antar aplikasi.
 
 Ini adalah baseline extraction, bukan copy seluruh business UI HCIS.
 
@@ -96,7 +96,7 @@ A component becomes shared because its semantics and API are useful across appli
 2. define shared typography/elevation/radius conventions;
 3. generalize Auth layout for SQ Identity;
 4. generalize app shell without HCIS business navigation;
-5. extract common form/status components only when SPMB SQ or the platform's own web creates the second concrete consumer;
+5. extract common form/status components only when SPMB SQ or the SQ Hub platform's own web creates the second concrete consumer;
 6. migrate HCIS to consume/alignment with SQ shared primitives after those primitives stabilize.
 
 ## Rule for future changes

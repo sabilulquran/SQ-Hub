@@ -1,21 +1,22 @@
 # SQ Hub
 
-**SQ Hub** adalah nama seluruh ekosistem aplikasi Yayasan Sabilul Qur'an (ADR-0014): satu nama payung, satu akun per orang per portal, dan aplikasi-aplikasi yang berdiri berdampingan. Istilah "SQ Core" sudah tidak dipakai, kecuali pada nama teknis dan catatan lama.
+Repository `SQ-Hub` adalah bagian dari **SQ Suite**, nama seluruh ekosistem aplikasi Yayasan Sabilul Qur'an (ADR-0014): aplikasi-aplikasi terpisah yang dirancang untuk dipakai bersama, dengan satu akun per orang per portal. **SQ Hub** sendiri hanya punya satu arti: halaman awal dan peluncur aplikasi di `hub.sabilulquran.or.id`. Istilah "SQ Core" sudah tidak dipakai, kecuali pada nama teknis dan catatan lama.
 
-Repository ini (`SQ-Hub`) memuat **bagian platform SQ Hub** — Beranda (halaman awal dan peluncur aplikasi), Akun SQ (identity/SSO), Admin SQ (Application Registry/Access, peran, siklus akun), Direktori Organisasi, dan design system — serta aplikasi yang berjalan di dalam proses Hub menurut ADR-0014 D6: Kirim SQ, Portal Organ, Kerja SQ, Sekretariat SQ, dan (disetujui, belum dibangun) Al-Qur'an. Workforce organization tetap di-author oleh HCIS; platform mendistribusikan projection lintas aplikasi sesuai ADR-0007.
+Repository ini (`SQ-Hub`) memuat **platform SQ Hub** — SQ Hub (halaman awal dan peluncur aplikasi), Akun SQ (identity/SSO), Admin SQ (Application Registry/Access, peran, siklus akun), Direktori Organisasi, dan design system — serta aplikasi yang berjalan di dalam proses Hub menurut ADR-0014 D6: Kirim SQ, Portal Organ, Kerja SQ, Sekretariat SQ, dan (disetujui, belum dibangun) Al-Qur'an. Workforce organization tetap di-author oleh HCIS; platform mendistribusikan projection lintas aplikasi sesuai ADR-0007.
 
-SQ Hub **bukan ERP monolith**. Aturan dan data HCIS, SPMB SQ, Keuangan, Sekolah, dan aplikasi lain tetap dimiliki aplikasi masing-masing. Aplikasi yang berjalan di proses Hub tetap memiliki tabel, aturan, dan flag rilisnya sendiri.
+SQ Suite **bukan ERP monolith**. Aturan dan data HCIS, SPMB SQ, Keuangan, Sekolah, dan aplikasi lain tetap dimiliki aplikasi masing-masing. Aplikasi yang berjalan di proses Hub tetap memiliki tabel, aturan, dan flag rilisnya sendiri.
 
 ## Istilah dan peta
 
 | Istilah | Arti |
 | --- | --- |
-| **SQ Hub** | Seluruh ekosistem |
+| **SQ Suite** | Seluruh ekosistem |
+| **SQ Hub** | Halaman awal dan peluncur aplikasi di `hub.sabilulquran.or.id`; bukan nama keseluruhan. Di dokumen teknis, "platform SQ Hub" juga berarti layanan bersama di repo ini |
 | **Portal** | Pintu masuk satu kelompok pengguna: Admin, Pegawai, Organ, Keluarga, Pelamar, Situs publik |
 | **Aplikasi** | Sistem yang mengurus satu bidang dan memegang data serta aturannya (HCIS, Aset SQ, Kirim SQ, Kerja SQ, …) |
 | **Modul** | Bagian di dalam satu aplikasi (Cuti dan Payroll di dalam HCIS) |
 
-Daftar aplikasi, portal, alamat, dan statusnya **hanya** disimpan di [`docs/product/struktur-sq-hub.md`](docs/product/struktur-sq-hub.md) (STRUKTUR-001). Dokumen lain, termasuk README ini, menautkan ke sana dan tidak menyimpan daftar sendiri. Keputusannya ada di [ADR-0014](docs/architecture/adr/0014-sq-hub-ecosystem-structure.md).
+Daftar aplikasi, portal, alamat, dan statusnya **hanya** disimpan di [`docs/product/struktur-sq-suite.md`](docs/product/struktur-sq-suite.md) (STRUKTUR-001). Dokumen lain, termasuk README ini, menautkan ke sana dan tidak menyimpan daftar sendiri. Keputusannya ada di [ADR-0014](docs/architecture/adr/0014-sq-suite-ecosystem-structure.md).
 
 ## Status
 Foundation (Akun SQ dan dasar platform) **CLOSED** pada 2026-09-23 ([`project-status-2026-09-23.md`](docs/operations/project-status-2026-09-23.md)); Organization Directory v1 diterima di production pada 2026-09-25. Status tiap aplikasi dan alamat yang berjalan ada di STRUKTUR-001 §5 dan §10. Status deployment tidak boleh disimpulkan hanya dari status specification atau merge.
@@ -34,7 +35,7 @@ Keputusan foundation yang sudah dikunci:
 
 ## Source of truth
 Mulai dari:
-- [`docs/product/struktur-sq-hub.md`](docs/product/struktur-sq-hub.md) — peta SQ Hub: istilah, portal, daftar aplikasi dan statusnya (STRUKTUR-001).
+- [`docs/product/struktur-sq-suite.md`](docs/product/struktur-sq-suite.md) — peta SQ Suite: istilah, portal, daftar aplikasi dan statusnya (STRUKTUR-001).
 - [`AGENTS.md`](AGENTS.md) — aturan engineering dan AI.
 - [`docs/product/vision.md`](docs/product/vision.md) — visi dan boundary produk.
 - [`docs/product/roadmap-and-decision-register.md`](docs/product/roadmap-and-decision-register.md) — register keputusan per fase dan per aplikasi.

@@ -1,6 +1,6 @@
 # SQ Hub specification ID index
 
-**Terms (ADR-0014, 2026-11-16):** SQ Hub is the whole ecosystem; this index covers the `SQ-Hub` repository, which holds the platform part (Beranda, Akun SQ, Admin SQ, Direktori Organisasi) and the applications that run inside the Hub process (Kirim SQ, Portal Organ, Kerja SQ, Sekretariat SQ). Accepted specifications are not rewritten: where one says "modul `kirim`/`kerja`/`sekretariat` di SQ Hub" or "SQ Core", read it with the table in ADR-0014 D8. Whether something is running in production is recorded in [`docs/product/struktur-sq-hub.md`](../product/struktur-sq-hub.md) §5, not here.
+**Terms (ADR-0014, 2026-11-16):** SQ Suite is the whole ecosystem; SQ Hub is its landing page and launcher. This index covers the `SQ-Hub` repository, which holds the SQ Hub platform (the SQ Hub landing page and launcher, Akun SQ, Admin SQ, Direktori Organisasi) and the applications that run inside the Hub process (Kirim SQ, Portal Organ, Kerja SQ, Sekretariat SQ). Accepted specifications are not rewritten: where one says "modul `kirim`/`kerja`/`sekretariat` di SQ Hub" or "SQ Core", read it with the table in ADR-0014 D8. Whether something is running in production is recorded in [`docs/product/struktur-sq-suite.md`](../product/struktur-sq-suite.md) §5, not here.
 
 Staging references inside older specifications are historical: staging was permanently retired on 2 October 2026 and must not be recreated.
 

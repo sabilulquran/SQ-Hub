@@ -10,7 +10,7 @@
 
 **Akun SQ** is the only user-facing name for the shared sign-in and account-security experience. Keycloak remains the identity engine. Existing technical identifiers such as realm key `sq-staff-staging`, issuer URLs, client IDs, service names, and network aliases remain stable because they are integration contracts rather than product copy.
 
-The authentication host must look like a focused account system. It must not present an HCIS application shell, the Beranda workspace, organizational value board, or generic Keycloak branding.
+The authentication host must look like a focused account system. It must not present an HCIS application shell, the SQ Hub workspace, organizational value board, or generic Keycloak branding.
 
 ## Login theme
 
@@ -45,7 +45,7 @@ Keycloak still owns credentials, MFA, recovery, brokering, and IdP sessions. Nat
 
 ## Legacy Account Console compatibility
 
-The `keycloak.v3` account theme remains packaged only as a compatibility/operator fallback while the native surface reaches production acceptance. It is not linked from the normal Beranda journey and must not be treated as the final product experience.
+The `keycloak.v3` account theme remains packaged only as a compatibility/operator fallback while the native surface reaches production acceptance. It is not linked from the normal SQ Hub journey and must not be treated as the final product experience.
 
 If compatibility access is used during rollback or diagnosis, the existing Akun SQ account theme remains branded and responsive rather than falling back to default provider visuals.
 

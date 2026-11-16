@@ -1,9 +1,9 @@
-# SQ Hub Design System Direction
+# SQ Suite Design System Direction
 
 **Status:** ACCEPTED. Names aligned to ADR-0014 on 2026-11-16.
 
 ## Goal
-Membuat semua aplikasi di SQ Hub (halaman platform sendiri, HCIS, SPMB SQ, Aset SQ, Karir SQ, Keuangan, Kerja SQ, Sekolah, dan lainnya; daftar di `docs/product/struktur-sq-hub.md`) terasa sebagai satu keluarga produk tanpa memaksa seluruh business UI menjadi identik.
+Membuat semua aplikasi di SQ Suite (halaman platform SQ Hub sendiri, HCIS, SPMB SQ, Aset SQ, Karir SQ, Keuangan, Kerja SQ, Sekolah, dan lainnya; daftar di `docs/product/struktur-sq-suite.md`) terasa sebagai satu keluarga produk tanpa memaksa seluruh business UI menjadi identik.
 
 ## Initial baseline
 Visual system HCIS yang sudah sesuai brand ditetapkan sebagai baseline awal SQ Design System melalui ADR-0004.
@@ -12,7 +12,7 @@ Gunakan `docs/design/hcis-baseline.md` sebagai ringkasan machine-readable agar a
 
 Prinsip transisinya:
 1. HCIS adalah reference implementation awal;
-2. token/pattern yang benar-benar lintas aplikasi diekstrak dan dinormalisasi di repo `SQ-Hub` (bagian platform);
+2. token/pattern yang benar-benar lintas aplikasi diekstrak dan dinormalisasi di repo `SQ-Hub` (platform SQ Hub);
 3. setelah shared primitives tersedia, repo `SQ-Hub` menjadi canonical source untuk design system lintas produk;
 4. HCIS kemudian consume/align ke shared primitives tersebut.
 

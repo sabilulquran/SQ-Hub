@@ -3,7 +3,7 @@
 **Status:** ACCEPTED. Owner names aligned to ADR-0014 on 2026-11-16; the ownership rules are unchanged.
 
 ## Principle
-SQ Hub mendorong integrasi kuat tanpa mengaburkan ownership data dan business logic. Di dokumen ini "platform SQ Hub" atau "Hub" berarti bagian platform (Akun SQ, Admin SQ, Beranda, Direktori Organisasi); daftar aplikasi dan statusnya ada di [`docs/product/struktur-sq-hub.md`](../product/struktur-sq-hub.md).
+SQ Suite mendorong integrasi kuat tanpa mengaburkan ownership data dan business logic. Di dokumen ini "platform SQ Hub" atau "Hub" berarti layanan bersama di repo `SQ-Hub` (SQ Hub sebagai halaman awal dan peluncur, Akun SQ, Admin SQ, Direktori Organisasi); daftar aplikasi dan statusnya ada di [`docs/product/struktur-sq-suite.md`](../product/struktur-sq-suite.md).
 
 Setiap data penting harus memiliki satu system of record yang jelas. Aplikasi lain boleh membaca atau menggunakan data tersebut melalui integration contract yang disepakati, tetapi tidak mengambil alih ownership secara diam-diam.
 

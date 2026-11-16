@@ -190,7 +190,7 @@ describe("Registry aplikasi: jenis aplikasi dan WhatsApp lewat Kirim", () => {
   it("starts a new application as a module without WhatsApp", () => {
     at("/admin?aplikasi=baru");
     const html = renderToStaticMarkup(<AdminCenterPage workspace={workspaceFixture} previewApplications={applications} />);
-    expect(html).toContain('<option value="modul" selected="">Aplikasi SQ Hub</option>');
+    expect(html).toContain('<option value="modul" selected="">Aplikasi platform</option>');
     expect(html).not.toMatch(/<input type="checkbox"[^>]*checked=""/);
   });
 });

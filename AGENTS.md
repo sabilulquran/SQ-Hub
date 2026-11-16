@@ -10,10 +10,10 @@ Dokumen ini berlaku untuk manusia, ChatGPT, Codex, dan automation lain yang meng
 
 ## 0. Istilah (ADR-0014)
 
-- **SQ Hub** adalah nama seluruh ekosistem aplikasi Yayasan Sabilul Qur'an. Istilah "SQ Core" sudah tidak dipakai; ia hanya tersisa pada nama teknis (repo `sq-core-ops`, skrip `sq-core-*.sh`, database `sqcore_*`, nama berkas) dan catatan lama, dan nama-nama itu **tidak diganti**.
+- **SQ Suite** adalah nama seluruh ekosistem aplikasi Yayasan Sabilul Qur'an. **SQ Hub** hanya punya satu arti: halaman awal dan peluncur aplikasi di `hub.sabilulquran.or.id`; SQ Hub tidak pernah menjadi nama keseluruhan. Istilah "SQ Core" sudah tidak dipakai; ia hanya tersisa pada nama teknis (repo `sq-core-ops`, skrip `sq-core-*.sh`, database `sqcore_*`, nama berkas) dan catatan lama, dan nama-nama itu **tidak diganti**.
 - **Portal** = pintu masuk satu kelompok pengguna (Admin, Pegawai, Organ, Keluarga, Pelamar, Situs publik). **Aplikasi** = sistem yang mengurus satu bidang dan memegang data serta aturannya (HCIS, Aset SQ, Kirim SQ, Kerja SQ, Sekretariat SQ, dan seterusnya adalah aplikasi, tidak pernah "modul"). **Modul** = bagian di dalam satu aplikasi.
-- Repository ini memuat **bagian platform SQ Hub** (Beranda, Akun SQ, Admin SQ, Direktori Organisasi, design system) dan aplikasi yang berjalan di dalam proses Hub menurut ADR-0014 D6. Di dokumen ini, "platform SQ Hub" atau "Hub" berarti bagian platform itu.
-- Daftar aplikasi, portal, dan statusnya hanya ada di `docs/product/struktur-sq-hub.md` (STRUKTUR-001). Jangan membuat daftar tandingan di dokumen lain; tautkan ke sana. Rilis yang mengubah status sebuah aplikasi memperbarui STRUKTUR-001 §5.
+- Repository ini memuat **platform SQ Hub** (SQ Hub sebagai halaman awal dan peluncur, Akun SQ, Admin SQ, Direktori Organisasi, design system) dan aplikasi yang berjalan di dalam proses Hub menurut ADR-0014 D6. Di dokumen teknis, "platform SQ Hub" atau "Hub" berarti layanan bersama di repo ini.
+- Daftar aplikasi, portal, dan statusnya hanya ada di `docs/product/struktur-sq-suite.md` (STRUKTUR-001). Jangan membuat daftar tandingan di dokumen lain; tautkan ke sana. Rilis yang mengubah status sebuah aplikasi memperbarui STRUKTUR-001 §5.
 - Folder kode `apps/api/src/modules/*` adalah nama teknis; isinya bisa bagian platform atau sebuah aplikasi. Teks yang dilihat pengguna dan dokumen hidup memakai istilah di atas. ADR, specification, dan catatan rilis lama tidak ditulis ulang; baca dengan tabel ADR-0014 D8.
 
 ## 1. Source of truth
@@ -34,7 +34,7 @@ Jika sumber bertentangan, jangan menebak. Perbarui specification/ADR atau eskala
 - Prefer missing feature over invented feature.
 - Perubahan perilaku wajib memperbarui dokumen sumber kebenaran yang relevan.
 - Asumsi belum diputuskan harus diberi status `DRAFT`, `DISCOVERY`, atau `TBD`.
-- Setiap implementation wajib mengacu pada satu specification ID (`HUB-IMPL-*`, `KIRIM-IMPL-*`, `KERJA-IMPL-*`, `SEK-IMPL-*`, `ORGAN-IMPL-*`, dan seterusnya); jangan mengerjakan task generik seperti "implement SQ Hub".
+- Setiap implementation wajib mengacu pada satu specification ID (`HUB-IMPL-*`, `KIRIM-IMPL-*`, `KERJA-IMPL-*`, `SEK-IMPL-*`, `ORGAN-IMPL-*`, dan seterusnya); jangan mengerjakan task generik seperti "implement SQ Suite".
 
 ## 3. Progressive context
 Agent tidak boleh membaca seluruh `docs/` secara default.
@@ -58,7 +58,7 @@ Untuk task identity/auth, minimum baca:
 Untuk task visual lintas aplikasi, baca `docs/design/hcis-baseline.md` sebelum membuka seluruh frontend HCIS.
 
 ## 4. Platform boundaries
-- SQ Hub adalah ekosistem aplikasi yang berdampingan, bukan ERP monolith. Bagian platformnya adalah shared digital foundation.
+- SQ Suite adalah ekosistem aplikasi yang berdampingan, bukan ERP monolith. Platform SQ Hub adalah shared digital foundation-nya.
 - Aturan dan data HCIS, SPMB SQ, Keuangan, Sekolah, Kerja SQ, dan aplikasi lain tetap dimiliki aplikasi masing-masing.
 - Shared capability hanya masuk platform SQ Hub jika benar-benar lintas aplikasi.
 - Sebuah aplikasi baru ditempatkan dulu di matriks STRUKTUR-001 (portal dan wajah) dan diberi tempat jalan menurut ADR-0014 D6 sebelum rancangannya ditulis. Bawaan: program dan database sendiri. Berjalan di dalam proses Hub hanya dengan salah satu dari tiga alasan D6, dan tidak pernah mengubah kepemilikan: aplikasi itu tetap memiliki tabel (prefix sendiri), aturan, dan flag rilisnya, dan dijangkau aplikasi lain hanya lewat contract.
@@ -108,7 +108,7 @@ Untuk task visual lintas aplikasi, baca `docs/design/hcis-baseline.md` sebelum m
 
 ## 8. Design system
 - HCIS visual system pada snapshot yang ditetapkan ADR-0004 adalah baseline awal SQ Design System.
-- Semua aplikasi di SQ Hub harus menggunakan prinsip visual, semantic tokens, dan shared UI patterns yang senada dengan baseline tersebut.
+- Semua aplikasi di SQ Suite harus menggunakan prinsip visual, semantic tokens, dan shared UI patterns yang senada dengan baseline tersebut.
 - SQ Identity/Keycloak harus ditheme mengikuti SQ design language; jangan menerima default provider UI sebagai final product experience.
 - Jangan menciptakan pola UI baru jika pola HCIS/SQ yang sesuai sudah ada.
 - Jangan menyalin business-specific HCIS component lalu menganggapnya generic shared component.

@@ -6,16 +6,16 @@
 
 ## Purpose
 
-This document turns the accepted HCIS visual baseline into the first canonical design foundation for SQ Hub, implemented first in the platform's own web (`apps/web`). It does not create a distributable shared package yet; per repository rules, a package is extracted only after a second real application consumer requires it.
+This document turns the accepted HCIS visual baseline into the first canonical design foundation for SQ Suite, implemented first in the SQ Hub platform's own web (`apps/web`). It does not create a distributable shared package yet; per repository rules, a package is extracted only after a second real application consumer requires it.
 
 ## Brand relationship
 
-The platform's pages (Beranda, Akun SQ, Admin SQ), HCIS, and every other application in SQ Hub belong to one YSQ product family.
+The SQ Hub platform's pages (the landing page, Akun SQ, Admin SQ), HCIS, and every other application in SQ Suite belong to one YSQ product family.
 
 - Reuse the approved YSQ mark/logo assets.
 - Product identity is expressed through the product name beside the YSQ brand, not by inventing unrelated marks.
 - Domain applications may have their own information architecture while preserving the shared visual language.
-- Beranda and the platform's pages must look like the parent workspace, not like HCIS with different labels.
+- SQ Hub and the platform's other pages must look like the parent workspace, not like HCIS with different labels.
 
 ## Typography
 

@@ -1,23 +1,23 @@
-# SQ Hub Target Architecture
+# SQ Suite Target Architecture
 
 **Status:** LIVING description of the current architecture. The decisions themselves are in the accepted ADRs cited in each section; this document adds none. Aligned to ADR-0014 on 2026-11-16. (It was previously labelled DRAFT and also carried a blanket RETIRED banner; only its Wave 1 staging notes are retired, see "Deployment".)
 
-**Terms:** SQ Hub is the whole ecosystem. In this document "the platform" or "Hub" means the platform part of SQ Hub (Beranda, Akun SQ, Admin SQ, Direktori Organisasi) that lives in the `SQ-Hub` repository. The list of applications, where each runs, and their status is [`docs/product/struktur-sq-hub.md`](../product/struktur-sq-hub.md) (STRUKTUR-001).
+**Terms:** SQ Suite is the whole ecosystem; SQ Hub is its landing page and launcher at `hub.sabilulquran.or.id`. In this document "the platform" or "Hub" means the SQ Hub platform (the SQ Hub landing page and launcher, Akun SQ, Admin SQ, Direktori Organisasi) that lives in the `SQ-Hub` repository. The list of applications, where each runs, and their status is [`docs/product/struktur-sq-suite.md`](../product/struktur-sq-suite.md) (STRUKTUR-001).
 
 ## Context
-SQ Hub adalah ekosistem aplikasi Yayasan Sabilul Qur'an. Aplikasi harus dapat berkembang dan dirawat secara independen, tetapi berbagi bagian platform: identity (Akun SQ), Organization Directory, app access (Admin SQ), Beranda, dan design language.
+SQ Suite adalah ekosistem aplikasi Yayasan Sabilul Qur'an. Aplikasi harus dapat berkembang dan dirawat secara independen, tetapi berbagi platform SQ Hub: identity (Akun SQ), Organization Directory, app access (Admin SQ), halaman awal dan peluncur (SQ Hub), dan design language.
 
 ## Target logical architecture
 ```text
-                          SQ Hub (the ecosystem)
+                         SQ Suite (the ecosystem)
 
   Portals:  Admin | Pegawai | Organ | Keluarga | Pelamar | Situs publik
                               |
                   login.  Akun SQ (Keycloak realms)
                               |
   +-----------------------------------------------------------------+
-  | Platform part of SQ Hub (repo SQ-Hub, one Node process + DB)    |
-  |   Beranda (launcher)   Admin SQ (App Registry/Access, roles)    |
+  | SQ Hub platform (repo SQ-Hub, one Node process + DB)           |
+  |   SQ Hub (launcher)    Admin SQ (App Registry/Access, roles)    |
   |   Organization Directory  <- versioned contract <-  HCIS        |
   |   Applications hosted in the Hub process (ADR-0014 D6):         |
   |     Kirim SQ | Portal Organ | Kerja SQ | Sekretariat SQ | ...   |

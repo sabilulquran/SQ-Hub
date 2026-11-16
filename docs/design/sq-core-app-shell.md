@@ -1,10 +1,10 @@
-# SQ Hub app shell
+# SQ Suite app shell
 
-**Status:** ACCEPTED by the Product Owner on 2026-10-16. Every application in SQ Hub follows it (the platform's own pages, HCIS, Aset SQ, and future applications).
+**Status:** ACCEPTED by the Product Owner on 2026-10-16. Every application in SQ Suite follows it (the SQ Hub platform's own pages, HCIS, Aset SQ, and future applications).
 
-**Terms (ADR-0014, 2026-11-16):** "SQ Core" was the earlier name for the ecosystem now called SQ Hub; this file keeps its name `sq-core-app-shell.md` because file names do not change. In the rules below, the launcher row and links labelled "SQ Hub" lead to **Beranda**, the landing page at `hub.sabilulquran.or.id`, and "SQ Hub" in the migration tables means the platform's own web pages (Beranda, Akun SQ, Admin SQ). The shared top bar of ADR-0014 D5 is the target this shell grows into.
+**Terms (ADR-0014, 2026-11-16):** "SQ Core" was the earlier name for the ecosystem now called SQ Suite; this file keeps its name `sq-core-app-shell.md` because file names do not change. In the rules below "SQ Hub" keeps its meaning: the launcher row and links labelled "SQ Hub" lead to the landing page and launcher at `hub.sabilulquran.or.id`, and "SQ Hub" in the migration tables means the SQ Hub platform's own web pages (the landing page, Akun SQ, Admin SQ). The launcher row reads the same in every application: title "SQ Hub", subtitle "Beranda semua aplikasi Anda". The shared top bar of ADR-0014 D5 is the target this shell grows into.
 
-**Part of:** [SQ Hub design system, direction C](sq-core-design-system-c.md), which covers colour, type, logo and components. This document covers the **shell**: where account, app switching, the way back to SQ Hub, and admin areas live.
+**Part of:** [SQ Suite design system, direction C](sq-core-design-system-c.md), which covers colour, type, logo and components. This document covers the **shell**: where account, app switching, the way back to SQ Hub, and admin areas live.
 
 **Mockup:** "SQ Core Design System Mockup", artboards 5a–5e (private design canvas; the canvas keeps its original title).
 

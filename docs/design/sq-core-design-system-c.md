@@ -1,6 +1,6 @@
-# SQ Hub design system — direction C
+# SQ Suite design system — direction C
 
-**Terms (ADR-0014, 2026-11-16):** "SQ Core" was the earlier name for the ecosystem now called SQ Hub. This file keeps its name `sq-core-design-system-c.md`, and the mockup keeps its original title. Where this document lists "SQ Hub" beside HCIS and Aset SQ as a surface, it means the platform's own web pages (Beranda, Akun SQ, Admin SQ).
+**Terms (ADR-0014, 2026-11-16):** "SQ Core" was the earlier name for the ecosystem now called SQ Suite. This file keeps its name `sq-core-design-system-c.md`, and the mockup keeps its original title. Where this document lists "SQ Hub" beside HCIS and Aset SQ as a surface, it means the SQ Hub platform's own web pages (the landing page and launcher, Akun SQ, Admin SQ).
 
 **Status:** ACCEPTED by the Product Owner on 2026-10-16 for Akun SQ, SQ Hub, HCIS, and Aset SQ. This document records the visual decisions. Rollout happens per surface, starting with the Akun SQ login.
 

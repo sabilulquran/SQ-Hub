@@ -1,6 +1,6 @@
 # Al-Qur'an — Desain aplikasi (PRD)
 
-> **Istilah (ADR-0014, 2026-11-16).** Al-Qur'an adalah **aplikasi** di SQ Hub, bukan "modul"; modul adalah bagian di dalam satu aplikasi. Ia berjalan di dalam proses Hub (ADR-0014 D6, alasan 3, kompromi) dan tetap memiliki tabel, aturan, dan flag rilisnya sendiri. Isi dokumen di bawah ditulis sebelum keputusan itu dan tidak ditulis ulang: baca "modul" untuk Al-Qur'an sebagai "aplikasi", "modul SQ Hub"/"modul bersama" sebagai "aplikasi yang berjalan di proses Hub", dan "SQ Core" sebagai "SQ Hub". Nama berkas ini tetap. Status terkini ada di [`struktur-sq-hub.md`](struktur-sq-hub.md) §5.
+> **Istilah (ADR-0014, 2026-11-16).** Al-Qur'an adalah **aplikasi** di SQ Suite, bukan "modul"; modul adalah bagian di dalam satu aplikasi. Ia berjalan di dalam proses Hub (ADR-0014 D6, alasan 3, kompromi) dan tetap memiliki tabel, aturan, dan flag rilisnya sendiri. Isi dokumen di bawah ditulis sebelum keputusan itu dan tidak ditulis ulang: baca "modul" untuk Al-Qur'an sebagai "aplikasi", "modul SQ Hub"/"modul bersama" sebagai "aplikasi yang berjalan di proses Hub", dan "SQ Core" sebagai "SQ Suite". Nama berkas ini tetap. Status terkini ada di [`struktur-sq-suite.md`](struktur-sq-suite.md) §5.
 
 **Status:** Keputusan Product Owner 2026-11-13 dicatat di §2 dan menjadi dasar ADR-0013 (ACCEPTED). Implementasi menunggu `QURAN-IMPL-001` untuk R1. Butir bertanda `DRAFT` adalah default agent yang menunggu konfirmasi.
 **Spesifikasi:** QURAN-001

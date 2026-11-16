@@ -39,4 +39,4 @@ ADR-0014 D6 amends the placement rule of this ADR. The original decision text ab
 - An application may run inside the SQ Hub process only when (1) it is a capability other applications call (Kirim SQ, ADR-0011), (2) it only shows data owned by others (Portal Organ, ADR-0012), or (3) it is small, its data is not sensitive, and server memory is the constraint — a recorded compromise (Kerja SQ, Sekretariat SQ, Rapat SQ, Al-Qur'an).
 - Sharing a process never changes ownership: the application keeps its own tables, rules, and release flag, and is reached only through a contract.
 
-Terms: since ADR-0014, "SQ Hub" names the whole ecosystem. "SQ Hub" in this ADR means the platform part of SQ Hub (Beranda, Akun SQ, Admin SQ, the directory and registry); "Finance", "Workspace", and "Academic" are Keuangan, Kerja SQ, and Sekolah.
+Terms: since ADR-0014 the whole ecosystem is called SQ Suite. "SQ Hub" in this ADR keeps its meaning, the SQ Hub platform (the landing page and launcher, Akun SQ, Admin SQ, the directory and registry); "Finance", "Workspace", and "Academic" are Keuangan, Kerja SQ, and Sekolah.
