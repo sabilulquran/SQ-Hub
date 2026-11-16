@@ -67,11 +67,18 @@ const emptyApplication: AdminApplication = {
   governanceSummaryPath: null,
   governanceAudience: null,
   governanceOrder: 0,
+  kind: "modul",
+  whatsappCapable: false,
+  machineClientId: null,
 };
+
+/** Migration 0013 `applications_machine_client_check`: a Keycloak client id. */
+const MACHINE_CLIENT_ID = /^[A-Za-z0-9._:-]{1,255}$/;
 
 const knownErrors: Record<string, string> = {
   INVALID_REQUEST: "Periksa kembali data yang diisi. Pastikan format setiap kolom sudah benar.",
   UNKNOWN_APPLICATION: "Aplikasi tidak ditemukan pada registry.",
+  MACHINE_CLIENT_IN_USE: "Client ID Keycloak ini sudah dipakai aplikasi lain. Satu client hanya untuk satu aplikasi.",
   IDENTITY_DIRECTORY_UNAVAILABLE: "Direktori Staff sedang tidak tersedia. Coba lagi beberapa saat.",
   ADMIN_VERIFICATION_UNAVAILABLE: "Verifikasi administrasi sedang tidak tersedia. Coba lagi beberapa saat.",
 };
@@ -221,6 +228,16 @@ export function AdminCenterPage({
       setApplicationMessage("Path ringkasan dan audiens token harus diisi bersama, atau dikosongkan bersama.");
       return;
     }
+    const machineClientId = applicationForm.machineClientId?.trim() || null;
+    const whatsappCapable = Boolean(applicationForm.whatsappCapable);
+    if (machineClientId && !MACHINE_CLIENT_ID.test(machineClientId)) {
+      setApplicationMessage("Client ID Keycloak hanya boleh berisi huruf, angka, titik, garis bawah, titik dua, dan tanda hubung.");
+      return;
+    }
+    if (whatsappCapable && !machineClientId) {
+      setApplicationMessage("Isi client ID Keycloak aplikasi ini bila WhatsApp lewat Kirim dipakai.");
+      return;
+    }
     setApplicationSaving(true);
     setApplicationMessage(null);
     try {
@@ -235,6 +252,9 @@ export function AdminCenterPage({
             governanceSummaryPath,
             governanceAudience,
             governanceOrder: Number.isFinite(applicationForm.governanceOrder) ? Math.trunc(applicationForm.governanceOrder ?? 0) : 0,
+            kind: applicationForm.kind ?? "modul",
+            whatsappCapable,
+            machineClientId,
           }),
         },
       );
@@ -419,7 +439,11 @@ export function AdminCenterPage({
                           <StatusPill active={application.status === "active"} activeLabel="Aktif" inactiveLabel="Nonaktif" />
                         </div>
                         <p className="mt-3 truncate text-xs text-muted-foreground">{application.canonicalUrl}</p>
-                        {application.governanceSummaryPath ? <p className="mt-1.5 inline-flex rounded-full bg-info-soft px-2 py-0.5 text-[10px] font-bold text-info-ink">Ringkasan tata kelola</p> : null}
+                        <div className="mt-1.5 flex flex-wrap gap-1.5">
+                          {application.kind === "luar" ? <span className="inline-flex rounded-full bg-muted px-2 py-0.5 text-[10px] font-bold text-muted-foreground">Aplikasi luar</span> : null}
+                          {application.whatsappCapable ? <span className="inline-flex rounded-full bg-brand-primary-pale px-2 py-0.5 text-[10px] font-bold text-brand-primary-deep">WhatsApp lewat Kirim</span> : null}
+                          {application.governanceSummaryPath ? <span className="inline-flex rounded-full bg-info-soft px-2 py-0.5 text-[10px] font-bold text-info-ink">Ringkasan tata kelola</span> : null}
+                        </div>
                       </button>
                     ))}
                   </div>
@@ -440,6 +464,12 @@ export function AdminCenterPage({
                       <Field label="Nama"><input value={applicationForm.name} onChange={(event) => setApplicationForm((current) => ({ ...current, name: event.target.value }))} placeholder="Nama aplikasi" className="sq-admin-input" /></Field>
                       <Field label="URL kanonis" helper="Gunakan URL lengkap, termasuk https://"><input value={applicationForm.canonicalUrl} onChange={(event) => setApplicationForm((current) => ({ ...current, canonicalUrl: event.target.value }))} placeholder="https://app.sabilulquran.or.id" className="sq-admin-input" inputMode="url" /></Field>
                       <Field label="Status"><select value={applicationForm.status} onChange={(event) => setApplicationForm((current) => ({ ...current, status: event.target.value as "active" | "inactive" }))} className="sq-admin-input"><option value="active">Aktif</option><option value="inactive">Nonaktif</option></select></Field>
+                      <Field label="Jenis aplikasi" helper="Modul platform adalah bagian dari platform Sabilul Qur'an. Aplikasi luar dibangun terpisah dan hanya memakai layanan bersama seperti WhatsApp lewat Kirim."><select value={applicationForm.kind ?? "modul"} onChange={(event) => setApplicationForm((current) => ({ ...current, kind: event.target.value as "modul" | "luar" }))} className="sq-admin-input"><option value="modul">Modul platform</option><option value="luar">Aplikasi luar</option></select></Field>
+                      <label className="flex items-start gap-2.5 rounded-xl border border-border/70 bg-surface p-3">
+                        <input type="checkbox" checked={Boolean(applicationForm.whatsappCapable)} onChange={(event) => setApplicationForm((current) => ({ ...current, whatsappCapable: event.target.checked }))} className="mt-0.5 h-4 w-4" />
+                        <span><span className="block text-xs font-bold text-brand-heading">Pakai WhatsApp lewat Kirim</span><span className="sq-admin-helper block">Aplikasi mendapat kartu di Kirim dan mengirim WhatsApp dengan token client mesinnya. Nomor disambungkan dari kartunya di Kirim, bukan di sini.</span></span>
+                      </label>
+                      <Field label="Client ID Keycloak (client mesin)" helper="Client service account di Akun SQ yang dipakai aplikasi ini memanggil API. Wajib bila WhatsApp lewat Kirim dipakai; satu client untuk satu aplikasi."><input value={applicationForm.machineClientId ?? ""} onChange={(event) => setApplicationForm((current) => ({ ...current, machineClientId: event.target.value }))} placeholder="contoh: samijaya" className="sq-admin-input" autoCapitalize="off" spellCheck={false} /></Field>
                       <Field label="Path ringkasan tata kelola (opsional)" helper="Path pada origin URL kanonis, misalnya /api/governance/summary. Kosongkan bila aplikasi tidak menerbitkan ringkasan untuk Ringkasan Yayasan."><input value={applicationForm.governanceSummaryPath ?? ""} onChange={(event) => setApplicationForm((current) => ({ ...current, governanceSummaryPath: event.target.value }))} placeholder="/api/governance/summary" className="sq-admin-input" /></Field>
                       <Field label="Audiens token" helper="Client ID Keycloak aplikasi tersebut untuk token exchange. Wajib bila path diisi."><input value={applicationForm.governanceAudience ?? ""} onChange={(event) => setApplicationForm((current) => ({ ...current, governanceAudience: event.target.value }))} placeholder="contoh: hcis-governance" className="sq-admin-input" /></Field>
                       <Field label="Urutan kartu" helper="Angka kecil tampil lebih dulu; urutan sama diurutkan menurut nama."><input type="number" value={applicationForm.governanceOrder ?? 0} onChange={(event) => setApplicationForm((current) => ({ ...current, governanceOrder: Number(event.target.value) }))} className="sq-admin-input" /></Field>

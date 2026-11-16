@@ -52,6 +52,20 @@ export const governanceRegistrationSchema = z
     path: ["audience"],
   });
 
+/** KIRIM-IMPL-003 K-2 and migration 0013 `applications_machine_client_check`: WhatsApp needs a machine client. */
+export const machineClientIdSchema = z.string().trim().regex(/^[A-Za-z0-9._:-]{1,255}$/);
+
+export const whatsappRegistrationSchema = z
+  .object({
+    capable: z.boolean(),
+    machineClientId: machineClientIdSchema.nullable(),
+  })
+  .strict()
+  .refine((value) => !value.capable || value.machineClientId !== null, {
+    message: "a machine client id is required when the application uses WhatsApp",
+    path: ["machineClientId"],
+  });
+
 export function governanceSummaryUrl(canonicalUrl: string, summaryPath: string): URL {
   const base = new URL(canonicalUrl);
   const target = new URL(summaryPath, base.origin);
@@ -72,6 +86,8 @@ export class ApplicationAccessService {
     canonicalUrl: string;
     status: "active" | "inactive";
     governance?: { summaryPath: string | null; audience: string | null; order: number };
+    kind?: "modul" | "luar";
+    whatsapp?: { capable: boolean; machineClientId: string | null };
     actor: ActorRef;
   }): Promise<ApplicationRecord> {
     const parsed = z
@@ -81,6 +97,8 @@ export class ApplicationAccessService {
         canonicalUrl: z.string().url().max(2048),
         status: z.enum(["active", "inactive"]),
         governance: governanceRegistrationSchema.optional(),
+        kind: z.enum(["modul", "luar"]).optional(),
+        whatsapp: whatsappRegistrationSchema.optional(),
         actor: actorSchema,
       })
       .strict()
@@ -106,6 +124,8 @@ export class ApplicationAccessService {
       status: parsed.status,
       actor: parsed.actor,
       ...(parsed.governance ? { governance: parsed.governance } : {}),
+      ...(parsed.kind ? { kind: parsed.kind } : {}),
+      ...(parsed.whatsapp ? { whatsapp: parsed.whatsapp } : {}),
     };
     return this.repository.upsertApplication(upsert);
   }

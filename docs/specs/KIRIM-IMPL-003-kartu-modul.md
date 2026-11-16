@@ -312,3 +312,4 @@ Koreksi owner: sistem tidak perlu tahu apakah sebuah nomor "nomor SPMB" atau nom
 | 2026-11-08 | §13: daftar "Nomor tanpa kartu modul" dihapus atas koreksi owner; layar hanya kartu modul |
 | 2026-11-08 | §14: modul memakai nomor di kartunya seperti pemiliknya (opsi A owner); event nomor ke semua modul di nomor itu |
 | 2026-11-08 | §15: aturan ganti nomor yang netral nomor; data aplikasi ikut modul, riwayat nomor lama tetap terbaca, satu kontak satu chat; K-16, K-18, K-19 diganti |
+| 2026-11-16 | K-2 dari GUI: Pusat Admin mengisi `whatsapp_capable`, `machine_client_id`, dan jenis aplikasi (`modul`/`luar`, migration `0022_applications_kind.sql`); aplikasi luar mendapat kartu dengan aturan modul (amandemen ADR-0011 2026-11-16, panduan `docs/kirim/panduan-api-gateway-aplikasi-luar.md`) |

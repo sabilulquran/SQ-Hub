@@ -459,3 +459,21 @@ describe("Kirim SQ header launcher (HUB-IMPL-022)", () => {
     expect(html.indexOf("Kirim SQ</span>")).toBeLessThan(html.indexOf("Aset SQ"));
   });
 });
+
+describe("Kartu aplikasi luar (ADR-0011 amendment 2026-11-16)", () => {
+  it("shows the small aplikasi luar label on an outside application's card and nowhere else", () => {
+    const html = renderToStaticMarkup(<NomorView state={kirimNomorFixture} onOpen={noop} onRetry={noop} />);
+    expect(html).toContain("Samijaya");
+    expect(html.split("aplikasi luar").length - 1).toBe(1);
+    expect(html.indexOf("Samijaya")).toBeLessThan(html.indexOf("aplikasi luar"));
+    // The same card and actions as a module: nothing about whose number it is.
+    expect(html).toContain("Tambah WhatsApp");
+  });
+
+  it("keeps the label on a connected card and omits it for a module", () => {
+    const spmb = kirimNomorFixture.status === "ready" ? kirimNomorFixture.list.modules.find((item) => item.application_key === "spmb-sq")! : null!;
+    expect(renderToStaticMarkup(<ModuleCard card={{ ...spmb, jenis_aplikasi: "luar" }} onOpen={noop} />)).toContain("aplikasi luar");
+    expect(renderToStaticMarkup(<ModuleCard card={{ ...spmb, jenis_aplikasi: "modul" }} onOpen={noop} />)).not.toContain("aplikasi luar");
+    expect(renderToStaticMarkup(<ModuleCard card={spmb} onOpen={noop} />)).not.toContain("aplikasi luar");
+  });
+});

@@ -32,6 +32,7 @@ export const kirimNomorFixture: NomorState = {
       { application_key: "hcis", nama: "HCIS", peran: "pemilik", nomor: hcisDevice, jenis: ["notifikasi"], antrean: { antre: 2, gagal_hari_ini: 0 }, dipakai_juga_oleh: ["Karir SQ"], pemilik_nomor: null },
       { application_key: "karir-sq", nama: "Karir SQ", peran: "pemakai", nomor: hcisDevice, jenis: ["notifikasi", "kode"], antrean: { antre: 1, gagal_hari_ini: 0 }, dipakai_juga_oleh: [], pemilik_nomor: "HCIS" },
       { application_key: "keuangan", nama: "Keuangan", peran: "kosong", nomor: null, jenis: [], antrean: { antre: 0, gagal_hari_ini: 0 }, dipakai_juga_oleh: [], pemilik_nomor: null },
+      { application_key: "samijaya", nama: "Samijaya", jenis_aplikasi: "luar", peran: "kosong", nomor: null, jenis: [], antrean: { antre: 0, gagal_hari_ini: 0 }, dipakai_juga_oleh: [], pemilik_nomor: null },
       { application_key: "spmb-sq", nama: "SPMB SQ", peran: "pemilik", nomor: spmbDevice, jenis: ["notifikasi", "kode"], antrean: { antre: 12, gagal_hari_ini: 1 }, dipakai_juga_oleh: ["Keluarga"], pemilik_nomor: null },
     ],
     devices: [hcisDevice, spmbDevice, ujiDevice],

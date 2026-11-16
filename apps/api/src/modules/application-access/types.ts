@@ -24,7 +24,15 @@ export interface ApplicationRecord {
   /** Keycloak client ID used as the token-exchange audience; required with the path. */
   governanceAudience: string | null;
   governanceOrder: number;
+  /** ADR-0011 amendment 2026-11-16: `modul` is an SQ Core module, `luar` an application outside SQ Core. A label only. */
+  kind: ApplicationKind;
+  /** KIRIM-IMPL-003 K-2: the application gets a Kirim SQ card and may send WhatsApp through it. */
+  whatsappCapable: boolean;
+  /** The Keycloak machine client (service account) the application calls SQ Hub with; required with `whatsappCapable`. */
+  machineClientId: string | null;
 }
+
+export type ApplicationKind = "modul" | "luar";
 
 export interface AccessRecord {
   id: string;

@@ -7,6 +7,7 @@ import type {
   AccessRecord,
   AccessStatus,
   ActorRef,
+  ApplicationKind,
   ApplicationRecord,
   ApplicationStatus,
   AuditRecord,
@@ -22,6 +23,19 @@ interface ApplicationRow {
   governanceSummaryPath: string | null;
   governanceAudience: string | null;
   governanceOrder: number;
+  kind: ApplicationKind;
+  whatsappCapable: boolean;
+  machineClientId: string | null;
+}
+
+/** `applications.machine_client_id` is unique: one Keycloak client sends as one application. */
+export class MachineClientInUseError extends Error {
+  readonly code = "MACHINE_CLIENT_IN_USE";
+  readonly statusCode = 409;
+  constructor(public readonly machineClientId: string) {
+    super(`machine client ${machineClientId} is already registered to another application`);
+    this.name = "MachineClientInUseError";
+  }
 }
 
 export interface ApplicationUpsertInput {
@@ -35,6 +49,13 @@ export interface ApplicationUpsertInput {
     audience: string | null;
     order: number;
   };
+  /** Omitted: an existing application keeps its kind; a new one is `modul`. */
+  kind?: ApplicationKind;
+  /** Omitted WhatsApp fields keep their stored values (KIRIM-IMPL-003 K-2). */
+  whatsapp?: {
+    capable: boolean;
+    machineClientId: string | null;
+  };
   actor: ActorRef;
 }
 
@@ -46,7 +67,10 @@ const APPLICATION_COLUMNS = `
   status,
   governance_summary_path AS "governanceSummaryPath",
   governance_audience AS "governanceAudience",
-  governance_order AS "governanceOrder"
+  governance_order AS "governanceOrder",
+  kind,
+  whatsapp_capable AS "whatsappCapable",
+  machine_client_id AS "machineClientId"
 `;
 
 interface AccessRow {
@@ -110,8 +134,9 @@ export class PgApplicationAccessRepository implements ApplicationAccessRepositor
         `
           INSERT INTO applications (
             id, application_key, name, canonical_url, status,
-            governance_summary_path, governance_audience, governance_order
-          ) VALUES ($1, $2, $3, $4, $5, $6, $7, COALESCE($8, 0))
+            governance_summary_path, governance_audience, governance_order,
+            kind, whatsapp_capable, machine_client_id
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, COALESCE($8, 0), COALESCE($10, 'modul'), COALESCE($12, false), $13)
           ON CONFLICT (application_key) DO UPDATE SET
             name = EXCLUDED.name,
             canonical_url = EXCLUDED.canonical_url,
@@ -119,6 +144,9 @@ export class PgApplicationAccessRepository implements ApplicationAccessRepositor
             governance_summary_path = CASE WHEN $9 THEN EXCLUDED.governance_summary_path ELSE applications.governance_summary_path END,
             governance_audience = CASE WHEN $9 THEN EXCLUDED.governance_audience ELSE applications.governance_audience END,
             governance_order = CASE WHEN $9 THEN EXCLUDED.governance_order ELSE applications.governance_order END,
+            kind = COALESCE($10, applications.kind),
+            whatsapp_capable = CASE WHEN $11 THEN EXCLUDED.whatsapp_capable ELSE applications.whatsapp_capable END,
+            machine_client_id = CASE WHEN $11 THEN EXCLUDED.machine_client_id ELSE applications.machine_client_id END,
             updated_at = now()
           RETURNING ${APPLICATION_COLUMNS}
         `,
@@ -132,10 +160,24 @@ export class PgApplicationAccessRepository implements ApplicationAccessRepositor
           input.governance?.audience ?? null,
           input.governance?.order ?? null,
           Boolean(input.governance),
+          input.kind ?? null,
+          Boolean(input.whatsapp),
+          input.whatsapp?.capable ?? null,
+          input.whatsapp?.machineClientId ?? null,
         ],
       );
       const row = result.rows[0];
       if (!row) throw new Error("application upsert returned no row");
+
+      // KIRIM-IMPL-003 §6: the Kirim SQ consumer behind this application's card sends with the
+      // client the registry names today, as `kirim-admin module set` already does. The old client
+      // stops sending as this application.
+      if (input.whatsapp?.machineClientId) {
+        await client.query(
+          "UPDATE kirim_consumers SET client_id = $2, updated_at = now() WHERE application_key = $1 AND client_id <> $2",
+          [input.applicationKey, input.whatsapp.machineClientId],
+        );
+      }
 
       await this.insertAudit(client, {
         actor: input.actor,
@@ -153,12 +195,19 @@ export class PgApplicationAccessRepository implements ApplicationAccessRepositor
                 governanceOrder: input.governance.order,
               }
             : {}),
+          ...(input.kind ? { kind: input.kind } : {}),
+          ...(input.whatsapp
+            ? { whatsappCapable: input.whatsapp.capable, machineClientId: input.whatsapp.machineClientId }
+            : {}),
         },
       });
       await client.query("COMMIT");
       return row;
     } catch (error) {
       await client.query("ROLLBACK");
+      if (input.whatsapp?.machineClientId && isUniqueViolation(error)) {
+        throw new MachineClientInUseError(input.whatsapp.machineClientId);
+      }
       throw error;
     } finally {
       client.release();
@@ -423,4 +472,8 @@ function toAccessRecord(row: AccessRow): AccessRecord {
     revokedAt: row.revokedAt?.toISOString() ?? null,
     updatedAt: row.updatedAt.toISOString(),
   };
+}
+
+function isUniqueViolation(error: unknown): boolean {
+  return typeof error === "object" && error !== null && (error as { code?: unknown }).code === "23505";
 }
