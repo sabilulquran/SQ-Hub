@@ -15,8 +15,8 @@ import type { AdminApplication, AdminStaff } from "@/types";
 // full width, and the item's detail or form exists only while its URL parameter is set.
 
 const applications: AdminApplication[] = [
-  { key: "hcis", name: "HCIS", canonicalUrl: "https://hcis.example", status: "active", governanceSummaryPath: null, governanceAudience: null, governanceOrder: 0 },
-  { key: "samijaya", name: "Samijaya", canonicalUrl: "https://samijaya.example", status: "active", governanceSummaryPath: null, governanceAudience: null, governanceOrder: 0, kind: "luar", whatsappCapable: true, machineClientId: "samijaya" },
+  { key: "hcis", name: "HCIS", canonicalUrl: "https://hcis.example", status: "active", governanceSummaryPath: null, governanceAudience: null, governanceOrder: 0, kind: "modul", whatsappCapable: true, machineClientId: "hcis-api" },
+  { key: "samijaya", name: "Samijaya", canonicalUrl: "https://samijaya.example", status: "active", governanceSummaryPath: null, governanceAudience: null, governanceOrder: 0, kind: "luar", whatsappCapable: false, machineClientId: null },
 ];
 
 function at(href: string) {
@@ -164,10 +164,10 @@ describe("answerStillWanted", () => {
   });
 });
 
-// ADR-0011 amendment 2026-11-16: an application outside SQ Core is registered here with its kind,
-// the WhatsApp switch and its Keycloak machine client; nothing about numbers is asked.
+// ADR-0011 amendment 2026-11-17: a Suite application is registered with the WhatsApp switch and its
+// Keycloak machine client; an outside application uses an API key from the Kirim gateway card instead.
 describe("Registry aplikasi: jenis aplikasi dan WhatsApp lewat Kirim", () => {
-  it("labels an outside application and its WhatsApp use on the card", () => {
+  it("labels an outside application on the card and the WhatsApp use of a Suite application", () => {
     at("/admin");
     const html = renderToStaticMarkup(<AdminCenterPage workspace={workspaceFixture} previewApplications={applications} />);
     expect(html).toContain("Aplikasi luar");
@@ -175,16 +175,25 @@ describe("Registry aplikasi: jenis aplikasi dan WhatsApp lewat Kirim", () => {
     expect(html.split("Aplikasi luar").length - 1).toBe(1);
   });
 
-  it("offers the kind, the WhatsApp switch and the machine client in the form, filled from the application", () => {
-    at("/admin?aplikasi=samijaya");
+  it("offers the WhatsApp switch and the machine client for a Suite application", () => {
+    at("/admin?aplikasi=hcis");
     const html = renderToStaticMarkup(<AdminCenterPage workspace={workspaceFixture} previewApplications={applications} />);
     expect(html).toContain("Jenis aplikasi");
-    expect(html).toContain('<option value="luar" selected="">Aplikasi luar</option>');
+    expect(html).toContain('<option value="modul" selected="">Aplikasi platform</option>');
     expect(html).toContain("Pakai WhatsApp lewat Kirim");
     expect(html).toMatch(/<input type="checkbox"[^>]*checked=""/);
     expect(html).toContain("Client ID Keycloak (client mesin)");
-    expect(html).toContain('value="samijaya"');
+    expect(html).toContain('value="hcis-api"');
     expect(html).not.toContain("SQ Core");
+  });
+
+  it("tells an outside application to use a Kirim API key instead of the switch and client", () => {
+    at("/admin?aplikasi=samijaya");
+    const html = renderToStaticMarkup(<AdminCenterPage workspace={workspaceFixture} previewApplications={applications} />);
+    expect(html).toContain('<option value="luar" selected="">Aplikasi luar</option>');
+    expect(html).toContain("kunci API dari kartu");
+    expect(html).not.toContain("Pakai WhatsApp lewat Kirim");
+    expect(html).not.toContain("Client ID Keycloak (client mesin)");
   });
 
   it("starts a new application as a module without WhatsApp", () => {

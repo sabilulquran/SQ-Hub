@@ -120,9 +120,21 @@ On 2026-10-19 the Product Owner decided that the admissions committee's WhatsApp
 - An owner cannot disconnect or deactivate a number other modules still use; pausing the queue remains the emergency stop.
 
 ## Amendment 2026-11-16: applications outside SQ Core may have a card
-**Status:** ACCEPTED (Product Owner decision of 2026-11-16). First case: Samijaya.
+**Status:** SUPERSEDED on 2026-11-17 by the amendment below (the Product Owner rejected a card per outside application: "ga perlu samijaya muncul lah … biar general aja"). Kept for the record.
 
 - Kirim SQ is also the Yayasan's **WhatsApp API gateway for applications outside SQ Core**. Such an application is registered in the SQ Hub registry from Pusat Admin with kind `luar`, the WhatsApp switch and its Keycloak machine client, and gets a Kirim SQ card like a module. The card carries a small "aplikasi luar" label; **the rules are the same as for a module**: the card's number, the consumer token (audience `sq-hub-kirim` or `sq-hub-api`, service account), quotas, send hours, opt-outs, webhooks and audit. There is no number card and no "whose number" logic (KIRIM-IMPL-003 §13 and §15 stay).
 - The kind is a label for the card and the documentation only; it never changes which number an application sends with.
 - The consumer API stays loopback-only (`/internal/*` is blocked at the edge), so an outside application must run on the same host as SQ Hub, as Samijaya does on Mi8.
 - Developer guide: `docs/kirim/panduan-api-gateway-aplikasi-luar.md`.
+
+## Amendment 2026-11-17: one generic "Aplikasi luar" card and Kirim-issued API keys
+**Status:** ACCEPTED (Product Owner decisions of 2026-11-16 and 2026-11-17). First consumer: Samijaya.
+
+- Kirim SQ is the Yayasan's **WhatsApp API gateway for portals and applications outside SQ Suite**. The Kirim home screen shows **one generic card, "Aplikasi luar"** ("Portal atau aplikasi di luar Sabilul Qur'an Suite yang memakai API"; wording DRAFT), owned by the gateway consumer `aplikasi-luar`. Its face never names an application. There is no card per outside application and no card per number (KIRIM-IMPL-003 §13 and §15 stay).
+- **The card holds several numbers.** Each outside application connects its own number by QR on that card; a number of the card has the `kode` route, so verification codes may go through it.
+- **API keys issued by Kirim SQ, not Keycloak clients.** A key (`krm_` + 32 characters) is created in the card's pop-up for a named application, bound to **one number** of the card, shown once, stored as a keyed hash (`HMAC(lookup key)`), and revocable without disconnecting the number. The consumer API accepts `Authorization: Bearer <key>` next to the module token; a key acts as the gateway consumer on its number only: `device` may not be sent, `GET /messages/:id` sees only that number's messages, idempotency keys are scoped per key, and the conversation, group and business API answer `403 api_key_not_allowed`. A Keycloak token can never act as the gateway consumer.
+- **Webhook per number** (`kirim_devices.webhook_url`, `webhook_secret_enc`): registered with the key through `PUT /internal/kirim/sambungan/webhook`; deliveries for the gateway consumer carry `device_id` and go to that number's webhook. Allowed addresses: any `https://` host or `http://127.0.0.1:<port>` (DRAFT, wider than D-4 for modules).
+- **Documentation from the Kirim panel:** `kirim.sabilulquran.or.id/dokumentasi-api`, public without sign-in, linked from the navigation and the card. Repository guide: `docs/kirim/panduan-api-gateway-aplikasi-luar.md`.
+- The registry kind `luar` (migration 0022) stays as a label in Pusat Admin; an outside application gets no card and no WhatsApp switch there (`kind = 'modul'` only in `listWhatsAppApplications`).
+- Migration `0023_kirim_gerbang_api.sql` (additive): `kirim_consumers.gerbang`, the gateway consumer row, `kirim_devices.webhook_url/webhook_secret_enc`, `kirim_webhook_deliveries.device_id`, table `kirim_api_keys`.
+- DRAFT assumptions for the owner: the daily quota is shared by all outside applications (consumer `aplikasi-luar`, default 500); one number per outside application (webhook per number); no rate limit on failed key lookups beyond the edge.

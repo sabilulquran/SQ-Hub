@@ -36,8 +36,6 @@ export interface KirimDeviceList {
 export interface KirimModuleCard {
   application_key: string;
   nama: string;
-  /** ADR-0011 amendment 2026-11-16: `luar` is an application outside SQ Core; the card shows a small label. */
-  jenis_aplikasi?: "modul" | "luar";
   peran: "kosong" | "pemilik" | "pemakai";
   nomor: KirimDevice | null;
   jenis: Array<"notifikasi" | "kode">;
@@ -50,6 +48,46 @@ export interface KirimModuleCard {
 
 export interface KirimModuleList extends KirimDeviceList {
   modules: KirimModuleCard[];
+  /** ADR-0011 amendment 2026-11-17: the one "Aplikasi luar" card for applications outside SQ Suite. */
+  gerbang?: KirimGatewayCard;
+}
+
+export interface KirimGatewayNumber extends KirimDevice {
+  kunci_aktif: number;
+}
+
+export interface KirimGatewayCard {
+  nama: string;
+  keterangan: string;
+  nomor: KirimGatewayNumber[];
+  kunci_aktif: number;
+}
+
+export interface KirimApiKey {
+  id: string;
+  nama_aplikasi: string;
+  awalan: string;
+  nomor: { kode: string; label: string };
+  dibuat_at: string;
+  dibuat_oleh: string;
+  terakhir_dipakai_at: string | null;
+  dicabut_at: string | null;
+}
+
+export interface KirimGatewayDetail {
+  nama: string;
+  keterangan: string;
+  nomor: KirimGatewayNumber[];
+  kunci: KirimApiKey[];
+}
+
+/** The plain key is in the answer to `POST /gerbang/kunci` only; afterwards only its prefix is known. */
+export interface KirimIssuedKey {
+  id: string;
+  kunci: string;
+  awalan: string;
+  nama_aplikasi: string;
+  nomor: { kode: string; label: string };
 }
 
 export interface KirimConsumer {

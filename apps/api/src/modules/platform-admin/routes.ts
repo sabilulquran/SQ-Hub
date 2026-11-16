@@ -44,6 +44,11 @@ const applicationBodySchema = z
   .refine((body) => !body.whatsappCapable || Boolean(body.machineClientId), {
     message: "machineClientId is required when whatsappCapable is true",
     path: ["machineClientId"],
+  })
+  // ADR-0011 amendment 2026-11-17: outside applications use API keys from the Kirim gateway card, not a Keycloak client.
+  .refine((body) => !(body.kind === "luar" && body.whatsappCapable), {
+    message: "an outside application uses a Kirim API key, not the WhatsApp switch",
+    path: ["whatsappCapable"],
   });
 
 const accessMutationSchema = z

@@ -1,6 +1,7 @@
 import type { Pool } from "pg";
 
 import { columnAad, signKirimWebhook, type KirimCrypto } from "./crypto.js";
+import { isGatewayWebhookUrl } from "./gateway.js";
 import { webhookRetryDelayMs } from "./policy.js";
 import type { KirimLog } from "./providers/log.js";
 
@@ -70,6 +71,9 @@ export class KirimWebhookSender {
       webhookSecretEnc: string | null;
       consumerId: string;
       consumer: string;
+      deviceId: string | null;
+      deviceWebhookUrl: string | null;
+      deviceSecretEnc: string | null;
     }>(
       `UPDATE kirim_webhook_deliveries d
        SET next_attempt_at = now() + ($1::int * interval '1 millisecond')
@@ -83,7 +87,10 @@ export class KirimWebhookSender {
        )
        RETURNING d.id, d.event_type AS "eventType", d.payload_enc AS "payloadEnc", d.attempts,
                  c.webhook_url AS "webhookUrl", c.webhook_secret_ref AS "webhookSecretRef",
-                 c.webhook_secret_enc AS "webhookSecretEnc", c.id AS "consumerId", c.nama AS consumer`,
+                 c.webhook_secret_enc AS "webhookSecretEnc", c.id AS "consumerId", c.nama AS consumer,
+                 d.device_id AS "deviceId",
+                 (SELECT dv.webhook_url FROM kirim_devices dv WHERE dv.id = d.device_id) AS "deviceWebhookUrl",
+                 (SELECT dv.webhook_secret_enc FROM kirim_devices dv WHERE dv.id = d.device_id) AS "deviceSecretEnc"`,
       [LEASE_MS],
     );
     let delivered = 0;
@@ -119,18 +126,24 @@ export class KirimWebhookSender {
 
   private async deliver(row: {
     id: string; payloadEnc: string; webhookUrl: string | null; webhookSecretRef: string | null; webhookSecretEnc: string | null; consumerId: string;
+    deviceId?: string | null; deviceWebhookUrl?: string | null; deviceSecretEnc?: string | null;
   }): Promise<number | null> {
-    const secret = resolveWebhookSecret(
-      this.crypto,
-      { id: row.consumerId, webhookSecretEnc: row.webhookSecretEnc, webhookSecretRef: row.webhookSecretRef },
-      this.options.secrets,
-    );
-    if (!row.webhookUrl || !secret || !isAllowedWebhookUrl(row.webhookUrl)) return null;
+    // ADR-0011 amendment 2026-11-17: a delivery that names a number goes to that number's webhook (gateway card).
+    const toDevice = Boolean(row.deviceId);
+    const url = toDevice ? row.deviceWebhookUrl ?? null : row.webhookUrl;
+    const secret = toDevice
+      ? row.deviceId && row.deviceSecretEnc ? this.crypto.open(row.deviceSecretEnc, columnAad("kirim_devices", "webhook_secret_enc", row.deviceId)) : null
+      : resolveWebhookSecret(
+          this.crypto,
+          { id: row.consumerId, webhookSecretEnc: row.webhookSecretEnc, webhookSecretRef: row.webhookSecretRef },
+          this.options.secrets,
+        );
+    if (!url || !secret || !(isAllowedWebhookUrl(url) || (toDevice && isGatewayWebhookUrl(url)))) return null;
     const body = this.crypto.open(row.payloadEnc, columnAad("kirim_webhook_deliveries", "payload_enc", row.id));
     const timestamp = this.options.nowSeconds?.() ?? Math.floor(Date.now() / 1000);
     try {
       const response = await (this.options.transport ?? fetchWebhookTransport)({
-        url: row.webhookUrl,
+        url,
         body,
         headers: {
           "content-type": "application/json",

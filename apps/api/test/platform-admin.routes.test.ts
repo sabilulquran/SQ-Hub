@@ -387,7 +387,7 @@ describe("Registry: aplikasi luar and WhatsApp lewat Kirim", () => {
         name: "Samijaya",
         canonicalUrl: "https://samijaya.example.test",
         status: "active",
-        kind: "luar",
+        kind: "modul",
         whatsappCapable: true,
         machineClientId: "samijaya",
       },
@@ -395,9 +395,9 @@ describe("Registry: aplikasi luar and WhatsApp lewat Kirim", () => {
     await app.close();
 
     expect(response.statusCode).toBe(200);
-    expect(response.json().application).toMatchObject({ key: "samijaya", kind: "luar", whatsappCapable: true, machineClientId: "samijaya" });
+    expect(response.json().application).toMatchObject({ key: "samijaya", kind: "modul", whatsappCapable: true, machineClientId: "samijaya" });
     expect(calls).toHaveLength(1);
-    expect(calls[0]).toMatchObject({ kind: "luar", whatsapp: { capable: true, machineClientId: "samijaya" } });
+    expect(calls[0]).toMatchObject({ kind: "modul", whatsapp: { capable: true, machineClientId: "samijaya" } });
     expect(calls[0]?.actor.kind).toBe("human");
   });
 
@@ -444,6 +444,8 @@ describe("Registry: aplikasi luar and WhatsApp lewat Kirim", () => {
       { whatsappCapable: true, machineClientId: "sami jaya" },
       { machineClientId: "a".repeat(256) },
       { kind: "eksternal" },
+      // ADR-0011 amendment 2026-11-17: an outside application uses a Kirim API key, never the switch.
+      { kind: "luar", whatsappCapable: true, machineClientId: "samijaya" },
     ]) {
       const response = await app.inject({ method: "PUT", url: "/admin/applications/samijaya", headers: mutationHeaders, payload: { ...base, ...extra } });
       expect(response.statusCode, JSON.stringify(extra)).toBe(400);

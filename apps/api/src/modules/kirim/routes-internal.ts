@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+
 import multipart from "@fastify/multipart";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { z } from "zod";
@@ -16,6 +18,7 @@ import {
 } from "./conversations.js";
 import { deleteSchema, editSchema, forwardSchema, reactionSchema, type KirimMessageActions } from "./actions.js";
 import { webhookRegistrationSchema, type KirimModuleCards } from "./cards.js";
+import { gatewayWebhookSchema, type GatewayConsumer, type KirimGateway } from "./gateway.js";
 import {
   adminSchema,
   createGroupSchema,
@@ -90,6 +93,8 @@ export function registerKirimInternalRoutes(
   input: {
     service: KirimService;
     cards?: KirimModuleCards;
+    /** ADR-0011 amendment 2026-11-17: API keys (`krm_…`) for applications outside SQ Suite. */
+    gateway?: KirimGateway;
     conversations?: KirimConversations;
     /** KIRIM-IMPL-004: message actions, profile photos, R3 groups and grup bersama. */
     actions?: KirimMessageActions;
@@ -102,13 +107,24 @@ export function registerKirimInternalRoutes(
     log?: (entry: Record<string, unknown>, message: string) => void;
   },
 ) {
-  /** Steps 1–2 of §5.1: a valid `sq-hub-kirim` token from a registered, active consumer. */
+  /**
+   * Steps 1–2 of §5.1: a valid `sq-hub-kirim` token from a registered, active consumer, or an API key
+   * (`krm_…`) of the gateway card, which acts as the gateway consumer on the key's number.
+   */
   async function authenticate(request: FastifyRequest, reply: FastifyReply): Promise<ConsumerRow | null> {
     reply.header("Cache-Control", "no-store");
     const token = readBearerToken(request.headers.authorization);
     if (!token) {
       sendKirimError(reply, 401, "unauthenticated", "Token tidak ada.");
       return null;
+    }
+    if (input.gateway && token.startsWith("krm_")) {
+      try {
+        return await input.gateway.authenticate(token);
+      } catch (error) {
+        handleKirimError(reply, error);
+        return null;
+      }
     }
     let clientId: string;
     try {
@@ -127,6 +143,16 @@ export function registerKirimInternalRoutes(
       handleKirimError(reply, error);
       return null;
     }
+  }
+
+  /** The conversation, group and business API stays with SQ Suite applications: an API key gets a clear refusal. */
+  async function authenticateModule(request: FastifyRequest, reply: FastifyReply): Promise<ConsumerRow | null> {
+    const consumer = await authenticate(request, reply);
+    if (consumer && apiKeyOf(consumer)) {
+      sendKirimError(reply, 403, "api_key_not_allowed", "Kunci API hanya untuk kirim pesan, status, jangan hubungi, dan webhook.");
+      return null;
+    }
+    return consumer;
   }
 
   void app.register(async (scope) => {
@@ -154,8 +180,15 @@ export function registerKirimInternalRoutes(
       }
       const parsed = sendMessageSchema.safeParse(request.body);
       if (!parsed.success) return sendInvalidBody(request, reply, parsed.error);
+      const apiKey = apiKeyOf(consumer);
+      if (apiKey && parsed.data.device !== undefined) {
+        return sendKirimError(reply, 400, "invalid_request", "Kunci API selalu memakai nomornya sendiri; jangan kirim field device.", ["device"]);
+      }
       try {
-        return reply.status(202).send(await input.service.acceptMessage(consumer, key, parsed.data));
+        // Idempotency keys are per application: two keys may reuse the same value without clashing. The
+        // client's value is hashed so the stored key stays within the column's 200 characters.
+        const scopedKey = apiKey ? `krm:${apiKey.id}:${createHash("sha256").update(key, "utf8").digest("hex")}` : key;
+        return reply.status(202).send(await input.service.acceptMessage(consumer, scopedKey, parsed.data));
       } catch (error) {
         return handleKirimError(reply, error);
       }
@@ -165,7 +198,7 @@ export function registerKirimInternalRoutes(
       const consumer = await authenticate(request, reply);
       if (!consumer) return reply;
       try {
-        return reply.send(await input.service.getMessage(consumer, request.params.id));
+        return reply.send(await input.service.getMessage(consumer, request.params.id, apiKeyOf(consumer)?.device.id));
       } catch (error) {
         return handleKirimError(reply, error);
       }
@@ -176,6 +209,7 @@ export function registerKirimInternalRoutes(
       if (!consumer) return reply;
       const parsed = optoutSchema.safeParse(request.body);
       if (!parsed.success) return sendInvalidBody(request, reply, parsed.error);
+      if (!apiKeyMayUseDevice(consumer, parsed.data)) return sendKirimError(reply, 403, "not_owner", "Kunci API hanya boleh memakai nomornya sendiri.");
       try {
         return reply.send(await input.service.addConsumerOptout(consumer, parsed.data));
       } catch (error) {
@@ -188,6 +222,7 @@ export function registerKirimInternalRoutes(
       if (!consumer) return reply;
       const parsed = optoutSchema.safeParse(request.body);
       if (!parsed.success) return sendInvalidBody(request, reply, parsed.error);
+      if (!apiKeyMayUseDevice(consumer, parsed.data)) return sendKirimError(reply, 403, "not_owner", "Kunci API hanya boleh memakai nomornya sendiri.");
       try {
         return reply.send(await input.service.removeConsumerOptout(consumer, parsed.data));
       } catch (error) {
@@ -197,18 +232,23 @@ export function registerKirimInternalRoutes(
 
     // KIRIM-IMPL-003 §5: the module reads its number and webhook secret with its own token.
     const cards = input.cards;
+    const gateway = input.gateway;
     if (cards) {
       scope.get("/sambungan", async (request, reply) => {
         const consumer = await authenticate(request, reply);
         if (!consumer) return reply;
+        const apiKey = apiKeyOf(consumer);
+        if (apiKey && gateway) return reply.send(await gateway.connection(consumer as GatewayConsumer));
         return reply.send(await cards.connection(consumer));
       });
       scope.put("/sambungan/webhook", async (request, reply) => {
         const consumer = await authenticate(request, reply);
         if (!consumer) return reply;
-        const parsed = webhookRegistrationSchema.safeParse(request.body);
+        const apiKey = apiKeyOf(consumer);
+        const parsed = (apiKey ? gatewayWebhookSchema : webhookRegistrationSchema).safeParse(request.body);
         if (!parsed.success) return sendInvalidBody(request, reply, parsed.error);
         try {
+          if (apiKey && gateway) return reply.send(await gateway.registerWebhook(consumer as GatewayConsumer, parsed.data.url));
           return reply.send(await cards.registerWebhook(consumer, parsed.data.url));
         } catch (error) {
           return handleKirimError(reply, error);
@@ -218,7 +258,7 @@ export function registerKirimInternalRoutes(
 
     const conversations = input.conversations;
     if (conversations) {
-      registerConversationRoutes(scope, conversations, authenticate, {
+      registerConversationRoutes(scope, conversations, authenticateModule, {
         ...(input.actions ? { actions: input.actions } : {}),
         ...(input.photos ? { photos: input.photos } : {}),
         ...(input.groupAdmin ? { groupAdmin: input.groupAdmin } : {}),
@@ -247,6 +287,7 @@ export function registerKirimInternalRoutes(
       }
       if (!file) return sendKirimError(reply, 400, "invalid_request", "Satu berkas wajib.");
       if (device !== undefined && !/^[a-z][a-z0-9-]{1,30}$/.test(device)) return sendKirimError(reply, 400, "invalid_request", "Field device tidak sah.");
+      if (device !== undefined && apiKeyOf(consumer)) return sendKirimError(reply, 400, "invalid_request", "Kunci API selalu memakai nomornya sendiri; jangan kirim field device.", ["device"]);
       try {
         return reply.status(201).send(await input.service.storeOutboundMedia(consumer, { deviceKode: device, ...file }));
       } catch (error) {
@@ -293,6 +334,17 @@ export function registerKirimInternalRoutes(
 }
 
 type Authenticate = (request: FastifyRequest, reply: FastifyReply) => Promise<ConsumerRow | null>;
+
+/** The API key behind an authenticated request, when it was not a module token. */
+function apiKeyOf(consumer: ConsumerRow): GatewayConsumer["apiKey"] | null {
+  return (consumer as Partial<GatewayConsumer>).apiKey ?? null;
+}
+
+/** An API key's `cakupan: device` opt-out may only name the key's own number. */
+function apiKeyMayUseDevice(consumer: ConsumerRow, input: { cakupan: "consumer" } | { cakupan: "device"; device: string }): boolean {
+  const apiKey = apiKeyOf(consumer);
+  return !apiKey || input.cakupan !== "device" || input.device === apiKey.device.kode;
+}
 
 /** KIRIM-IMPL-002 §6 and KIRIM-IMPL-004: the number owner's conversation API. Every handler checks ownership itself. */
 function registerConversationRoutes(

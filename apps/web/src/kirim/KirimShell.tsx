@@ -1,4 +1,4 @@
-import { Activity, AlertTriangle, Ban, ListOrdered, LoaderCircle, LogOut, ShieldAlert, Smartphone } from "lucide-react";
+import { Activity, AlertTriangle, Ban, BookOpen, ListOrdered, LoaderCircle, LogOut, ShieldAlert, Smartphone } from "lucide-react";
 import { useState, type ReactNode } from "react";
 
 import { AppLauncher } from "@/components/AppLauncher";
@@ -16,6 +16,7 @@ const navItems: Array<{ key: Exclude<KirimRoute, "not-found" | "impor">; label: 
   { key: "antrean", label: "Antrean", href: "/antrean", icon: ListOrdered },
   { key: "jangan-hubungi", label: "Jangan hubungi", href: "/jangan-hubungi", icon: Ban },
   { key: "aktivitas", label: "Aktivitas", href: "/aktivitas", icon: Activity },
+  { key: "dokumentasi-api", label: "Dokumentasi API", href: "/dokumentasi-api", icon: BookOpen },
 ];
 
 /**

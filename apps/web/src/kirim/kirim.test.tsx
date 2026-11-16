@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
-import { kirimAntreanFixture, kirimNomorFixture } from "@/dev/kirimFixture";
+import { kirimAntreanFixture, kirimGerbangDetailFixture, kirimNomorFixture } from "@/dev/kirimFixture";
 import { AktivitasView, type AktivitasState } from "@/kirim/AktivitasPage";
 import { AntreanView, type AntreanFilter } from "@/kirim/AntreanPage";
 import { ImporView, type ImporState } from "@/kirim/ImporPage";
@@ -13,6 +13,7 @@ import { JanganHubungiView, type JanganHubungiState, type OptoutFilter } from "@
 import { KirimAppView } from "@/kirim/KirimApp";
 import { KirimShell } from "@/kirim/KirimShell";
 import type { KirimDevice } from "@/kirim/api";
+import { GerbangDialogView } from "@/kirim/GerbangCard";
 import { DeactivateDialog, DeactivateWarning, GantiHint, ModuleCard, NomorView, PairingContent, TambahDialog } from "@/kirim/NomorPage";
 import { isKirimHost, resolveKirimRoute } from "@/kirim/routes";
 
@@ -460,20 +461,73 @@ describe("Kirim SQ header launcher (HUB-IMPL-022)", () => {
   });
 });
 
-describe("Kartu aplikasi luar (ADR-0011 amendment 2026-11-16)", () => {
-  it("shows the small aplikasi luar label on an outside application's card and nowhere else", () => {
+// ADR-0011 amendment 2026-11-17: one generic "Aplikasi luar" card for applications outside Sabilul Qur'an
+// Suite. Its face names no application; names and keys live in the pop-up.
+describe("Kartu Aplikasi luar dan kunci API (ADR-0011 amendment 2026-11-17)", () => {
+  it("shows one generic card with its numbers and key count, and never an application name on the page", () => {
     const html = renderToStaticMarkup(<NomorView state={kirimNomorFixture} onOpen={noop} onRetry={noop} />);
-    expect(html).toContain("Samijaya");
-    expect(html.split("aplikasi luar").length - 1).toBe(1);
-    expect(html.indexOf("Samijaya")).toBeLessThan(html.indexOf("aplikasi luar"));
-    // The same card and actions as a module: nothing about whose number it is.
-    expect(html).toContain("Tambah WhatsApp");
+    expect(html).toContain("Aplikasi luar");
+    expect(html).toContain("Portal atau aplikasi di luar Sabilul Qur&#x27;an Suite yang memakai API");
+    expect(html).toContain("1 nomor · 1 tersambung");
+    expect(html).toContain("Kelola nomor dan kunci");
+    expect(html).toContain('href="/dokumentasi-api"');
+    expect(html).not.toContain("Samijaya");
+    expect(html).not.toContain("Toko online");
+    // Still no per-number cards and no "whose number" wording.
+    expect(html).not.toContain("Nomor tanpa kartu");
   });
 
-  it("keeps the label on a connected card and omits it for a module", () => {
-    const spmb = kirimNomorFixture.status === "ready" ? kirimNomorFixture.list.modules.find((item) => item.application_key === "spmb-sq")! : null!;
-    expect(renderToStaticMarkup(<ModuleCard card={{ ...spmb, jenis_aplikasi: "luar" }} onOpen={noop} />)).toContain("aplikasi luar");
-    expect(renderToStaticMarkup(<ModuleCard card={{ ...spmb, jenis_aplikasi: "modul" }} onOpen={noop} />)).not.toContain("aplikasi luar");
-    expect(renderToStaticMarkup(<ModuleCard card={spmb} onOpen={noop} />)).not.toContain("aplikasi luar");
+  it("renders the card alone when no module uses WhatsApp yet", () => {
+    const list = kirimNomorFixture.status === "ready" ? kirimNomorFixture.list : null!;
+    const html = renderToStaticMarkup(<NomorView state={{ ...kirimNomorFixture, list: { ...list, modules: [] } } as typeof kirimNomorFixture} onOpen={noop} onRetry={noop} />);
+    expect(html).toContain("Aplikasi luar");
+    expect(html).not.toContain("Belum ada aplikasi yang memakai WhatsApp");
+  });
+
+  it("opens a pop-up with numbers, keys with their application names, and the create and revoke actions", () => {
+    const html = renderToStaticMarkup(
+      <GerbangDialogView state={{ status: "ready", detail: kirimGerbangDetailFixture }} issued={null} busy={false} error={null}
+        onClose={noop} onRetry={noop} onNewNumber={noop} onDevice={noop} onCreateKey={noop} onRevokeKey={noop} onDismissIssued={noop} />,
+    );
+    expect(html).toContain('role="dialog"');
+    expect(html).toContain("Sambungkan nomor baru");
+    expect(html).toContain("+62 851-••••-2504");
+    expect(html).toContain("Toko online");
+    expect(html).toContain("krm_Ab12Cd34…");
+    expect(html).toContain("Buat kunci");
+    expect(html).toContain("Cabut");
+    expect(html).toContain("line-through");
+    expect(html).toContain("Sambungkan ulang");
+    expect(html).toContain("Dokumentasi API");
+    // The plain key is never part of the listing.
+    expect(html).not.toContain("kunci-api");
+  });
+
+  it("shows a freshly issued key once with the copy warning", () => {
+    const issued = { id: "k1", kunci: "krm_Ab12Cd34EfGh56IjKl78MnOp90QrSt", awalan: "krm_Ab12Cd34", nama_aplikasi: "Toko online", nomor: { kode: "luar", label: "Aplikasi luar" } };
+    const html = renderToStaticMarkup(
+      <GerbangDialogView state={{ status: "ready", detail: kirimGerbangDetailFixture }} issued={issued} busy={false} error={null}
+        onClose={noop} onRetry={noop} onNewNumber={noop} onDevice={noop} onCreateKey={noop} onRevokeKey={noop} onDismissIssued={noop} />,
+    );
+    expect(html).toContain('data-testid="kunci-api"');
+    expect(html).toContain("krm_Ab12Cd34EfGh56IjKl78MnOp90QrSt");
+    expect(html).toContain("tidak ditampilkan lagi");
+  });
+});
+
+describe("Dokumentasi API (publik, dari panel Kirim)", () => {
+  it("resolves /dokumentasi-api and renders the guide without a session", () => {
+    expect(resolveKirimRoute("/dokumentasi-api")).toBe("dokumentasi-api");
+    const html = renderToStaticMarkup(<KirimAppView state={{ status: "loading" }} route="dokumentasi-api" />);
+    expect(html).toContain("Gerbang API Kirim");
+    expect(html).not.toContain("Memeriksa akses Kirim SQ");
+    expect(html).toContain("Bearer krm_");
+    expect(html).toContain("$KIRIM/messages");
+    expect(html).toContain("X-Kirim-Signature");
+    expect(html).toContain("device_not_connected");
+    expect(html).toContain("timingSafeEqual");
+    expect(html).not.toContain("Keycloak");
+    expect(html).not.toContain("SQ Core");
+    expect(html).toContain('href="/dokumentasi-api"');
   });
 });
