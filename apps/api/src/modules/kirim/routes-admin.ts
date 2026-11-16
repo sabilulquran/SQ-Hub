@@ -24,7 +24,7 @@ import {
   type KirimAdminService,
 } from "./admin.js";
 import { cardReasonSchema, newNumberSchema, ownNumberSchema, useNumberSchema, type KirimModuleCards } from "./cards.js";
-import { createKeySchema, revokeKeySchema, type KirimGateway } from "./gateway.js";
+import { revokeKeySchema, type KirimGateway } from "./gateway.js";
 import { deviceImportSchema, EXPORT_MAX_BYTES, exportImportSchema, exportPreviewSchema, storedImportSchema, type KirimHistoryImport } from "./history-import.js";
 import { handleKirimError, sendKirimError } from "./routes-internal.js";
 import { KirimApiError } from "./service.js";
@@ -162,8 +162,9 @@ export function registerKirimAdminRoutes(
   if (gateway) {
     read("/gerbang", () => gateway.detail());
     write("POST", "/gerbang/nomor-baru", (_request, actor) => gateway.connectNewNumber(actor), 201);
-    write("POST", "/gerbang/kunci", (request, actor) => gateway.createKey(actor, createKeySchema.parse(body(request))), 201);
-    write("POST", "/gerbang/kunci/:id/cabut", (request, actor) => gateway.revokeKey(actor, params(request).id!, revokeKeySchema.parse(body(request)).alasan));
+    // The key belongs to the number: make or rotate it, or revoke it; the WhatsApp session is untouched.
+    write("POST", "/gerbang/nomor/:kode/kunci", (request, actor) => gateway.rotateKey(actor, params(request).kode!));
+    write("POST", "/gerbang/nomor/:kode/kunci/cabut", (request, actor) => gateway.revokeKey(actor, params(request).kode!, revokeKeySchema.parse(body(request)).alasan));
   }
   write("POST", "/modules/:app/nomor-baru", (request, actor) => input.cards.connectNewNumber(actor, params(request).app!, newNumberSchema.parse(body(request))));
   write("POST", "/modules/:app/pakai-nomor-lama", (request, actor) => input.cards.useOwnNumber(actor, params(request).app!, ownNumberSchema.parse(body(request))));

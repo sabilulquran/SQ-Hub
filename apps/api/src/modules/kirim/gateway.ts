@@ -24,8 +24,10 @@ import { isAllowedWebhookUrl } from "./webhooks.js";
 
 /**
  * ADR-0011 amendment 2026-11-17: the WhatsApp API gateway for portals and applications outside
- * SQ Suite. One generic card ("Aplikasi luar") owns their numbers; each application holds an API key
- * issued here, bound to one of those numbers. The card never names an application on its face.
+ * SQ Suite. One generic card ("Aplikasi luar") owns their numbers; **each number has its own API
+ * key**, like a JalurPesan device key. Kirim SQ never learns which application holds a key: the
+ * owner copies a number's key from the card into whatever application they want. The card never
+ * names an application.
  */
 
 export const GATEWAY_CONSUMER_NAME = "aplikasi-luar";
@@ -34,40 +36,40 @@ export const API_KEY_PREFIX = "krm_";
 export const GATEWAY_CARD_NAME = "Aplikasi luar";
 export const GATEWAY_CARD_DESCRIPTION = "Portal atau aplikasi di luar Sabilul Qur'an Suite yang memakai API";
 
-const kodeSchema = z.string().trim().regex(/^[a-z][a-z0-9-]{1,30}$/);
-export const createKeySchema = z.object({
-  nama_aplikasi: z.string().trim().min(1).max(60),
-  device: kodeSchema,
-}).strict();
 export const revokeKeySchema = z.object({ alasan: z.string().trim().min(1).max(500) }).strict();
 export const gatewayWebhookSchema = z.object({ url: z.string().trim().min(1).max(2048) }).strict();
 
 /** What a request authenticated with an API key acts as: the gateway consumer on the key's number. */
 export interface ApiKeyPrincipal {
   id: string;
-  namaAplikasi: string;
   awalan: string;
   device: DeviceRow;
 }
 
 export type GatewayConsumer = ConsumerRow & { apiKey: ApiKeyPrincipal };
 
-export interface ApiKeyRow {
+interface ApiKeyRow {
   id: string;
   deviceId: string;
-  namaAplikasi: string;
   awalan: string;
-  dibuatOleh: string;
+  kunciEnc: string | null;
   dibuatAt: Date;
   terakhirDipakaiAt: Date | null;
   dicabutAt: Date | null;
-  dicabutOleh: string | null;
 }
 
 const keyColumns = (alias: string) => `
-  ${alias}.id, ${alias}.device_id AS "deviceId", ${alias}.nama_aplikasi AS "namaAplikasi", ${alias}.awalan, ${alias}.dibuat_oleh AS "dibuatOleh",
-  ${alias}.dibuat_at AS "dibuatAt", ${alias}.terakhir_dipakai_at AS "terakhirDipakaiAt", ${alias}.dicabut_at AS "dicabutAt", ${alias}.dicabut_oleh AS "dicabutOleh"
+  ${alias}.id, ${alias}.device_id AS "deviceId", ${alias}.awalan, ${alias}.kunci_enc AS "kunciEnc", ${alias}.dibuat_at AS "dibuatAt",
+  ${alias}.terakhir_dipakai_at AS "terakhirDipakaiAt", ${alias}.dicabut_at AS "dicabutAt"
 `;
+
+/** The number's key as the card shows it; `kunci` is null only for a key made before migration 0024. */
+export interface GatewayNumberKey {
+  awalan: string;
+  kunci: string | null;
+  dibuat_at: string;
+  terakhir_dipakai_at: string | null;
+}
 
 /**
  * An outside application's webhook may be any https address or a loopback port on the same host
@@ -109,48 +111,30 @@ export class KirimGateway {
     return row;
   }
 
-  /** The card on the Kirim home screen: its numbers and how many active keys, never an application name. */
+  /** The card on the Kirim home screen: its numbers and how many of them hold a key. Never a key value. */
   async card() {
     const consumer = await this.consumerOrNull();
     if (!consumer) return { nama: GATEWAY_CARD_NAME, keterangan: GATEWAY_CARD_DESCRIPTION, nomor: [], kunci_aktif: 0 };
     const numbers = await this.numbers(consumer);
-    const keys = await this.pool.query<{ count: string }>(
-      "SELECT count(*) AS count FROM kirim_api_keys WHERE consumer_id = $1 AND dicabut_at IS NULL",
-      [consumer.id],
-    );
-    return { nama: GATEWAY_CARD_NAME, keterangan: GATEWAY_CARD_DESCRIPTION, nomor: numbers, kunci_aktif: Number(keys.rows[0]?.count ?? 0) };
-  }
-
-  /** The pop-up: every number with its keys, and every key with the application it was issued to. */
-  async detail() {
-    const consumer = await this.consumerOrNull();
-    if (!consumer) return { nama: GATEWAY_CARD_NAME, keterangan: GATEWAY_CARD_DESCRIPTION, nomor: [], kunci: [] };
-    const numbers = await this.numbers(consumer);
-    const keys = await this.pool.query<ApiKeyRow & { kode: string; label: string }>(
-      `SELECT ${keyColumns("k")}, d.kode, d.label FROM kirim_api_keys k JOIN kirim_devices d ON d.id = k.device_id
-        WHERE k.consumer_id = $1 ORDER BY k.dicabut_at IS NOT NULL, k.dibuat_at DESC`,
-      [consumer.id],
-    );
     return {
       nama: GATEWAY_CARD_NAME,
       keterangan: GATEWAY_CARD_DESCRIPTION,
-      nomor: numbers,
-      kunci: keys.rows.map((row) => ({
-        id: row.id,
-        nama_aplikasi: row.namaAplikasi,
-        awalan: row.awalan,
-        nomor: { kode: row.kode, label: row.label },
-        dibuat_at: row.dibuatAt.toISOString(),
-        dibuat_oleh: row.dibuatOleh,
-        terakhir_dipakai_at: row.terakhirDipakaiAt?.toISOString() ?? null,
-        dicabut_at: row.dicabutAt?.toISOString() ?? null,
-      })),
+      nomor: numbers.map(({ kunci, ...rest }) => ({ ...rest, kunci_aktif: kunci ? 1 : 0 })),
+      kunci_aktif: numbers.filter((nomor) => nomor.kunci).length,
     };
   }
 
+  /** The pop-up: every number with its connection, its key (readable, to copy) and when the key was last used. */
+  async detail() {
+    const consumer = await this.consumerOrNull();
+    if (!consumer) return { nama: GATEWAY_CARD_NAME, keterangan: GATEWAY_CARD_DESCRIPTION, nomor: [] };
+    return { nama: GATEWAY_CARD_NAME, keterangan: GATEWAY_CARD_DESCRIPTION, nomor: await this.numbers(consumer) };
+  }
+
   /**
-   * "Sambungkan nomor baru" on the card: a number owned by the gateway, with the `kode` route so
-   * the applications on it can send verification codes. Pairing then opens from the pop-up.
+   * "Sambungkan nomor baru" on the card: a number owned by the gateway, with the `kode` route so the
+   * application on it can send verification codes, and its API key made at once. Pairing then
+   * opens from the pop-up.
    */
   async connectNewNumber(actor: AdminActor) {
     return withTransaction(this.pool, async (client) => {
@@ -171,50 +155,43 @@ export class KirimGateway {
         actorKind: "human", actorRef: actor.ref, aksi: "gerbang.nomor_baru", objekJenis: "device", objekRef: kode,
         metadata: { provider },
       });
+      await this.issueKey(client, actor, consumer, deviceId, kode, "gerbang.kunci_buat");
       return toBrowserDevice((await findDevice(client, kode))!);
     });
   }
 
-  /** Issues a key for one application on one of the card's numbers. The plain key is returned once. */
-  async createKey(actor: AdminActor, input: z.infer<typeof createKeySchema>) {
+  /**
+   * "Putar ulang" (or "Buat kunci" for a number without one): the number gets a new key and any
+   * earlier key stops at once. The WhatsApp session is untouched.
+   */
+  async rotateKey(actor: AdminActor, kode: string): Promise<GatewayNumberKey> {
     return withTransaction(this.pool, async (client) => {
       const consumer = await this.consumer(client);
-      const device = await findDevice(client, input.device);
-      if (!device || device.pemilikConsumerId !== consumer.id) throw new KirimApiError(422, "nomor_bukan_gerbang", "Nomor ini bukan nomor di kartu Aplikasi luar.");
-      if (device.status === "nonaktif") throw new KirimApiError(422, "device_inactive", "Nomor tidak aktif.");
-      const kunci = `${API_KEY_PREFIX}${randomBytes(24).toString("base64url")}`;
-      const awalan = kunci.slice(0, API_KEY_PREFIX.length + 8);
-      const id = randomUUID();
-      await client.query(
-        `INSERT INTO kirim_api_keys (id, consumer_id, device_id, nama_aplikasi, awalan, kunci_hash, dibuat_oleh)
-         VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-        [id, consumer.id, device.id, input.nama_aplikasi, awalan, this.hash(kunci), actor.ref],
+      const device = await this.requireGatewayDevice(client, consumer, kode);
+      const revoked = await client.query<{ awalan: string }>(
+        "UPDATE kirim_api_keys SET dicabut_at = now(), dicabut_oleh = $2, dicabut_alasan = 'diputar ulang' WHERE device_id = $1 AND dicabut_at IS NULL RETURNING awalan",
+        [device.id, actor.ref],
       );
-      await writeAudit(client, {
-        actorKind: "human", actorRef: actor.ref, aksi: "gerbang.kunci_buat", objekJenis: "api_key", objekRef: id,
-        metadata: { nama_aplikasi: input.nama_aplikasi, device: device.kode, awalan },
-      });
-      return { id, kunci, awalan, nama_aplikasi: input.nama_aplikasi, nomor: { kode: device.kode, label: device.label } };
+      return this.issueKey(client, actor, consumer, device.id, device.kode, revoked.rows[0] ? "gerbang.kunci_putar" : "gerbang.kunci_buat", revoked.rows[0]?.awalan);
     });
   }
 
-  /** Revoking a key stops that application at once; the number and its other keys keep working. */
-  async revokeKey(actor: AdminActor, id: string, alasan: string) {
-    if (!z.guid().safeParse(id).success) throw new KirimApiError(404, "not_found", "Kunci tidak ditemukan.");
+  /** "Cabut": the number keeps its WhatsApp session; the application that held the key is refused from now on. */
+  async revokeKey(actor: AdminActor, kode: string, alasan: string) {
     return withTransaction(this.pool, async (client) => {
       const consumer = await this.consumer(client);
-      const updated = await client.query<{ namaAplikasi: string; awalan: string }>(
-        `UPDATE kirim_api_keys SET dicabut_at = now(), dicabut_oleh = $3, dicabut_alasan = $4
-          WHERE id = $1 AND consumer_id = $2 AND dicabut_at IS NULL RETURNING nama_aplikasi AS "namaAplikasi", awalan`,
-        [id, consumer.id, actor.ref, alasan],
+      const device = await this.requireGatewayDevice(client, consumer, kode);
+      const updated = await client.query<{ awalan: string }>(
+        "UPDATE kirim_api_keys SET dicabut_at = now(), dicabut_oleh = $2, dicabut_alasan = $3 WHERE device_id = $1 AND dicabut_at IS NULL RETURNING awalan",
+        [device.id, actor.ref, alasan],
       );
       const row = updated.rows[0];
-      if (!row) throw new KirimApiError(404, "not_found", "Kunci tidak ditemukan atau sudah dicabut.");
+      if (!row) throw new KirimApiError(404, "not_found", "Nomor ini tidak punya kunci aktif.");
       await writeAudit(client, {
-        actorKind: "human", actorRef: actor.ref, aksi: "gerbang.kunci_cabut", objekJenis: "api_key", objekRef: id,
-        metadata: { nama_aplikasi: row.namaAplikasi, awalan: row.awalan, alasan },
+        actorKind: "human", actorRef: actor.ref, aksi: "gerbang.kunci_cabut", objekJenis: "device", objekRef: device.kode,
+        metadata: { awalan: row.awalan, alasan },
       });
-      return { id, dicabut: true };
+      return { nomor: device.kode, dicabut: true };
     });
   }
 
@@ -238,7 +215,7 @@ export class KirimGateway {
       "UPDATE kirim_api_keys SET terakhir_dipakai_at = now() WHERE id = $1 AND (terakhir_dipakai_at IS NULL OR terakhir_dipakai_at < now() - interval '1 minute')",
       [key.id],
     );
-    return { ...consumer, nomorDeviceId: device.id, apiKey: { id: key.id, namaAplikasi: key.namaAplikasi, awalan: key.awalan, device } };
+    return { ...consumer, nomorDeviceId: device.id, apiKey: { id: key.id, awalan: key.awalan, device } };
   }
 
   /** `GET /internal/kirim/sambungan` with a key: the key's number and the number's webhook. */
@@ -250,7 +227,6 @@ export class KirimGateway {
     );
     const row = webhook.rows[0];
     return {
-      aplikasi: principal.apiKey.namaAplikasi,
       nomor: { kode: device.kode, status: device.status, nomor_tersamar: device.nomorTersamar },
       jenis: ["notifikasi", "kode"] as const,
       webhook: row?.url && row.enc ? { url: row.url, secret: this.crypto.open(row.enc, columnAad("kirim_devices", "webhook_secret_enc", device.id)) } : null,
@@ -277,7 +253,7 @@ export class KirimGateway {
       if (row.url !== url || secretEnc) {
         await writeAudit(client, {
           actorKind: "service", actorRef: `api_key:${principal.apiKey.awalan}`, aksi: "gerbang.webhook", objekJenis: "device", objekRef: principal.apiKey.device.kode,
-          metadata: { url, rahasia_baru: Boolean(secretEnc), nama_aplikasi: principal.apiKey.namaAplikasi },
+          metadata: { url, rahasia_baru: Boolean(secretEnc) },
         });
       }
     });
@@ -286,6 +262,31 @@ export class KirimGateway {
 
   private hash(kunci: string): string {
     return this.crypto.lookup(`api_key:${kunci}`);
+  }
+
+  private async requireGatewayDevice(db: Queryable, consumer: ConsumerRow, kode: string): Promise<DeviceRow> {
+    const device = await findDevice(db, kode, true);
+    if (!device || device.pemilikConsumerId !== consumer.id) throw new KirimApiError(404, "not_found", "Nomor ini bukan nomor di kartu Aplikasi luar.");
+    if (device.status === "nonaktif") throw new KirimApiError(422, "device_inactive", "Nomor tidak aktif.");
+    return device;
+  }
+
+  /** Makes a key for a number: the hash for lookup, the sealed value so the card can show it again. */
+  private async issueKey(db: Queryable, actor: AdminActor, consumer: ConsumerRow, deviceId: string, kode: string, aksi: string, replaced?: string): Promise<GatewayNumberKey> {
+    const kunci = `${API_KEY_PREFIX}${randomBytes(24).toString("base64url")}`;
+    const awalan = kunci.slice(0, API_KEY_PREFIX.length + 8);
+    const id = randomUUID();
+    await db.query(
+      `INSERT INTO kirim_api_keys (id, consumer_id, device_id, awalan, kunci_hash, kunci_enc, dibuat_oleh)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+      [id, consumer.id, deviceId, awalan, this.hash(kunci), this.crypto.seal(kunci, columnAad("kirim_api_keys", "kunci_enc", id)), actor.ref],
+    );
+    await writeAudit(db, {
+      actorKind: "human", actorRef: actor.ref, aksi, objekJenis: "device", objekRef: kode,
+      metadata: { awalan, ...(replaced ? { menggantikan: replaced } : {}) },
+    });
+    const dibuat = await dbNow(db);
+    return { awalan, kunci, dibuat_at: dibuat.toISOString(), terakhir_dipakai_at: null };
   }
 
   private async numbers(consumer: ConsumerRow) {
@@ -301,20 +302,33 @@ export class KirimGateway {
         WHERE d.pemilik_consumer_id = $1 ORDER BY d.created_at, d.kode`,
       [consumer.id],
     );
-    const counts = await this.pool.query<{ deviceId: string; antre: string; gagal: string; kunci: string }>(
+    const counts = await this.pool.query<{ deviceId: string; antre: string; gagal: string; webhook: boolean }>(
       `SELECT d.id AS "deviceId",
               (SELECT count(*) FROM kirim_outbox o WHERE o.device_id = d.id AND o.status = 'antre') AS antre,
               (SELECT count(*) FROM kirim_outbox o WHERE o.device_id = d.id AND o.status = 'gagal' AND o.updated_at >= $2) AS gagal,
-              (SELECT count(*) FROM kirim_api_keys k WHERE k.device_id = d.id AND k.dicabut_at IS NULL) AS kunci
+              d.webhook_url IS NOT NULL AS webhook
          FROM kirim_devices d WHERE d.pemilik_consumer_id = $1`,
       [consumer.id, wibDayStart(now)],
     );
+    const keys = await this.pool.query<ApiKeyRow>(`SELECT ${keyColumns("k")} FROM kirim_api_keys k WHERE k.consumer_id = $1 AND k.dicabut_at IS NULL`, [consumer.id]);
     const byDevice = new Map(counts.rows.map((row) => [row.deviceId, row]));
-    return devices.rows.map((device) => ({
-      ...toBrowserDevice(device, held.get(device.id)),
-      antrean: { antre: Number(byDevice.get(device.id)?.antre ?? 0), gagal_hari_ini: Number(byDevice.get(device.id)?.gagal ?? 0) },
-      kunci_aktif: Number(byDevice.get(device.id)?.kunci ?? 0),
-      webhook_terdaftar: false,
-    }));
+    const keyByDevice = new Map(keys.rows.map((row) => [row.deviceId, row]));
+    return devices.rows.map((device) => {
+      const key = keyByDevice.get(device.id);
+      const kunci: GatewayNumberKey | null = key
+        ? {
+            awalan: key.awalan,
+            kunci: key.kunciEnc ? this.crypto.open(key.kunciEnc, columnAad("kirim_api_keys", "kunci_enc", key.id)) : null,
+            dibuat_at: key.dibuatAt.toISOString(),
+            terakhir_dipakai_at: key.terakhirDipakaiAt?.toISOString() ?? null,
+          }
+        : null;
+      return {
+        ...toBrowserDevice(device, held.get(device.id)),
+        antrean: { antre: Number(byDevice.get(device.id)?.antre ?? 0), gagal_hari_ini: Number(byDevice.get(device.id)?.gagal ?? 0) },
+        webhook_terdaftar: byDevice.get(device.id)?.webhook ?? false,
+        kunci,
+      };
+    });
   }
 }

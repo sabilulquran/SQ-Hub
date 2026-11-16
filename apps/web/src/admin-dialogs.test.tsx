@@ -191,7 +191,7 @@ describe("Registry aplikasi: jenis aplikasi dan WhatsApp lewat Kirim", () => {
     at("/admin?aplikasi=samijaya");
     const html = renderToStaticMarkup(<AdminCenterPage workspace={workspaceFixture} previewApplications={applications} />);
     expect(html).toContain('<option value="luar" selected="">Aplikasi luar</option>');
-    expect(html).toContain("kunci API dari kartu");
+    expect(html).toContain("kunci API dari nomor di kartu");
     expect(html).not.toContain("Pakai WhatsApp lewat Kirim");
     expect(html).not.toContain("Client ID Keycloak (client mesin)");
   });

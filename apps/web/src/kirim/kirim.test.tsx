@@ -462,18 +462,17 @@ describe("Kirim SQ header launcher (HUB-IMPL-022)", () => {
 });
 
 // ADR-0011 amendment 2026-11-17: one generic "Aplikasi luar" card for applications outside Sabilul Qur'an
-// Suite. Its face names no application; names and keys live in the pop-up.
-describe("Kartu Aplikasi luar dan kunci API (ADR-0011 amendment 2026-11-17)", () => {
-  it("shows one generic card with its numbers and key count, and never an application name on the page", () => {
+// Suite. Each number has its own key, like a JalurPesan device key; no application name anywhere.
+describe("Kartu Aplikasi luar dan kunci per nomor (ADR-0011 amendment 2026-11-17)", () => {
+  it("shows one generic card with its numbers and key count, and never an application name or key on the page", () => {
     const html = renderToStaticMarkup(<NomorView state={kirimNomorFixture} onOpen={noop} onRetry={noop} />);
     expect(html).toContain("Aplikasi luar");
     expect(html).toContain("Portal atau aplikasi di luar Sabilul Qur&#x27;an Suite yang memakai API");
-    expect(html).toContain("1 nomor · 1 tersambung");
+    expect(html).toContain("2 nomor · 1 tersambung");
     expect(html).toContain("Kelola nomor dan kunci");
     expect(html).toContain('href="/dokumentasi-api"');
     expect(html).not.toContain("Samijaya");
-    expect(html).not.toContain("Toko online");
-    // Still no per-number cards and no "whose number" wording.
+    expect(html).not.toContain("krm_");
     expect(html).not.toContain("Nomor tanpa kartu");
   });
 
@@ -484,34 +483,29 @@ describe("Kartu Aplikasi luar dan kunci API (ADR-0011 amendment 2026-11-17)", ()
     expect(html).not.toContain("Belum ada aplikasi yang memakai WhatsApp");
   });
 
-  it("opens a pop-up with numbers, keys with their application names, and the create and revoke actions", () => {
+  it("opens a pop-up with one block per number: status, its key hidden by default, and the copy, rotate and revoke actions", () => {
     const html = renderToStaticMarkup(
-      <GerbangDialogView state={{ status: "ready", detail: kirimGerbangDetailFixture }} issued={null} busy={false} error={null}
-        onClose={noop} onRetry={noop} onNewNumber={noop} onDevice={noop} onCreateKey={noop} onRevokeKey={noop} onDismissIssued={noop} />,
+      <GerbangDialogView state={{ status: "ready", detail: kirimGerbangDetailFixture }} busy={false} error={null}
+        onClose={noop} onRetry={noop} onNewNumber={noop} onDevice={noop} onRotateKey={noop} onRevokeKey={noop} />,
     );
     expect(html).toContain('role="dialog"');
     expect(html).toContain("Sambungkan nomor baru");
     expect(html).toContain("+62 851-••••-2504");
-    expect(html).toContain("Toko online");
-    expect(html).toContain("krm_Ab12Cd34…");
-    expect(html).toContain("Buat kunci");
-    expect(html).toContain("Cabut");
-    expect(html).toContain("line-through");
     expect(html).toContain("Sambungkan ulang");
+    expect(html).toContain("Pasang");
+    // The key is masked until Tampilkan; the prefix identifies it.
+    expect(html).toContain("krm_Ab12Cd34••••");
+    expect(html).not.toContain("krm_Ab12Cd34EfGh56IjKl78MnOp90QrSt");
+    expect(html).toContain("Tampilkan");
+    expect(html).toContain("Salin");
+    expect(html).toContain("Putar ulang");
+    expect(html).toContain("Cabut");
+    expect(html).toContain("terakhir dipakai");
+    // A number without a key offers to make one.
+    expect(html).toContain("Buat kunci");
     expect(html).toContain("Dokumentasi API");
-    // The plain key is never part of the listing.
-    expect(html).not.toContain("kunci-api");
-  });
-
-  it("shows a freshly issued key once with the copy warning", () => {
-    const issued = { id: "k1", kunci: "krm_Ab12Cd34EfGh56IjKl78MnOp90QrSt", awalan: "krm_Ab12Cd34", nama_aplikasi: "Toko online", nomor: { kode: "luar", label: "Aplikasi luar" } };
-    const html = renderToStaticMarkup(
-      <GerbangDialogView state={{ status: "ready", detail: kirimGerbangDetailFixture }} issued={issued} busy={false} error={null}
-        onClose={noop} onRetry={noop} onNewNumber={noop} onDevice={noop} onCreateKey={noop} onRevokeKey={noop} onDismissIssued={noop} />,
-    );
-    expect(html).toContain('data-testid="kunci-api"');
-    expect(html).toContain("krm_Ab12Cd34EfGh56IjKl78MnOp90QrSt");
-    expect(html).toContain("tidak ditampilkan lagi");
+    expect(html).not.toContain("Nama aplikasi");
+    expect(html).not.toContain("Toko online");
   });
 });
 
@@ -521,6 +515,9 @@ describe("Dokumentasi API (publik, dari panel Kirim)", () => {
     const html = renderToStaticMarkup(<KirimAppView state={{ status: "loading" }} route="dokumentasi-api" />);
     expect(html).toContain("Gerbang API Kirim");
     expect(html).not.toContain("Memeriksa akses Kirim SQ");
+    expect(html).toContain("Dua langkah");
+    expect(html).not.toContain("Pusat Admin");
+    expect(html).not.toContain("Daftarkan aplikasi");
     expect(html).toContain("Bearer krm_");
     expect(html).toContain("$KIRIM/messages");
     expect(html).toContain("X-Kirim-Signature");

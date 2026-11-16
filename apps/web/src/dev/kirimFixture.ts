@@ -26,13 +26,17 @@ const luarDevice: KirimDevice = {
   status_berubah_at: "2026-11-17T01:00:00.000Z", antrean: { antre: 0, gagal_hari_ini: 0 },
 };
 
+const luarDevice2: KirimDevice = {
+  ...luarDevice, kode: "luar-2", label: "Aplikasi luar 2", status: "belum_dipasang", nomor_tersamar: null, antrean: { antre: 0, gagal_hari_ini: 0 },
+};
+
+/** Each number carries its own key; the pop-up can show and copy it. No application name anywhere. */
 export const kirimGerbangDetailFixture: KirimGatewayDetail = {
   nama: "Aplikasi luar",
   keterangan: "Portal atau aplikasi di luar Sabilul Qur'an Suite yang memakai API",
-  nomor: [{ ...luarDevice, kunci_aktif: 1 }],
-  kunci: [
-    { id: "7a3d5f40-0000-4000-8000-00000000aa01", nama_aplikasi: "Toko online", awalan: "krm_Ab12Cd34", nomor: { kode: "luar", label: "Aplikasi luar" }, dibuat_at: "2026-11-17T01:05:00.000Z", dibuat_oleh: "staff:abc", terakhir_dipakai_at: "2026-11-17T02:00:00.000Z", dicabut_at: null },
-    { id: "7a3d5f40-0000-4000-8000-00000000aa02", nama_aplikasi: "Uji coba", awalan: "krm_Zz98Yy76", nomor: { kode: "luar", label: "Aplikasi luar" }, dibuat_at: "2026-11-16T01:05:00.000Z", dibuat_oleh: "staff:abc", terakhir_dipakai_at: null, dicabut_at: "2026-11-16T09:00:00.000Z" },
+  nomor: [
+    { ...luarDevice, webhook_terdaftar: false, kunci: { awalan: "krm_Ab12Cd34", kunci: "krm_Ab12Cd34EfGh56IjKl78MnOp90QrSt", dibuat_at: "2026-11-17T01:05:00.000Z", terakhir_dipakai_at: "2026-11-17T02:00:00.000Z" } },
+    { ...luarDevice2, webhook_terdaftar: false, kunci: null },
   ],
 };
 
@@ -52,7 +56,7 @@ export const kirimNomorFixture: NomorState = {
       { application_key: "spmb-sq", nama: "SPMB SQ", peran: "pemilik", nomor: spmbDevice, jenis: ["notifikasi", "kode"], antrean: { antre: 12, gagal_hari_ini: 1 }, dipakai_juga_oleh: ["Keluarga"], pemilik_nomor: null },
     ],
     devices: [hcisDevice, spmbDevice, ujiDevice, luarDevice],
-    gerbang: { nama: kirimGerbangDetailFixture.nama, keterangan: kirimGerbangDetailFixture.keterangan, nomor: kirimGerbangDetailFixture.nomor, kunci_aktif: 1 },
+    gerbang: { nama: kirimGerbangDetailFixture.nama, keterangan: kirimGerbangDetailFixture.keterangan, nomor: [{ ...luarDevice, kunci_aktif: 1 }, { ...luarDevice2, kunci_aktif: 0 }], kunci_aktif: 1 },
   },
 };
 
