@@ -121,7 +121,8 @@ export function registerPlatformAdminRoutes(
         body.governanceSummaryPath !== undefined ||
         body.governanceAudience !== undefined ||
         body.governanceOrder !== undefined;
-      const whatsappProvided = body.whatsappCapable !== undefined || body.machineClientId !== undefined;
+      // Both fields travel together: the GUI always sends both, and a client id alone must not switch WhatsApp off.
+      const whatsappProvided = body.whatsappCapable !== undefined;
       const application = await input.applicationRegistry.upsertApplication({
         applicationKey: params.applicationKey,
         name: body.name,

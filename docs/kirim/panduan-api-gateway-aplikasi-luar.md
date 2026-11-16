@@ -251,11 +251,11 @@ Aplikasi yang hanya mengirim OTP tidak perlu webhook: cukup `GET /messages/:id` 
 
 ### 4.7 Percakapan (pemilik nomor)
 
-Bila kartu aplikasi **memiliki** nomornya (bukan memakai nomor modul lain), aplikasi boleh membaca dan membalas percakapan nomor itu atas nama petugasnya. Setiap panggilan baca menyebut petugas lewat header `X-Atas-Nama-Issuer` dan `X-Atas-Nama-Sub` (atau body `atas_nama: { issuer, sub }` untuk tulis); Kirim mencatatnya di audit dan pada pesan keluar, sedangkan hak akses petugas diperiksa aplikasi sendiri.
+Bila kartu aplikasi **memiliki** nomornya (bukan memakai nomor modul lain), aplikasi boleh membaca dan membalas percakapan nomor itu atas nama petugasnya. Setiap panggilan baca menyebut petugas lewat header `X-Kirim-Atas-Nama-Issuer` dan `X-Kirim-Atas-Nama-Sub` (atau body `atas_nama: { issuer, sub }` untuk tulis); Kirim mencatatnya di audit dan pada pesan keluar, sedangkan hak akses petugas diperiksa aplikasi sendiri.
 
 ```sh
 curl -s "$KIRIM_BASE_URL/internal/kirim/devices/samijaya/conversations?batas=20" -H "Authorization: Bearer $TOKEN" \
-  -H "X-Atas-Nama-Issuer: https://login.sabilulquran.or.id/realms/sq-staff" -H "X-Atas-Nama-Sub: <sub petugas>"
+  -H "X-Kirim-Atas-Nama-Issuer: https://login.sabilulquran.or.id/realms/sq-staff" -H "X-Kirim-Atas-Nama-Sub: <sub petugas>"
 curl -s -X POST "$KIRIM_BASE_URL/internal/kirim/conversations/<id>/messages" -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" -H "Idempotency-Key: samijaya:balas:<id>:1" \
   -d '{ "text": "Terima kasih, pesanan Anda sedang disiapkan.", "atas_nama": { "issuer": "https://login.sabilulquran.or.id/realms/sq-staff", "sub": "<sub petugas>" } }'

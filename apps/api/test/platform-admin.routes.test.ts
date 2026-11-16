@@ -418,11 +418,21 @@ describe("Registry: aplikasi luar and WhatsApp lewat Kirim", () => {
       headers: mutationHeaders,
       payload: { name: "HCIS", canonicalUrl: "https://hcis-staging.example.test", status: "active" },
     });
-    await app.close();
 
     expect(response.statusCode).toBe(200);
     expect(calls[0]).not.toHaveProperty("whatsapp");
     expect(calls[0]).not.toHaveProperty("kind");
+
+    // A client id alone never switches WhatsApp off: the switch travels with it.
+    const alone = await app.inject({
+      method: "PUT",
+      url: "/admin/applications/hcis",
+      headers: mutationHeaders,
+      payload: { name: "HCIS", canonicalUrl: "https://hcis-staging.example.test", status: "active", machineClientId: "hcis-api-2" },
+    });
+    expect(alone.statusCode).toBe(200);
+    expect(calls[1]).not.toHaveProperty("whatsapp");
+    await app.close();
   });
 
   it("refuses WhatsApp without a machine client, a malformed client id, and an unknown kind", async () => {
