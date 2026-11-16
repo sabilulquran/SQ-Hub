@@ -6,16 +6,16 @@
 
 ## Purpose
 
-This document turns the accepted HCIS visual baseline into the first canonical SQ Hub design foundation. It does not create a distributable shared package yet; per repository rules, a package is extracted only after a second real application consumer requires it.
+This document turns the accepted HCIS visual baseline into the first canonical design foundation for SQ Hub, implemented first in the platform's own web (`apps/web`). It does not create a distributable shared package yet; per repository rules, a package is extracted only after a second real application consumer requires it.
 
 ## Brand relationship
 
-SQ Hub, SQ Identity, HCIS, and future internal SQ applications belong to one YSQ product family.
+The platform's pages (Beranda, Akun SQ, Admin SQ), HCIS, and every other application in SQ Hub belong to one YSQ product family.
 
 - Reuse the approved YSQ mark/logo assets.
 - Product identity is expressed through the product name beside the YSQ brand, not by inventing unrelated marks.
 - Domain applications may have their own information architecture while preserving the shared visual language.
-- SQ Hub must look like the parent workspace, not like HCIS with different labels.
+- Beranda and the platform's pages must look like the parent workspace, not like HCIS with different labels.
 
 ## Typography
 
@@ -30,7 +30,7 @@ Use display typography for high-level page/product headings and body typography 
 
 ## Semantic color tokens
 
-The initial implementation retains the accepted HCIS OKLCH values and names them semantically in the SQ Hub web theme:
+The initial implementation retains the accepted HCIS OKLCH values and names them semantically in the platform web theme:
 
 | Token | Role |
 |---|---|
@@ -77,7 +77,7 @@ Navigation labels and authorization decisions remain supplied by each product/do
 
 ## Asset provenance
 
-The initial SQ Hub implementation copies the exact approved HCIS YSQ mark and favicon blobs into its own application assets. Font files are not duplicated or redistributed by this document.
+The initial platform web implementation copies the exact approved HCIS YSQ mark and favicon blobs into its own application assets. Font files are not duplicated or redistributed by this document.
 
 ## Extraction rule
 

@@ -8,6 +8,14 @@ Operational source of truth: `docs/operations/permanent-staging-retirement-2026-
 
 Dokumen ini berlaku untuk manusia, ChatGPT, Codex, dan automation lain yang mengubah repository.
 
+## 0. Istilah (ADR-0014)
+
+- **SQ Hub** adalah nama seluruh ekosistem aplikasi Yayasan Sabilul Qur'an. Istilah "SQ Core" sudah tidak dipakai; ia hanya tersisa pada nama teknis (repo `sq-core-ops`, skrip `sq-core-*.sh`, database `sqcore_*`, nama berkas) dan catatan lama, dan nama-nama itu **tidak diganti**.
+- **Portal** = pintu masuk satu kelompok pengguna (Admin, Pegawai, Organ, Keluarga, Pelamar, Situs publik). **Aplikasi** = sistem yang mengurus satu bidang dan memegang data serta aturannya (HCIS, Aset SQ, Kirim SQ, Kerja SQ, Sekretariat SQ, dan seterusnya adalah aplikasi, tidak pernah "modul"). **Modul** = bagian di dalam satu aplikasi.
+- Repository ini memuat **bagian platform SQ Hub** (Beranda, Akun SQ, Admin SQ, Direktori Organisasi, design system) dan aplikasi yang berjalan di dalam proses Hub menurut ADR-0014 D6. Di dokumen ini, "platform SQ Hub" atau "Hub" berarti bagian platform itu.
+- Daftar aplikasi, portal, dan statusnya hanya ada di `docs/product/struktur-sq-hub.md` (STRUKTUR-001). Jangan membuat daftar tandingan di dokumen lain; tautkan ke sana. Rilis yang mengubah status sebuah aplikasi memperbarui STRUKTUR-001 §5.
+- Folder kode `apps/api/src/modules/*` adalah nama teknis; isinya bisa bagian platform atau sebuah aplikasi. Teks yang dilihat pengguna dan dokumen hidup memakai istilah di atas. ADR, specification, dan catatan rilis lama tidak ditulis ulang; baca dengan tabel ADR-0014 D8.
+
 ## 1. Source of truth
 Urutan otoritas:
 1. `docs/product/` untuk tujuan, scope, dan acceptance criteria.
@@ -26,7 +34,7 @@ Jika sumber bertentangan, jangan menebak. Perbarui specification/ADR atau eskala
 - Prefer missing feature over invented feature.
 - Perubahan perilaku wajib memperbarui dokumen sumber kebenaran yang relevan.
 - Asumsi belum diputuskan harus diberi status `DRAFT`, `DISCOVERY`, atau `TBD`.
-- Wave 1 implementation wajib mengacu pada salah satu `HUB-IMPL-00x`; jangan mengerjakan task generik seperti "implement SQ Hub".
+- Setiap implementation wajib mengacu pada satu specification ID (`HUB-IMPL-*`, `KIRIM-IMPL-*`, `KERJA-IMPL-*`, `SEK-IMPL-*`, `ORGAN-IMPL-*`, dan seterusnya); jangan mengerjakan task generik seperti "implement SQ Hub".
 
 ## 3. Progressive context
 Agent tidak boleh membaca seluruh `docs/` secara default.
@@ -50,9 +58,11 @@ Untuk task identity/auth, minimum baca:
 Untuk task visual lintas aplikasi, baca `docs/design/hcis-baseline.md` sebelum membuka seluruh frontend HCIS.
 
 ## 4. Platform boundaries
-- SQ Hub adalah shared digital foundation, bukan ERP monolith.
-- Business logic HCIS, SPMB, Finance, Workspace, Academic, dan aplikasi lain tetap dimiliki aplikasi masing-masing.
-- Shared capability hanya masuk SQ Hub jika benar-benar lintas aplikasi.
+- SQ Hub adalah ekosistem aplikasi yang berdampingan, bukan ERP monolith. Bagian platformnya adalah shared digital foundation.
+- Aturan dan data HCIS, SPMB SQ, Keuangan, Sekolah, Kerja SQ, dan aplikasi lain tetap dimiliki aplikasi masing-masing.
+- Shared capability hanya masuk platform SQ Hub jika benar-benar lintas aplikasi.
+- Sebuah aplikasi baru ditempatkan dulu di matriks STRUKTUR-001 (portal dan wajah) dan diberi tempat jalan menurut ADR-0014 D6 sebelum rancangannya ditulis. Bawaan: program dan database sendiri. Berjalan di dalam proses Hub hanya dengan salah satu dari tiga alasan D6, dan tidak pernah mengubah kepemilikan: aplikasi itu tetap memiliki tabel (prefix sendiri), aturan, dan flag rilisnya, dan dijangkau aplikasi lain hanya lewat contract.
+- Setiap aplikasi yang memegang data yayasan wajib menyediakan wajah Laporan untuk Portal Organ (ADR-0009, ADR-0012, ADR-0014 D4).
 - Ownership setiap data harus eksplisit.
 - Aplikasi tidak mengubah data milik domain lain secara langsung tanpa contract/integration yang disepakati.
 - Jangan memperkenalkan microservice, event bus, atau shared abstraction besar tanpa kebutuhan nyata dan ADR.
@@ -61,7 +71,7 @@ Untuk task visual lintas aplikasi, baca `docs/design/hcis-baseline.md` sebelum m
 - Staff authentication terpusat melalui SQ Identity dengan Keycloak sebagai IdP engine (ADR-0003).
 - Jangan membuat custom OAuth/OIDC/MFA protocol implementation ketika Keycloak/standard flow memenuhi kebutuhan.
 - Password, MFA, recovery, dan IdP session bukan tanggung jawab aplikasi domain.
-- Application Access dikelola secara global oleh SQ Hub, bukan menjadi Keycloak role source of truth.
+- Application Access dikelola secara global oleh platform SQ Hub (Admin SQ), bukan menjadi Keycloak role source of truth.
 - Permission dan role spesifik domain tetap dimiliki aplikasi domain; jangan memindahkannya ke Keycloak Authorization Services tanpa superseding ADR.
 - Technical identity mapping menggunakan OIDC `issuer + sub` sebagai opaque stable identifier; aplikasi tidak boleh bergantung pada formatnya.
 - Employee login menggunakan NIP/`employee_number` sebagai primary username; verified unique email dapat menjadi alternate login.
@@ -82,10 +92,10 @@ Untuk task visual lintas aplikasi, baca `docs/design/hcis-baseline.md` sebelum m
 
 ## 6. Organization
 - HCIS adalah system of authority dan tempat authoring untuk workforce organization: unit organisasi, posisi/jabatan, penempatan pegawai, hubungan atasan, effective dates, dan data ketenagakerjaan terkait.
-- SQ Hub memiliki shared **Organization Directory** sebagai read model/distribution layer lintas aplikasi; Hub tidak mengedit fakta organisasi milik HCIS.
+- Platform SQ Hub memiliki shared **Organization Directory** sebagai read model/distribution layer lintas aplikasi; Hub tidak mengedit fakta organisasi milik HCIS.
 - Integrasi HCIS -> Hub menggunakan authenticated controlled contract dan dedicated service identity. Jangan direct database coupling.
 - Jangan membuat dual-write HCIS/Hub, master organisasi paralel, atau menjadikan Keycloak organization master.
-- Approval policy, workflow state, delegation, escalation, domain authorization, dan audit keputusan tetap dimiliki aplikasi domain. SQ Hub bukan central approval engine.
+- Approval policy, workflow state, delegation, escalation, domain authorization, dan audit keputusan tetap dimiliki aplikasi domain. Platform SQ Hub bukan central approval engine.
 - Hub hanya menyediakan fakta organisasi untuk candidate approver/scope. Domain app menyimpan resolved-approver snapshot beserta organization version/effective time saat transaksi diajukan; perubahan struktur berikutnya tidak boleh diam-diam menulis ulang approval berjalan tanpa aturan domain eksplisit.
 - Organization Directory harus mendukung last-known-good projection dan metadata source/version/synchronized_at atau as_of/staleness sesuai ADR-0007 dan HUB-IMPL-018.
 - SLA, global identifier, snapshot/delta, conflict handling, dan retention tetap DISCOVERY/TBD sampai diputuskan eksplisit.
@@ -98,13 +108,13 @@ Untuk task visual lintas aplikasi, baca `docs/design/hcis-baseline.md` sebelum m
 
 ## 8. Design system
 - HCIS visual system pada snapshot yang ditetapkan ADR-0004 adalah baseline awal SQ Design System.
-- Semua aplikasi SQ Hub harus menggunakan prinsip visual, semantic tokens, dan shared UI patterns yang senada dengan baseline tersebut.
+- Semua aplikasi di SQ Hub harus menggunakan prinsip visual, semantic tokens, dan shared UI patterns yang senada dengan baseline tersebut.
 - SQ Identity/Keycloak harus ditheme mengikuti SQ design language; jangan menerima default provider UI sebagai final product experience.
 - Jangan menciptakan pola UI baru jika pola HCIS/SQ yang sesuai sudah ada.
 - Jangan menyalin business-specific HCIS component lalu menganggapnya generic shared component.
 - Komponen shared baru dibuat saat reuse nyata atau kebutuhan lintas aplikasi terbukti.
 - Business-specific UI tetap berada di aplikasi domain.
-- Setelah shared primitives tersedia di SQ Hub, SQ Hub menjadi canonical source untuk design system lintas produk.
+- Setelah shared primitives tersedia di repo `SQ-Hub`, repo ini menjadi canonical source untuk design system lintas produk.
 
 ## 9. Security and privacy
 - Jangan commit secret, credential, token, production dump, atau data pribadi production.
@@ -113,7 +123,7 @@ Untuk task visual lintas aplikasi, baca `docs/design/hcis-baseline.md` sebelum m
 - Jangan memberi agent AI unrestricted write access ke production database atau Keycloak admin API.
 
 ## 10. Environments and operations
-Production VPS hanya menjalankan production. Development/CI harus terisolasi dan tidak mengotorisasi staging pada VPS production. Agent tidak boleh menggunakan production sebagai playground development. Operational changes mengikuti `docs/operations/operational-baseline.md`.
+Production (host Mi8) hanya menjalankan production. Development/CI harus terisolasi dan tidak mengotorisasi staging pada VPS production. Agent tidak boleh menggunakan production sebagai playground development. Operational changes mengikuti `docs/operations/operational-baseline.md`.
 
 Historical Wave 1 hostnames — RETIRED / ARCHIVED, DO NOT DEPLOY:
 - `login.sabilulquran.or.id` (SQ Identity staging uses the `sq-staff-staging` realm and separate staging data/configuration);

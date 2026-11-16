@@ -1,5 +1,7 @@
 # ADR-0012: Portal Organ Yayasan at organ.sabilulquran.or.id
 
+> **Terms: see ADR-0014 (2026-11-16).** Portal Organ is a portal that runs inside the Hub process (D6 reason 2); "module" below means application, and "SQ Core" means SQ Hub.
+
 **Status:** ACCEPTED by the Product Owner on 2026-11-12 (decisions 1–8 of 2026-11-03, go-ahead 2026-11-12). Items marked `DRAFT` are agent defaults awaiting confirmation.
 **Date:** 2026-11-12
 **Supersedes:** ADR-0009 for the organs' entry point and the three ADR-0009 points listed under "ADR-0009 points replaced". Every other ADR-0009 rule stays in force.
