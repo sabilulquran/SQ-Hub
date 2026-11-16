@@ -1,7 +1,7 @@
 # Panduan gerbang API WhatsApp lewat Kirim untuk aplikasi luar
 
-**Status:** BERLAKU sejak 2026-11-17 (keputusan owner 2026-11-16 dan 2026-11-17; amandemen ADR-0011 2026-11-17). Menggantikan versi 2026-11-16 yang memakai client Keycloak dan kartu per aplikasi.
-**Untuk siapa:** developer portal atau aplikasi di luar SQ Suite yang ingin mengirim WhatsApp lewat nomor yayasan, dan pengelola Kirim yang menyiapkannya. Versi untuk developer yang bisa dibuka tanpa login: **https://kirim.sabilulquran.or.id/dokumentasi-api** (halaman yang sama dengan tautan "Dokumentasi API" di panel Kirim).
+**Status:** BERLAKU sejak 2026-11-17 (keputusan owner 2026-11-16 dan koreksi 2026-11-17; amandemen ADR-0011 2026-11-17). Menggantikan versi 2026-11-16 (client Keycloak, kartu per aplikasi) dan rancangan sementara "kunci per aplikasi".
+**Untuk siapa:** developer portal atau aplikasi di luar SQ Suite yang ingin mengirim WhatsApp lewat nomor yayasan, dan pengelola Kirim yang menyambungkan nomornya. Versi untuk developer yang bisa dibuka tanpa login: **https://kirim.sabilulquran.or.id/dokumentasi-api** (tautan "Dokumentasi API" di panel Kirim dan di kartu).
 **Contoh pertama:** Samijaya (toko online, berjalan di Mi8 port 3100) mengirim kode OTP admin dan notifikasi pesanan lewat Kirim.
 **Rujukan teknis:** [KIRIM-IMPL-001](../specs/KIRIM-IMPL-001-r1-nomor-dan-kirim.md) (kirim, status, webhook), [KIRIM-IMPL-003](../specs/KIRIM-IMPL-003-kartu-modul.md) (kartu), [desain Kirim](../product/kirim-sq-module-design.md), [ADR-0011](../architecture/adr/0011-kirim-sq-shared-whatsapp-capability.md), istilah [STRUKTUR-001](../product/struktur-sq-suite.md).
 
@@ -9,66 +9,65 @@
 
 Kirim adalah aplikasi WhatsApp di SQ Suite. Mesin pengirimnya (JalurPesan) tidak pernah dipanggil langsung; aplikasi bicara ke **API Kirim**, dan Kirim yang mengurus nomor, antrean, batas laju, jam kirim, daftar jangan hubungi, status terkirim, penyimpanan percakapan, dan audit.
 
-Untuk aplikasi **di luar SQ Suite**, Kirim menjadi gerbang API dengan aturan ini:
+Untuk aplikasi **di luar SQ Suite**, konsepnya generik, seperti JalurPesan atau penyedia WhatsApp lain: **nomor punya kunci, titik.**
 
-- Di panel Kirim ada **satu kartu generik "Aplikasi luar"** (keterangan: *Portal atau aplikasi di luar Sabilul Qur'an Suite yang memakai API*; nama dan keterangan ini asumsi DRAFT, owner boleh mengganti). Kartu itu **menampung beberapa nomor**. Muka kartu tidak pernah menyebut nama aplikasi mana pun; tidak ada kartu per aplikasi dan tidak ada kartu per nomor.
-- Setiap aplikasi luar memegang **kunci API terbitan Kirim** (`krm_…`), dibuat pengelola di pop-up kartu, **terikat ke satu nomor** di kartu itu, ditampilkan sekali, disimpan sebagai hash berkunci, dan **bisa dicabut tanpa memutus nomor**. Tidak ada client Keycloak, tidak ada token yang perlu diperbarui.
-- Aplikasi mengirim **tanpa menyebut nomor**; Kirim memakai nomor yang terikat pada kuncinya. Nama aplikasi hanya tampil di dalam pop-up, di samping kuncinya.
+- Di panel Kirim ada **satu kartu "Aplikasi luar"** (keterangan: *Portal atau aplikasi di luar Sabilul Qur'an Suite yang memakai API*; nama dan keterangan asumsi DRAFT). Kartu itu **menampung beberapa nomor**. Muka kartu tidak menyebut aplikasi mana pun; tidak ada kartu per aplikasi dan tidak ada kartu per nomor.
+- **Setiap nomor di kartu punya kunci API sendiri** (`krm_…`), dibuat otomatis saat nomor disambungkan. Pop-up kartu menampilkan per nomor: status sambungan, kuncinya (tombol **Tampilkan**, **Salin**, **Putar ulang**, **Cabut**), dan kapan terakhir dipakai. Memutar ulang atau mencabut kunci **tidak memutus WhatsApp** nomor itu.
+- Kirim **tidak perlu tahu aplikasi mana** yang memegang kunci. Tidak ada pendaftaran aplikasi, tidak ada client Keycloak, tidak ada client ID mesin. Owner menyalin kunci dari kartu dan menempelkannya ke aplikasi luar mana pun yang ia mau.
+- Aplikasi mengirim **tanpa menyebut nomor**; Kirim memakai nomor pemilik kunci.
 - API Kirim hanya bisa dicapai dari **loopback host yang sama** (`http://127.0.0.1:3302`). Edge publik menjawab `404` untuk semua `/internal/*`. Alamat publik `https://kirim.sabilulquran.or.id/api/v1` untuk aplikasi di hosting lain adalah rancangan (DRAFT), belum aktif.
 
-Aplikasi di dalam SQ Suite tetap memakai jalur lama: registry Pusat Admin, kartu per aplikasi, dan token Keycloak (KIRIM-IMPL-003). Jenis aplikasi "Aplikasi luar" di Pusat Admin hanya label; aplikasi luar tidak mendapat kartu sendiri dan tidak memakai sakelar WhatsApp di sana.
+Aplikasi di dalam SQ Suite tetap memakai jalur lama: registry Pusat Admin, kartu per aplikasi, dan token Keycloak (KIRIM-IMPL-003). Jenis "Aplikasi luar" di Pusat Admin hanya label; ia tidak menentukan kartu Kirim maupun akses API.
 
-## 2. Langkah pengelola Kirim
+## 2. Dua langkah
 
-Semua lewat GUI di `kirim.sabilulquran.or.id`, halaman **Aplikasi**, kartu **Aplikasi luar** → **Kelola nomor dan kunci**.
+### 2.1 Pengelola Kirim: sambungkan nomor
 
-1. **Sambungkan nomor baru.** Kirim membuat nomor baru milik kartu (kode `luar`, `luar-2`, …; label "Aplikasi luar", "Aplikasi luar 2", …) dan langsung membuka pemasangan: pindai QR dari HP nomor yang akan dipakai aplikasi itu. Nomor yang sudah ada di kartu bisa dipasang ulang, disambungkan ulang, atau diputus dari pop-up yang sama; rutenya sama seperti nomor aplikasi lain (jam kirim, laju, jeda antrean diatur di nomor itu).
-2. **Buat kunci.** Isi *Nama aplikasi pemakai* (misalnya "Samijaya"), pilih nomornya, tekan **Buat kunci**. Kunci `krm_…` tampil **satu kali** dengan tombol salin; serahkan ke developer aplikasi lewat jalur aman (bukan chat atau tiket). Setelah ditutup, hanya awalannya (`krm_xxxxxxxx…`) yang terlihat.
-3. **Cabut** bila kunci bocor atau aplikasi berhenti: tekan **Cabut** pada kuncinya dan tulis alasannya. Aplikasi itu langsung ditolak (`401`); nomor dan kunci lain tetap jalan. Terbitkan kunci baru bila perlu.
+Di `kirim.sabilulquran.or.id`, halaman **Aplikasi**, kartu **Aplikasi luar** → **Kelola nomor dan kunci** → **Sambungkan nomor baru**. Kirim membuat nomor baru milik kartu (kode `luar`, `luar-2`, …; label "Aplikasi luar", "Aplikasi luar 2", …) beserta kuncinya, lalu membuka pemasangan: pindai QR dari HP nomor yang akan dipakai. Dari pop-up yang sama nomor bisa dipasang ulang, disambungkan ulang, atau diputus; jam kirim, laju, dan jeda antrean diatur pada nomornya seperti nomor lain.
 
-Jalur CLI tidak diperlukan. Audit Kirim mencatat `gerbang.nomor_baru`, `gerbang.kunci_buat`, `gerbang.kunci_cabut`, dan `gerbang.webhook` (tanpa nilai kunci).
+### 2.2 Owner atau developer: salin kunci nomor itu ke aplikasi
 
-## 3. Yang disiapkan di aplikasi
+Di pop-up, pada nomor yang dipakai, tekan **Tampilkan** atau **Salin**, lalu taruh kuncinya di berkas env server aplikasi:
 
 ```sh
 KIRIM_BASE_URL=http://127.0.0.1:3302
-KIRIM_API_KEY=<kunci krm_… dari kartu Aplikasi luar>
+KIRIM_API_KEY=<kunci krm_… dari nomor di kartu Aplikasi luar>
 ```
 
-Kunci API setara kata sandi: simpan di berkas env server (mode 600), bukan di kode frontend, repositori, log, atau chat.
+Kunci setara kata sandi: simpan di env server (mode 600), bukan di kode frontend, repositori, log, atau chat. Bila bocor, **Putar ulang** memberi kunci baru dan mematikan yang lama seketika; **Cabut** mematikan kunci tanpa pengganti. WhatsApp nomor itu tetap tersambung. Audit Kirim mencatat `gerbang.nomor_baru`, `gerbang.kunci_buat`, `gerbang.kunci_putar`, `gerbang.kunci_cabut`, dan `gerbang.webhook` (awalan kunci saja, tanpa nilainya).
 
-## 4. Autentikasi
+## 3. Autentikasi
 
-Setiap permintaan ke `http://127.0.0.1:3302/internal/kirim/*` membawa `Authorization: Bearer <kunci>`. Kirim mencari hash kuncinya; kunci yang tidak dikenal atau sudah dicabut dijawab `401 unauthenticated`, gerbang yang dinonaktifkan pengelola dijawab `403 consumer_unknown`. Token Keycloak tidak pernah bisa bertindak sebagai gerbang.
+Setiap permintaan ke `http://127.0.0.1:3302/internal/kirim/*` membawa `Authorization: Bearer <kunci>`. Kirim mencari hash kuncinya; kunci yang tidak dikenal, diputar ulang, atau dicabut dijawab `401 unauthenticated`, gerbang yang dinonaktifkan pengelola dijawab `403 consumer_unknown`. Token Keycloak tidak pernah bisa bertindak sebagai gerbang.
 
-`Idempotency-Key` wajib di `POST /messages` dan berlaku **per kunci**: dua aplikasi boleh memakai nilai yang sama tanpa bentrok.
+`Idempotency-Key` wajib di `POST /messages` dan berlaku **per nomor**: dua nomor boleh memakai nilai yang sama tanpa bentrok, dan kunci yang diputar ulang tetap mengenali pengulangan sebelumnya.
 
-## 5. Endpoint yang tersedia untuk kunci API
+## 4. Endpoint yang tersedia untuk kunci API
 
 Jawaban galat selalu `{ "error": { "code", "message", "fields"? } }`.
 
 | Method dan path | Fungsi |
 | --- | --- |
-| `GET /sambungan` | Nomor yang terikat pada kunci, jenis yang boleh dikirim, webhook nomor itu |
-| `PUT /sambungan/webhook` | Mendaftarkan alamat webhook untuk nomor kunci ini |
+| `GET /sambungan` | Nomor pemilik kunci, jenis yang boleh dikirim, webhook nomor itu |
+| `PUT /sambungan/webhook` | Mendaftarkan alamat webhook untuk nomor ini |
 | `POST /messages` | Kirim teks atau media. Wajib `Idempotency-Key`; field `device` **tidak boleh** dikirim (400) |
-| `GET /messages/:id` | Status pesan yang dikirim lewat nomor kunci ini |
+| `GET /messages/:id` | Status pesan yang dikirim lewat nomor ini |
 | `POST /media` | Unggah PDF/JPEG/PNG sampai 5 MiB (tanpa field `device`) |
-| `POST /optouts`, `DELETE /optouts` | Jangan hubungi, cakupan `consumer` atau `device` (hanya nomor kunci ini) |
+| `POST /optouts`, `DELETE /optouts` | Jangan hubungi, cakupan `consumer` atau `device` (hanya nomor ini) |
 
 Endpoint percakapan, grup, aksi pesan, foto profil, dan profil bisnis **tidak** tersedia untuk kunci API (`403 api_key_not_allowed`); itu milik aplikasi SQ Suite pemilik nomor.
 
-### 5.1 Membaca sambungan
+### 4.1 Membaca sambungan
 
 ```sh
 curl -s "$KIRIM_BASE_URL/internal/kirim/sambungan" -H "Authorization: Bearer $KIRIM_API_KEY"
 ```
 
 ```json
-{ "aplikasi": "Samijaya", "nomor": { "kode": "luar", "status": "tersambung", "nomor_tersamar": "+62 851-••••-2504" }, "jenis": ["notifikasi", "kode"], "webhook": null }
+{ "nomor": { "kode": "luar", "status": "tersambung", "nomor_tersamar": "+62 851-••••-2504" }, "jenis": ["notifikasi", "kode"], "webhook": null }
 ```
 
-### 5.2 Mengirim teks
+### 4.2 Mengirim teks
 
 ```sh
 curl -s -X POST "$KIRIM_BASE_URL/internal/kirim/messages" \
@@ -87,9 +86,9 @@ curl -s -X POST "$KIRIM_BASE_URL/internal/kirim/messages" \
 | `kedaluwarsa` | ISO 8601 dengan zona waktu; untuk `kode` paling lama 10 menit |
 | `ref` | ≤ 200 karakter, dikembalikan di status dan webhook; **tanpa data pribadi** |
 
-Ulangi `POST` hanya bila tidak mendapat `202` (5xx, timeout, jaringan), dengan kunci yang **sama**; kunci sama dengan isi berbeda dijawab `409 idempotency_key_conflict`. Setelah `202`, kegagalan datang lewat status atau webhook.
+Ulangi `POST` hanya bila tidak mendapat `202` (5xx, timeout, jaringan), dengan kunci idempotensi yang **sama**; kunci sama dengan isi berbeda dijawab `409 idempotency_key_conflict`. Setelah `202`, kegagalan datang lewat status atau webhook.
 
-### 5.3 Media, status, jangan hubungi
+### 4.3 Media, status, jangan hubungi
 
 Sama dengan API aplikasi SQ Suite (KIRIM-IMPL-001 §5.4, §6.1; KIRIM-IMPL-002 §8), tanpa field `device`:
 
@@ -102,46 +101,46 @@ curl -s -X POST "$KIRIM_BASE_URL/internal/kirim/optouts" -H "Authorization: Bear
 
 Status: `antre` → `diserahkan` → `terkirim` → `dibaca`, atau `gagal` (dengan `error_code`) / `dibatalkan`. `GET /messages/:id` hanya melihat pesan yang dikirim lewat nomor kunci itu.
 
-### 5.4 Webhook
+### 4.4 Webhook
 
-Webhook terdaftar **per nomor** di kartu Aplikasi luar (asumsi DRAFT: satu nomor untuk satu aplikasi luar). Alamat boleh `https://<host>/…` mana pun atau `http://127.0.0.1:<port>/…`, tanpa kredensial di URL. Kirim membuat rahasia 32 byte sekali dan menyimpannya terenkripsi; aplikasi membacanya dari jawaban.
+Webhook terdaftar **per nomor**. Alamat boleh `https://<host>/…` mana pun atau `http://127.0.0.1:<port>/…`, tanpa kredensial di URL. Kirim membuat rahasia 32 byte sekali dan menyimpannya terenkripsi; aplikasi membacanya dari jawaban. Memutar ulang kunci tidak mengubah webhook maupun rahasianya.
 
 ```sh
 curl -s -X PUT "$KIRIM_BASE_URL/internal/kirim/sambungan/webhook" -H "Authorization: Bearer $KIRIM_API_KEY" -H "Content-Type: application/json" \
   -d '{ "url": "http://127.0.0.1:3100/internal/kirim/webhook" }'
-# → { …, "webhook": { "url": "…", "secret": "…" } }
+# → { "nomor": { … }, "jenis": [ … ], "webhook": { "url": "…", "secret": "…" } }
 ```
 
-Header tiap event: `X-Kirim-Event-Id`, `X-Kirim-Timestamp` (detik Unix, toleransi 5 menit), `X-Kirim-Signature` = hex HMAC-SHA256(rahasia, `timestamp + "." + body mentah`). Event: `message.status` (pesan kunci ini), `message.received`, `message.sent`, `device.status` untuk nomor itu. Jawab `2xx` dalam 10 detik; selain itu diulang 30 detik, 1, 2, 4 … menit sampai 1 jam, maksimum 8 percobaan. Contoh verifikasi Node dan PHP ada di halaman dokumentasi publik.
+Header tiap event: `X-Kirim-Event-Id`, `X-Kirim-Timestamp` (detik Unix, toleransi 5 menit), `X-Kirim-Signature` = hex HMAC-SHA256(rahasia, `timestamp + "." + body mentah`). Event: `message.status` (pesan nomor ini), `message.received`, `message.sent`, `device.status`. Jawab `2xx` dalam 10 detik; selain itu diulang 30 detik, 1, 2, 4 … menit sampai 1 jam, maksimum 8 percobaan. Contoh verifikasi Node dan PHP ada di halaman dokumentasi publik.
 
-## 6. Kuota dan batas laju
+## 5. Kuota dan batas laju
 
 | Batas | Nilai |
 | --- | --- |
-| Kuota harian gerbang (semua aplikasi luar bersama, semua jenis) | bawaan 500 pesan per hari WIB; diatur pengelola Kirim pada pemakai `aplikasi-luar` (asumsi DRAFT: kuota bersama, bukan per kunci) |
+| Kuota harian gerbang (semua nomor luar bersama, semua jenis) | bawaan 500 pesan per hari WIB; diatur pengelola Kirim pada pemakai `aplikasi-luar` (asumsi DRAFT: kuota bersama, bukan per nomor) |
 | Laju per nomor | bawaan 10 pesan per menit; jeda acak 2–6 detik |
 | Jam kirim `notifikasi` | bawaan 06.00–21.00 WIB per nomor; `kode` kapan saja |
 | Ulang kirim bila mesin gagal | 1, 5, 30 menit lalu `gagal` |
 | Teks, ref, media | 1–4096 karakter; ≤ 200 karakter; PDF/JPEG/PNG ≤ 5 MiB |
 
-## 7. Kode galat
+## 6. Kode galat
 
 | HTTP | `code` | Arti |
 | --- | --- | --- |
 | 400 | `invalid_request` | Body tidak sesuai skema (`fields`), termasuk field `device` dari kunci API |
 | 400 | `idempotency_key_required` | Header tidak ada atau bukan 1–200 karakter |
-| 401 | `unauthenticated` | Kunci tidak ada, tidak dikenal, atau dicabut |
+| 401 | `unauthenticated` | Kunci tidak ada, tidak dikenal, diputar ulang, atau dicabut |
 | 403 | `consumer_unknown` | Gerbang dinonaktifkan pengelola, atau token Keycloak mencoba bertindak sebagai gerbang |
 | 403 | `api_key_not_allowed` | Endpoint percakapan/grup/bisnis |
 | 403 | `not_owner` | Opt-out cakupan `device` untuk nomor lain |
-| 404 | `not_found` | Pesan atau opt-out bukan milik kunci ini |
-| 409 | `idempotency_key_conflict` | Kunci sama, isi berbeda |
+| 404 | `not_found` | Pesan atau opt-out bukan milik nomor ini |
+| 409 | `idempotency_key_conflict` | Kunci idempotensi sama, isi berbeda |
 | 413 | `body_too_large` | Body melewati batas |
 | 422 | `device_not_connected`, `device_inactive`, `invalid_number`, `optout`, `quota_exceeded`, `media_invalid`, `webhook_url_invalid` | Seperti KIRIM-IMPL-001 §5.3 |
 
 `error_code` pada `gagal`: `optout`, `route_denied`, `quota_exceeded`, `device_inactive`, `invalid_number`, `media_invalid`, `expired`, `engine_unavailable`, `engine_rejected`, `engine_conflict`, `cancelled`.
 
-## 8. Contoh integrasi OTP minimal (Node)
+## 7. Contoh integrasi OTP minimal (Node)
 
 ```js
 async function kirimOtp(nomor, kode, idPermintaan) {
@@ -159,15 +158,16 @@ async function kirimOtp(nomor, kode, idPermintaan) {
 
 Implementasi Samijaya: `server/kirim-client.js` (env `WHATSAPP_PROVIDER=kirim`, `KIRIM_BASE_URL`, `KIRIM_API_KEY`), uji `tests/kirim-client-harness.js`.
 
-## 9. Pemeriksaan cepat
+## 8. Pemeriksaan cepat
 
-1. `GET /sambungan` dengan kunci → `200`, `aplikasi` = nama yang ditulis pengelola, `nomor.status` `tersambung`. `401` → kunci salah/dicabut; `nomor: null` tidak terjadi karena kunci selalu terikat nomor, tetapi `status` `belum_dipasang`/`terputus` berarti QR belum dipindai.
+1. `GET /sambungan` dengan kunci → `200` dan `nomor.status` `tersambung`. `401` → kunci salah, diputar ulang, atau dicabut; `belum_dipasang`/`terputus` berarti QR belum dipindai.
 2. Kirim satu `kode` ke nomor sendiri; `GET /messages/:id` menjadi `terkirim` dalam beberapa detik (`dry_run: true` berarti nomor masih penyedia `log`).
-3. Di panel Kirim, kartu Aplikasi luar menunjukkan jumlah nomor tersambung dan kunci aktif; pop-up menunjukkan "terakhir dipakai" pada kuncinya.
+3. Di panel Kirim, pop-up kartu menunjukkan "terakhir dipakai" pada kunci nomor itu.
 
 ## Riwayat
 
 | Tanggal | Perubahan |
 | --- | --- |
-| 2026-11-17 | Desain ulang: satu kartu generik "Aplikasi luar" dengan beberapa nomor, kunci API terbitan Kirim menggantikan client Keycloak, dokumentasi publik di `/dokumentasi-api`. Kartu per aplikasi luar (2026-11-16) dihapus atas keputusan owner |
+| 2026-11-17 | Koreksi owner: kunci melekat pada nomor, bukan aplikasi; tidak ada pendaftaran aplikasi; kunci tampil di pop-up untuk disalin, diputar ulang, dicabut. Dokumentasi dua langkah |
+| 2026-11-17 | Desain ulang: satu kartu generik "Aplikasi luar" dengan beberapa nomor, kunci API terbitan Kirim, dokumentasi publik `/dokumentasi-api` |
 | 2026-11-16 | Dokumen pertama (client Keycloak, kartu per aplikasi luar); digantikan |

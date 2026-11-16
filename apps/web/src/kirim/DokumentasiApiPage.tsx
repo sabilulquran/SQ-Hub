@@ -9,7 +9,7 @@ import { useState, type ReactNode } from "react";
  */
 
 const TOC: Array<{ group: string; items: Array<{ id: string; label: string }> }> = [
-  { group: "Mulai", items: [{ id: "mulai", label: "Tiga langkah" }, { id: "autentikasi", label: "Autentikasi" }, { id: "alamat", label: "Alamat dasar" }, { id: "bentuk", label: "Bentuk jawaban" }] },
+  { group: "Mulai", items: [{ id: "mulai", label: "Dua langkah" }, { id: "autentikasi", label: "Autentikasi" }, { id: "alamat", label: "Alamat dasar" }, { id: "bentuk", label: "Bentuk jawaban" }] },
   { group: "Endpoint", items: [{ id: "sambungan", label: "Baca sambungan" }, { id: "kirim", label: "Kirim pesan" }, { id: "media", label: "Kirim media" }, { id: "status", label: "Status pesan" }, { id: "optout", label: "Jangan hubungi" }] },
   { group: "Terima", items: [{ id: "webhook", label: "Webhook" }, { id: "tandatangan", label: "Verifikasi tanda tangan" }] },
   { group: "Acuan", items: [{ id: "batas", label: "Batas dan jam kirim" }, { id: "galat", label: "Kode galat" }, { id: "otp", label: "Contoh: OTP" }] },
@@ -40,23 +40,22 @@ export function DokumentasiApiPage() {
       </nav>
 
       <main className="min-w-0 space-y-12">
-        <Section id="mulai" title="Tiga langkah sebelum memanggil API">
-          <div className="grid gap-3 sm:grid-cols-3">
-            <Step n={1} title="Sambungkan nomor">Pengelola Kirim membuka kartu <b>Aplikasi luar</b>, menekan <i>Sambungkan nomor baru</i>, lalu memindai QR dari HP nomor yang akan dipakai aplikasi Anda. Satu kartu menampung beberapa nomor.</Step>
-            <Step n={2} title="Terbitkan kunci API">Di kartu yang sama, pengelola menulis nama aplikasi Anda, memilih nomornya, dan menekan <i>Buat kunci</i>. Kunci <code>krm_…</code> tampil satu kali; salin saat itu juga.</Step>
-            <Step n={3} title="Simpan kunci di aplikasi">Taruh kunci di berkas env server aplikasi (misalnya <code>KIRIM_API_KEY</code>). Jangan di kode frontend, repositori, atau tiket. Kunci yang hilang diganti dengan kunci baru.</Step>
+        <Section id="mulai" title="Dua langkah sebelum memanggil API">
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Step n={1} title="Sambungkan nomor">Pengelola Kirim membuka kartu <b>Aplikasi luar</b>, menekan <i>Sambungkan nomor baru</i>, lalu memindai QR dari HP nomor yang akan dipakai. Satu kartu menampung beberapa nomor; tiap nomor langsung punya kunci API sendiri.</Step>
+            <Step n={2} title="Salin kunci nomor itu ke aplikasi Anda">Di pop-up kartu, tekan <i>Tampilkan</i> atau <i>Salin</i> pada nomor yang dipakai, lalu taruh kunci <code>krm_…</code> di berkas env server aplikasi (misalnya <code>KIRIM_API_KEY</code>). Jangan di kode frontend, repositori, atau tiket.</Step>
           </div>
-          <Note>Nomor disambungkan oleh pengelola Kirim, bukan oleh aplikasi. Aplikasi tidak pernah menyebut kode nomor saat mengirim; Kirim memakai nomor yang terikat pada kunci. Nama aplikasi hanya tampil di dalam kartu, bukan di muka kartu.</Note>
+          <Note>Kirim tidak perlu tahu nama aplikasi Anda: tidak ada pendaftaran aplikasi dan tidak ada akun mesin yang harus dibuat. Kunci melekat pada nomor, seperti kunci device di penyedia WhatsApp lain. Aplikasi tidak pernah menyebut kode nomor saat mengirim; Kirim memakai nomor pemilik kunci. Kunci bisa diputar ulang atau dicabut dari kartu tanpa memutus WhatsApp.</Note>
         </Section>
 
         <Section id="autentikasi" title="Autentikasi">
           <p>Setiap permintaan membawa kunci API di header <code>Authorization</code>. Tidak ada token yang perlu diperbarui, tidak ada alur OAuth, dan tidak ada rahasia lain yang disalin ke aplikasi.</p>
           <Table head={["Header", "Wajib", "Isi"]} rows={[
-            [<code>Authorization</code>, <Req />, <><code>Bearer krm_…</code>, kunci dari kartu Aplikasi luar</>],
+            [<code>Authorization</code>, <Req />, <><code>Bearer krm_…</code>, kunci nomor Anda dari kartu Aplikasi luar</>],
             [<code>Content-Type</code>, <Req />, <><code>application/json</code>, kecuali unggah berkas yang memakai <code>multipart/form-data</code></>],
-            [<code>Idempotency-Key</code>, <Req label="wajib di POST pesan" />, "1–200 karakter, milik aplikasi sendiri; mencegah pesan ganda saat permintaan diulang. Berlaku per kunci, jadi dua aplikasi boleh memakai nilai yang sama."],
+            [<code>Idempotency-Key</code>, <Req label="wajib di POST pesan" />, "1–200 karakter, milik aplikasi sendiri; mencegah pesan ganda saat permintaan diulang. Berlaku per nomor, jadi dua nomor boleh memakai nilai yang sama."],
           ]} />
-          <Note>Kunci API setara kata sandi. Kunci yang bocor dicabut dari kartu Aplikasi luar dan diganti tanpa memutus nomor. Kunci yang dicabut dijawab <code>401 unauthenticated</code>.</Note>
+          <Note>Kunci API setara kata sandi. Kunci yang bocor diputar ulang atau dicabut dari kartu Aplikasi luar tanpa memutus nomor; kunci lama lalu dijawab <code>401 unauthenticated</code>.</Note>
         </Section>
 
         <Section id="alamat" title="Alamat dasar">
@@ -80,12 +79,11 @@ export function DokumentasiApiPage() {
 
         <Section id="sambungan" title="Baca sambungan">
           <Endpoint method="GET" path="$KIRIM/sambungan">
-            <p>Memberi tahu nomor yang terikat pada kunci, jenis pesan yang boleh dikirim, dan alamat webhook beserta rahasianya. Panggil sekali saat aplikasi start, bukan tiap mengirim.</p>
+            <p>Memberi tahu nomor pemilik kunci, jenis pesan yang boleh dikirim, dan alamat webhook beserta rahasianya. Panggil sekali saat aplikasi start, bukan tiap mengirim.</p>
             <Tabs tabs={[
               { label: "curl", code: `curl -s "$KIRIM/sambungan" \\
   -H "Authorization: Bearer $KUNCI"` },
               { label: "respon", code: `{
-  "aplikasi": "Toko online",
   "nomor": { "kode": "luar", "status": "tersambung", "nomor_tersamar": "+62 812-••••-7890" },
   "jenis": ["notifikasi", "kode"],
   "webhook": null
@@ -198,7 +196,7 @@ curl -s -X POST "$KIRIM/messages" \\
 
         <Section id="status" title="Status pesan">
           <Endpoint method="GET" path="$KIRIM/messages/{id}">
-            <p>Membaca status satu pesan yang dikirim lewat kunci ini. Pesan lain dijawab <code>404</code>. Status hanya bergerak maju.</p>
+            <p>Membaca status satu pesan yang dikirim lewat nomor ini. Pesan nomor lain dijawab <code>404</code>. Status hanya bergerak maju.</p>
             <Code>{`curl -s "$KIRIM/messages/4a1f8c20-6b1e-4f2a-9d33-7c0e5b2a1d44" \\
   -H "Authorization: Bearer $KUNCI"
 
@@ -246,7 +244,7 @@ curl -s -X DELETE "$KIRIM/optouts" \\
             <Code>{`curl -s -X PUT "$KIRIM/sambungan/webhook" \\
   -H "Authorization: Bearer $KUNCI" -H "Content-Type: application/json" \\
   -d '{ "url": "https://toko.example/api/kirim/webhook" }'
-# → { "aplikasi": "…", "nomor": { … }, "jenis": [ … ],
+# → { "nomor": { … }, "jenis": [ … ],
 #     "webhook": { "url": "https://toko.example/api/kirim/webhook", "secret": "…" } }`}</Code>
             <Table head={["Header tiap event", "Isi"]} rows={[
               [<code>X-Kirim-Event-Id</code>, "ID event, sama di tiap percobaan ulang. Abaikan ID yang sudah Anda proses"],
@@ -365,7 +363,7 @@ function webhook_sah(string $rahasia, array $headers, string $bodyMentah): bool 
         </Section>
 
         <footer className="border-t border-border pt-4 text-xs text-muted-foreground">
-          Berlaku sejak 17 November 2026 (ADR-0011, amandemen 2026-11-17). Pengelola Kirim: kartu Aplikasi luar di halaman Aplikasi. Developer SQ Suite: lihat panduan di repositori SQ-Hub, <code>docs/kirim/panduan-api-gateway-aplikasi-luar.md</code>.
+          Berlaku sejak 17 November 2026 (ADR-0011, amandemen 2026-11-17). Pengelola Kirim: kartu Aplikasi luar di halaman Aplikasi; tiap nomor punya kunci sendiri. Developer SQ Suite: lihat panduan di repositori SQ-Hub, <code>docs/kirim/panduan-api-gateway-aplikasi-luar.md</code>.
         </footer>
       </main>
     </div>

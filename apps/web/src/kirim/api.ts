@@ -52,42 +52,30 @@ export interface KirimModuleList extends KirimDeviceList {
   gerbang?: KirimGatewayCard;
 }
 
+/** The number's own API key as the pop-up shows it; `kunci` is null only for a key made before migration 0024. */
+export interface KirimGatewayKey {
+  awalan: string;
+  kunci: string | null;
+  dibuat_at: string;
+  terakhir_dipakai_at: string | null;
+}
+
 export interface KirimGatewayNumber extends KirimDevice {
-  kunci_aktif: number;
+  kunci: KirimGatewayKey | null;
+  webhook_terdaftar?: boolean;
 }
 
 export interface KirimGatewayCard {
   nama: string;
   keterangan: string;
-  nomor: KirimGatewayNumber[];
+  nomor: Array<KirimDevice & { kunci_aktif: number }>;
   kunci_aktif: number;
-}
-
-export interface KirimApiKey {
-  id: string;
-  nama_aplikasi: string;
-  awalan: string;
-  nomor: { kode: string; label: string };
-  dibuat_at: string;
-  dibuat_oleh: string;
-  terakhir_dipakai_at: string | null;
-  dicabut_at: string | null;
 }
 
 export interface KirimGatewayDetail {
   nama: string;
   keterangan: string;
   nomor: KirimGatewayNumber[];
-  kunci: KirimApiKey[];
-}
-
-/** The plain key is in the answer to `POST /gerbang/kunci` only; afterwards only its prefix is known. */
-export interface KirimIssuedKey {
-  id: string;
-  kunci: string;
-  awalan: string;
-  nama_aplikasi: string;
-  nomor: { kode: string; label: string };
 }
 
 export interface KirimConsumer {
