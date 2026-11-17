@@ -237,7 +237,7 @@ describe("moving one number to Kirim SQ's own engine", () => {
 
   it("names itself `wa` so every row says which engine wrote it", () => {
     const refs = { get: async () => null, put: async () => undefined, remove: async () => undefined };
-    const wa = new WaEngineProvider({ baseUrl: "http://127.0.0.1:3307", platformKey: "worker-key" }, refs);
+    const wa = new WaEngineProvider({ baseUrl: "http://127.0.0.1:3310", platformKey: "worker-key" }, refs);
     const jalurpesan = new JalurPesanProvider({ baseUrl: "http://127.0.0.1:3401", platformKey: "engine-key" }, refs);
     expect(wa.name).toBe("wa");
     expect(jalurpesan.name).toBe("jalurpesan");
