@@ -153,9 +153,12 @@ export function createSekretariatModule(input: {
         // M-6: the list is read every round, so adding or parking a mailbox needs no restart.
         // M-5: an empty table means the env still decides, which is how R1 is running today.
         const runtimes = await mailbox.aktif();
+        // M-5 is about an empty TABLE. With rows that are merely deactivated or parked, falling
+        // back to the env would quietly resume pulling mail the admin just switched off.
+        const kosong = runtimes.length === 0 && (await mailbox.jumlah()) === 0;
         let baru = 0;
         let gagal: boolean;
-        if (runtimes.length === 0) {
+        if (kosong) {
           const result = await mail.runOnce();
           baru = result.baru;
           gagal = result.gagal;
@@ -177,7 +180,7 @@ export function createSekretariatModule(input: {
               await mailbox.catatSukses(runtime.id);
             }
           }
-          gagal = gagalCount === runtimes.length;
+          gagal = runtimes.length > 0 && gagalCount === runtimes.length;
         }
         backoffRounds = gagal ? Math.min(backoffRounds === 0 ? 1 : backoffRounds * 2, Math.ceil(3_600_000 / config.mailIntervalMs)) : 0;
         skip = backoffRounds;

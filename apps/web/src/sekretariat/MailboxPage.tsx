@@ -292,13 +292,11 @@ function MailboxDialog({ form, kotak, busy, error, onChange, onSimpan, onClose }
           <Field label="Host IMAP" helper="Nama server penyedia email, misalnya mail.sabilulquran.or.id">
             <input className="sq-admin-input" autoComplete="off" value={form.host} onChange={(event) => onChange({ ...form, host: event.target.value.trim() })} />
           </Field>
-          <Field label="Port" helper="Bawaannya 993, port IMAP terenkripsi">
-            <input
-              className="sq-admin-input"
-              inputMode="numeric"
-              value={form.port}
-              onChange={(event) => onChange({ ...form, port: event.target.value.replace(/\D/g, "").slice(0, 5) })}
-            />
+          <Field label="Port" helper="993 terenkripsi sejak awal. 143 hanya bila penyedia menuntutnya; sambungannya tetap wajib naik ke terenkripsi.">
+            <select className="sq-admin-input" value={form.port} onChange={(event) => onChange({ ...form, port: event.target.value })}>
+              <option value="993">993</option>
+              <option value="143">143</option>
+            </select>
           </Field>
           <Field label="Pengguna" helper="Bawaannya sama dengan alamat; ubah hanya bila penyedia memakai nama lain">
             <input

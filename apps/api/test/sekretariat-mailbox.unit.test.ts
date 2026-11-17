@@ -75,10 +75,23 @@ describe("SEK-IMPL-002 SEKRETARIAT_DATA_KEYS", () => {
 });
 
 describe("SEK-IMPL-002 sebab kegagalan sambungan (M-8)", () => {
-  it("mengenali sandi yang ditolak, karena hanya itu yang memarkir mailbox", () => {
+  it("mengenali galat autentikasi imapflow yang sebenarnya, bukan teks karangan", () => {
+    // Yang benar-benar dilempar imapflow saat login ditolak: pesannya generik, bendera ada di
+    // objek galatnya (node_modules/imapflow/dist/cjs/commands/login.js).
+    const imapflow = Object.assign(new Error("Command failed"), { authenticationFailed: true, serverResponseCode: "AUTHENTICATIONFAILED" });
+    expect(classifyMailboxFailure(imapflow)).toBe("sandi_ditolak");
+    expect(classifyMailboxFailure(Object.assign(new Error("Command failed"), { serverResponseCode: "AUTHENTICATIONFAILED" }))).toBe("sandi_ditolak");
+  });
+
+  it("masih mengenali kalimat penolakan dari server lain", () => {
     expect(classifyMailboxFailure(new Error("Invalid credentials (Failure)"))).toBe("sandi_ditolak");
-    expect(classifyMailboxFailure(Object.assign(new Error("x"), { name: "AuthenticationFailedError" }))).toBe("sandi_ditolak");
+    expect(classifyMailboxFailure(new Error("Authentication failed"))).toBe("sandi_ditolak");
     expect(classifyMailboxFailure(new Error("LOGIN failed"))).toBe("sandi_ditolak");
+  });
+
+  it("tidak tertipu bendera yang bukan true", () => {
+    expect(classifyMailboxFailure(Object.assign(new Error("Command failed"), { authenticationFailed: false }))).toBe("lainnya");
+    expect(classifyMailboxFailure(Object.assign(new Error("Command failed"), { authenticationFailed: "ya" }))).toBe("lainnya");
   });
 
   it("memisahkan nama host, sertifikat, dan waktu habis", () => {

@@ -22,6 +22,10 @@ export class ImapMailFetcher implements MailFetcher {
       host: this.options.host,
       port: this.options.port,
       secure: this.options.port === 993,
+      // On 143 imapflow would otherwise treat STARTTLS as optional and, if the server does not
+      // advertise it or a man in the middle strips it, send LOGIN in the clear. Demanding it
+      // makes that case fail instead.
+      ...(this.options.port === 993 ? {} : { doSTARTTLS: true as const }),
       auth: { user: this.options.user, pass: this.options.pass },
       logger: false,
     });
@@ -67,6 +71,7 @@ export async function probeImapMailbox(settings: { host: string; port: number; u
     host: settings.host,
     port: settings.port,
     secure: settings.port === 993,
+    ...(settings.port === 993 ? {} : { doSTARTTLS: true as const }),
     auth: { user: settings.user, pass: settings.pass },
     logger: false,
   });

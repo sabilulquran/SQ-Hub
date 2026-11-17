@@ -25,6 +25,10 @@ CREATE TABLE IF NOT EXISTS sekretariat_mailbox (
   -- admin saves it again (M-8). Nothing else moves a mailbox out of 'aktif'.
   status text NOT NULL DEFAULT 'aktif' CHECK (status IN ('aktif', 'nonaktif', 'auth_gagal')),
   gagal_berturut integer NOT NULL DEFAULT 0 CHECK (gagal_berturut >= 0),
+  -- Why the last round failed. The five-strike rule counts consecutive refusals of the same kind,
+  -- so a night of timeouts cannot add up to a parked mailbox.
+  sebab_terakhir text NULL CHECK (sebab_terakhir IS NULL OR sebab_terakhir IN
+    ('sandi_ditolak', 'host_tidak_ditemukan', 'sertifikat', 'waktu_habis', 'kunci_hilang', 'lainnya')),
   -- An error class or a short reason, never a password and never message content.
   galat_terakhir text NULL CHECK (galat_terakhir IS NULL OR length(galat_terakhir) <= 200),
   galat_pada timestamptz NULL,

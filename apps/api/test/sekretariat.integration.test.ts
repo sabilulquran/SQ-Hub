@@ -599,15 +599,52 @@ describe("SEK-IMPL-002 kotak masuk disambungkan dari layar", () => {
     expect(JSON.stringify(audit.rows[0]!.metadata)).not.toContain(MAILBOX.sandi);
   });
 
-  it("mengubah tanpa mengisi sandi tetap memakai sandi lama (M-3)", async () => {
+  it("mengubah tanpa mengisi sandi memakai sandi lama selama tujuannya sama (M-3)", async () => {
     const dibuat = await tambah();
     const id = dibuat.body.id as string;
     const diubah = await call(HCM, "PUT", `/admin/sekretariat/mailbox/${id}`, {
-      alamat: MAILBOX.alamat, host: "mail2.sabilulquran.or.id", port: 993, kotak_id: await kotakYayasan(),
+      alamat: MAILBOX.alamat, host: MAILBOX.host, port: 993, kotak_id: await kotakYayasan(),
     });
     expect(diubah.status).toBe(200);
-    expect(diubah.body.host).toBe("mail2.sabilulquran.or.id");
     expect(probeCalls.at(-1)!.pass).toBe(MAILBOX.sandi);
+  });
+
+  it("menolak memakai sandi tersimpan ke host lain, supaya tidak bisa dibaca balik (M-3a)", async () => {
+    const id = (await tambah()).body.id as string;
+    const sebelum = probeCalls.length;
+    const curi = await call(HCM, "PUT", `/admin/sekretariat/mailbox/${id}`, {
+      alamat: MAILBOX.alamat, host: "mesin-penyerang.example", port: 993, kotak_id: await kotakYayasan(),
+    });
+    expect(curi.status).toBe(400);
+    expect(curi.body.code).toBe("sandi_wajib_tujuan_berubah");
+    // Yang penting: sandinya tidak pernah dikirim ke host itu.
+    expect(probeCalls).toHaveLength(sebelum);
+  });
+
+  it("menolak pengguna lain dengan sandi tersimpan (M-3a)", async () => {
+    const id = (await tambah()).body.id as string;
+    const ganti = await call(HCM, "PUT", `/admin/sekretariat/mailbox/${id}`, {
+      alamat: MAILBOX.alamat, host: MAILBOX.host, port: 993, pengguna: "orang-lain@sabilulquran.or.id", kotak_id: await kotakYayasan(),
+    });
+    expect(ganti.body.code).toBe("sandi_wajib_tujuan_berubah");
+  });
+
+  it("mencatat setiap percobaan sambungan, berhasil maupun gagal (§6)", async () => {
+    await tambah();
+    probeRefusal = "Command failed";
+    await tambah({ alamat: "lain@sabilulquran.or.id" });
+    const audit = await pool.query<{ metadata: { hasil: string; host: string } }>(
+      "SELECT metadata FROM sekretariat_audit WHERE aksi = 'mailbox.uji' ORDER BY id",
+    );
+    expect(audit.rowCount).toBe(2);
+    expect(audit.rows[0]!.metadata.hasil).toBe("berhasil");
+    expect(audit.rows[1]!.metadata.hasil).not.toBe("berhasil");
+    expect(JSON.stringify(audit.rows)).not.toContain(MAILBOX.sandi);
+  });
+
+  it("hanya menerima port IMAP 993 dan 143 (M-8a)", async () => {
+    expect((await tambah(HCM, { port: 2525 })).status).toBe(400);
+    expect((await tambah(HCM, { port: 143 })).status).toBe(201);
   });
 
   it("menolak alamat ganda dan kotak yang tidak dikenal", async () => {
@@ -622,6 +659,16 @@ describe("SEK-IMPL-002 kotak masuk disambungkan dari layar", () => {
       alamat: MAILBOX.alamat, host: MAILBOX.host, port: 993, kotak_id: await kotakYayasan(),
     });
     expect(tanpa.body.code).toBe("sandi_wajib");
+  });
+
+  it("tidak memarkir karena empat waktu habis lalu satu sandi ditolak (M-8)", async () => {
+    const id = (await tambah()).body.id as string;
+    for (let attempt = 0; attempt < 4; attempt += 1) await sekretariat.mailbox.catatGagal(id, "waktu_habis");
+    await sekretariat.mailbox.catatGagal(id, "sandi_ditolak");
+    const row = (await pool.query<{ status: string; gagal_berturut: number }>(
+      "SELECT status, gagal_berturut FROM sekretariat_mailbox WHERE id = $1", [id])).rows[0]!;
+    expect(row.status).toBe("aktif");
+    expect(row.gagal_berturut).toBe(1);
   });
 
   it("memarkir mailbox setelah lima penolakan sandi berturut-turut (M-8)", async () => {
@@ -672,5 +719,21 @@ describe("SEK-IMPL-002 kotak masuk disambungkan dari layar", () => {
     const runtimes = await sekretariat.mailbox.aktif();
     expect(runtimes).toHaveLength(1);
     expect(runtimes[0]).toMatchObject({ host: MAILBOX.host, pengguna: MAILBOX.alamat, sandi: MAILBOX.sandi });
+  });
+
+  it("env hanya dipakai saat tabelnya benar-benar kosong (M-5)", async () => {
+    expect(await sekretariat.mailbox.jumlah()).toBe(0);
+    const id = (await tambah()).body.id as string;
+    await call(HCM, "POST", `/admin/sekretariat/mailbox/${id}/status`, { status: "nonaktif" });
+    // Tidak ada baris aktif, tetapi tabelnya tidak kosong: penarik tidak boleh kembali ke env.
+    expect(await sekretariat.mailbox.aktif()).toHaveLength(0);
+    expect(await sekretariat.mailbox.jumlah()).toBe(1);
+  });
+
+  it("baris yang kuncinya hilang langsung diparkir, tidak dicoba berulang", async () => {
+    const id = (await tambah()).body.id as string;
+    await pool.query("UPDATE sekretariat_mailbox SET sandi_terenkripsi = $2 WHERE id = $1", [id, "v1.k9.AAAAAAAAAAAAAAAA.AAAA.AAAAAAAAAAAAAAAAAAAAAA"]);
+    expect(await sekretariat.mailbox.aktif()).toHaveLength(0);
+    expect((await pool.query<{ status: string }>("SELECT status FROM sekretariat_mailbox WHERE id = $1", [id])).rows[0]!.status).toBe("auth_gagal");
   });
 });

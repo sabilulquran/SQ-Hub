@@ -17,7 +17,11 @@ export const mailboxSchema = z
   .object({
     alamat: z.string().trim().email().max(320),
     host: z.string().trim().min(1).max(255),
-    port: z.number().int().min(1).max(65535).default(993),
+    /**
+     * Only the two IMAP ports. 993 is TLS from the first byte; 143 upgrades with STARTTLS, which
+     * mail-imap.ts makes mandatory. Any other port would be an open connector to anywhere.
+     */
+    port: z.union([z.literal(993), z.literal(143)]).default(993),
     /** Most hosts use the address itself; cPanel allows a different login name. */
     pengguna: z.string().trim().min(1).max(320).optional(),
     /** Omitted on an edit = keep the stored password (M-3). Required when adding. */
@@ -61,7 +65,7 @@ export interface MailboxRuntime {
 }
 
 /** Why a connection attempt failed, in terms the admin screen can act on. */
-export type MailboxFailure = "sandi_ditolak" | "host_tidak_ditemukan" | "sertifikat" | "waktu_habis" | "lainnya";
+export type MailboxFailure = "sandi_ditolak" | "host_tidak_ditemukan" | "sertifikat" | "waktu_habis" | "kunci_hilang" | "lainnya";
 
 export interface MailboxProbe {
   (settings: { host: string; port: number; user: string; pass: string }): Promise<void>;
@@ -72,6 +76,7 @@ const PESAN: Record<MailboxFailure, string> = {
   host_tidak_ditemukan: "Nama host tidak ditemukan. Periksa ejaannya.",
   sertifikat: "Sertifikat server tidak cocok dengan nama host itu.",
   waktu_habis: "Sambungan tidak terjawab. Server mungkin sedang tidak dapat dihubungi dari sini.",
+  kunci_hilang: "Kunci enkripsi untuk baris ini tidak ada lagi di server, jadi sandinya harus diketik ulang.",
   lainnya: "Sambungan gagal.",
 };
 
@@ -80,10 +85,19 @@ const PESAN: Record<MailboxFailure, string> = {
  * server's own greeting. Only the shape of the failure reaches the screen and the database.
  */
 export function classifyMailboxFailure(error: unknown): MailboxFailure {
+  // imapflow marks a refused login on the error object and throws a generic "Command failed"
+  // message, so the flag is the only reliable signal. The text below is a fallback for other
+  // drivers and for servers that answer `NO ... LOGIN`.
+  if (error && typeof error === "object") {
+    const flagged = error as { authenticationFailed?: unknown; serverResponseCode?: unknown };
+    if (flagged.authenticationFailed === true) return "sandi_ditolak";
+    if (typeof flagged.serverResponseCode === "string" && flagged.serverResponseCode.toUpperCase() === "AUTHENTICATIONFAILED") {
+      return "sandi_ditolak";
+    }
+  }
   const text = error instanceof Error ? `${error.name} ${error.message}` : String(error);
   const lower = text.toLowerCase();
-  // imapflow reports a refused login as AuthenticationFailedError, or an IMAP `NO ... LOGIN`.
-  if (/authenticationfailed|\bauth\b.*(fail|reject|invalid)|invalid credentials|login failed|\bno\b.*\blogin\b/.test(lower)) {
+  if (/authentication ?(failed|failure|error)|invalid credentials|login failed|\bno\b.*\blogin\b/.test(lower)) {
     return "sandi_ditolak";
   }
   if (/enotfound|eai_again|getaddrinfo/.test(lower)) return "host_tidak_ditemukan";
@@ -152,8 +166,8 @@ export class SekretariatMailbox {
     const pengguna = input.pengguna?.trim() || input.alamat;
 
     const existing = id
-      ? (await this.pool.query<{ id: string; sandi_terenkripsi: string }>(
-          "SELECT id, sandi_terenkripsi FROM sekretariat_mailbox WHERE id = $1",
+      ? (await this.pool.query<{ id: string; host: string; port: number; pengguna: string; sandi_terenkripsi: string }>(
+          "SELECT id, host, port, pengguna, sandi_terenkripsi FROM sekretariat_mailbox WHERE id = $1",
           [id],
         )).rows[0]
       : undefined;
@@ -163,6 +177,13 @@ export class SekretariatMailbox {
     if (input.sandi) {
       sandi = input.sandi;
     } else if (existing) {
+      // The stored password may only be reused against the destination it was stored for.
+      // Otherwise an admin could point the row at a machine they control and have the server
+      // hand them the plaintext — turning a write-only field into a read (M-3).
+      const tujuanSama = existing.host === input.host && existing.port === input.port && existing.pengguna === pengguna;
+      if (!tujuanSama) {
+        invalid("Host, port, atau pengguna berubah, jadi sandinya harus diketik ulang.", "sandi_wajib_tujuan_berubah");
+      }
       sandi = crypto.open(existing.sandi_terenkripsi, mailboxAad(existing.id));
     } else {
       invalid("Sandi mailbox wajib diisi saat menambah.", "sandi_wajib");
@@ -171,12 +192,22 @@ export class SekretariatMailbox {
     const kotak = (await this.pool.query<{ id: string }>("SELECT id FROM sekretariat_kotak WHERE id = $1", [input.kotak_id])).rows[0];
     if (!kotak) invalid("Kotak tujuan tidak dikenal.", "kotak_tidak_dikenal");
 
+    // Spec §6: every probe is audited, success or failure, so an attempt to point a stored
+    // credential somewhere new leaves a trace even though it is refused above.
+    let sebab: MailboxFailure | null = null;
     try {
       await this.probe({ host: input.host, port: input.port, user: pengguna, pass: sandi });
     } catch (error) {
-      const sebab = classifyMailboxFailure(error);
-      throw new SekretariatError(400, `sambungan_${sebab}`, PESAN[sebab]);
+      sebab = classifyMailboxFailure(error);
     }
+    await writeAudit(this.pool, {
+      aktor,
+      aksi: "mailbox.uji",
+      objekJenis: "sekretariat_mailbox",
+      objekRef: input.alamat,
+      metadata: { host: input.host, port: input.port, pengguna, hasil: sebab ?? "berhasil" },
+    });
+    if (sebab) throw new SekretariatError(400, `sambungan_${sebab}`, PESAN[sebab]);
 
     const rowId = existing?.id ?? randomUUID();
     const sealed = crypto.seal(sandi, mailboxAad(rowId));
@@ -186,7 +217,7 @@ export class SekretariatMailbox {
         await client.query(
           `UPDATE sekretariat_mailbox
               SET alamat = $2, host = $3, port = $4, pengguna = $5, sandi_terenkripsi = $6, kotak_id = $7,
-                  status = 'aktif', gagal_berturut = 0, galat_terakhir = NULL, galat_pada = NULL,
+                  status = 'aktif', gagal_berturut = 0, sebab_terakhir = NULL, galat_terakhir = NULL, galat_pada = NULL,
                   diubah_oleh = $8, diubah_pada = now()
             WHERE id = $1`,
           [rowId, input.alamat, input.host, input.port, pengguna, sealed, input.kotak_id, aktor],
@@ -194,11 +225,17 @@ export class SekretariatMailbox {
       } else {
         const bentrok = await client.query("SELECT 1 FROM sekretariat_mailbox WHERE alamat = $1", [input.alamat]);
         if ((bentrok.rowCount ?? 0) > 0) invalid("Alamat itu sudah terdaftar.", "alamat_ganda");
-        await client.query(
-          `INSERT INTO sekretariat_mailbox (id, alamat, host, port, pengguna, sandi_terenkripsi, kotak_id, dibuat_oleh)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-          [rowId, input.alamat, input.host, input.port, pengguna, sealed, input.kotak_id, aktor],
-        );
+        try {
+          await client.query(
+            `INSERT INTO sekretariat_mailbox (id, alamat, host, port, pengguna, sandi_terenkripsi, kotak_id, dibuat_oleh)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+            [rowId, input.alamat, input.host, input.port, pengguna, sealed, input.kotak_id, aktor],
+          );
+        } catch (error) {
+          // Two admins adding the same address at once lose the pre-check race; 23505 is that race.
+          if ((error as { code?: string }).code === "23505") invalid("Alamat itu sudah terdaftar.", "alamat_ganda");
+          throw error;
+        }
       }
       await writeAudit(client, {
         aktor,
@@ -219,7 +256,9 @@ export class SekretariatMailbox {
     await withTransaction(this.pool, async (client) => {
       const updated = await client.query<{ alamat: string }>(
         `UPDATE sekretariat_mailbox
-            SET status = $2, gagal_berturut = CASE WHEN $2 = 'aktif' THEN 0 ELSE gagal_berturut END,
+            SET status = $2,
+                gagal_berturut = CASE WHEN $2 = 'aktif' THEN 0 ELSE gagal_berturut END,
+                sebab_terakhir = CASE WHEN $2 = 'aktif' THEN NULL ELSE sebab_terakhir END,
                 diubah_oleh = $3, diubah_pada = now()
           WHERE id = $1 RETURNING alamat`,
         [id, status, aktor],
@@ -279,7 +318,7 @@ export class SekretariatMailbox {
       } catch {
         // A row sealed with a key that is no longer configured. Say so on the screen, do not crash
         // the round, and never retry blindly.
-        await this.catatGagal(row.id, "lainnya", "kunci tidak cocok");
+        await this.catatGagal(row.id, "kunci_hilang", "Kunci enkripsi untuk baris ini tidak ada lagi di server.");
       }
     }
     return runtimes;
@@ -288,22 +327,40 @@ export class SekretariatMailbox {
   async catatSukses(id: string): Promise<void> {
     await this.pool.query(
       `UPDATE sekretariat_mailbox
-          SET tarik_terakhir_pada = now(), gagal_berturut = 0, galat_terakhir = NULL, galat_pada = NULL
+          SET tarik_terakhir_pada = now(), gagal_berturut = 0, sebab_terakhir = NULL,
+              galat_terakhir = NULL, galat_pada = NULL
         WHERE id = $1`,
       [id],
     );
   }
 
-  /** M-8: five consecutive authentication refusals park the mailbox instead of hammering it. */
+  /**
+   * M-8: five consecutive authentication refusals park the mailbox instead of hammering it, which
+   * is what gets an account locked at the host. Only refusals count, and only consecutive ones: a
+   * night of timeouts followed by one wrong password must not park anything, so the counter
+   * restarts whenever the cause changes.
+   */
   async catatGagal(id: string, sebab: MailboxFailure, catatan?: string): Promise<void> {
     await this.pool.query(
       `UPDATE sekretariat_mailbox
-          SET gagal_berturut = gagal_berturut + 1,
+          SET gagal_berturut = CASE WHEN sebab_terakhir IS NOT DISTINCT FROM $3 THEN gagal_berturut + 1 ELSE 1 END,
+              sebab_terakhir = $3,
               galat_terakhir = $2,
               galat_pada = now(),
-              status = CASE WHEN $3 AND gagal_berturut + 1 >= 5 THEN 'auth_gagal' ELSE status END
+              status = CASE
+                WHEN $3 = 'kunci_hilang' THEN 'auth_gagal'
+                WHEN $3 = 'sandi_ditolak'
+                     AND (CASE WHEN sebab_terakhir IS NOT DISTINCT FROM $3 THEN gagal_berturut + 1 ELSE 1 END) >= 5
+                THEN 'auth_gagal'
+                ELSE status END
         WHERE id = $1`,
-      [id, (catatan ?? PESAN[sebab]).slice(0, 200), sebab === "sandi_ditolak"],
+      [id, (catatan ?? PESAN[sebab]).slice(0, 200), sebab],
     );
+  }
+
+  /** How many mailboxes exist at all. M-5 hands the round back to the env only when none do. */
+  async jumlah(): Promise<number> {
+    const row = (await this.pool.query<{ c: string }>("SELECT count(*) AS c FROM sekretariat_mailbox")).rows[0]!;
+    return Number(row.c);
   }
 }
