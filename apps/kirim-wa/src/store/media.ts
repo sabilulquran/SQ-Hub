@@ -112,8 +112,14 @@ export class MediaStore {
       if (total > limit) throw new MediaTooLargeError();
       chunks.push(buffer);
     }
-    const { stream: _stream, maxBytes: _maxBytes, ...rest } = input;
-    return this.store({ ...rest, data: Buffer.concat(chunks) });
+    return this.store({
+      kode: input.kode,
+      source: input.source,
+      mediaType: input.mediaType,
+      mimeType: input.mimeType,
+      originalFilename: input.originalFilename,
+      data: Buffer.concat(chunks),
+    });
   }
 
   async find(kode: string, mediaId: string): Promise<StoredMediaRecord | null> {

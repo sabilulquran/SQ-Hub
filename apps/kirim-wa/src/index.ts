@@ -1,17 +1,18 @@
 import { installLibsignalConsoleRedaction } from "./wa/libsignal-console-redaction.js";
 
-// Before anything else loads Baileys: libsignal writes decryption failures to the console with the
-// sender's JID in them (KIRIM-IMPL-005 §12). Installing the redaction first means no number can
-// reach the log even during module initialization.
+// Before anything else loads Baileys: legacy libsignal writes session and ratchet objects straight
+// to the process console, bypassing the logger Baileys is given, and some of them carry private
+// ratchet material (KIRIM-IMPL-005 §12). Installing the redaction first means none of it can reach
+// the log, not even while modules are still initializing.
 installLibsignalConsoleRedaction();
 
 const { startWorker } = await import("./server.js");
 
-const stop = await startWorker();
+const worker = await startWorker();
 
 for (const signal of ["SIGINT", "SIGTERM"] as const) {
   process.once(signal, () => {
-    void stop().then(
+    void worker.stop().then(
       () => process.exit(0),
       () => process.exit(1),
     );

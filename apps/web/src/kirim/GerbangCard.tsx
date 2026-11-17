@@ -109,7 +109,7 @@ export function GerbangDialog({ onDevice, onClose, onChanged, preview }: {
       onRetry={() => { setState({ status: "loading" }); void load(); }}
       onNewNumber={() => void run(async () => {
         const device = await kirimFetch<KirimDevice>("/gerbang/nomor-baru", { method: "POST", body: {} });
-        if (device.provider === "jalurpesan") onDevice({ kind: "pair", device });
+        if (device.provider !== "log") onDevice({ kind: "pair", device });
       })}
       onDevice={onDevice}
       onRotateKey={(kode) => void run(async () => { await kirimFetch(`/gerbang/nomor/${kode}/kunci`, { method: "POST", body: {} }); })}
@@ -196,7 +196,7 @@ function NumberRow({ nomor, busy, onDevice, onRotateKey, onRevokeKey }: {
 }
 
 function NumberActions({ device, onDevice }: { device: KirimDevice; onDevice: (action: GerbangDeviceAction) => void }) {
-  if (device.provider !== "jalurpesan") return null;
+  if (device.provider === "log") return null;
   return (
     <div className="flex flex-wrap gap-1.5">
       {device.status === "belum_dipasang" ? (

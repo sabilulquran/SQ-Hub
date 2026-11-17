@@ -8,6 +8,7 @@ import { loadConfig, type WaConfig } from "./config.js";
 import { WaCrypto } from "./crypto.js";
 import { WaEngine, type EngineStores, type WaLog } from "./engine.js";
 import { registerPlatformRoutes } from "./routes/platform.js";
+import type { WhatsAppServiceFactory } from "./wa/device-manager.js";
 import { ContactStore } from "./store/contacts.js";
 import { PgDeviceRegistry } from "./store/device-registry.js";
 import { EventStore } from "./store/events.js";
@@ -22,7 +23,18 @@ const HOUSEKEEPING_INTERVAL_MS = 15 * 60 * 1000;
 /** A send is given a minute by Baileys; a pending key older than this was left by a dead process. */
 const STALE_IDEMPOTENCY_MINUTES = 10;
 
-export async function startWorker(env: NodeJS.ProcessEnv = process.env): Promise<() => Promise<void>> {
+export interface RunningWorker {
+  /** Where the worker is listening, so a test can talk to it without guessing a port. */
+  url: string;
+  stop(): Promise<void>;
+}
+
+export interface WorkerOverrides {
+  /** Test seam: a WhatsApp service that does not open a socket. */
+  serviceFactory?: WhatsAppServiceFactory;
+}
+
+export async function startWorker(env: NodeJS.ProcessEnv = process.env, overrides: WorkerOverrides = {}): Promise<RunningWorker> {
   const config = loadConfig(env);
   const log: WaLog = (entry, message) => {
     if (config.logLevel === "silent") return;
@@ -42,7 +54,7 @@ export async function startWorker(env: NodeJS.ProcessEnv = process.env): Promise
     phoneState: new PhoneStateStore(pool, crypto, log),
   };
   const idempotency = new IdempotencyStore(pool, crypto);
-  const engine = new WaEngine(config, stores, log);
+  const engine = new WaEngine(config, stores, log, overrides.serviceFactory);
 
   const app = Fastify({ logger: false, bodyLimit: 32 * 1024 * 1024 });
   await app.register(multipart, { limits: { fileSize: 64 * 1024 * 1024, files: 1 } });
@@ -55,7 +67,9 @@ export async function startWorker(env: NodeJS.ProcessEnv = process.env): Promise
   if (config.webhook) notifyOnAppend(stores, config.webhook, log);
 
   await app.listen({ port: config.port, host: config.host });
-  log({ event: "kirim_wa.listening", port: config.port }, "kirim-wa is listening on loopback");
+  const address = app.server.address();
+  const port = typeof address === "object" && address ? address.port : config.port;
+  log({ event: "kirim_wa.listening", port }, "kirim-wa is listening on loopback");
 
   const housekeeping = setInterval(() => {
     void (async () => {
@@ -66,10 +80,13 @@ export async function startWorker(env: NodeJS.ProcessEnv = process.env): Promise
   }, HOUSEKEEPING_INTERVAL_MS);
   housekeeping.unref();
 
-  return async () => {
-    clearInterval(housekeeping);
-    await app.close().catch(() => undefined);
-    await pool.end().catch(() => undefined);
+  return {
+    url: `http://${config.host}:${port}`,
+    async stop() {
+      clearInterval(housekeeping);
+      await app.close().catch(() => undefined);
+      await pool.end().catch(() => undefined);
+    },
   };
 }
 

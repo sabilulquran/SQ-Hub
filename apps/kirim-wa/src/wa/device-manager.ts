@@ -1,4 +1,4 @@
-import { createHash, randomUUID } from "node:crypto";
+import { randomUUID } from "node:crypto";
 import { lstat, readdir, rm } from "node:fs/promises";
 import { dirname, join, parse, resolve } from "node:path";
 import {
@@ -886,6 +886,7 @@ export class DeviceManager {
         try {
           await existing;
         } catch {
+          // The previous lifecycle call's failure is that caller's; this one still runs.
         }
       }
       return operation();

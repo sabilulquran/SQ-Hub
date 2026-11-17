@@ -10,6 +10,7 @@ import type { MediaStore, StoredMediaRecord } from "./store/media.js";
 import type { PhoneStateStore } from "./store/phone-state.js";
 import { DeviceManager } from "./wa/device-manager.js";
 import type { ProviderChangeEvent } from "./wa/message-changes.js";
+import type { WhatsAppServiceFactory } from "./wa/device-manager.js";
 import { createNativeReadAwareWhatsAppServiceFactory, type DeviceSentMessage } from "./wa/native-read-service-factory.js";
 import { DEFAULT_SEND_SAFETY_CONFIG, PerDeviceSendSafety } from "./wa/send-safety.js";
 import type {
@@ -53,6 +54,8 @@ export class WaEngine {
     private readonly config: WaConfig,
     private readonly stores: EngineStores,
     private readonly log: WaLog = () => undefined,
+    /** Test seam: production builds the real Baileys-backed factory below. */
+    serviceFactory?: WhatsAppServiceFactory,
   ) {
     // JalurPesan's own values, kept as they are: Kirim SQ already paces sends per number
     // (`rate_per_menit`, safe hours), so this is the engine's last-resort guard and production
@@ -72,7 +75,7 @@ export class WaEngine {
       // ported safety check in `clearCredentials` still has two distinct roots to compare.
       `${config.authRoot}-legacy-unused`,
       config.authRoot,
-      factory,
+      serviceFactory ?? factory,
       (deviceId, message) => this.onInbound(deviceId, message).catch((error: unknown) => this.failed("inbound", deviceId, error)),
       (deviceId, receipt) => void this.onReceipt(deviceId, receipt).catch((error: unknown) => this.failed("receipt", deviceId, error)),
       (deviceId, event) => void this.onMetadata(deviceId, event).catch((error: unknown) => this.failed("metadata", deviceId, error)),

@@ -44,7 +44,7 @@ const RECONNECTABLE = new Set(["terputus", "menunggu_pairing", "tersambung"]);
 
 /** "Sambungkan ulang" fits a JalurPesan number that was paired before and is not nonaktif. */
 function canReconnect(device: KirimDevice): boolean {
-  return device.provider === "jalurpesan" && RECONNECTABLE.has(device.status);
+  return device.provider !== "log" && RECONNECTABLE.has(device.status);
 }
 
 function messageFor(error: unknown): string {
@@ -178,7 +178,7 @@ export function NomorPage({ preview }: { preview?: NomorState }) {
           onNewNumber={(nomorBerbeda) => void run(
             () => kirimFetch<KirimModuleCard>(`/modules/${dialog.card.application_key}/nomor-baru`, { method: "POST", body: nomorBerbeda ? { nomor_berbeda: true } : {} }),
             // Pairing opens right away; a `log` number needs none.
-            (created) => (created.nomor?.provider === "jalurpesan" ? { kind: "pair", device: created.nomor } : null),
+            (created) => (created.nomor && created.nomor.provider !== "log" ? { kind: "pair", device: created.nomor } : null),
           )}
           onUseOwnNumber={(device) => void run(
             () => kirimFetch<KirimModuleCard>(`/modules/${dialog.card.application_key}/pakai-nomor-lama`, { method: "POST", body: { device } }),
@@ -410,7 +410,7 @@ function DuplicateWarning({ device, onOpen }: { device: KirimDevice; onOpen: (di
 
 /** Pasang for a number never paired; Sambungkan ulang for one paired before (§11.1). */
 function PairActions({ device, inactive, onOpen }: { device: KirimDevice; inactive: boolean; onOpen: (dialog: Dialog) => void }) {
-  if (device.provider !== "jalurpesan" || inactive) return null;
+  if (device.provider === "log" || inactive) return null;
   if (device.status === "belum_dipasang") {
     return <button type="button" className={secondaryButton} onClick={() => onOpen({ kind: "pair", device })}><QrCode className="h-4 w-4" aria-hidden="true" /> Pasang</button>;
   }
@@ -434,7 +434,7 @@ function OwnerActions({ device, modul, inactive, onOpen }: { device: KirimDevice
           {device.antrean_dijeda ? "Lanjutkan antrean" : "Jeda antrean"}
         </button>
       ) : null}
-      {device.provider === "jalurpesan" && !inactive && device.status !== "belum_dipasang" ? (
+      {device.provider !== "log" && !inactive && device.status !== "belum_dipasang" ? (
         <button type="button" className={dangerButton} onClick={() => onOpen({ kind: "disconnect", device })}><Unplug className="h-4 w-4" aria-hidden="true" /> Putuskan</button>
       ) : null}
       {!inactive ? (
@@ -594,7 +594,8 @@ function EditDeviceDialog({ device, consumers, busy, error, onClose, onSave, onG
   const providerChanged = form.provider !== device.provider || (form.provider === "jalurpesan" && form.provider_ref !== (device.provider_ref ?? ""));
   const rate = Number(form.rate_per_menit);
   const valid = form.label.trim() && form.jam_kirim_mulai < form.jam_kirim_selesai && Number.isInteger(rate) && rate >= 1 && rate <= 60
-    && (!providerChanged || (form.alasan.trim() && (form.provider === "log" || form.provider_ref.trim())));
+    // The Yayasan's own engine needs no tenant typed in: it always uses the number code.
+    && (!providerChanged || (form.alasan.trim() && (form.provider !== "jalurpesan" || form.provider_ref.trim())));
   return (
     <DialogFrame title={`Ubah ${device.label}`}>
       <GantiHint onGanti={onGanti} />
@@ -611,12 +612,14 @@ function EditDeviceDialog({ device, consumers, busy, error, onClose, onSave, onG
         </div>
         <Field label="Laju (pesan per menit)" helper="Bawaan 10. Kode verifikasi ikut dihitung."><input className="sq-admin-input" inputMode="numeric" value={form.rate_per_menit} onChange={(event) => setForm({ ...form, rate_per_menit: event.target.value })} /></Field>
         <fieldset className="rounded-xl border border-border p-3">
-          <legend className="px-1 text-xs font-bold text-brand-heading">Ganti provider</legend>
-          {!device.antrean_dijeda ? <p className="sq-admin-helper">Jeda antrean dulu sebelum mengganti provider. Mengganti mesin berarti nomor dipasang ulang.</p> : null}
+          <legend className="px-1 text-xs font-bold text-brand-heading">Ganti mesin WhatsApp</legend>
+          {!device.antrean_dijeda ? <p className="sq-admin-helper">Jeda antrean dulu sebelum mengganti mesin.</p> : null}
+          <p className="sq-admin-helper">Mesin Sabilul Qur&rsquo;an adalah mesin yayasan sendiri. Nomor ini biasanya tersambung kembali tanpa pindai ulang; bila tidak, pasang ulang dengan memindai kode QR.</p>
           <div className="mt-2 space-y-3">
             <select className="sq-admin-input" disabled={!device.antrean_dijeda} value={form.provider} onChange={(event) => setForm({ ...form, provider: event.target.value })}>
-              <option value="log">log (uji, tidak mengirim)</option>
-              <option value="jalurpesan">jalurpesan</option>
+              <option value="log">Tanpa mesin (uji, tidak mengirim)</option>
+              <option value="wa">Mesin Sabilul Qur&rsquo;an</option>
+              <option value="jalurpesan">JalurPesan (mesin lama)</option>
             </select>
             {form.provider === "jalurpesan" ? <Field label="Tenant JalurPesan"><input className="sq-admin-input" disabled={!device.antrean_dijeda} value={form.provider_ref} onChange={(event) => setForm({ ...form, provider_ref: event.target.value.trim() })} /></Field> : null}
             {providerChanged ? <Field label="Alasan"><textarea className="sq-admin-input" rows={2} maxLength={500} value={form.alasan} onChange={(event) => setForm({ ...form, alasan: event.target.value })} /></Field> : null}

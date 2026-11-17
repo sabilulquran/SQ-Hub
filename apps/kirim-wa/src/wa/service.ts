@@ -1550,10 +1550,11 @@ export class WhatsAppService {
     const socket = this.requireConnectedSocket();
     const jid = ownPhoneJid(socket);
     const profile = await readBusinessProfileNode(socket, jid);
-    let profilePictureUrl: string | null = null;
+    let profilePictureUrl: string | null;
     try {
       profilePictureUrl = (await socket.profilePictureUrl(jid, "image", 10_000)) ?? null;
     } catch {
+      // No photo, or privacy hides it: the profile is still readable without one.
       profilePictureUrl = null;
     }
     const user = socket.user as { verifiedName?: string; name?: string; notify?: string } | undefined;

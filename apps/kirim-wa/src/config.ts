@@ -33,7 +33,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): WaConfig {
     throw new ConfigError("KIRIM_WA_WEBHOOK_URL and KIRIM_WA_WEBHOOK_SECRET must be configured together");
   }
   return {
-    port: integer(env, "KIRIM_WA_PORT", 3307, 1, 65_535),
+    // 0 asks the operating system for a free port; only tests pass it.
+    port: integer(env, "KIRIM_WA_PORT", 3307, 0, 65_535),
     // Loopback only (§12). Overridable for tests, never for production.
     host: optional(env, "KIRIM_WA_HOST") ?? "127.0.0.1",
     databaseUrl,
