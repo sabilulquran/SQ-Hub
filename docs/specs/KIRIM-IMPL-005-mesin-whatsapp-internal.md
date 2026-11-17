@@ -343,9 +343,13 @@ Memori **naik** 64 MB: JalurPesan melepas 33 MB, mesin memakai 7 MB untuk sesi y
 
 **Koreksi terhadap angka di §1.** JalurPesan API hari ini 136–169 MB, bukan 335 MB seperti perkiraan awal. Penghematan akhir setelah JalurPesan dimatikan karena itu diperkirakan **±190 MB (API + web) dikurangi RSS mesin**, bukan ±388 MB. Angka sebenarnya dicatat pada tiap cutover.
 
-**Keadaan nomor yang ditemukan (bukan akibat perpindahan ini).** Nomor `spmb` di Kirim menunjuk tenant JalurPesan `spmb-2`, yang **tidak pernah dipasangkan**; sesi SPMB yang sebenarnya ada di tenant `spmb` (nomor yang sama, `+62851…78`) dan diparkir dengan `requires_session_reset = 1`. Karena itu WhatsApp SPMB sudah terputus sebelum pekerjaan ini. Pemulihannya sama dengan §9.1: salin folder auth tenant `spmb` menjadi `auth/spmb/`, lalu tukar mesin nomor `spmb` ke `wa`. Bila kredensialnya ternyata sudah mati, nomor itu tetap seperti sekarang dan perlu pindai QR — mencobanya tidak menambah risiko.
+**Cutover 2 — `spmb`, 2026-11-17 04:42 UTC (ditarik ke depan, dengan alasan).** Nomor `spmb` di Kirim ternyata menunjuk tenant JalurPesan `spmb-2`, yang **tidak pernah dipasangkan**; sesi SPMB yang sebenarnya ada di tenant `spmb` (nomor yang sama, `+62851…78`), diparkir `requires_session_reset = 1`. Jadi WhatsApp SPMB sudah mati sebelum pekerjaan ini — sisa kejadian duplikat `spmb-2`. Gate stabilitas §9 ada untuk melindungi nomor yang **sedang bekerja**; nomor ini tidak bekerja, jadi memindahkannya tidak bisa memperburuk apa pun, sementara kalau kredensialnya masih hidup ia justru pulih. Folder auth tenant `spmb` disalin (4.942 berkas, 2,52 MB) dan mesin ditukar ke `wa`.
 
-**Sisa cutover** (gate §9: stabil ≥24 jam dulu): `spmb`, `luar` (belum pernah dipasangkan, perlu pindai QR apa pun mesinnya), lalu `hcis` (paling ramai, terakhir).
+Hasilnya: WhatsApp menolak sesi itu dengan `logged_out` (401) — kredensialnya memang sudah mati, dan mesin benar menolak menyambung ulang sendiri (`requiresReset`). Kredensial mati dibersihkan lewat `POST /device/reset`, sehingga nomor itu sekarang `menunggu_pairing` dan **tinggal dipindai QR** oleh owner di kartu Kirim — hal yang tetap diperlukan pada mesin mana pun. Tidak ada risiko yang ditambahkan dan satu pertanyaan terjawab pasti.
+
+**Sisa cutover.** `luar` belum pernah dipasangkan: perlu pindai QR apa pun mesinnya. `hcis` paling ramai (27 pesan masuk dalam 2 jam saat diperiksa) dan dipindah **terakhir**, setelah `luar-2` stabil ≥24 jam (gate §9); prosedurnya sama persis dengan §9.1 (tenant JalurPesan `hcis`, device `cf21436b-…`).
+
+**Yang diverifikasi di production, bukan diasumsikan.** Mesin yang dibangun dari bundel rilis mencapai QR WhatsApp sungguhan sebelum menyentuh nomor mana pun; mesin dimatikan paksa dan pengawas Mi8 menyalakannya ulang dalam ±10 detik, lalu mesin **menyambungkan ulang sesi `luar-2` dari disk sendiri** (`restored: 1`), dengan port terbuka lebih dulu (§4.4); ulangan kirim dengan kunci idempotensi yang sama mengembalikan id pesan yang sama tanpa mengirim dua kali; semua kesehatan 200 (3301–3306, 9000, 3310).
 
 ## 17. Pertanyaan terbuka
 
