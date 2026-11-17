@@ -96,6 +96,13 @@ export async function startWorker(env: NodeJS.ProcessEnv = process.env, override
       clearInterval(housekeeping);
       await restored;
       await app.close().catch(() => undefined);
+      // The sockets' listeners write in the background, so the queued writes are let through
+      // before the pool closes under them.
+      await Promise.all([
+        stores.events.drain().catch(() => undefined),
+        stores.devices.drain().catch(() => undefined),
+        stores.phoneState.drain().catch(() => undefined),
+      ]);
       await pool.end().catch(() => undefined);
     },
   };

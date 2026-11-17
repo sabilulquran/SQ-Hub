@@ -89,6 +89,14 @@ export class EventStore {
   }
 
   /**
+   * Lets the appends already queued finish. An event written by a listener just before shutdown
+   * is the only copy of that message until Kirim SQ pulls it, so it must not be dropped.
+   */
+  async drain(timeoutMs = 5_000): Promise<void> {
+    await Promise.race([this.tail, new Promise((done) => setTimeout(done, timeoutMs))]);
+  }
+
+  /**
    * A pull is also an acknowledgement: by asking for everything after `after`, Kirim SQ says it
    * has stored every event up to it. That watermark is what makes pruning safe (`prune`).
    */

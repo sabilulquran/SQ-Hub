@@ -116,6 +116,11 @@ export class PhoneStateStore {
     };
   }
 
+  /** See `PgDeviceRegistry.drain`: lets queued writes land before the pool closes. */
+  async drain(timeoutMs = 5_000): Promise<void> {
+    await Promise.race([this.flushing ?? Promise.resolve(), new Promise((done) => setTimeout(done, timeoutMs))]);
+  }
+
   private write(kode: string, document: PhoneStateDocument): void {
     this.documents.set(kode, document);
     this.dirty.add(kode);

@@ -233,6 +233,15 @@ export class PgDeviceRegistry implements DeviceRepository {
     void this.run(`UPDATE kirim_wa_devices SET deleted_at = now(), updated_at = now() WHERE kode = $1`, [id], id);
   }
 
+  /**
+   * Waits for the writes already queued, so a shutdown does not close the pool under them and
+   * lose a number's last known state. Bounded: a database that is not answering must not stop
+   * the process from exiting.
+   */
+  async drain(timeoutMs = 5_000): Promise<void> {
+    await Promise.race([this.flushing ?? Promise.resolve(), new Promise((done) => setTimeout(done, timeoutMs))]);
+  }
+
   private put(device: DeviceRecord): DeviceRecord {
     const stored = { ...device, updatedAt: new Date().toISOString() };
     this.devices.set(stored.id, stored);
