@@ -39,7 +39,7 @@ export const createDeviceSchema = z
     kode: kodeSchema,
     label: z.string().trim().min(1).max(100),
     pemilik: kodeSchema,
-    provider: z.enum(["log", "jalurpesan"]).default("log"),
+    provider: z.enum(["log", "jalurpesan", "wa"]).default("log"),
     provider_ref: providerRefSchema.nullable().optional(),
   })
   .strict();
@@ -51,7 +51,7 @@ export const updateDeviceSchema = z
     rate_per_menit: z.number().int().min(1).max(60).optional(),
     jam_kirim_mulai: timeSchema.optional(),
     jam_kirim_selesai: timeSchema.optional(),
-    provider: z.enum(["log", "jalurpesan"]).optional(),
+    provider: z.enum(["log", "jalurpesan", "wa"]).optional(),
     provider_ref: providerRefSchema.nullable().optional(),
     alasan: reasonSchema.optional(),
   })
@@ -185,6 +185,11 @@ export class KirimAdminService {
     if (input.provider === "jalurpesan" && !input.provider_ref) {
       throw new KirimApiError(400, "invalid_request", "provider_ref wajib untuk provider jalurpesan.");
     }
+    // KIRIM-IMPL-005 §4.1: on Kirim SQ's own engine the tenant is the number code itself, so the
+    // auth folder, the worker's rows and the admin screen all name the same thing. Nothing to type.
+    if (input.provider === "wa" && input.provider_ref && input.provider_ref !== input.kode) {
+      throw new KirimApiError(400, "invalid_request", "provider_ref untuk mesin wa harus sama dengan kode nomor.");
+    }
     return withTransaction(this.pool, async (client) => {
       const owner = await findConsumerByName(client, input.pemilik);
       if (!owner) throw new KirimApiError(422, "pemilik_unknown", "Pemakai pemilik tidak dikenal.");
@@ -216,11 +221,16 @@ export class KirimAdminService {
       const device = await findDevice(client, kode, true);
       if (!device) throw new KirimApiError(404, "not_found", "Nomor tidak ditemukan.");
       const provider = input.provider ?? device.provider;
-      const providerRef = input.provider_ref === undefined ? device.providerRef : input.provider_ref;
+      // KIRIM-IMPL-005 §4.1: `wa` always uses the number code as its tenant, so moving a number
+      // to Kirim SQ's own engine needs no second field filled in.
+      const providerRef = provider === "wa" && input.provider_ref === undefined && device.provider !== "wa"
+        ? kode
+        : input.provider_ref === undefined ? device.providerRef : input.provider_ref;
       const providerChanged = provider !== device.provider || providerRef !== device.providerRef;
       if (providerChanged) {
         if (!input.alasan) throw new KirimApiError(400, "alasan_required", "Alasan wajib untuk mengganti provider.");
         if (provider === "jalurpesan" && !providerRef) throw new KirimApiError(400, "invalid_request", "provider_ref wajib untuk jalurpesan.");
+        if (provider === "wa" && providerRef !== kode) throw new KirimApiError(400, "invalid_request", "provider_ref untuk mesin wa harus sama dengan kode nomor.");
         if (!device.antreanDijeda) throw new KirimApiError(409, "queue_not_paused", "Jeda antrean nomor ini dulu.");
         const waiting = await client.query<{ count: string }>(
           `SELECT count(*) AS count FROM kirim_outbox o JOIN kirim_messages m ON m.id = o.message_id
@@ -229,6 +239,19 @@ export class KirimAdminService {
         );
         if (Number(waiting.rows[0]?.count ?? 0) > 0) {
           throw new KirimApiError(409, "handover_pending", "Masih ada pesan diserahkan yang menunggu status.");
+        }
+        // KIRIM-IMPL-005 §8.1. The `spmb-2` guard: a number may only change engine in place. If
+        // another active number is already linked to the same WhatsApp account, moving this one
+        // would give that account two numbers on two engines, and one of the two inboxes would
+        // stop hearing anything — which is exactly what happened with `spmb-2`.
+        const twin = await client.query<{ kode: string }>(
+          `SELECT kode FROM kirim_devices
+            WHERE id <> $1 AND status <> 'nonaktif' AND nomor_hmac IS NOT NULL AND nomor_hmac = $2 LIMIT 1`,
+          [device.id, device.nomorHmac],
+        );
+        const twinKode = twin.rows[0]?.kode;
+        if (twinKode) {
+          throw new KirimApiError(409, "nomor_ganda", `Nomor WhatsApp yang sama juga ada di ${twinKode}. Gabungkan dulu, baru ganti mesin.`);
         }
       }
       let ownerId = device.pemilikConsumerId;
@@ -352,7 +375,7 @@ export class KirimAdminService {
       const locked = await findDevice(client, kode, true);
       if (!locked || locked.status === "nonaktif") throw new KirimApiError(409, "device_inactive", "Nomor dinonaktifkan bersamaan. Muat ulang halaman.");
       // The engine work above ran on the tenant read before it; a merge or provider change since then wins.
-      if (locked.providerRef !== device.providerRef || locked.provider !== "jalurpesan") {
+      if (locked.providerRef !== device.providerRef || locked.provider === "log") {
         throw new KirimApiError(409, "conflict", "Nomor diubah bersamaan. Muat ulang halaman lalu coba lagi.");
       }
       if (tenantBaru) {
@@ -405,7 +428,7 @@ export class KirimAdminService {
 
   async liveStatus(kode: string) {
     const device = await this.requireDevice(kode);
-    if (device.provider === "jalurpesan" && device.status !== "nonaktif") {
+    if (device.provider !== "log" && device.status !== "nonaktif") {
       const provider = this.provider(device);
       let qr: string | null;
       try {
@@ -462,8 +485,9 @@ export class KirimAdminService {
       const match = (await samePhoneDevices(client, source.id)).find((other) => other.kode === target.kode);
       if (!match) throw new KirimApiError(409, "nomor_tidak_sama", "Kedua nomor tidak tertaut ke WhatsApp yang sama.");
       if (!match.lebihDulu) throw new KirimApiError(409, "nomor_lebih_baru", "Pilih nomor yang lebih dulu ada sebagai tujuan.");
-      if (source.provider !== "jalurpesan" || target.provider !== "jalurpesan" || !source.providerRef) {
-        throw new KirimApiError(409, "pairing_not_applicable", "Hanya nomor JalurPesan yang bisa digabung.");
+      // Merging moves one number's engine tenant onto the other, so both must be on the same engine.
+      if (source.provider === "log" || source.provider !== target.provider || !source.providerRef) {
+        throw new KirimApiError(409, "pairing_not_applicable", "Hanya dua nomor pada mesin yang sama yang bisa digabung.");
       }
       if (source.pemilikConsumerId !== target.pemilikConsumerId) {
         throw new KirimApiError(409, "pemilik_berbeda", `${target.label} milik aplikasi lain. Putuskan nomor baru ini, lalu pakai "Pakai nomor yang sudah aktif" di kartu aplikasinya.`);
@@ -523,7 +547,7 @@ export class KirimAdminService {
     const device = await this.requireDevice(kode);
     // Checked again inside the status transaction below, under the device row lock.
     await this.assertNotShared(device);
-    if (device.provider === "jalurpesan") {
+    if (device.provider !== "log") {
       try {
         await this.provider(device).disconnect(device);
       } catch (error) {
@@ -533,7 +557,7 @@ export class KirimAdminService {
     }
     return withTransaction(this.pool, async (client) => {
       await this.assertNotShared((await findDevice(client, kode, true))!, client);
-      if (device.provider === "jalurpesan") await setDeviceStatus(client, this.crypto, device.id, "terputus");
+      if (device.provider !== "log") await setDeviceStatus(client, this.crypto, device.id, "terputus");
       await writeAudit(client, { actorKind: "human", actorRef: actor.ref, aksi: "nomor.putus", objekJenis: "device", objekRef: kode, metadata: { alasan } });
       return toBrowserDevice((await findDevice(client, kode))!);
     });

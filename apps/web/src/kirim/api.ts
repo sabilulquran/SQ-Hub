@@ -13,7 +13,8 @@ export interface KirimDevice {
   kode: string;
   label: string;
   pemilik: string;
-  provider: "log" | "jalurpesan";
+  /** KIRIM-IMPL-005: `wa` is the Yayasan's own engine, `jalurpesan` the one it replaces. */
+  provider: "log" | "jalurpesan" | "wa";
   provider_ref: string | null;
   status: DeviceStatus;
   nomor_tersamar: string | null;

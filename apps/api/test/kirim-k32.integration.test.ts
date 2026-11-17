@@ -174,7 +174,7 @@ beforeEach(async () => {
   };
   providers = {
     log: new LogProvider(),
-    jalurpesan: new JalurPesanProvider({ baseUrl: stub.baseUrl, platformKey: "platform-key", timeoutMs: 500, imageWriteTimeoutMs: 800 }, pgEngineMediaRefs(pool)),
+    jalurpesan: new JalurPesanProvider({ baseUrl: stub.baseUrl, platformKey: "platform-key", timeoutMs: 500, imageWriteTimeoutMs: 800 }, pgEngineMediaRefs(pool, "jalurpesan")),
   };
   kirim = createKirimModule({ pool, config, keycloakIssuer: issuer, access: accessService, providers, webhookTransport: async () => ({ status: 200 }) });
   await app?.close();
@@ -205,7 +205,7 @@ beforeEach(async () => {
        ($3, 'hcis', 'HCIS', $4, 'log', NULL, 'tersambung', '00:00', '23:59')`,
     [deviceId, spmb, randomUUID(), hcis],
   );
-  await kirim.ingest!.refreshStatus({ id: deviceId, kode: "spmb", providerRef: "spmb", pemilikConsumerId: spmb, status: "tersambung" } as never);
+  await kirim.ingest!.refreshStatus({ id: deviceId, kode: "spmb", provider: "jalurpesan", providerRef: "spmb", pemilikConsumerId: spmb, status: "tersambung" } as never);
   stub.groups.set("spmb", [{
     id: GROUP_JID,
     subject: "Wali murid kelas 1A",

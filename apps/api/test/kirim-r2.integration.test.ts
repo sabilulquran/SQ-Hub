@@ -165,7 +165,7 @@ beforeEach(async () => {
   };
   providers = {
     log: new LogProvider((entry) => kirimLogs.push(entry)),
-    jalurpesan: new JalurPesanProvider({ baseUrl: stub.baseUrl, platformKey: "platform-key", timeoutMs: 500 }, pgEngineMediaRefs(pool)),
+    jalurpesan: new JalurPesanProvider({ baseUrl: stub.baseUrl, platformKey: "platform-key", timeoutMs: 500 }, pgEngineMediaRefs(pool, "jalurpesan")),
   };
   kirim = createKirimModule({
     pool,
@@ -210,7 +210,7 @@ beforeEach(async () => {
   );
   await pool.query("INSERT INTO kirim_routes (consumer_id, device_id, jenis) VALUES ($1, $2, 'kode'), ($1, $2, 'notifikasi')", [keluarga, spmbDeviceId]);
   // The engine tells Kirim SQ which number is linked; the group admin check needs it.
-  await kirim.ingest!.refreshStatus({ id: spmbDeviceId, kode: "spmb", providerRef: "spmb", pemilikConsumerId: spmb, status: "tersambung" } as never);
+  await kirim.ingest!.refreshStatus({ id: spmbDeviceId, kode: "spmb", provider: "jalurpesan", providerRef: "spmb", pemilikConsumerId: spmb, status: "tersambung" } as never);
 });
 
 describe("access (§3, §11)", () => {

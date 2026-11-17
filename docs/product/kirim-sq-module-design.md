@@ -305,10 +305,19 @@ Karena R1 sudah menyimpan semua pesan, kotak masuk di modul pemilik langsung pun
 
 ## 10. Pindah mesin (runbook ringkas)
 
-1. Siapkan mesin baru dan provider-nya dengan provider `log` lalu nomor uji.
-2. Untuk setiap nomor: hentikan antrean, tunggu `diserahkan` = 0.
-3. Ganti `provider` dan `provider_ref` nomor itu, lalu **pairing ulang** (sesi WhatsApp tidak bisa dipindah).
-4. Jalankan lagi antrean dan pantau status 24 jam.
+> **Sejak 2026-11-17 (KIRIM-IMPL-005, amandemen ADR-0011):** mesin WhatsApp Yayasan sendiri,
+> `kirim-wa`, berjalan sebagai proses tersendiri di dalam rilis SQ Hub. JalurPesan tetap ada
+> sebagai jalur mundur. Mesin dipilih **per nomor**. Operasi hariannya ada di
+> [runbook mesin WhatsApp](../kirim/runbook-mesin-whatsapp.md); urutan cutover dan pemindahan
+> kunci sesi ada di [KIRIM-IMPL-005](../specs/KIRIM-IMPL-005-mesin-whatsapp-internal.md) §9.
+
+1. Siapkan mesin baru dan provider-nya; sebuah nomor uji boleh memakai provider `log` lebih dulu.
+2. Untuk setiap nomor, satu nomor per langkah: hentikan antrean, tunggu `diserahkan` = 0.
+3. Ganti `provider` nomor itu. Antara JalurPesan dan `kirim-wa`, kunci sesi Baileys bisa **disalin**
+   sehingga tidak perlu pindai QR ulang (KIRIM-IMPL-005 §9.1); ke mesin dengan format sesi lain,
+   nomor dipasang ulang dengan pindai QR.
+4. Jalankan lagi antrean, kirim satu pesan uji, dan pantau status minimal 24 jam sebelum nomor
+   berikutnya.
 5. Riwayat percakapan tetap ada di Kirim SQ, karena disimpan di `kirim_messages`, bukan di mesin.
 
 Modul pemakai tidak berubah sama sekali.

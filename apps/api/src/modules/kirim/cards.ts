@@ -6,7 +6,7 @@ import { z } from "zod";
 import { toBrowserDevice, type AdminActor, type KirimAdminService } from "./admin.js";
 import { columnAad, type KirimCrypto } from "./crypto.js";
 import { wibDayStart } from "./policy.js";
-import type { KirimProvider, ProviderName } from "./providers/types.js";
+import { defaultEngine, type KirimProvider, type ProviderName } from "./providers/types.js";
 import {
   dbNow,
   ensureApplicationConsumer,
@@ -101,12 +101,12 @@ export class KirimModuleCards {
         );
       }
       const kode = await freeIdentifier(client, "kirim_devices", application.applicationKey);
-      const provider: ProviderName = this.providers.jalurpesan ? "jalurpesan" : "log";
+      const provider: ProviderName = defaultEngine(this.providers);
       const deviceId = randomUUID();
       await client.query(
         `INSERT INTO kirim_devices (id, kode, label, pemilik_consumer_id, provider, provider_ref, status)
          VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-        [deviceId, kode, `Nomor ${application.name}`.slice(0, 100), consumer.id, provider, provider === "jalurpesan" ? kode : null, provider === "log" ? "tersambung" : "belum_dipasang"],
+        [deviceId, kode, `Nomor ${application.name}`.slice(0, 100), consumer.id, provider, provider === "log" ? null : kode, provider === "log" ? "tersambung" : "belum_dipasang"],
       );
       await client.query("UPDATE kirim_consumers SET nomor_device_id = $2, updated_at = now() WHERE id = $1", [consumer.id, deviceId]);
       await writeAudit(client, {

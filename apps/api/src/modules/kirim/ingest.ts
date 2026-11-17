@@ -24,6 +24,7 @@ import {
   type ProviderDeviceStatus,
   type ProviderEvent,
   type ProviderGroup,
+  type ProviderName,
 } from "./providers/types.js";
 import {
   dbNow,
@@ -50,6 +51,11 @@ const MAX_PAGES_PER_PULL = 10;
 interface EngineDevice extends DeviceRef {
   pemilikConsumerId: string;
   status: string;
+  /**
+   * KIRIM-IMPL-005 §6: which engine holds this number right now. Chosen per number, not globally.
+   * Typed as the whole set so an admin row can be passed straight in; `providerFor` refuses `log`.
+   */
+  provider: ProviderName;
   /**
    * KIRIM-IMPL-003 §11: the phone linked here is already the phone of an older Kirim number. Its
    * events stay in the engine until an admin chooses "Pakai nomor yang ada", so the two numbers'
@@ -88,9 +94,21 @@ export class KirimIngest {
     private readonly pool: Pool,
     private readonly crypto: KirimCrypto,
     private readonly service: KirimService,
-    private readonly provider: KirimProvider,
+    private readonly providers: Record<ProviderName, KirimProvider | undefined>,
     private readonly options: { inboundMediaMaxBytes: number; log?: KirimLog },
   ) {}
+
+  /**
+   * KIRIM-IMPL-005 §6. The adapter for the engine this number uses. A number whose engine is not
+   * configured in this release is left alone rather than guessed at: its events wait in the
+   * engine until the configuration is fixed, and the cursor makes sure none is lost.
+   */
+  private providerFor(device: EngineDevice): KirimProvider {
+    if (device.provider === "log") throw new ProviderOperationError("engine_rejected", "this number has no WhatsApp engine");
+    const provider = this.providers[device.provider];
+    if (!provider) throw new ProviderOperationError("engine_unavailable", `provider ${device.provider} is not configured`);
+    return provider;
+  }
 
   /**
    * Every pull interval and at start: pull each `jalurpesan` number's events, refreshing its status
@@ -119,7 +137,7 @@ export class KirimIngest {
   }
 
   async refreshStatus(device: EngineDevice): Promise<ProviderDeviceStatus> {
-    const state = await this.provider.deviceStatus(device);
+    const state = await this.providerFor(device).deviceStatus(device);
     if (state.engineDeviceId) this.engineDevices.set(state.engineDeviceId, device.id);
     await withTransaction(this.pool, async (client) => {
       if (state.phoneDigits) {
@@ -141,12 +159,12 @@ export class KirimIngest {
    * cursor, so a webhook can never move the cursor past an event that was missed.
    */
   async handleEngineWebhook(input: { eventId: string; engineDeviceId: string }): Promise<"duplicate" | "queued" | "unknown_tenant"> {
-    const known = await this.pool.query("SELECT 1 FROM kirim_events WHERE provider = 'jalurpesan' AND provider_event_id = $1", [input.eventId]);
+    const known = await this.pool.query("SELECT 1 FROM kirim_events WHERE provider_event_id = $1", [input.eventId]);
     if ((known.rowCount ?? 0) > 0) return "duplicate";
     let deviceId = this.engineDevices.get(input.engineDeviceId);
     if (!deviceId) {
       for (const device of await this.devices()) {
-        const state = await this.provider.deviceStatus(device).catch(() => null);
+        const state = await this.providerFor(device).deviceStatus(device).catch(() => null);
         if (state?.engineDeviceId) this.engineDevices.set(state.engineDeviceId, device.id);
       }
       deviceId = this.engineDevices.get(input.engineDeviceId);
@@ -193,11 +211,11 @@ export class KirimIngest {
       // Engine cursors run across all tenants: the cursor is that of the tenant this number uses now
       // (KIRIM-IMPL-003 §11.3), so a number that moved to another tenant starts that tenant from 0.
       const cursorRow = await this.pool.query<{ cursor: string | null }>(
-        "SELECT max(provider_cursor)::text AS cursor FROM kirim_events WHERE device_id = $1 AND provider = 'jalurpesan' AND provider_ref = $2",
-        [device.id, device.providerRef],
+        "SELECT max(provider_cursor)::text AS cursor FROM kirim_events WHERE device_id = $1 AND provider = $2 AND provider_ref = $3",
+        [device.id, device.provider, device.providerRef],
       );
       const cursor = Number(cursorRow.rows[0]?.cursor ?? 0);
-      const result = await this.provider.pullEvents(device, cursor, PAGE_LIMIT);
+      const result = await this.providerFor(device).pullEvents(device, cursor, PAGE_LIMIT);
       for (const event of result.events) await this.processEvent(device, event);
       if (!result.hasMore || result.events.length === 0) break;
     }
@@ -212,7 +230,7 @@ export class KirimIngest {
   }
 
   async processEvent(device: EngineDevice, event: ProviderEvent): Promise<void> {
-    const seen = await this.pool.query("SELECT 1 FROM kirim_events WHERE provider = 'jalurpesan' AND provider_event_id = $1", [event.eventId]);
+    const seen = await this.pool.query("SELECT 1 FROM kirim_events WHERE provider_event_id = $1", [event.eventId]);
     if ((seen.rowCount ?? 0) > 0) return;
     const message = readMessage(event.payload);
     // KIRIM-IMPL-004 §6: actions on existing messages and calls carry their own payload shapes.
@@ -235,9 +253,9 @@ export class KirimIngest {
     await withTransaction(this.pool, async (client) => {
       const recorded = await client.query(
         `INSERT INTO kirim_events (id, device_id, provider, provider_event_id, provider_cursor, jenis, payload_ringkas, provider_ref)
-         VALUES ($1, $2, 'jalurpesan', $3, $4, $5, $6::jsonb, $7)
+         VALUES ($1, $2, $8, $3, $4, $5, $6::jsonb, $7)
          ON CONFLICT (provider, provider_event_id) DO NOTHING`,
-        [randomUUID(), device.id, event.eventId, event.cursor, event.type.slice(0, 100), JSON.stringify(summary), device.providerRef],
+        [randomUUID(), device.id, event.eventId, event.cursor, event.type.slice(0, 100), JSON.stringify(summary), device.providerRef, device.provider],
       );
       if ((recorded.rowCount ?? 0) === 0) return;
       if (change && event.type === "message.edited") return this.applyEngineEdit(client, device, change);
@@ -263,8 +281,8 @@ export class KirimIngest {
         const inserted = await client.query(
           `INSERT INTO kirim_messages (id, conversation_id, device_id, arah, tipe, body_enc, media_id, provider, provider_message_id, wa_message_id, status, provider_at,
                                        quoted_message_id, quoted_wa_message_id, forwarded)
-           VALUES ($1, $2, $3, 'masuk', $4, $5, $6, 'jalurpesan', $7, $8, 'diterima', $9, $10, $11, $12)
-           ON CONFLICT (provider, device_id, provider_message_id) WHERE provider_message_id IS NOT NULL DO NOTHING`,
+           VALUES ($1, $2, $3, 'masuk', $4, $5, $6, $13, $7, $8, 'diterima', $9, $10, $11, $12)
+           ON CONFLICT (device_id, provider_message_id) WHERE provider_message_id IS NOT NULL DO NOTHING`,
           [
             messageId,
             conversationId,
@@ -278,6 +296,7 @@ export class KirimIngest {
             quotedId,
             message.quotedWaId,
             message.forwarded,
+            device.provider,
           ],
         );
         if ((inserted.rowCount ?? 0) === 0) return;
@@ -311,12 +330,14 @@ export class KirimIngest {
       }
 
       if (event.type === "message.delivered" || event.type === "message.read") {
-        // A JalurPesan send answers with the WhatsApp message id, which Kirim stores as provider_message_id;
-        // receipts carry JalurPesan's own id plus that WhatsApp id, so match on both.
+        // A send answers with the WhatsApp message id, which Kirim stores as provider_message_id;
+        // receipts carry the engine's own id plus that WhatsApp id, so match on both. The engine
+        // itself is not part of the match: the id is the same on either engine, and a number that
+        // moved must still find the message it sent before the move (KIRIM-IMPL-005 §8.2).
         const ids = [message.whatsappMessageId, message.id].filter((id): id is string => Boolean(id));
         const outbox = await client.query<{ id: string; status: OutboundStatus }>(
           `SELECT o.id, o.status FROM kirim_messages m JOIN kirim_outbox o ON o.message_id = m.id
-           WHERE m.provider = 'jalurpesan' AND m.device_id = $1 AND m.provider_message_id = ANY($2::text[]) AND m.arah = 'keluar'
+           WHERE m.provider <> 'log' AND m.device_id = $1 AND m.provider_message_id = ANY($2::text[]) AND m.arah = 'keluar'
            FOR UPDATE OF o`,
           [device.id, ids],
         );
@@ -482,8 +503,8 @@ export class KirimIngest {
     const inserted = await client.query(
       `INSERT INTO kirim_messages (id, group_id, device_id, arah, tipe, body_enc, media_id, provider, provider_message_id, wa_message_id,
                                    pengirim_hmac, pengirim_enc, status, provider_at, quoted_message_id, quoted_wa_message_id, forwarded)
-       VALUES ($1, $2, $3, 'masuk', $4, $5, $6, 'jalurpesan', $7, $8, $9, $10, 'diterima', $11, $12, $13, $14)
-       ON CONFLICT (provider, device_id, provider_message_id) WHERE provider_message_id IS NOT NULL DO NOTHING`,
+       VALUES ($1, $2, $3, 'masuk', $4, $5, $6, $15, $7, $8, $9, $10, 'diterima', $11, $12, $13, $14)
+       ON CONFLICT (device_id, provider_message_id) WHERE provider_message_id IS NOT NULL DO NOTHING`,
       [
         messageId,
         group.id,
@@ -499,6 +520,7 @@ export class KirimIngest {
         quotedId,
         message.quotedWaId,
         message.forwarded,
+        device.provider,
       ],
     );
     if ((inserted.rowCount ?? 0) === 0) return;
@@ -555,8 +577,8 @@ export class KirimIngest {
     const inserted = await client.query(
       `INSERT INTO kirim_messages (id, conversation_id, group_id, device_id, arah, asal, tipe, body_enc, media_id, provider, provider_message_id,
                                    wa_message_id, status, provider_at, quoted_message_id, quoted_wa_message_id, forwarded)
-       VALUES ($1, $2, $3, $4, 'keluar', 'hp', $5, $6, $7, 'jalurpesan', $8, $8, 'diserahkan', $9, $10, $11, $12)
-       ON CONFLICT (provider, device_id, provider_message_id) WHERE provider_message_id IS NOT NULL DO NOTHING`,
+       VALUES ($1, $2, $3, $4, 'keluar', 'hp', $5, $6, $7, $13, $8, $8, 'diserahkan', $9, $10, $11, $12)
+       ON CONFLICT (device_id, provider_message_id) WHERE provider_message_id IS NOT NULL DO NOTHING`,
       [
         messageId,
         conversationId,
@@ -570,6 +592,7 @@ export class KirimIngest {
         quotedId,
         message.quotedWaId,
         message.forwarded,
+        device.provider,
       ],
     );
     if ((inserted.rowCount ?? 0) === 0) return;
@@ -773,8 +796,8 @@ export class KirimIngest {
       conversationId = resolved.id;
       await client.query(
         `INSERT INTO kirim_messages (id, conversation_id, device_id, arah, asal, tipe, provider, status, provider_at, panggilan, call_id)
-         VALUES ($1, $2, $3, $4, $5, 'panggilan', 'jalurpesan', $6, $7, $8::jsonb, $9)`,
-        [messageId, conversationId, device.id, arah, arah === "keluar" ? "hp" : null, arah === "keluar" ? "diserahkan" : "diterima", call.startedAt, JSON.stringify(panggilan), call.callId],
+         VALUES ($1, $2, $3, $4, $5, 'panggilan', $10, $6, $7, $8::jsonb, $9)`,
+        [messageId, conversationId, device.id, arah, arah === "keluar" ? "hp" : null, arah === "keluar" ? "diserahkan" : "diterima", call.startedAt, JSON.stringify(panggilan), call.callId, device.provider],
       );
       const unanswered = arah === "masuk" && hasil !== "diangkat";
       await client.query(
@@ -800,7 +823,7 @@ export class KirimIngest {
 
   private async advanceDeviceSent(client: Queryable, device: EngineDevice, ids: string[], incoming: "terkirim" | "dibaca"): Promise<void> {
     const rows = await client.query<{ id: string; status: OutboundStatus }>(
-      `SELECT id, status FROM kirim_messages WHERE provider = 'jalurpesan' AND device_id = $1 AND provider_message_id = ANY($2::text[])
+      `SELECT id, status FROM kirim_messages WHERE provider <> 'log' AND device_id = $1 AND provider_message_id = ANY($2::text[])
          AND arah = 'keluar' AND asal = 'hp' FOR UPDATE`,
       [device.id, ids],
     );
@@ -815,7 +838,7 @@ export class KirimIngest {
    * left. Every 15 minutes and when a message arrives from a group not yet named.
    */
   async refreshGroups(device: EngineDevice): Promise<void> {
-    const groups = await this.provider.listGroups(device);
+    const groups = await this.providerFor(device).listGroups(device);
     const ownPhone = await this.ownPhone(this.pool, device.id);
     await withTransaction(this.pool, async (client) => {
       const seen: string[] = [];
@@ -887,7 +910,7 @@ export class KirimIngest {
    */
   async refreshContacts(device: EngineDevice): Promise<void> {
     for (let page = 1; page <= 50; page += 1) {
-      const result = await this.provider.listContacts(device, page);
+      const result = await this.providerFor(device).listContacts(device, page);
       const byHmac = new Map<string, { jenis: "pn" | "lid"; canonicalJid: string; displayName: string | null }>();
       for (const contact of result.contacts) {
         const own = contactFromJid(contact.jid);
@@ -945,7 +968,7 @@ export class KirimIngest {
     if (media.sizeBytes > this.options.inboundMediaMaxBytes) return { ...base, data: null, reason: "terlalu_besar" };
     if (await this.service.lowDisk()) return { ...base, data: null, reason: "disk_rendah" };
     try {
-      const data = await this.provider.downloadMedia(device, media.id, this.options.inboundMediaMaxBytes);
+      const data = await this.providerFor(device).downloadMedia(device, media.id, this.options.inboundMediaMaxBytes);
       if (!data) return { ...base, data: null, reason: "terlalu_besar" };
       return { ...base, size: data.length, sha256: createHash("sha256").update(data).digest("hex"), data, reason: null };
     } catch {
@@ -955,9 +978,9 @@ export class KirimIngest {
 
   private async devices(): Promise<EngineDevice[]> {
     const result = await this.pool.query<EngineDevice>(
-      `SELECT d.id, d.kode, d.provider_ref AS "providerRef", d.pemilik_consumer_id AS "pemilikConsumerId", d.status,
+      `SELECT d.id, d.kode, d.provider, d.provider_ref AS "providerRef", d.pemilik_consumer_id AS "pemilikConsumerId", d.status,
               EXISTS (${HELD_DEVICE_SQL}) AS held
-       FROM kirim_devices d WHERE d.provider = 'jalurpesan' AND d.status <> 'nonaktif' AND d.provider_ref IS NOT NULL ORDER BY d.kode`,
+       FROM kirim_devices d WHERE d.provider <> 'log' AND d.status <> 'nonaktif' AND d.provider_ref IS NOT NULL ORDER BY d.kode`,
     );
     return result.rows;
   }

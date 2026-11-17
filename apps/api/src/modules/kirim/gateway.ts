@@ -7,7 +7,7 @@ import { toBrowserDevice, type AdminActor } from "./admin.js";
 import { columnAad, type KirimCrypto } from "./crypto.js";
 import { KirimApiError } from "./errors.js";
 import { wibDayStart } from "./policy.js";
-import type { KirimProvider, ProviderName } from "./providers/types.js";
+import { defaultEngine, type KirimProvider, type ProviderName } from "./providers/types.js";
 import {
   dbNow,
   findDevice,
@@ -143,12 +143,12 @@ export class KirimGateway {
       const labels = new Set((await client.query<{ label: string }>("SELECT label FROM kirim_devices WHERE pemilik_consumer_id = $1", [consumer.id])).rows.map((row) => row.label));
       let n = 1;
       while (labels.has(n === 1 ? GATEWAY_CARD_NAME : `${GATEWAY_CARD_NAME} ${n}`)) n += 1;
-      const provider: ProviderName = this.providers.jalurpesan ? "jalurpesan" : "log";
+      const provider: ProviderName = defaultEngine(this.providers);
       const deviceId = randomUUID();
       await client.query(
         `INSERT INTO kirim_devices (id, kode, label, pemilik_consumer_id, provider, provider_ref, status)
          VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-        [deviceId, kode, n === 1 ? GATEWAY_CARD_NAME : `${GATEWAY_CARD_NAME} ${n}`, consumer.id, provider, provider === "jalurpesan" ? kode : null, provider === "log" ? "tersambung" : "belum_dipasang"],
+        [deviceId, kode, n === 1 ? GATEWAY_CARD_NAME : `${GATEWAY_CARD_NAME} ${n}`, consumer.id, provider, provider === "log" ? null : kode, provider === "log" ? "tersambung" : "belum_dipasang"],
       );
       await client.query("INSERT INTO kirim_routes (consumer_id, device_id, jenis) VALUES ($1, $2, 'kode') ON CONFLICT DO NOTHING", [consumer.id, deviceId]);
       await writeAudit(client, {

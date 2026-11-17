@@ -179,7 +179,7 @@ beforeEach(async () => {
   };
   providers = {
     log: new LogProvider((entry) => kirimLogs.push(entry)),
-    jalurpesan: new JalurPesanProvider({ baseUrl: stub.baseUrl, platformKey: "platform-key", timeoutMs: 500 }, pgEngineMediaRefs(pool)),
+    jalurpesan: new JalurPesanProvider({ baseUrl: stub.baseUrl, platformKey: "platform-key", timeoutMs: 500 }, pgEngineMediaRefs(pool, "jalurpesan")),
   };
   kirim = createKirimModule({
     pool,

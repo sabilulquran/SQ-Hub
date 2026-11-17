@@ -1,6 +1,26 @@
 /** KIRIM-IMPL-001 §3.2 internal provider contract, extended by KIRIM-IMPL-002 §5.3. */
 
-export type ProviderName = "log" | "jalurpesan";
+/**
+ * KIRIM-IMPL-005 §6: `wa` is Kirim SQ's own engine, the `kirim-wa` worker in the SQ Hub release.
+ * `jalurpesan` stays while numbers move and as the way back. The engine is chosen per number.
+ */
+export type ProviderName = "log" | "jalurpesan" | "wa";
+
+/** The engines that really talk to WhatsApp; `log` only pretends to. */
+export type EngineProviderName = Exclude<ProviderName, "log">;
+
+export const ENGINE_PROVIDERS: readonly EngineProviderName[] = ["jalurpesan", "wa"];
+
+/**
+ * KIRIM-IMPL-005 §6: the engine a number created from now on starts on. Kirim SQ's own engine
+ * wins where it is configured, JalurPesan is the fall-back while it is still there, and `log`
+ * (which sends nothing) is what development and a half-configured host get.
+ */
+export function defaultEngine(providers: Partial<Record<ProviderName, unknown>>): ProviderName {
+  if (providers.wa) return "wa";
+  if (providers.jalurpesan) return "jalurpesan";
+  return "log";
+}
 
 export type KirimErrorCode =
   | "optout"
@@ -18,7 +38,7 @@ export type KirimErrorCode =
 export interface DeviceRef {
   id: string;
   kode: string;
-  /** JalurPesan tenant id; null for `log`. */
+  /** The engine's tenant id for this number; null for `log`. On `wa` it is the number code. */
   providerRef: string | null;
 }
 
