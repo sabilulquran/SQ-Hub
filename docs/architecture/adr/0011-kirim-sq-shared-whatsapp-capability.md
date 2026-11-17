@@ -2,7 +2,7 @@
 
 > **Terms: see ADR-0014 (2026-11-16).** Kirim SQ is an application that runs inside the Hub process (D6 reason 1); "module" below for Kirim SQ or for a consumer means application, and "SQ Core" means SQ Suite.
 
-**Status:** ACCEPTED (Product Owner, 2026-10-17); AMENDED 2026-10-19 (see [Amendment 2026-10-19](#amendment-2026-10-19-kirim-sq-is-the-engine-the-inbox-lives-in-the-owning-module))
+**Status:** ACCEPTED (Product Owner, 2026-10-17); AMENDED 2026-10-19 (see [Amendment 2026-10-19](#amendment-2026-10-19-kirim-sq-is-the-engine-the-inbox-lives-in-the-owning-module)), 2026-11-03, 2026-11-16, and 2026-11-17 (see [Amendment 2026-11-17](#amendment-2026-11-17-the-engine-moves-inside-sq-suite-as-a-separate-worker-process), which withdraws "No Baileys inside SQ Core")
 **Date:** 2026-10-17
 **Related:** ADR-0001, ADR-0006, ADR-0010; `docs/product/kirim-sq-module-design.md` (KIRIM-001, revision 2); SPMB SQ `sq-spmb/docs/product/module-design.md` (SPMB-001 §6.8, §8); JalurPesan `jalurpesan.web.id/README.md`
 
@@ -138,3 +138,45 @@ On 2026-10-19 the Product Owner decided that the admissions committee's WhatsApp
 - The registry kind `luar` (migration 0022) stays as a label in Pusat Admin; an outside application gets no card and no WhatsApp switch there (`kind = 'modul'` only in `listWhatsAppApplications`).
 - Migrations `0023_kirim_gerbang_api.sql` and `0024_kirim_gerbang_kunci_per_nomor.sql` (additive): `kirim_consumers.gerbang`, the gateway consumer row, `kirim_devices.webhook_url/webhook_secret_enc`, `kirim_webhook_deliveries.device_id`, table `kirim_api_keys` (one active key per number, `kunci_enc` for display; the `nama_aplikasi` column of 0023 is unused).
 - DRAFT assumptions for the owner: the daily quota is shared by all outside applications (consumer `aplikasi-luar`, default 500); one number per outside application (webhook per number); no rate limit on failed key lookups beyond the edge.
+
+## Amendment 2026-11-17: the engine moves inside SQ Suite as a separate worker process
+**Status:** ACCEPTED with KIRIM-IMPL-005 (standing owner decision of 2026-10-26/27: the agent takes the technical decision and reports it). Where this amendment conflicts with the text above, this amendment wins.
+
+### Context
+The 2026-10-17 decision said **"No Baileys inside SQ Core"** and **"Location: … There is no new process on Mi8"**, for one reason: Mi8 had about 1 GiB MemAvailable and a second Baileys process was not worth it.
+
+What has changed since:
+
+- JalurPesan is not only a Baileys gateway. It is a whole product: its own web UI (53 MB RSS), admin dashboard, updater, backup, multi-platform tenancy, and a 261 MB SQLite message store with an 84 MB WAL — all for four numbers that only SQ Suite uses. Its API process holds 335 MB.
+- Kirim SQ already stores every conversation, message and media itself, encrypted, in the SQ Hub database. JalurPesan's own store is a second copy of the same conversations that nobody reads.
+- JalurPesan is a private repository outside the Yayasan's account (`imadjinasi/jalurpesan`), with its own release train. Keeping the Yayasan's WhatsApp capability there means two release paths and two runbooks for one capability.
+- The swappable-provider design held: the adapter boundary (`providers/types.ts`) has survived four Kirim releases, so a third provider is a configuration change per number, not a rewrite.
+
+So the question is no longer "one Baileys process or none", but "which Baileys process": JalurPesan's, with everything else it carries, or a worker of our own that carries only the WhatsApp layer.
+
+### Changes to the decision
+- **"No Baileys inside SQ Core" is withdrawn.** SQ Suite runs the WhatsApp layer itself, in a process of its own.
+- **"There is no new process on Mi8" is withdrawn for this capability only.** The engine is `kirim-wa`, a separate Node process shipped inside the SQ Hub release. Baileys is never imported by the SQ Hub API process: a Baileys failure must not take down Akun SQ, Portal Organ, Kerja SQ, Sekretariat SQ or Admin SQ. The send worker, webhook sender and event puller stay timers in the API process, as decided in 2026-10-17.
+- **The provider table gains a third row**, and `jalurpesan` stays:
+
+  | Provider | Use |
+  | --- | --- |
+  | `log` | Unchanged. Default; sends nothing. |
+  | `jalurpesan` | Kept as the fall-back path while numbers move, and after, until `/srv/jalurpesan` is removed. |
+  | `wa` | **The engine from 2026-11-17 on.** `kirim-wa` in the SQ Hub release, Baileys pinned to exactly `7.0.0-rc14`, one process for every number, loopback only. |
+
+- **The provider stays selected per number**, as already decided. A number moves alone; the others stay where they are. Moving a number no longer requires re-pairing it: its Baileys auth state is copied, with re-scanning the QR code kept as the fall-back (KIRIM-IMPL-005 §9).
+- **Release gate replaced.** The old gate ("stop adding numbers and plan an engine move if the 7-day average MemAvailable is below 900 MiB") is replaced by: MemAvailable and the RSS of every engine process are recorded before and after each number's cutover; if MemAvailable falls after a cutover, the next cutover stops and the owner is told.
+
+### Alternatives considered
+- **Stay on JalurPesan.** No work, no risk today. Rejected: it keeps 388 MB and a second release train for a capability the Yayasan owns, on a host with about 1 GiB free.
+- **Strip JalurPesan down in place** (remove its web UI, dashboard, updater, SQLite store). Comparable work to moving the layer, and the result would still live in a repository outside the Yayasan's account with its own releases. Rejected.
+- **Baileys inside the SQ Hub API process.** Saves one process (about 60 MB of Node baseline). Rejected: a crash in a third-party protocol parser would take every Hub application down with it, and WhatsApp sessions would restart on every Hub release.
+- **The official WhatsApp Business Platform (`meta-cloud`).** Still the right answer if the Yayasan ever pays for it; the adapter boundary is unchanged and this amendment does not close that door.
+
+### Consequences
+- SQ Suite now carries the WhatsApp session itself: the Yayasan's own release train, its own runbook, and its own responsibility for Baileys upgrades. `@whiskeysockets/baileys` is pinned exactly, because the maintainers plan to drop libsignal over its GPLv3 licence and a later release may change both the API and the licence.
+- Mi8 gains one Node process and loses two. The net memory effect is measured, not assumed (KIRIM-IMPL-005 §10).
+- Auth state (`/srv/sq-hub/shared/kirim-wa/auth/<number code>/`) becomes state that must survive: it is the only thing that cannot be rebuilt from the database, and losing it costs a QR re-scan per number.
+- JalurPesan is switched off, not deleted, once every number has moved and stayed stable for a few days. Removing `/srv/jalurpesan` is a later decision and needs its state backed up to Drive `mi8_crypt` first.
+- This amendment authorizes the implementation and the production steps in KIRIM-IMPL-005 under the standing owner decision; it does not authorize removing JalurPesan's files.
