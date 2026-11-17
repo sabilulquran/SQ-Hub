@@ -31,6 +31,7 @@ import {
   type ProviderCatalogPage,
   type ProviderBusinessProfileUpdate,
   type ProviderProductInput,
+  type ProviderName,
 } from "./types.js";
 
 /** Cache of engine `mediaId` per Kirim media and number, so a retry never uploads again (§3.2). */
@@ -65,7 +66,8 @@ class EngineUnavailable extends Error {
  * QR data-URLs and pairing codes are returned to the caller only; this adapter never logs.
  */
 export class JalurPesanProvider implements KirimProvider {
-  readonly name = "jalurpesan" as const;
+  /** Overridden by `WaEngineProvider`, which speaks the same contract to Kirim SQ's own worker. */
+  readonly name: ProviderName = "jalurpesan";
 
   constructor(
     private readonly options: { baseUrl: string; platformKey: string; timeoutMs?: number; imageWriteTimeoutMs?: number },

@@ -34,6 +34,8 @@ export interface DeviceRow {
   pemilik: string;
   provider: ProviderName;
   providerRef: string | null;
+  /** KIRIM-IMPL-003 §11: the linked WhatsApp number, keyed; null before the number has ever connected. */
+  nomorHmac: string | null;
   nomorTersamar: string | null;
   status: DeviceStatus | "nonaktif";
   antreanDijeda: boolean;
@@ -52,7 +54,7 @@ const CONSUMER_COLUMNS = `
 
 const DEVICE_COLUMNS = `
   d.id, d.kode, d.label, d.pemilik_consumer_id AS "pemilikConsumerId", c.nama AS pemilik,
-  d.provider, d.provider_ref AS "providerRef", d.nomor_tersamar AS "nomorTersamar", d.status,
+  d.provider, d.provider_ref AS "providerRef", d.nomor_hmac AS "nomorHmac", d.nomor_tersamar AS "nomorTersamar", d.status,
   d.antrean_dijeda AS "antreanDijeda", d.rate_per_menit AS "ratePerMenit",
   to_char(d.jam_kirim_mulai, 'HH24:MI') AS "jamKirimMulai",
   to_char(d.jam_kirim_selesai, 'HH24:MI') AS "jamKirimSelesai",
@@ -603,7 +605,7 @@ export async function transitionOutbox(
     `UPDATE kirim_messages m SET
        status = $2,
        provider_message_id = COALESCE($3, m.provider_message_id),
-       wa_message_id = CASE WHEN $3::text IS NOT NULL AND COALESCE($5, m.provider) = 'jalurpesan' THEN $3 ELSE m.wa_message_id END,
+       wa_message_id = CASE WHEN $3::text IS NOT NULL AND COALESCE($5, m.provider) <> 'log' THEN $3 ELSE m.wa_message_id END,
        dry_run = COALESCE($4, m.dry_run),
        provider = COALESCE($5, m.provider),
        provider_at = CASE WHEN $3::text IS NOT NULL THEN now() ELSE m.provider_at END,

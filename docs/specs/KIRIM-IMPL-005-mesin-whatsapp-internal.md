@@ -80,7 +80,7 @@ Berkas berikut dipindahkan ke `apps/kirim-wa/src/` dengan perubahan sekecil mung
 
 Dipilih PostgreSQL yang sudah ada, bukan SQLite baru: satu jalur backup (`hub-release.sh` sudah men-dump sebelum migrasi), satu mesin penyimpanan untuk owner, dan tanpa dependensi native (`better-sqlite3` butuh kompilasi di chroot arm64). Biaya: dua koneksi backend tambahan (pool `max: 2`).
 
-Tabel baru, prefiks `kirim_wa_` (migration `0024_kirim_engine_wa.sql`, §7). Worker **hanya** menyentuh tabel `kirim_wa_*`; ia tidak pernah membaca atau menulis `kirim_*` milik Hub. Batas ini dijaga oleh peran database tersendiri bila owner memisahkannya nanti; untuk sekarang dijaga oleh kode dan uji.
+Tabel baru, prefiks `kirim_wa_` (migration `0025_kirim_engine_wa.sql`, §7). Worker **hanya** menyentuh tabel `kirim_wa_*`; ia tidak pernah membaca atau menulis `kirim_*` milik Hub. Batas ini dijaga oleh peran database tersendiri bila owner memisahkannya nanti; untuk sekarang dijaga oleh kode dan uji.
 
 ### 4.3 Media (di disk)
 
@@ -144,7 +144,7 @@ export type ProviderName = "log" | "jalurpesan" | "wa";
 
 ## 7. Data
 
-Migration `0024_kirim_engine_wa.sql`, aditif, tanpa pemindahan data:
+Migration `0025_kirim_engine_wa.sql`, aditif, tanpa pemindahan data:
 
 1. `kirim_devices.provider`: `CHECK (provider IN ('log','jalurpesan','wa'))`.
 2. `kirim_messages.provider`, `kirim_media_engine_refs.provider`, `kirim_events.provider`: idem (`kirim_media_engine_refs` dan `kirim_events` semula hanya `'jalurpesan'`).

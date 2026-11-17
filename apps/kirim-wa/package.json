@@ -1,0 +1,27 @@
+{
+  "name": "@sq-hub/kirim-wa",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/index.js",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "lint": "eslint .",
+    "test": "vitest run --fileParallelism=false"
+  },
+  "dependencies": {
+    "@fastify/multipart": "10.1.2",
+    "@hapi/boom": "10.0.1",
+    "@whiskeysockets/baileys": "7.0.0-rc14",
+    "fastify": "5.12.5",
+    "pg": "8.16.3",
+    "qrcode": "1.5.4"
+  },
+  "devDependencies": {
+    "@types/node": "22.16.5",
+    "@types/pg": "8.15.5",
+    "@types/qrcode": "1.5.6",
+    "typescript": "5.8.3",
+    "vitest": "4.1.11"
+  }
+}
