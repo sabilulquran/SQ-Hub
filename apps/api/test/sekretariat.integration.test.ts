@@ -730,6 +730,26 @@ describe("SEK-IMPL-002 kotak masuk disambungkan dari layar", () => {
     expect(await sekretariat.mailbox.jumlah()).toBe(1);
   });
 
+  it("alamat ganda saat mengubah juga dijawab 400, bukan 503", async () => {
+    const pertama = (await tambah()).body.id as string;
+    await tambah(HCM, { alamat: "kedua@sabilulquran.or.id" });
+    const bentrok = await call(HCM, "PUT", `/admin/sekretariat/mailbox/${pertama}`, {
+      alamat: "kedua@sabilulquran.or.id", host: MAILBOX.host, port: 993, pengguna: MAILBOX.alamat, sandi: MAILBOX.sandi, kotak_id: await kotakYayasan(),
+    });
+    expect(bentrok.status).toBe(400);
+    expect(bentrok.body.code).toBe("alamat_ganda");
+  });
+
+  it("kunci yang hilang memberi kalimat yang bisa ditindaklanjuti, bukan 503", async () => {
+    const id = (await tambah()).body.id as string;
+    await pool.query("UPDATE sekretariat_mailbox SET sandi_terenkripsi = $2 WHERE id = $1", [id, "v1.k9.AAAAAAAAAAAAAAAA.AAAA.AAAAAAAAAAAAAAAAAAAAAA"]);
+    const ubah = await call(HCM, "PUT", `/admin/sekretariat/mailbox/${id}`, {
+      alamat: MAILBOX.alamat, host: MAILBOX.host, port: 993, kotak_id: await kotakYayasan(),
+    });
+    expect(ubah.status).toBe(400);
+    expect(ubah.body.code).toBe("sandi_wajib_kunci_hilang");
+  });
+
   it("baris yang kuncinya hilang langsung diparkir, tidak dicoba berulang", async () => {
     const id = (await tambah()).body.id as string;
     await pool.query("UPDATE sekretariat_mailbox SET sandi_terenkripsi = $2 WHERE id = $1", [id, "v1.k9.AAAAAAAAAAAAAAAA.AAAA.AAAAAAAAAAAAAAAAAAAAAA"]);

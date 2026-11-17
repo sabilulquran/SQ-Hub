@@ -180,7 +180,14 @@ export function MailboxPage() {
                 </div>
                 {mailbox.status === "auth_gagal" ? (
                   <p className="mt-3 rounded-xl bg-warning-soft px-3 py-2 text-sm leading-6 text-warning-ink">
-                    Sandi ditolak {mailbox.gagal_berturut} kali berturut-turut, jadi penarikan dihentikan dulu agar mailbox tidak dikunci penyedia. Simpan kembali alamat ini dengan sandi yang benar, dan penarikan langsung berjalan lagi.
+                    {mailbox.sebab_terakhir === "kunci_hilang"
+                      ? "Sandi tersimpan tidak dapat dibuka dengan kunci yang ada di server sekarang, jadi penarikan dihentikan. Simpan kembali alamat ini dengan sandinya diketik ulang."
+                      : `Sandi ditolak ${mailbox.gagal_berturut} kali berturut-turut, jadi penarikan dihentikan dulu agar mailbox tidak dikunci penyedia. Simpan kembali alamat ini dengan sandi yang benar, dan penarikan langsung berjalan lagi.`}
+                  </p>
+                ) : null}
+                {!data.tersedia && mailbox.status === "aktif" ? (
+                  <p className="mt-3 rounded-xl bg-warning-soft px-3 py-2 text-sm leading-6 text-warning-ink">
+                    Tertahan: kunci penyimpanan belum disiapkan di server, jadi sandi ini tidak dapat dibuka dan penarikan belum berjalan.
                   </p>
                 ) : null}
                 {mailbox.galat_terakhir ? (

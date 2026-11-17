@@ -47,6 +47,7 @@ export interface MailboxRow {
   kotak_nama: string;
   status: MailboxStatus;
   gagal_berturut: number;
+  sebab_terakhir: MailboxFailure | null;
   galat_terakhir: string | null;
   galat_pada: string | null;
   tarik_terakhir_pada: string | null;
@@ -133,7 +134,7 @@ export class SekretariatMailbox {
     const result = await this.pool.query<MailboxRow>(
       `SELECT m.id, m.alamat, m.host, m.port, m.pengguna, m.kotak_id,
               COALESCE(p.nama, 'Kotak yayasan') AS kotak_nama,
-              m.status, m.gagal_berturut, m.galat_terakhir,
+              m.status, m.gagal_berturut, m.sebab_terakhir, m.galat_terakhir,
               to_char(m.galat_pada, 'YYYY-MM-DD"T"HH24:MI:SSOF') AS galat_pada,
               to_char(m.tarik_terakhir_pada, 'YYYY-MM-DD"T"HH24:MI:SSOF') AS tarik_terakhir_pada,
               (SELECT count(*) FROM sekretariat_surat_masuk sm WHERE sm.kotak_id = m.kotak_id AND sm.kanal = 'email')::int AS surat_masuk
@@ -184,7 +185,13 @@ export class SekretariatMailbox {
       if (!tujuanSama) {
         invalid("Host, port, atau pengguna berubah, jadi sandinya harus diketik ulang.", "sandi_wajib_tujuan_berubah");
       }
-      sandi = crypto.open(existing.sandi_terenkripsi, mailboxAad(existing.id));
+      try {
+        sandi = crypto.open(existing.sandi_terenkripsi, mailboxAad(existing.id));
+      } catch {
+        // The key that sealed this row is gone. That is a sentence the admin can act on, not an
+        // outage: retyping the password re-seals it with the key the server has now.
+        invalid("Sandi lama tidak dapat dibuka dengan kunci yang ada di server sekarang, jadi harus diketik ulang.", "sandi_wajib_kunci_hilang");
+      }
     } else {
       invalid("Sandi mailbox wajib diisi saat menambah.", "sandi_wajib");
     }
@@ -214,14 +221,20 @@ export class SekretariatMailbox {
 
     await withTransaction(this.pool, async (client) => {
       if (existing) {
-        await client.query(
-          `UPDATE sekretariat_mailbox
-              SET alamat = $2, host = $3, port = $4, pengguna = $5, sandi_terenkripsi = $6, kotak_id = $7,
-                  status = 'aktif', gagal_berturut = 0, sebab_terakhir = NULL, galat_terakhir = NULL, galat_pada = NULL,
-                  diubah_oleh = $8, diubah_pada = now()
-            WHERE id = $1`,
-          [rowId, input.alamat, input.host, input.port, pengguna, sealed, input.kotak_id, aktor],
-        );
+        try {
+          await client.query(
+            `UPDATE sekretariat_mailbox
+                SET alamat = $2, host = $3, port = $4, pengguna = $5, sandi_terenkripsi = $6, kotak_id = $7,
+                    status = 'aktif', gagal_berturut = 0, sebab_terakhir = NULL, galat_terakhir = NULL, galat_pada = NULL,
+                    diubah_oleh = $8, diubah_pada = now()
+              WHERE id = $1`,
+            [rowId, input.alamat, input.host, input.port, pengguna, sealed, input.kotak_id, aktor],
+          );
+        } catch (error) {
+          // Renaming onto an address another row already holds.
+          if ((error as { code?: string }).code === "23505") invalid("Alamat itu sudah terdaftar.", "alamat_ganda");
+          throw error;
+        }
       } else {
         const bentrok = await client.query("SELECT 1 FROM sekretariat_mailbox WHERE alamat = $1", [input.alamat]);
         if ((bentrok.rowCount ?? 0) > 0) invalid("Alamat itu sudah terdaftar.", "alamat_ganda");

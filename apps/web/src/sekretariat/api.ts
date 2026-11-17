@@ -114,6 +114,7 @@ export interface Mailbox {
   kotak_nama: string;
   status: "aktif" | "nonaktif" | "auth_gagal";
   gagal_berturut: number;
+  sebab_terakhir: string | null;
   galat_terakhir: string | null;
   galat_pada: string | null;
   tarik_terakhir_pada: string | null;
