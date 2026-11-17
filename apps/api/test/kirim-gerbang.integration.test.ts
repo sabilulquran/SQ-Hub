@@ -144,7 +144,7 @@ describe("Kartu Aplikasi luar (admin)", () => {
   it("lists one generic card and makes each new number with a readable key, never naming an application", async () => {
     const before = await admin("GET", "/modules");
     expect(before.statusCode).toBe(200);
-    expect(before.json().gerbang).toEqual({ nama: "Aplikasi luar", keterangan: expect.stringContaining("Sabilul Qur'an Suite"), nomor: [], kunci_aktif: 0 });
+    expect(before.json().gerbang).toEqual({ nama: "Aplikasi luar", keterangan: expect.stringContaining("Sabilul Qur'an Suite"), nomor: [] });
 
     const first = await admin("POST", "/gerbang/nomor-baru", {});
     expect(first.statusCode).toBe(201);
@@ -154,11 +154,19 @@ describe("Kartu Aplikasi luar (admin)", () => {
     expect(second.json()).toMatchObject({ kode: "luar-2", label: "Aplikasi luar 2" });
 
     const card = (await admin("GET", "/modules")).json();
-    expect(card.gerbang.nomor.map((nomor: { kode: string; kunci_aktif: number }) => [nomor.kode, nomor.kunci_aktif])).toEqual([["luar", 1], ["luar-2", 1]]);
-    expect(card.gerbang.kunci_aktif).toBe(2);
+    // Owner 2026-11-18: each number is its own card, so the list carries that number's own key
+    // summary -- its prefix and how it is doing, never the key itself.
+    expect(card.gerbang.nomor.map((nomor: { kode: string; kunci: { awalan: string } | null }) => [nomor.kode, nomor.kunci?.awalan?.slice(0, 4)])).toEqual([
+      ["luar", "krm_"],
+      ["luar-2", "krm_"],
+    ]);
+    for (const nomor of card.gerbang.nomor as Array<{ kunci: Record<string, unknown> | null }>) {
+      expect(Object.keys(nomor.kunci ?? {}).sort()).toEqual(["awalan", "dibuat_at", "terakhir_dipakai_at"]);
+    }
     expect(card.modules).toEqual([]);
-    // The card face carries no key value; the pop-up does, so the owner can copy it.
-    expect(JSON.stringify(card.gerbang)).not.toContain("krm_");
+    // The card face carries the key's prefix but never the key itself; the pop-up carries that,
+    // so the owner can copy it once. The home screen loads on every visit.
+    expect(JSON.stringify(card.gerbang)).not.toMatch(/krm_[A-Za-z0-9_-]{32}/);
     const detail = (await admin("GET", "/gerbang")).json() as { nomor: NumberDetail[] };
     for (const nomor of detail.nomor) {
       expect(nomor.kunci?.kunci).toMatch(/^krm_[A-Za-z0-9_-]{32}$/);
@@ -196,7 +204,7 @@ describe("Kartu Aplikasi luar (admin)", () => {
     const after = (await admin("GET", "/gerbang")).json() as { nomor: NumberDetail[] };
     expect(after.nomor.find((nomor) => nomor.kode === kode)).toMatchObject({ status: "tersambung", kunci: null });
     expect((await admin("POST", `/gerbang/nomor/${kode}/kunci/cabut`, { alasan: "lagi" })).statusCode).toBe(404);
-    expect((await admin("GET", "/modules")).json().gerbang.kunci_aktif).toBe(0);
+    expect((await admin("GET", "/modules")).json().gerbang.nomor.find((nomor: { kode: string }) => nomor.kode === kode).kunci).toBeNull();
 
     const audit = await pool.query<{ aksi: string; metadata: Record<string, unknown> }>("SELECT aksi, metadata FROM kirim_audit WHERE aksi LIKE 'gerbang.%' ORDER BY occurred_at, aksi");
     expect(audit.rows.map((row) => row.aksi)).toEqual(["gerbang.kunci_buat", "gerbang.nomor_baru", "gerbang.kunci_putar", "gerbang.kunci_cabut"]);

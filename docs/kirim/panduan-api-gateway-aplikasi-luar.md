@@ -23,7 +23,7 @@ Aplikasi di dalam SQ Suite tetap memakai jalur lama: registry Pusat Admin, kartu
 
 ### 2.1 Pengelola Kirim: sambungkan nomor
 
-Di `kirim.sabilulquran.or.id`, halaman **Aplikasi**, kartu **Aplikasi luar** → **Kelola nomor dan kunci** → **Sambungkan nomor baru**. Kirim membuat nomor baru milik kartu (kode `luar`, `luar-2`, …; label "Aplikasi luar", "Aplikasi luar 2", …) beserta kuncinya, lalu membuka pemasangan: pindai QR dari HP nomor yang akan dipakai. Dari pop-up yang sama nomor bisa dipasang ulang, disambungkan ulang, atau diputus; jam kirim, laju, dan jeda antrean diatur pada nomornya seperti nomor lain.
+Di `kirim.sabilulquran.or.id`, halaman **Aplikasi**, ubin **Nomor aplikasi luar** → **Tambah nomor**. Kirim membuat nomor baru (kode `luar`, `luar-2`, …; label "Aplikasi luar", "Aplikasi luar 2", …) beserta kuncinya, lalu membuka pemasangan: pindai QR dari HP nomor yang akan dipakai. Sejak itu **nomor tersebut punya kartunya sendiri** di halaman yang sama, sejajar dengan kartu aplikasi: di situ ada statusnya, tombol **Kunci API**, Pasang atau Sambungkan ulang, Ubah, dan Putuskan. Jam kirim, laju, dan jeda antrean diatur pada nomornya seperti nomor lain.
 
 ### 2.2 Owner atau developer: salin kunci nomor itu ke aplikasi
 

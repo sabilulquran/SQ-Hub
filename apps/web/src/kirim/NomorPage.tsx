@@ -13,7 +13,7 @@ import {
   type LiveStatus,
   type PairingResult,
 } from "@/kirim/api";
-import { GerbangCard, GerbangDialog, type GerbangDeviceAction } from "@/kirim/GerbangCard";
+import { KunciDialog, NomorLuarCard, TambahNomorLuarTile } from "@/kirim/NomorLuarCard";
 import { deviceStatusLabel, deviceStatusTone } from "@/kirim/labels";
 import { dangerButton, Field, Panel, primaryButton, ReasonDialog, secondaryButton, StateCard } from "@/kirim/KirimShell";
 
@@ -33,7 +33,7 @@ type Dialog =
   | { kind: "tambah"; card: KirimModuleCard }
   | { kind: "ubah-pemakai"; card: KirimModuleCard }
   | { kind: "putuskan-modul"; card: KirimModuleCard }
-  | { kind: "gerbang" };
+  | { kind: "kunci"; kode: string };
 
 const POLL_MS = 3_000;
 const POLL_LIMIT_MS = 2 * 60_000;
@@ -104,18 +104,22 @@ export function NomorPage({ preview }: { preview?: NomorState }) {
     return card && canReconnect(device) ? () => { setError(null); setDialog({ kind: "ganti-nomor", device, modul: card.nama }); } : undefined;
   };
 
-  /** A number of the Aplikasi luar card: its dialogs return to the card's pop-up, not to the page. */
-  const isGerbang = (device: KirimDevice) => device.pemilik === "aplikasi-luar";
-  const afterDevice = (device: KirimDevice) => { if (isGerbang(device)) setDialog({ kind: "gerbang" }); else close(); void load(); };
-  const openGerbangDevice = (action: GerbangDeviceAction) => { setError(null); setDialog(action); };
+  /**
+   * Owner decision 2026-11-18: an outside number is a card of its own, so its actions go straight
+   * to the page's own dialogs, like any other card's, instead of returning into a combined pop-up.
+   */
+  const addNumber = () => void run(
+    () => kirimFetch<KirimDevice>("/gerbang/nomor-baru", { method: "POST", body: {} }),
+    (device) => (device.provider !== "log" ? { kind: "pair", device } : null),
+  );
 
   return (
     <>
-      <NomorView state={state} onOpen={(next) => { setError(null); setDialog(next); }} onRetry={() => { setState({ status: "loading" }); void load(); }} />
-      {dialog?.kind === "gerbang" ? <GerbangDialog onDevice={openGerbangDevice} onClose={close} onChanged={load} /> : null}
+      <NomorView state={state} busy={busy} onAddNumber={addNumber} onOpen={(next) => { setError(null); setDialog(next); }} onRetry={() => { setState({ status: "loading" }); void load(); }} />
+      {dialog?.kind === "kunci" ? <KunciDialog kode={dialog.kode} onClose={close} onChanged={load} /> : null}
       {dialog?.kind === "disconnect" ? (
         <ReasonDialog title={`Putuskan ${dialog.device.label}?`} body={sharedBody(shared(dialog.device), "Sesi WhatsApp di mesin dilepas. Nomor perlu dipasang ulang sebelum bisa mengirim lagi.")} confirmLabel="Putuskan" danger busy={busy} error={error} onClose={close}
-          onConfirm={(alasan) => void run(() => kirimFetch(`/devices/${dialog.device.kode}/disconnect`, { method: "POST", body: { alasan } }), () => (isGerbang(dialog.device) ? { kind: "gerbang" } : null))}>
+          onConfirm={(alasan) => void run(() => kirimFetch(`/devices/${dialog.device.kode}/disconnect`, { method: "POST", body: { alasan } }))}>
           <GantiHint onGanti={ganti(dialog.device)} />
         </ReasonDialog>
       ) : null}
@@ -169,7 +173,7 @@ export function NomorPage({ preview }: { preview?: NomorState }) {
       {(dialog?.kind === "tambah" || dialog?.kind === "ubah-pemakai") && state.status === "ready" ? (
         <TambahDialog
           card={dialog.card}
-          numbers={state.list.devices.filter((device) => device.status !== "nonaktif" && device.kode !== dialog.card.nomor?.kode && !isGerbang(device))}
+          numbers={state.list.devices.filter((device) => device.status !== "nonaktif" && device.kode !== dialog.card.nomor?.kode && device.pemilik !== "aplikasi-luar")}
           owners={Object.fromEntries(state.list.modules.filter((card) => card.peran === "pemilik" && card.nomor).map((card) => [card.nomor!.kode, card.nama]))}
           editing={dialog.kind === "ubah-pemakai"}
           busy={busy}
@@ -195,7 +199,7 @@ export function NomorPage({ preview }: { preview?: NomorState }) {
           ganti={dialog.kind === "ganti-nomor" ? dialog.modul : undefined}
           sharers={dialog.kind === "ganti-nomor" ? shared(dialog.device) : []}
           onDuplicate={(ke) => { setError(null); setDialog({ kind: "gabung", device: dialog.device, ke }); void load(); }}
-          onClose={() => afterDevice(dialog.device)}
+          onClose={() => { close(); void load(); }}
         />
       ) : null}
     </>
@@ -288,7 +292,13 @@ export function GantiHint({ onGanti }: { onGanti?: (() => void) | undefined }) {
   );
 }
 
-export function NomorView({ state, onOpen, onRetry }: { state: NomorState; onOpen: (dialog: Dialog) => void; onRetry: () => void }) {
+export function NomorView({ state, onOpen, onRetry, onAddNumber, busy = false }: {
+  state: NomorState;
+  onOpen: (dialog: Dialog) => void;
+  onRetry: () => void;
+  onAddNumber?: () => void;
+  busy?: boolean;
+}) {
   return (
     <>
       <div>
@@ -312,7 +322,15 @@ export function NomorView({ state, onOpen, onRetry }: { state: NomorState; onOpe
                 {state.list.modules.map((card) => (
                   <li key={card.application_key}><ModuleCard card={card} onOpen={onOpen} /></li>
                 ))}
-                {state.list.gerbang ? <li key="gerbang"><GerbangCard card={state.list.gerbang} onOpen={() => onOpen({ kind: "gerbang" })} /></li> : null}
+                {/* Owner 2026-11-18: each outside number is its own card, beside the application cards. */}
+                {(state.list.gerbang?.nomor ?? []).map((nomor) => (
+                  <li key={nomor.kode}>
+                    <NomorLuarCard nomor={nomor} onDevice={onOpen} onKeys={() => onOpen({ kind: "kunci", kode: nomor.kode })} />
+                  </li>
+                ))}
+                {state.list.gerbang && onAddNumber ? (
+                  <li key="tambah-nomor-luar"><TambahNomorLuarTile busy={busy} onAdd={onAddNumber} /></li>
+                ) : null}
               </ul>
             )}
           </>

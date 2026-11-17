@@ -56,7 +56,14 @@ export const kirimNomorFixture: NomorState = {
       { application_key: "spmb-sq", nama: "SPMB SQ", peran: "pemilik", nomor: spmbDevice, jenis: ["notifikasi", "kode"], antrean: { antre: 12, gagal_hari_ini: 1 }, dipakai_juga_oleh: ["Keluarga"], pemilik_nomor: null },
     ],
     devices: [hcisDevice, spmbDevice, ujiDevice, luarDevice],
-    gerbang: { nama: kirimGerbangDetailFixture.nama, keterangan: kirimGerbangDetailFixture.keterangan, nomor: [{ ...luarDevice, kunci_aktif: 1 }, { ...luarDevice2, kunci_aktif: 0 }], kunci_aktif: 1 },
+    gerbang: {
+      nama: kirimGerbangDetailFixture.nama,
+      keterangan: kirimGerbangDetailFixture.keterangan,
+      nomor: [
+        { ...luarDevice, webhook_terdaftar: false, kunci: { awalan: "krm_Ab12Cd34", dibuat_at: "2026-11-17T01:05:00.000Z", terakhir_dipakai_at: "2026-11-17T02:00:00.000Z" } },
+        { ...luarDevice2, webhook_terdaftar: false, kunci: null },
+      ],
+    },
   },
 };
 
