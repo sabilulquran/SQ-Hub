@@ -13,8 +13,8 @@ import { JanganHubungiView, type JanganHubungiState, type OptoutFilter } from "@
 import { KirimAppView } from "@/kirim/KirimApp";
 import { KirimShell } from "@/kirim/KirimShell";
 import type { KirimDevice } from "@/kirim/api";
-import { GerbangDialogView } from "@/kirim/GerbangCard";
-import { DeactivateDialog, DeactivateWarning, GantiHint, ModuleCard, NomorView, PairingContent, TambahDialog } from "@/kirim/NomorPage";
+import { KunciDialogView, NomorLuarCard } from "@/kirim/NomorLuarCard";
+import { DeactivateDialog, DeactivateWarning, EditDeviceDialog, GantiHint, ModuleCard, NomorView, PairingContent, TambahDialog } from "@/kirim/NomorPage";
 import { isKirimHost, resolveKirimRoute } from "@/kirim/routes";
 
 const noop = () => undefined;
@@ -463,36 +463,48 @@ describe("Kirim SQ header launcher (HUB-IMPL-022)", () => {
 
 // ADR-0011 amendment 2026-11-17: one generic "Aplikasi luar" card for applications outside Sabilul Qur'an
 // Suite. Each number has its own key, like a JalurPesan device key; no application name anywhere.
-describe("Kartu Aplikasi luar dan kunci per nomor (ADR-0011 amendment 2026-11-17)", () => {
-  it("shows one generic card with its numbers and key count, and never an application name or key on the page", () => {
-    const html = renderToStaticMarkup(<NomorView state={kirimNomorFixture} onOpen={noop} onRetry={noop} />);
-    expect(html).toContain("Aplikasi luar");
-    expect(html).toContain("Portal atau aplikasi di luar Sabilul Qur&#x27;an Suite yang memakai API");
-    expect(html).toContain("2 nomor · 1 tersambung");
-    expect(html).toContain("Kelola nomor dan kunci");
+// Owner 2026-11-17: not one combined card holding a list. One "+" tile to add a number, and then
+// each outside number is a card of its own, shaped like an application card, with its key managed
+// there. The face still never names an application.
+describe("Kartu per nomor aplikasi luar (keputusan owner 2026-11-17)", () => {
+  it("gives every outside number its own card beside the application cards, plus one tile to add", () => {
+    const html = renderToStaticMarkup(<NomorView state={kirimNomorFixture} onOpen={noop} onRetry={noop} onAddNumber={noop} />);
+    // One card per number, each naming that number, not a combined list.
+    expect(html).toContain(">luar<");
+    expect(html).toContain(">luar-2<");
+    expect(html).toContain("Aplikasi luar 2");
+    expect(html).toContain("+62 851-••••-2504");
+    // The same facts an application card shows.
+    expect(html).toContain("Jam kirim · laju");
+    expect(html).toContain("Antrean");
+    // The add tile, holding nothing but itself.
+    expect(html).toContain("Tambah nomor");
     expect(html).toContain('href="/dokumentasi-api"');
+    // Gone with the combined card.
+    expect(html).not.toContain("Kelola nomor dan kunci");
+    expect(html).not.toContain("2 nomor · 1 tersambung");
+    // Still no application name, and never a key on the page itself.
     expect(html).not.toContain("Samijaya");
-    expect(html).not.toContain("krm_");
-    expect(html).not.toContain("Nomor tanpa kartu");
+    expect(html).not.toContain("krm_Ab12Cd34EfGh56IjKl78MnOp90QrSt");
   });
 
-  it("renders the card alone when no module uses WhatsApp yet", () => {
+  it("still shows the outside numbers when no application uses WhatsApp yet", () => {
     const list = kirimNomorFixture.status === "ready" ? kirimNomorFixture.list : null!;
-    const html = renderToStaticMarkup(<NomorView state={{ ...kirimNomorFixture, list: { ...list, modules: [] } } as typeof kirimNomorFixture} onOpen={noop} onRetry={noop} />);
-    expect(html).toContain("Aplikasi luar");
+    const html = renderToStaticMarkup(<NomorView state={{ ...kirimNomorFixture, list: { ...list, modules: [] } } as typeof kirimNomorFixture} onOpen={noop} onRetry={noop} onAddNumber={noop} />);
+    expect(html).toContain(">luar<");
     expect(html).not.toContain("Belum ada aplikasi yang memakai WhatsApp");
   });
 
-  it("opens a pop-up with one block per number: status, its key hidden by default, and the copy, rotate and revoke actions", () => {
+  it("manages the key in a pop-up belonging to that one number, hidden until asked for", () => {
+    const nomor = kirimGerbangDetailFixture.nomor[0]!;
     const html = renderToStaticMarkup(
-      <GerbangDialogView state={{ status: "ready", detail: kirimGerbangDetailFixture }} busy={false} error={null}
-        onClose={noop} onRetry={noop} onNewNumber={noop} onDevice={noop} onRotateKey={noop} onRevokeKey={noop} />,
+      <KunciDialogView state={{ status: "ready", nomor }} busy={false} error={null}
+        onClose={noop} onRetry={noop} onRotateKey={noop} onRevokeKey={noop} />,
     );
     expect(html).toContain('role="dialog"');
-    expect(html).toContain("Sambungkan nomor baru");
-    expect(html).toContain("+62 851-••••-2504");
-    expect(html).toContain("Sambungkan ulang");
-    expect(html).toContain("Pasang");
+    // The pop-up is about this number alone, not every number.
+    expect(html).toContain("Kunci API Aplikasi luar");
+    expect(html).not.toContain("Aplikasi luar 2");
     // The key is masked until Tampilkan; the prefix identifies it.
     expect(html).toContain("krm_Ab12Cd34••••");
     expect(html).not.toContain("krm_Ab12Cd34EfGh56IjKl78MnOp90QrSt");
@@ -501,11 +513,52 @@ describe("Kartu Aplikasi luar dan kunci per nomor (ADR-0011 amendment 2026-11-17
     expect(html).toContain("Putar ulang");
     expect(html).toContain("Cabut");
     expect(html).toContain("terakhir dipakai");
-    // A number without a key offers to make one.
-    expect(html).toContain("Buat kunci");
     expect(html).toContain("Dokumentasi API");
     expect(html).not.toContain("Nama aplikasi");
-    expect(html).not.toContain("Toko online");
+  });
+
+  // Review 2026-11-17: the combined card hid every WhatsApp action for a number with no engine
+  // behind it; a card of its own must do the same, or Sambungkan ulang waits on a QR that is
+  // never drawn (the page's own canReconnect already refuses such a number).
+  it("offers no WhatsApp action for a number that has no engine behind it", () => {
+    const nomor = { ...kirimGerbangDetailFixture.nomor[0]!, provider: "log" as const, kunci: null };
+    const html = renderToStaticMarkup(<NomorLuarCard nomor={nomor} onDevice={noop} onKeys={noop} />);
+    expect(html).not.toContain("Sambungkan ulang");
+    expect(html).not.toContain("Putuskan");
+    expect(html).not.toContain(">Pasang<");
+    expect(html).toContain("Belum ada mesin WhatsApp di balik nomor ini");
+    // The key and the settings are still reachable; only the WhatsApp session is not.
+    expect(html).toContain("Kunci API");
+    expect(html).toContain("Ubah");
+  });
+
+  // Review 2026-11-17: the key is bound to the number but authenticated against the outside-
+  // application consumer, so a number that changed hands would keep sending with a key no screen
+  // could revoke. The owner field is therefore fixed for these numbers (the API refuses it too).
+  it("does not offer to move an outside number to another application", () => {
+    const consumers = [{ nama: "aplikasi-luar", client_id: "aplikasi-luar", webhook_url: null, kuota_harian: 0, aktif: true },
+                       { nama: "hcis", client_id: "hcis-api", webhook_url: null, kuota_harian: 0, aktif: true }];
+    const luar = renderToStaticMarkup(
+      <EditDeviceDialog device={kirimGerbangDetailFixture.nomor[0]!} consumers={consumers} busy={false} error={null} onClose={noop} onSave={noop} />,
+    );
+    expect(luar).toContain("nomor aplikasi luar tetap milik pemakai ini");
+    expect(luar).not.toContain('<option value="hcis"');
+    // A module's number keeps the field.
+    const modul = renderToStaticMarkup(
+      <EditDeviceDialog device={{ ...kirimGerbangDetailFixture.nomor[0]!, kode: "hcis", pemilik: "hcis" }} consumers={consumers} busy={false} error={null} onClose={noop} onSave={noop} />,
+    );
+    expect(modul).toContain('<option value="hcis"');
+  });
+
+  it("offers to make a key for a number that has none", () => {
+    const nomor = kirimGerbangDetailFixture.nomor[1]!;
+    const html = renderToStaticMarkup(
+      <KunciDialogView state={{ status: "ready", nomor }} busy={false} error={null}
+        onClose={noop} onRetry={noop} onRotateKey={noop} onRevokeKey={noop} />,
+    );
+    expect(html).toContain("Buat kunci");
+    expect(html).toContain("belum ada");
+    expect(html).not.toContain("Putar ulang");
   });
 });
 

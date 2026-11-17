@@ -66,11 +66,19 @@ export interface KirimGatewayNumber extends KirimDevice {
   webhook_terdaftar?: boolean;
 }
 
+/** What a card shows about a number's key: never the key itself, which is read once in the pop-up. */
+export type KirimGatewayKeySummary = Omit<KirimGatewayKey, "kunci">;
+
+/** One outside number as its own card (owner decision 2026-11-17), beside the application cards. */
+export interface KirimGatewayCardNumber extends KirimDevice {
+  kunci: KirimGatewayKeySummary | null;
+  webhook_terdaftar?: boolean;
+}
+
 export interface KirimGatewayCard {
   nama: string;
   keterangan: string;
-  nomor: Array<KirimDevice & { kunci_aktif: number }>;
-  kunci_aktif: number;
+  nomor: KirimGatewayCardNumber[];
 }
 
 export interface KirimGatewayDetail {
