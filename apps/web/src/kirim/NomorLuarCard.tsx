@@ -69,7 +69,7 @@ export function NomorLuarCard({ nomor, onDevice, onKeys }: {
         </span>
         <div className="min-w-0 flex-1">
           <h2 className="truncate font-display text-lg font-bold text-brand-heading">{nomor.label}</h2>
-          <p className="mt-0.5 text-xs text-muted-foreground">Aplikasi luar <span className="font-mono">{nomor.kode}</span></p>
+          <p className="mt-0.5 text-xs text-muted-foreground">Nomor aplikasi luar · <span className="font-mono">{nomor.kode}</span></p>
         </div>
         <span className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-bold ${deviceStatusTone[nomor.status]}`}>{deviceStatusLabel[nomor.status]}</span>
       </div>
