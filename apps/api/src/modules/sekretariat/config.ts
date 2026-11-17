@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import { parseSekretariatDataKeys } from "./crypto.js";
+
 /** SEK-IMPL-001 §10. Mailbox credentials live only in the production env on Mi8. */
 export interface SekretariatConfig {
   oidc: { clientId: string; clientSecret: string };
@@ -8,6 +10,8 @@ export interface SekretariatConfig {
   maxUploadBytes: number;
   mail: { mode: "log" } | { mode: "imap"; host: string; port: number; user: string; pass: string };
   mailIntervalMs: number;
+  /** SEK-IMPL-002 M-2: keys that seal mailbox passwords. Null = the inbox screen stays unavailable. */
+  dataKeys: Array<{ kid: string; key: Buffer }> | null;
   /** Client ids allowed on /internal/sekretariat (D-3); empty until the HCIS cutover (§14 langkah 9). */
   allowedMachineClients: Set<string>;
   minFreeDiskBytes: number;
@@ -30,6 +34,7 @@ const envSchema = z.object({
   SEKRETARIAT_IMAP_USER: optionalNonempty(z.string().trim().min(1)),
   SEKRETARIAT_IMAP_PASS: optionalNonempty(z.string().min(1)),
   SEKRETARIAT_MAIL_INTERVAL_MS: z.coerce.number().int().min(30_000).max(3_600_000).default(300_000),
+  SEKRETARIAT_DATA_KEYS: z.string().default(""),
   SEKRETARIAT_ALLOWED_MACHINE_CLIENTS: z.string().default(""),
   SEKRETARIAT_MIN_FREE_DISK_BYTES: z.coerce.number().int().min(0).default(5 * 1024 * 1024 * 1024),
 });
@@ -63,6 +68,7 @@ export function loadSekretariatConfig(env: NodeJS.ProcessEnv = process.env): Sek
     maxUploadBytes: parsed.SEKRETARIAT_MAX_UPLOAD_BYTES,
     mail,
     mailIntervalMs: parsed.SEKRETARIAT_MAIL_INTERVAL_MS,
+    dataKeys: parsed.SEKRETARIAT_DATA_KEYS.trim() === "" ? null : parseSekretariatDataKeys(parsed.SEKRETARIAT_DATA_KEYS),
     allowedMachineClients: new Set(
       parsed.SEKRETARIAT_ALLOWED_MACHINE_CLIENTS.split(",").map((value) => value.trim()).filter((value) => value.length > 0),
     ),

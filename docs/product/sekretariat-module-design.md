@@ -186,7 +186,7 @@ Keputusan owner 2026-11-12: kaidah penomoran mengikuti **Pedoman Tata Naskah Din
 ## 9. Privasi, keamanan, audit
 
 - Surat bisa memuat data pribadi dan urusan sensitif (teguran mitra, perjanjian). Isi dan lampiran hanya terbuka bagi peran pada §7; halaman verifikasi tidak pernah menampilkan isi.
-- Isi email adalah data pihak luar: tunduk pada akses berlapis §7, tidak masuk log, dan kredensial mailbox hanya di secret Mi8. Penarikan IMAP baca-saja — modul tidak menghapus atau memindahkan email di mailbox.
+- Isi email adalah data pihak luar: tunduk pada akses berlapis §7 dan tidak masuk log. Kredensial mailbox disimpan terenkripsi di database sejak SEK-IMPL-002 (sebelumnya hanya di secret Mi8); yang tinggal di env Mi8 hanyalah kunci enkripsinya, dan sandinya tidak pernah dikirim balik ke layar. Penarikan IMAP baca-saja — modul tidak menghapus atau memindahkan email di mailbox.
 - Dokumen legal adalah identitas hukum yayasan; unduhan memakai tautan sementara dan setiap akses tercatat.
 - Audit mencatat alokasi nomor, penerbitan, pembatalan beralasan, register retroaktif, disposisi dan perubahan statusnya, serta unggah/versi dokumen legal.
 - Berkas PDF/JPEG/PNG maksimum 10 MiB; register retroaktif dan pembatalan butuh alasan tertulis.

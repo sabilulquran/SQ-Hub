@@ -56,3 +56,24 @@ export class ImapMailFetcher implements MailFetcher {
     }
   }
 }
+
+/**
+ * SEK-IMPL-002 M-4: prove the credentials before the row is saved. Connects, opens INBOX
+ * read-only and logs out — it reads no message and changes nothing in the mailbox.
+ */
+export async function probeImapMailbox(settings: { host: string; port: number; user: string; pass: string }): Promise<void> {
+  const { ImapFlow } = await import("imapflow");
+  const client = new ImapFlow({
+    host: settings.host,
+    port: settings.port,
+    secure: settings.port === 993,
+    auth: { user: settings.user, pass: settings.pass },
+    logger: false,
+  });
+  await client.connect();
+  try {
+    await client.mailboxOpen("INBOX", { readOnly: true });
+  } finally {
+    await client.logout().catch(() => undefined);
+  }
+}

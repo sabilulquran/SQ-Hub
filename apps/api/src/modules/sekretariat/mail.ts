@@ -46,6 +46,8 @@ export interface IngestResult {
   dilewati: number;
   /** True when the fetcher itself failed; the caller backs off (§7 nomor 5). */
   gagal: boolean;
+  /** The fetcher's error, so the caller can classify it per mailbox (SEK-IMPL-002 M-8). */
+  error?: unknown;
 }
 
 export class SekretariatMail {
@@ -63,39 +65,54 @@ export class SekretariatMail {
    * sekretariat_mail_state for the admin screen and never stop the module (§7 nomor 5).
    */
   async runOnce(): Promise<IngestResult> {
-    const state = await this.readState();
+    return this.runFor(this.fetcher, await this.kotakYayasanId(), this.fetcher.mailbox);
+  }
+
+  /**
+   * SEK-IMPL-002 M-6: one round for one mailbox, into the inbox that mailbox feeds. The env path
+   * calls it through runOnce with the foundation inbox; the screen-configured path calls it once
+   * per active row, so one failing mailbox cannot stop the others (M-7).
+   */
+  async runFor(fetcher: MailFetcher, kotakId: string, mailboxKey: string, mailboxId?: string): Promise<IngestResult> {
+    const state = await this.readState(mailboxKey);
     let fetched: { uidValidity: string; mails: FetchedMail[] };
     try {
-      fetched = await this.fetcher.fetchNew(state, 50);
+      fetched = await fetcher.fetchNew(state, 50);
     } catch (error) {
       await this.pool.query(
-        `INSERT INTO sekretariat_mail_state (mailbox, galat_terakhir, galat_pada) VALUES ($1, $2, now())
-         ON CONFLICT (mailbox) DO UPDATE SET galat_terakhir = EXCLUDED.galat_terakhir, galat_pada = now()`,
-        [this.fetcher.mailbox, error instanceof Error ? error.name : "unknown"],
+        `INSERT INTO sekretariat_mail_state (mailbox, galat_terakhir, galat_pada, mailbox_id) VALUES ($1, $2, now(), $3)
+         ON CONFLICT (mailbox) DO UPDATE SET galat_terakhir = EXCLUDED.galat_terakhir, galat_pada = now(),
+           mailbox_id = COALESCE(EXCLUDED.mailbox_id, sekretariat_mail_state.mailbox_id)`,
+        [mailboxKey, error instanceof Error ? error.name : "unknown", mailboxId ?? null],
       );
       this.log({ event: "sekretariat.mail.failed", errorType: error instanceof Error ? error.name : "unknown" }, "sekretariat mail round failed");
-      return { baru: 0, dilewati: 0, gagal: true };
+      return { baru: 0, dilewati: 0, gagal: true, error };
     }
     const generationChanged = state.uidValidity !== null && state.uidValidity !== fetched.uidValidity;
-    const kotakYayasan = (await this.pool.query<{ id: string }>("SELECT id FROM sekretariat_kotak WHERE jenis = 'yayasan'")).rows[0];
-    if (!kotakYayasan) throw new Error("kotak yayasan belum ada; jalankan migration 0020");
     let baru = 0;
     let dilewati = 0;
     for (const mail of fetched.mails) {
-      const inserted = await this.ingestOne(kotakYayasan.id, fetched.uidValidity, mail);
+      const inserted = await this.ingestOne(kotakId, fetched.uidValidity, mail);
       if (inserted) baru += 1;
       else dilewati += 1;
     }
     await this.pool.query(
-      `INSERT INTO sekretariat_mail_state (mailbox, uidvalidity, uid_terakhir, terakhir_tarik_pada, galat_terakhir, galat_pada)
-       VALUES ($1, $2, $3, now(), NULL, NULL)
+      `INSERT INTO sekretariat_mail_state (mailbox, uidvalidity, uid_terakhir, terakhir_tarik_pada, galat_terakhir, galat_pada, mailbox_id)
+       VALUES ($1, $2, $3, now(), NULL, NULL, $4)
        ON CONFLICT (mailbox) DO UPDATE SET uidvalidity = EXCLUDED.uidvalidity,
          uid_terakhir = CASE WHEN sekretariat_mail_state.uidvalidity IS DISTINCT FROM EXCLUDED.uidvalidity
                              THEN EXCLUDED.uid_terakhir ELSE GREATEST(sekretariat_mail_state.uid_terakhir, EXCLUDED.uid_terakhir) END,
-         terakhir_tarik_pada = now(), galat_terakhir = NULL, galat_pada = NULL`,
-      [this.fetcher.mailbox, fetched.uidValidity, fetched.mails.reduce((max, mail) => Math.max(max, mail.uid), generationChanged ? 0 : state.lastUid)],
+         terakhir_tarik_pada = now(), galat_terakhir = NULL, galat_pada = NULL,
+         mailbox_id = COALESCE(EXCLUDED.mailbox_id, sekretariat_mail_state.mailbox_id)`,
+      [mailboxKey, fetched.uidValidity, fetched.mails.reduce((max, mail) => Math.max(max, mail.uid), generationChanged ? 0 : state.lastUid), mailboxId ?? null],
     );
     return { baru, dilewati, gagal: false };
+  }
+
+  private async kotakYayasanId(): Promise<string> {
+    const kotak = (await this.pool.query<{ id: string }>("SELECT id FROM sekretariat_kotak WHERE jenis = 'yayasan'")).rows[0];
+    if (!kotak) throw new Error("kotak yayasan belum ada; jalankan migration 0020");
+    return kotak.id;
   }
 
   private async ingestOne(kotakId: string, uidValidity: string, mail: FetchedMail): Promise<boolean> {
@@ -166,10 +183,10 @@ export class SekretariatMail {
     }
   }
 
-  async readState(): Promise<MailState> {
+  async readState(mailboxKey: string = this.fetcher.mailbox): Promise<MailState> {
     const row = (await this.pool.query<{ uidvalidity: string | null; uid_terakhir: string }>(
       "SELECT uidvalidity, uid_terakhir FROM sekretariat_mail_state WHERE mailbox = $1",
-      [this.fetcher.mailbox],
+      [mailboxKey],
     )).rows[0];
     return { uidValidity: row?.uidvalidity ?? null, lastUid: row ? Number(row.uid_terakhir) : 0 };
   }

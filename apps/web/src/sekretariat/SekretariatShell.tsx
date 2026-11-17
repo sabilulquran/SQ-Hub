@@ -15,7 +15,7 @@ type NavKey = "ringkasan" | "buku" | "pengaturan";
 
 function navKey(route: SekretariatRoute): NavKey | null {
   if (route.name === "buku") return "buku";
-  if (route.name === "pengaturan") return "pengaturan";
+  if (route.name === "pengaturan" || route.name === "pengaturan-kotak-masuk") return "pengaturan";
   if (route.name === "not-found") return null;
   return "ringkasan";
 }

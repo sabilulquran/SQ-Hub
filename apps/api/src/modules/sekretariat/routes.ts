@@ -16,6 +16,7 @@ import { batalSchema, nomorAwalSchema, registerQuerySchema, type SekretariatBuku
 import { SekretariatError } from "./db.js";
 import { disposisiSchema, fisikSchema, selesaiSchema, type SekretariatKotak } from "./kotak.js";
 import type { SekretariatMail } from "./mail.js";
+import { mailboxSchema, statusSchema, type SekretariatMailbox } from "./mailbox.js";
 import {
   cabutSchema, panitiaSchema, pemegangSchema, penerbitPatchSchema, petugasSchema, type SekretariatPengaturan,
 } from "./pengaturan.js";
@@ -39,6 +40,7 @@ export interface SekretariatRouteDeps {
   berkas: SekretariatBerkas;
   pengaturan: SekretariatPengaturan;
   mail: SekretariatMail;
+  mailbox: SekretariatMailbox;
   publicOrigin: string;
   launcher?: { applications: HubWorkspaceApplicationSource; hubOrigin?: string };
   log?: (entry: Record<string, unknown>, message: string) => void;
@@ -296,7 +298,7 @@ export function registerSekretariatRoutes(app: FastifyInstance, deps: Sekretaria
     });
   }
 
-  function adminWrite<T>(method: "POST" | "PATCH" | "DELETE", path: string, handler: (request: FastifyRequest, actor: string) => Promise<T>, status = 200) {
+  function adminWrite<T>(method: "POST" | "PATCH" | "PUT" | "DELETE", path: string, handler: (request: FastifyRequest, actor: string) => Promise<T>, status = 200) {
     app.route({
       method,
       url: `${SEKRETARIAT_ADMIN_PREFIX}${path}`,
@@ -324,6 +326,21 @@ export function registerSekretariatRoutes(app: FastifyInstance, deps: Sekretaria
   adminGet("/jenis", () => deps.buku.jenisList(false));
   adminWrite("POST", "/nomor-awal", (request, actor) => deps.buku.raiseCounter(actor, nomorAwalSchema.parse(body(request))));
   adminGet("/mail", () => deps.mail.status());
+
+  // ---- SEK-IMPL-002: mailboxes connected from the screen ----
+  adminGet("/mailbox", async () => ({
+    tersedia: deps.mailbox.tersedia,
+    mailbox: await deps.mailbox.daftar(),
+    kotak: await deps.mailbox.kotakPilihan(),
+  }));
+  adminWrite("POST", "/mailbox", (request, actor) => deps.mailbox.simpan(mailboxSchema.parse(body(request)), actor), 201);
+  adminWrite("PUT", "/mailbox/:id", (request, actor) => deps.mailbox.simpan(mailboxSchema.parse(body(request)), actor, params(request).id!));
+  adminWrite("POST", "/mailbox/:id/status", (request, actor) =>
+    deps.mailbox.ubahStatus(params(request).id!, statusSchema.parse(body(request)).status, actor));
+  adminWrite("DELETE", "/mailbox/:id", async (request, actor) => {
+    await deps.mailbox.hapus(params(request).id!, actor);
+    return null;
+  }, 204);
 
   app.get(`${SEKRETARIAT_ADMIN_PREFIX}/register/export`, async (request, reply) => {
     try {
