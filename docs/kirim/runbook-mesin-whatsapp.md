@@ -81,12 +81,27 @@ Kalau nomor tidak mau tersambung di mesin baru, ikuti §4 langkah 4 (pindai QR).
 
 ---
 
+## 5a. Kalau sebuah nomor minta dipindai QR setelah pindah mesin
+
+Ini **bisa terjadi** dan bukan tanda ada yang rusak. Memindahkan nomor berusaha membawa sesi WhatsApp-nya ikut pindah, tetapi WhatsApp kadang mencabut tautan perangkatnya saat sambungan berpindah. Terjadi pada nomor HCIS 2026-11-17.
+
+Yang perlu diketahui:
+
+- **Tidak ada cadangan yang bisa menolong.** Cadangan melindungi dari berkas yang hilang, bukan dari tautan yang dicabut WhatsApp. Kalau WhatsApp bilang perangkatnya sudah keluar, satu-satunya jalan adalah memindai QR lagi.
+- **Tidak ada pesan yang hilang.** Pesan keluar menunggu di antrean sampai nomor tersambung lagi, lalu dikirim. Pesan masuk tetap di WhatsApp dan diambil saat sesi hidup.
+- **Riwayat percakapan tidak hilang.** Riwayat ada di basis data Kirim, bukan di sesi WhatsApp.
+- Karena itu: **pindahkan nomor hanya ketika ada yang siap memindai QR**, terutama nomor HCIS yang dipakai HCIS, Karir, Keluarga, dan SPMB sekaligus.
+
+Caranya: kartu nomor itu, lalu **Pasang**, lalu pindai kode QR dari WhatsApp di HP nomor tersebut (Setelan, Perangkat tertaut, Tautkan perangkat).
+
 ## 6. Yang tidak boleh dilakukan
 
 - **Jangan menghapus folder `/srv/sq-hub/shared/kirim-wa/auth/`** atau isinya. Di situlah kunci sesi tiap nomor. Menghapusnya berarti setiap nomor harus dipindai QR ulang.
 - **Jangan menyalakan JalurPesan kembali untuk nomor yang sudah pindah.** Dua mesin memegang satu sesi akan memutus dan bisa merusak sesinya.
 - **Jangan menekan Putuskan atau Reset** hanya untuk "menyegarkan" sebuah nomor; keduanya membuang sesi.
 - **Jangan merilis pada jam 19 UTC** (jam 02.00 WIB): itu jam backup.
+- **Jangan mengirim pesan uji ke nomor itu sendiri lewat Kirim.** Chat ke diri sendiri tidak pernah mendapat tanda terima, jadi pesannya menggantung di antrean dan menahan penggantian mesin. Kirim pesan uji ke nomor yayasan yang lain.
+- **Jangan dua orang menyentuh layar Nomor bersamaan**, dan jangan menekan "Sambungkan ulang" ketika ada yang sedang memindahkan nomor. Dua jalur yang berjalan bersamaan membuat nomor ganda, dan itu yang dulu membuat kotak masuk SPMB tuli.
 
 ---
 

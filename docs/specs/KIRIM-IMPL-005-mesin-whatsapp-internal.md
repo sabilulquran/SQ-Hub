@@ -351,6 +351,52 @@ Hasilnya: WhatsApp menolak sesi itu dengan `logged_out` (401) — kredensialnya 
 
 **Yang diverifikasi di production, bukan diasumsikan.** Mesin yang dibangun dari bundel rilis mencapai QR WhatsApp sungguhan sebelum menyentuh nomor mana pun; mesin dimatikan paksa dan pengawas Mi8 menyalakannya ulang dalam ±10 detik, lalu mesin **menyambungkan ulang sesi `luar-2` dari disk sendiri** (`restored: 1`), dengan port terbuka lebih dulu (§4.4); ulangan kirim dengan kunci idempotensi yang sama mengembalikan id pesan yang sama tanpa mengirim dua kali; semua kesehatan 200 (3301–3306, 9000, 3310).
 
-## 17. Pertanyaan terbuka
+## 17. Pelajaran cutover 2026-11-17 sore: menyalin auth state **tidak menjamin** bebas pindai QR
+
+Owner menolak gate waktu 24 jam ("lama banget") dan menggantinya dengan **gate bukti**: buktikan jalur mundurnya nyata, lalu jalan. Hasil pembuktian dan kejadian sesudahnya mengubah dua hal penting di §9.
+
+### 17.1 Jalur mundur terbukti nyata, untuk sesi yang mau
+
+Nomor `luar-2` dibawa bolak-balik: `wa` ke `jalurpesan` lalu kembali ke `wa`. Tiap arah tersambung kembali dalam 3 detik **tanpa pindai QR**, dan pada tiap mesin dibuktikan dua arah: keluar `terkirim`/`dibaca` dan masuk `diterima`. Jadi perpindahan per nomor memang reversibel.
+
+**Koreksi prosedur §9.1.** Salinan auth di mesin asal menjadi **basi** begitu nomor jalan di mesin tujuan: sesinya maju di sana. Mundur bukan sekadar menyalakan lagi yang lama. State yang **sekarang** harus disalin balik lebih dulu, lalu mesin lama di-un-park dan di-restart. Tanpa itu, yang dinyalakan adalah sesi basi.
+
+### 17.2 Tapi `hcis` justru di-logout WhatsApp
+
+Prosedur yang sama persis dijalankan pada `hcis` (diparkir, JalurPesan di-restart, 13.229 berkas auth disalin, manifest sha256 cocok). Begitu mesin baru menyambung, WhatsApp menjawab **`logged_out` (401)**. Cadangan dikembalikan ke JalurPesan dan diverifikasi utuh terhadap manifestnya, dan WhatsApp **menolaknya juga** (401 lagi di JalurPesan). Pencabutan terjadi di sisi WhatsApp, bukan di berkas.
+
+**Karena itu §9 diubah:**
+
+- Menyalin auth state **berpeluang** menghemat pindai QR, **tidak menjaminnya**. Berhasil pada `luar-2` (dua kali), gagal pada `hcis`.
+- **Cadangan tetap diambil**, tetapi ia melindungi dari kehilangan berkas, **bukan** dari pencabutan oleh WhatsApp. Tidak ada cadangan yang bisa menghidupkan tautan perangkat yang sudah dicabut.
+- **Jadwalkan cutover saat ada yang bisa memindai QR.** Untuk nomor yang memikul banyak kartu seperti `hcis` (HCIS, Karir, Keluarga, SPMB), itu syarat, bukan kehati-hatian berlebih.
+- Pesan tidak hilang saat nomor menunggu pindai: pengirim Kirim menuntut status `tersambung`, jadi antrean menahan, tidak menggagalkan.
+
+### 17.3 Dua jebakan operasional
+
+- **Jangan memakai pesan uji ke nomor itu sendiri lewat Kirim.** Chat ke diri sendiri tidak pernah mendapat tanda terima, sehingga baris outbox-nya menggantung di `diserahkan` dan **menahan penjaga ganti mesin** (`handover_pending`) sampai 24 jam. Kirim pesan uji antar dua nomor yayasan.
+- **Satu operator pada satu waktu.** Saat cutover `hcis` berjalan, pemegang `kirim_admin` menekan "Sambungkan ulang" di layar Kirim. Itu membuat tenant baru (`hcis-2`, `luar-2-2`) di samping tenant yang sedang dipindah agent. Hasil akhirnya justru menolong, karena nomor dipasangkan ulang dan hidup kembali di mesin baru, tetapi bentuknya persis bentuk duplikat yang dulu membuat kotak masuk SPMB tuli. Sepakati dulu siapa yang memegang layar selama cutover.
+
+### 17.4 Keadaan akhir 2026-11-17 15:15 WIB
+
+| Nomor | Mesin | Tenant | Status |
+| --- | --- | --- | --- |
+| `hcis` | `wa` | `hcis-2` | tersambung (dipasangkan ulang lewat QR) |
+| `luar-2` | `wa` | `luar-2-2` | tersambung |
+| `spmb` | `wa` | `spmb` | terputus, menunggu pindai QR |
+| `luar` | — | — | nonaktif (slot kosong, kunci sudah dicabut) |
+
+JalurPesan **tidak lagi memegang sesi WhatsApp apa pun**, tetapi tetap dibiarkan hidup sebagai jalur mundur sampai owner memutuskan mematikannya.
+
+| kB | Awal hari | Sekarang |
+| --- | --- | --- |
+| MemAvailable | 961.580 | 1.004.028 |
+| JalurPesan API | 169.520 | 121.516 |
+| JalurPesan web | 53.276 | 58.068 |
+| `kirim-wa` | 89.944 (0 sesi) | 155.548 (2 sesi) |
+
+Kotak masuk `hcis` dibuktikan **menerima** di mesin baru (`masuk|wa|diterima`), bukan hanya mengirim. Itu pelajaran `spmb-2`.
+
+## 18. Pertanyaan terbuka
 
 Tidak ada yang memblokir. Keputusan bisnis yang belum tertulis diambil sebagai `DRAFT` dan dicatat di §2, §4.3, §7, §11.
