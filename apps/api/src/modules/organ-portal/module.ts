@@ -14,6 +14,11 @@ import { PgHubAuthRepository } from "../hub-auth/repository.js";
 import { HubAuthService, type HubAuthRuntime } from "../hub-auth/service.js";
 import { HubTokenVault } from "../hub-auth/token-vault.js";
 import { PgHubWorkspaceRepository, type HubWorkspaceApplicationSource } from "../hub-auth/workspace-repository.js";
+import {
+  OrganDecisionService,
+  PgOrganDecisionApplicationSource,
+  PgOrganDecisionEventStore,
+} from "../organ-decisions/service.js";
 import type { Organ } from "../organ-membership/repository.js";
 import type { OrganPortalConfig } from "./config.js";
 import {
@@ -25,6 +30,8 @@ import {
 
 export interface OrganPortalModule {
   governance: GovernanceService;
+  /** R2: undefined while PORTAL_ORGAN_DECISIONS_ENABLED is off. */
+  decisions: OrganDecisionService | undefined;
   register(app: FastifyInstance): void;
 }
 
@@ -88,11 +95,34 @@ export function createOrganPortalModule(input: {
 
   const gate = { access: input.access, memberships: input.memberships, applicationKey: config.applicationKey };
 
+  // §4.2: deciding gets its own service, its own audience per application and its own
+  // exchange per action. It shares nothing with the summary fetch above but the client.
+  const decisions = config.decisionsEnabled
+    ? new OrganDecisionService({
+      applications: new PgOrganDecisionApplicationSource(pool),
+      userAccessToken: async (sessionToken) => (await auth.getAccountAccess(sessionToken)).accessToken,
+      exchanger: input.exchanger ?? new KeycloakTokenExchanger({
+        issuer: input.keycloakIssuer,
+        clientId: config.oidc.clientId,
+        clientSecret: config.oidc.clientSecret,
+      }),
+      events: new PgOrganDecisionEventStore(pool),
+      ...(input.fetch ? { fetch: input.fetch } : {}),
+    })
+    : undefined;
+
   return {
     governance,
+    decisions,
     register(app) {
       registerOrganAuthRoutes(app, { auth, publicOrigin: config.publicOrigin, gate });
-      registerOrganRoutes(app, { auth, governance, publicOrigin: config.publicOrigin, gate });
+      registerOrganRoutes(app, {
+        auth,
+        governance,
+        publicOrigin: config.publicOrigin,
+        gate,
+        ...(decisions ? { decisions } : {}),
+      });
     },
   };
 }

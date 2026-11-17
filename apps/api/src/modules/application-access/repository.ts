@@ -23,6 +23,8 @@ interface ApplicationRow {
   governanceSummaryPath: string | null;
   governanceAudience: string | null;
   governanceOrder: number;
+  decisionPath: string | null;
+  decisionAudience: string | null;
   kind: ApplicationKind;
   whatsappCapable: boolean;
   machineClientId: string | null;
@@ -48,6 +50,9 @@ export interface ApplicationUpsertInput {
     summaryPath: string | null;
     audience: string | null;
     order: number;
+    /** ORGAN-IMPL-001 §4.2. Undefined leaves the stored decision contract untouched. */
+    decisionPath?: string | null | undefined;
+    decisionAudience?: string | null | undefined;
   };
   /** Omitted: an existing application keeps its kind; a new one is `modul`. */
   kind?: ApplicationKind;
@@ -68,6 +73,8 @@ const APPLICATION_COLUMNS = `
   governance_summary_path AS "governanceSummaryPath",
   governance_audience AS "governanceAudience",
   governance_order AS "governanceOrder",
+  decision_path AS "decisionPath",
+  decision_audience AS "decisionAudience",
   kind,
   whatsapp_capable AS "whatsappCapable",
   machine_client_id AS "machineClientId"
@@ -135,8 +142,9 @@ export class PgApplicationAccessRepository implements ApplicationAccessRepositor
           INSERT INTO applications (
             id, application_key, name, canonical_url, status,
             governance_summary_path, governance_audience, governance_order,
-            kind, whatsapp_capable, machine_client_id
-          ) VALUES ($1, $2, $3, $4, $5, $6, $7, COALESCE($8, 0), COALESCE($10, 'modul'), COALESCE($12, false), $13)
+            kind, whatsapp_capable, machine_client_id,
+            decision_path, decision_audience
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, COALESCE($8, 0), COALESCE($10, 'modul'), COALESCE($12, false), $13, $14, $15)
           ON CONFLICT (application_key) DO UPDATE SET
             name = EXCLUDED.name,
             canonical_url = EXCLUDED.canonical_url,
@@ -144,6 +152,8 @@ export class PgApplicationAccessRepository implements ApplicationAccessRepositor
             governance_summary_path = CASE WHEN $9 THEN EXCLUDED.governance_summary_path ELSE applications.governance_summary_path END,
             governance_audience = CASE WHEN $9 THEN EXCLUDED.governance_audience ELSE applications.governance_audience END,
             governance_order = CASE WHEN $9 THEN EXCLUDED.governance_order ELSE applications.governance_order END,
+            decision_path = CASE WHEN $16 THEN EXCLUDED.decision_path ELSE applications.decision_path END,
+            decision_audience = CASE WHEN $16 THEN EXCLUDED.decision_audience ELSE applications.decision_audience END,
             kind = COALESCE($10, applications.kind),
             whatsapp_capable = CASE WHEN $11 THEN EXCLUDED.whatsapp_capable ELSE applications.whatsapp_capable END,
             machine_client_id = CASE WHEN $11 THEN EXCLUDED.machine_client_id ELSE applications.machine_client_id END,
@@ -164,6 +174,9 @@ export class PgApplicationAccessRepository implements ApplicationAccessRepositor
           Boolean(input.whatsapp),
           input.whatsapp?.capable ?? null,
           input.whatsapp?.machineClientId ?? null,
+          input.governance?.decisionPath ?? null,
+          input.governance?.decisionAudience ?? null,
+          input.governance?.decisionPath !== undefined || input.governance?.decisionAudience !== undefined,
         ],
       );
       const row = result.rows[0];

@@ -36,6 +36,17 @@ export type HubOidcAction =
   | `delete_credential:${string}`
   | ProviderCredentialAction;
 
+/**
+ * ADR-0012 D4: a decision in the Portal Organ Yayasan needs proof of TOTP that is both recent and
+ * carried in the token, not merely a session that began with TOTP some hours ago. The request asks
+ * Keycloak for a Level of Authentication and a maximum age, and the callback checks that what came
+ * back actually meets them.
+ */
+export interface HubOidcStepUp {
+  acr: string;
+  maxAgeSeconds: number;
+}
+
 export interface HubOidcAuthorizationTransaction {
   state: string;
   codeVerifier: string;
@@ -44,6 +55,7 @@ export interface HubOidcAuthorizationTransaction {
   replaceSessionTokenHash?: string;
   expectedIssuer?: string;
   expectedSubject?: string;
+  stepUp?: HubOidcStepUp;
 }
 
 export interface HubOidcIdentity {
@@ -58,10 +70,14 @@ export interface HubOidcIdentity {
 export interface HubOidcCompletion {
   identity: HubOidcIdentity;
   refreshToken: string | null;
+  /** The Level of Authentication the ID token reports, when it reports one. */
+  acr: string | null;
+  /** `auth_time` in seconds, the moment the realm says the person actually authenticated. */
+  authTime: number | null;
 }
 
 export interface HubOidcProviderLike {
-  createAuthorizationRequest(action?: HubOidcAction): Promise<{
+  createAuthorizationRequest(action?: HubOidcAction, stepUp?: HubOidcStepUp): Promise<{
     url: URL;
     transaction: HubOidcAuthorizationTransaction;
   }>;
@@ -84,7 +100,7 @@ export class HubOidcProvider implements HubOidcProviderLike {
     this.issuer = options.issuer.replace(/\/$/, "");
   }
 
-  async createAuthorizationRequest(action?: HubOidcAction): Promise<{
+  async createAuthorizationRequest(action?: HubOidcAction, stepUp?: HubOidcStepUp): Promise<{
     url: URL;
     transaction: HubOidcAuthorizationTransaction;
   }> {
@@ -102,11 +118,15 @@ export class HubOidcProvider implements HubOidcProviderLike {
       state,
       nonce,
       ...(action ? { kc_action: action } : {}),
+      // `max_age` makes Keycloak re-authenticate when the session is older than the window,
+      // and `acr_values` asks for the level TOTP reaches. Both are requests; the callback is
+      // where they are enforced, because a realm is free to answer with less.
+      ...(stepUp ? { acr_values: stepUp.acr, max_age: String(stepUp.maxAgeSeconds) } : {}),
     });
 
     return {
       url,
-      transaction: { state, codeVerifier, nonce },
+      transaction: { state, codeVerifier, nonce, ...(stepUp ? { stepUp } : {}) },
     };
   }
 
@@ -120,6 +140,9 @@ export class HubOidcProvider implements HubOidcProviderLike {
       expectedState: transaction.state,
       expectedNonce: transaction.nonce,
       idTokenExpected: true,
+      // openid-client checks `auth_time` against this itself and refuses a stale one, so a
+      // realm that ignores max_age cannot pass a long-standing session off as a fresh login.
+      ...(transaction.stepUp ? { maxAge: transaction.stepUp.maxAgeSeconds } : {}),
     });
     const claims = tokens.claims();
 
@@ -154,6 +177,8 @@ export class HubOidcProvider implements HubOidcProviderLike {
         email,
         emailVerified,
       },
+      acr: typeof claimValues.acr === "string" ? claimValues.acr : null,
+      authTime: typeof claimValues.auth_time === "number" ? claimValues.auth_time : null,
       refreshToken:
         typeof tokens.refresh_token === "string" && tokens.refresh_token
           ? tokens.refresh_token

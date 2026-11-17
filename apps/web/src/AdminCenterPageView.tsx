@@ -67,6 +67,8 @@ const emptyApplication: AdminApplication = {
   governanceSummaryPath: null,
   governanceAudience: null,
   governanceOrder: 0,
+  decisionPath: null,
+  decisionAudience: null,
   kind: "modul",
   whatsappCapable: false,
   machineClientId: null,
@@ -228,6 +230,22 @@ export function AdminCenterPage({
       setApplicationMessage("Path ringkasan dan audiens token harus diisi bersama, atau dikosongkan bersama.");
       return;
     }
+    // ORGAN-IMPL-001 §4.2: where the Portal Organ Yayasan sends a decision, under an audience
+    // of its own. A read token must never be able to decide, so the two audiences cannot match.
+    const decisionPath = applicationForm.decisionPath?.trim() || null;
+    const decisionAudience = applicationForm.decisionAudience?.trim() || null;
+    if (decisionPath && (!decisionPath.startsWith("/") || decisionPath.startsWith("//"))) {
+      setApplicationMessage("Path keputusan harus diawali satu garis miring, misalnya /governance/decisions. URL lengkap tidak diterima.");
+      return;
+    }
+    if (Boolean(decisionPath) !== Boolean(decisionAudience)) {
+      setApplicationMessage("Path keputusan dan audiens keputusan harus diisi bersama, atau dikosongkan bersama.");
+      return;
+    }
+    if (decisionAudience && decisionAudience === governanceAudience) {
+      setApplicationMessage("Audiens keputusan harus berbeda dari audiens ringkasan, agar token baca tidak bisa memutuskan.");
+      return;
+    }
     // ADR-0011 amendment 2026-11-17: an outside application uses an API key from the Aplikasi luar card in Kirim.
     const luar = applicationForm.kind === "luar";
     const machineClientId = luar ? null : applicationForm.machineClientId?.trim() || null;
@@ -253,6 +271,8 @@ export function AdminCenterPage({
             status: applicationForm.status,
             governanceSummaryPath,
             governanceAudience,
+            decisionPath,
+            decisionAudience,
             governanceOrder: Number.isFinite(applicationForm.governanceOrder) ? Math.trunc(applicationForm.governanceOrder ?? 0) : 0,
             kind: applicationForm.kind ?? "modul",
             whatsappCapable,
@@ -480,6 +500,8 @@ export function AdminCenterPage({
                       )}
                       <Field label="Path ringkasan tata kelola (opsional)" helper="Path pada origin URL kanonis, misalnya /api/governance/summary. Kosongkan bila aplikasi tidak menerbitkan ringkasan untuk Ringkasan Yayasan."><input value={applicationForm.governanceSummaryPath ?? ""} onChange={(event) => setApplicationForm((current) => ({ ...current, governanceSummaryPath: event.target.value }))} placeholder="/api/governance/summary" className="sq-admin-input" /></Field>
                       <Field label="Audiens token" helper="Client ID Keycloak aplikasi tersebut untuk token exchange. Wajib bila path diisi."><input value={applicationForm.governanceAudience ?? ""} onChange={(event) => setApplicationForm((current) => ({ ...current, governanceAudience: event.target.value }))} placeholder="contoh: hcis-governance" className="sq-admin-input" /></Field>
+                      <Field label="Path keputusan (opsional)" helper="Path tempat aplikasi menerima keputusan dari Portal Organ Yayasan, misalnya /governance/decisions. Kosongkan bila aplikasi tidak menerima keputusan dari portal."><input value={applicationForm.decisionPath ?? ""} onChange={(event) => setApplicationForm((current) => ({ ...current, decisionPath: event.target.value }))} placeholder="/governance/decisions" className="sq-admin-input" /></Field>
+                      <Field label="Audiens keputusan" helper="Client ID Keycloak khusus keputusan, berbeda dari audiens ringkasan. Wajib bila path keputusan diisi."><input value={applicationForm.decisionAudience ?? ""} onChange={(event) => setApplicationForm((current) => ({ ...current, decisionAudience: event.target.value }))} placeholder="contoh: hcis-organ-decision" className="sq-admin-input" /></Field>
                       <Field label="Urutan kartu" helper="Angka kecil tampil lebih dulu; urutan sama diurutkan menurut nama."><input type="number" value={applicationForm.governanceOrder ?? 0} onChange={(event) => setApplicationForm((current) => ({ ...current, governanceOrder: Number(event.target.value) }))} className="sq-admin-input" /></Field>
                     </div>
                     {applicationMessage ? <InlineMessage>{applicationMessage}</InlineMessage> : null}

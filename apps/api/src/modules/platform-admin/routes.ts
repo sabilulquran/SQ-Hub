@@ -34,6 +34,9 @@ const applicationBodySchema = z
     governanceSummaryPath: z.string().trim().max(512).nullable().optional(),
     governanceAudience: z.string().trim().max(255).nullable().optional(),
     governanceOrder: z.number().int().optional(),
+    // ORGAN-IMPL-001 §4.2. Sent together, like the summary pair above.
+    decisionPath: z.string().trim().max(512).nullable().optional(),
+    decisionAudience: z.string().trim().max(255).nullable().optional(),
     // ADR-0011 amendment 2026-11-16: `modul` or `luar`; omitted keeps the stored kind.
     kind: z.enum(["modul", "luar"]).optional(),
     // KIRIM-IMPL-003 K-2. Sent together; omitted fields keep the stored registration.
@@ -126,6 +129,7 @@ export function registerPlatformAdminRoutes(
         body.governanceSummaryPath !== undefined ||
         body.governanceAudience !== undefined ||
         body.governanceOrder !== undefined;
+      const decisionProvided = body.decisionPath !== undefined || body.decisionAudience !== undefined;
       // Both fields travel together: the GUI always sends both, and a client id alone must not switch WhatsApp off.
       const whatsappProvided = body.whatsappCapable !== undefined;
       const application = await input.applicationRegistry.upsertApplication({
@@ -139,6 +143,9 @@ export function registerPlatformAdminRoutes(
                 summaryPath: body.governanceSummaryPath || null,
                 audience: body.governanceAudience || null,
                 order: body.governanceOrder ?? 0,
+                ...(decisionProvided
+                  ? { decisionPath: body.decisionPath || null, decisionAudience: body.decisionAudience || null }
+                  : {}),
               },
             }
           : {}),
@@ -321,6 +328,8 @@ function toBrowserApplication(application: {
   governanceSummaryPath?: string | null;
   governanceAudience?: string | null;
   governanceOrder?: number;
+  decisionPath?: string | null;
+  decisionAudience?: string | null;
   kind?: "modul" | "luar";
   whatsappCapable?: boolean;
   machineClientId?: string | null;
@@ -332,6 +341,8 @@ function toBrowserApplication(application: {
     status: application.status,
     governanceSummaryPath: application.governanceSummaryPath ?? null,
     governanceAudience: application.governanceAudience ?? null,
+    decisionPath: application.decisionPath ?? null,
+    decisionAudience: application.decisionAudience ?? null,
     governanceOrder: application.governanceOrder ?? 0,
     kind: application.kind ?? "modul",
     whatsappCapable: application.whatsappCapable ?? false,
