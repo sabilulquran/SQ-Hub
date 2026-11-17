@@ -6,7 +6,7 @@ import { z } from "zod";
 import { toBrowserDevice, type AdminActor } from "./admin.js";
 import { columnAad, type KirimCrypto } from "./crypto.js";
 import { KirimApiError } from "./errors.js";
-import { wibDayStart } from "./policy.js";
+import { GATEWAY_CONSUMER_NAME, wibDayStart } from "./policy.js";
 import { defaultEngine, type KirimProvider, type ProviderName } from "./providers/types.js";
 import {
   dbNow,
@@ -30,7 +30,7 @@ import { isAllowedWebhookUrl } from "./webhooks.js";
  * names an application.
  */
 
-export const GATEWAY_CONSUMER_NAME = "aplikasi-luar";
+export { GATEWAY_CONSUMER_NAME };
 export const API_KEY_PREFIX = "krm_";
 /** DRAFT (owner may rename): what the card says. No application name, no "SQ" abbreviation. */
 export const GATEWAY_CARD_NAME = "Aplikasi luar";
@@ -112,7 +112,7 @@ export class KirimGateway {
   }
 
   /**
-   * The home screen's outside numbers. Owner decision 2026-11-18: each one is a card of its own,
+   * The home screen's outside numbers. Owner decision 2026-11-17: each one is a card of its own,
    * beside the application cards, rather than a list inside a single combined card.
    *
    * The key's **value** is deliberately left out here. The home screen loads on every visit, and a

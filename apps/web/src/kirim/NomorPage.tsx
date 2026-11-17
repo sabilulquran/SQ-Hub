@@ -105,7 +105,7 @@ export function NomorPage({ preview }: { preview?: NomorState }) {
   };
 
   /**
-   * Owner decision 2026-11-18: an outside number is a card of its own, so its actions go straight
+   * Owner decision 2026-11-17: an outside number is a card of its own, so its actions go straight
    * to the page's own dialogs, like any other card's, instead of returning into a combined pop-up.
    */
   const addNumber = () => void run(
@@ -322,7 +322,7 @@ export function NomorView({ state, onOpen, onRetry, onAddNumber, busy = false }:
                 {state.list.modules.map((card) => (
                   <li key={card.application_key}><ModuleCard card={card} onOpen={onOpen} /></li>
                 ))}
-                {/* Owner 2026-11-18: each outside number is its own card, beside the application cards. */}
+                {/* Owner 2026-11-17: each outside number is its own card, beside the application cards. */}
                 {(state.list.gerbang?.nomor ?? []).map((nomor) => (
                   <li key={nomor.kode}>
                     <NomorLuarCard nomor={nomor} onDevice={onOpen} onKeys={() => onOpen({ kind: "kunci", kode: nomor.kode })} />
@@ -598,7 +598,7 @@ function DialogFrame({ title, children }: { title: string; children: ReactNode }
   );
 }
 
-function EditDeviceDialog({ device, consumers, busy, error, onClose, onSave, onGanti }: { device: KirimDevice; consumers: KirimConsumer[]; busy: boolean; error: string | null; onClose: () => void; onSave: (body: Record<string, unknown>) => void; onGanti?: (() => void) | undefined }) {
+export function EditDeviceDialog({ device, consumers, busy, error, onClose, onSave, onGanti }: { device: KirimDevice; consumers: KirimConsumer[]; busy: boolean; error: string | null; onClose: () => void; onSave: (body: Record<string, unknown>) => void; onGanti?: (() => void) | undefined }) {
   const [form, setForm] = useState({
     label: device.label,
     pemilik: device.pemilik,
@@ -609,6 +609,7 @@ function EditDeviceDialog({ device, consumers, busy, error, onClose, onSave, onG
     provider_ref: device.provider_ref ?? "",
     alasan: "",
   });
+  const lockedOwner = device.pemilik === "aplikasi-luar";
   const providerChanged = form.provider !== device.provider || (form.provider === "jalurpesan" && form.provider_ref !== (device.provider_ref ?? ""));
   const rate = Number(form.rate_per_menit);
   const valid = form.label.trim() && form.jam_kirim_mulai < form.jam_kirim_selesai && Number.isInteger(rate) && rate >= 1 && rate <= 60
@@ -619,10 +620,20 @@ function EditDeviceDialog({ device, consumers, busy, error, onClose, onSave, onG
       <GantiHint onGanti={onGanti} />
       <div className="mt-3 space-y-3">
         <Field label="Label"><input className="sq-admin-input" value={form.label} onChange={(event) => setForm({ ...form, label: event.target.value })} /></Field>
+        {/*
+          * An outside number stays with the outside-application consumer. Its API key is bound to
+          * the number, so moving the number to another application would leave that key sending
+          * through someone else's number, and no screen could rotate or revoke it any more. The
+          * API refuses the move too.
+          */}
         <Field label="Aplikasi pemilik">
-          <select className="sq-admin-input" value={form.pemilik} onChange={(event) => setForm({ ...form, pemilik: event.target.value })}>
-            {consumers.map((consumer) => <option key={consumer.nama} value={consumer.nama}>{consumer.nama}</option>)}
-          </select>
+          {lockedOwner ? (
+            <p className="sq-admin-helper">{device.pemilik} · nomor aplikasi luar tetap milik pemakai ini.</p>
+          ) : (
+            <select className="sq-admin-input" value={form.pemilik} onChange={(event) => setForm({ ...form, pemilik: event.target.value })}>
+              {consumers.map((consumer) => <option key={consumer.nama} value={consumer.nama}>{consumer.nama}</option>)}
+            </select>
+          )}
         </Field>
         <div className="grid grid-cols-2 gap-3">
           <Field label="Jam mulai (WIB)"><input className="sq-admin-input" type="time" value={form.jam_kirim_mulai} onChange={(event) => setForm({ ...form, jam_kirim_mulai: event.target.value })} /></Field>
@@ -649,7 +660,7 @@ function EditDeviceDialog({ device, consumers, busy, error, onClose, onSave, onG
         <button type="button" className={secondaryButton} onClick={onClose} disabled={busy}>Batal</button>
         <button type="button" className={primaryButton} disabled={busy || !valid} onClick={() => onSave({
           label: form.label.trim(),
-          pemilik: form.pemilik,
+          ...(lockedOwner ? {} : { pemilik: form.pemilik }),
           jam_kirim_mulai: form.jam_kirim_mulai,
           jam_kirim_selesai: form.jam_kirim_selesai,
           rate_per_menit: rate,

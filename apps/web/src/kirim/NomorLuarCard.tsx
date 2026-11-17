@@ -13,7 +13,7 @@ import { deviceStatusLabel, deviceStatusTone } from "@/kirim/labels";
 import { dangerButton, Field, Panel, primaryButton, secondaryButton, StateCard } from "@/kirim/KirimShell";
 
 /**
- * ADR-0011 amendment 2026-11-17, reshaped by the owner on 2026-11-18.
+ * ADR-0011 amendment 2026-11-17, reshaped by the owner on 2026-11-17.
  *
  * Numbers used by portals and applications outside Sabilul Qur'an Suite used to live as a list
  * inside one combined card. The owner asked for the opposite: one tile to add a number, and then
@@ -59,6 +59,8 @@ export function NomorLuarCard({ nomor, onDevice, onKeys }: {
   onKeys: () => void;
 }) {
   const inactive = nomor.status === "nonaktif";
+  /** A number with no engine behind it has no WhatsApp session to pair, reconnect or drop. */
+  const engineless = nomor.provider === "log";
   return (
     <Panel className="h-full">
       <div className="flex items-start gap-3">
@@ -93,18 +95,19 @@ export function NomorLuarCard({ nomor, onDevice, onKeys }: {
         <p className="mt-2 text-xs text-muted-foreground">Kunci belum pernah dipakai.</p>
       ) : null}
       {nomor.webhook_terdaftar ? <p className="mt-1 text-xs text-muted-foreground">Webhook terdaftar.</p> : null}
+      {engineless && !inactive ? <p className="mt-1 text-xs text-muted-foreground">Belum ada mesin WhatsApp di balik nomor ini; pilih mesinnya lewat Ubah.</p> : null}
 
       <div className="mt-4 flex flex-wrap gap-2">
         {!inactive ? (
           <>
             <button type="button" className={primaryButton} onClick={onKeys}><KeyRound className="h-4 w-4" aria-hidden="true" /> Kunci API</button>
-            {nomor.status === "belum_dipasang" ? (
+            {engineless ? null : nomor.status === "belum_dipasang" ? (
               <button type="button" className={secondaryButton} onClick={() => onDevice({ kind: "pair", device: nomor })}><QrCode className="h-4 w-4" aria-hidden="true" /> Pasang</button>
             ) : (
               <button type="button" className={secondaryButton} onClick={() => onDevice({ kind: "sambung-ulang", device: nomor })}><RotateCcw className="h-4 w-4" aria-hidden="true" /> Sambungkan ulang</button>
             )}
             <button type="button" className={secondaryButton} onClick={() => onDevice({ kind: "edit", device: nomor })}><Settings2 className="h-4 w-4" aria-hidden="true" /> Ubah</button>
-            {nomor.status !== "belum_dipasang" ? (
+            {!engineless && nomor.status !== "belum_dipasang" ? (
               <button type="button" className={dangerButton} onClick={() => onDevice({ kind: "disconnect", device: nomor })}><Unplug className="h-4 w-4" aria-hidden="true" /> Putuskan</button>
             ) : null}
           </>

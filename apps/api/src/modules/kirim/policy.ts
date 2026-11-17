@@ -1,5 +1,11 @@
 /** Pure send-policy rules from KIRIM-IMPL-001 §5.2, §5.3 and §6.2, kept free of I/O for unit tests. */
 
+/**
+ * The consumer that owns every outside-application number. It lives here, not in gateway.ts,
+ * so admin.ts can guard against a number leaving it without importing gateway.ts back.
+ */
+export const GATEWAY_CONSUMER_NAME = "aplikasi-luar";
+
 /** WIB is a fixed UTC+7 offset (§2). */
 const WIB_OFFSET_MS = 7 * 60 * 60 * 1000;
 const DAY_MS = 24 * 60 * 60 * 1000;

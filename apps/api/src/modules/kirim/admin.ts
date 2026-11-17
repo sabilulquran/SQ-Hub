@@ -6,7 +6,7 @@ import { createHash } from "node:crypto";
 
 import { InvalidNumberError, maskPhone, normalizePhone, phoneCanonical, type KirimCrypto } from "./crypto.js";
 import type { KirimIngest } from "./ingest.js";
-import { wibDayStart } from "./policy.js";
+import { GATEWAY_CONSUMER_NAME, wibDayStart } from "./policy.js";
 import { ProviderOperationError, type KirimProvider, type PairingResult, type ProviderName } from "./providers/types.js";
 import {
   conversationContact,
@@ -256,6 +256,13 @@ export class KirimAdminService {
       }
       let ownerId = device.pemilikConsumerId;
       if (input.pemilik && input.pemilik !== device.pemilik) {
+        // An outside-application number may not change hands. Its API key is issued against the
+        // device but authenticated against the gateway consumer, so moving the number elsewhere
+        // would leave the key sending through someone else's number with no screen left that can
+        // rotate or revoke it (the gateway screens only find numbers of their own consumer).
+        if (device.pemilik === GATEWAY_CONSUMER_NAME || input.pemilik === GATEWAY_CONSUMER_NAME) {
+          throw new KirimApiError(409, "pemilik_terkunci", "Nomor aplikasi luar tidak bisa dipindahkan ke aplikasi lain.");
+        }
         const owner = await findConsumerByName(client, input.pemilik);
         if (!owner) throw new KirimApiError(422, "pemilik_unknown", "Pemakai pemilik tidak dikenal.");
         ownerId = owner.id;

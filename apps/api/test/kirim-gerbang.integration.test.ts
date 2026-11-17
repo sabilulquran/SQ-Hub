@@ -56,7 +56,7 @@ const adminAuth: HubAuthRuntime = {
 
 type NumberDetail = { kode: string; status: string; kunci: { awalan: string; kunci: string | null; terakhir_dipakai_at: string | null } | null };
 
-function admin(method: "GET" | "POST", url: string, payload?: unknown) {
+function admin(method: "GET" | "POST" | "PATCH", url: string, payload?: unknown) {
   return app.inject({ method, url: `/admin/kirim${url}`, headers: { cookie: "sq_kirim_session=admin-session", origin: ORIGIN }, ...(payload !== undefined ? { payload: payload as Record<string, unknown> } : {}) });
 }
 
@@ -154,7 +154,7 @@ describe("Kartu Aplikasi luar (admin)", () => {
     expect(second.json()).toMatchObject({ kode: "luar-2", label: "Aplikasi luar 2" });
 
     const card = (await admin("GET", "/modules")).json();
-    // Owner 2026-11-18: each number is its own card, so the list carries that number's own key
+    // Owner 2026-11-17: each number is its own card, so the list carries that number's own key
     // summary -- its prefix and how it is doing, never the key itself.
     expect(card.gerbang.nomor.map((nomor: { kode: string; kunci: { awalan: string } | null }) => [nomor.kode, nomor.kunci?.awalan?.slice(0, 4)])).toEqual([
       ["luar", "krm_"],
@@ -218,6 +218,31 @@ describe("Kartu Aplikasi luar (admin)", () => {
     await pool.query("INSERT INTO kirim_devices (id, kode, label, pemilik_consumer_id, provider, status) VALUES ($1, 'spmb', 'SPMB', $2, 'log', 'tersambung')", [randomUUID(), other]);
     expect((await admin("POST", "/gerbang/nomor/spmb/kunci", {})).statusCode).toBe(404);
     expect((await admin("POST", "/gerbang/nomor/spmb/kunci/cabut", { alasan: "x" })).statusCode).toBe(404);
+  });
+
+  // The number's key is bound to the number but authenticated against the gateway consumer, so a
+  // number that leaves the card would keep sending while no screen could rotate or revoke its key.
+  it("keeps an outside number with its own consumer, in both directions", async () => {
+    const { kode, kunci } = await newNumber();
+    const other = randomUUID();
+    await pool.query("INSERT INTO kirim_consumers (id, client_id, nama) VALUES ($1, 'spmb-api', 'spmb')", [other]);
+    await pool.query("INSERT INTO kirim_devices (id, kode, label, pemilik_consumer_id, provider, status) VALUES ($1, 'spmb', 'SPMB', $2, 'log', 'tersambung')", [randomUUID(), other]);
+
+    const moveOut = await admin("PATCH", `/devices/${kode}`, { pemilik: "spmb" });
+    expect(moveOut.statusCode).toBe(409);
+    expect(moveOut.json().error.code).toBe("pemilik_terkunci");
+    const moveIn = await admin("PATCH", "/devices/spmb", { pemilik: "aplikasi-luar" });
+    expect(moveIn.statusCode).toBe(409);
+
+    // Nothing moved, so the number is still on the card and its key is still revocable there.
+    const card = (await admin("GET", "/modules")).json();
+    expect(card.gerbang.nomor.map((nomor: { kode: string }) => nomor.kode)).toContain(kode);
+    expect((await withKey(kunci, "GET", "/sambungan")).statusCode).toBe(200);
+    expect((await admin("POST", `/gerbang/nomor/${kode}/kunci/cabut`, { alasan: "uji" })).statusCode).toBe(200);
+    expect((await withKey(kunci, "GET", "/sambungan")).statusCode).toBe(401);
+
+    // An ordinary edit of the same number still works; only the owner is locked.
+    expect((await admin("PATCH", `/devices/${kode}`, { rate_per_menit: 7 })).statusCode).toBe(200);
   });
 });
 

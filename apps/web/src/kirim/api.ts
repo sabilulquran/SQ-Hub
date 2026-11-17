@@ -69,7 +69,7 @@ export interface KirimGatewayNumber extends KirimDevice {
 /** What a card shows about a number's key: never the key itself, which is read once in the pop-up. */
 export type KirimGatewayKeySummary = Omit<KirimGatewayKey, "kunci">;
 
-/** One outside number as its own card (owner decision 2026-11-18), beside the application cards. */
+/** One outside number as its own card (owner decision 2026-11-17), beside the application cards. */
 export interface KirimGatewayCardNumber extends KirimDevice {
   kunci: KirimGatewayKeySummary | null;
   webhook_terdaftar?: boolean;
