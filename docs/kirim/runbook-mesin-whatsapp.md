@@ -99,7 +99,7 @@ Tidak ada pesan yang hilang. Pesan keluar menunggu di antrean dan dikirim setela
 Pengawas Mi8 menyalakan ulang mesin yang mati dalam waktu sekitar dua menit, sendiri. Kalau setelah 10 menit semua nomor masih terputus, itu untuk yang memegang akses Mi8:
 
 ```bash
-ssh mi8vps-root "chroot /data/local/ubuntu26 /usr/bin/env PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:3307/health"
+ssh mi8vps-root "chroot /data/local/ubuntu26 /usr/bin/env PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:3310/health"
 ```
 
 `200` berarti mesin hidup dan masalahnya bukan di situ. Apa pun selain `200` berarti mesin mati; pengawas akan menyalakannya, dan kalau tidak, jalankan `/data/local/mi8vps/sq-core-launch.sh kirim-wa`.

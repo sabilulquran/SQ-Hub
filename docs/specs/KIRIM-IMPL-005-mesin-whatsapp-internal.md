@@ -35,7 +35,7 @@ Baileys adalah pustaka jaringan dengan state kriptografis dan parser protokol pi
 
 - Mesin internal berjalan sebagai proses Node tersendiri, `kirim-wa`, di dalam rilis SQ Hub (`apps/kirim-wa`). Satu proses untuk **semua** nomor; satu sesi WhatsApp ≈ 1 soket Baileys di heap yang sama.
 - Proses API Hub tidak pernah meng-`import` Baileys. Ketergantungan `@whiskeysockets/baileys` hanya ada di `apps/kirim-wa/package.json`.
-- Hub berbicara ke worker lewat **loopback TCP `127.0.0.1:3307`** dengan `Authorization: Bearer <KIRIM_WA_PLATFORM_KEY>`, memakai **kontrak platform yang sama persis dengan JalurPesan**. Alasan memilih TCP loopback, bukan unix socket: adaptor `jalurpesan.ts` yang sudah terbukti memakai `fetch(url)` global; unix socket menuntut dispatcher undici khusus di setiap pemanggilan, termasuk unggah multipart dan unduh stream. Soket hanya mendengar di `127.0.0.1`, tidak pernah dirutekan di edge (§12).
+- Hub berbicara ke worker lewat **loopback TCP `127.0.0.1:3310`** dengan `Authorization: Bearer <KIRIM_WA_PLATFORM_KEY>`, memakai **kontrak platform yang sama persis dengan JalurPesan**. Alasan memilih TCP loopback, bukan unix socket: adaptor `jalurpesan.ts` yang sudah terbukti memakai `fetch(url)` global; unix socket menuntut dispatcher undici khusus di setiap pemanggilan, termasuk unggah multipart dan unduh stream. Soket hanya mendengar di `127.0.0.1`, tidak pernah dirutekan di edge (§12). Portnya 3310, bukan 3307: di Mi8, MariaDB milik stack WordPress sudah memakai 3307, dan ia menjawab sambungan TCP tanpa bicara HTTP — sehingga probe kesehatan di sana terlihat seperti "tidak ada yang jalan", bukan "sudah dipakai". Port bebas dipastikan dari daftar soket yang mendengar (`/proc/net/tcp`), bukan dari probe HTTP.
 - Worker mati → Hub melihat `engine_unavailable`, antrean menahan pesan dan mencoba lagi; tidak ada pesan hilang. Watchdog konsol `server.samijaya.online` menyalakan ulang worker dalam ±2 menit, sama seperti layanan lain (§14).
 
 **Batas memori.** Worker dijalankan dengan `--max-old-space-size=320` (`DRAFT`). Empat nomor pada JalurPesan hari ini memakai 335 MB termasuk SQLite, UI, dan updater yang tidak ikut pindah. Bila RSS worker melewati 400 MB dengan empat nomor tersambung, cutover dihentikan dan dilaporkan (§10).
@@ -101,7 +101,7 @@ Urutan koneksi dibuat berurutan dengan jeda 3 detik antar-nomor (`DRAFT`), supay
 
 ## 5. Kontrak worker ↔ Hub
 
-Worker mengimplementasikan **himpunan bagian kontrak platform JalurPesan yang dipakai `providers/jalurpesan.ts`**, pada `http://127.0.0.1:3307/api/v1/platform/tenants/:kode/…`, autentikasi `Authorization: Bearer <KIRIM_WA_PLATFORM_KEY>`.
+Worker mengimplementasikan **himpunan bagian kontrak platform JalurPesan yang dipakai `providers/jalurpesan.ts`**, pada `http://127.0.0.1:3310/api/v1/platform/tenants/:kode/…`, autentikasi `Authorization: Bearer <KIRIM_WA_PLATFORM_KEY>`.
 
 Karena bentuk permintaan, bentuk jawaban, dan kode status identik, penyedia baru di Hub adalah **turunan tipis** dari `JalurPesanProvider` (§6). Daftar lengkap rute yang wajib ada:
 
@@ -252,14 +252,14 @@ Hub (`final.env`):
 
 | Nama | Arti |
 | --- | --- |
-| `KIRIM_WA_BASE_URL` | `http://127.0.0.1:3307` |
+| `KIRIM_WA_BASE_URL` | `http://127.0.0.1:3310` |
 | `KIRIM_WA_PLATFORM_KEY` | rahasia bersama Hub ↔ worker |
 
 Worker (`final.env` yang sama, dibaca oleh proses worker):
 
 | Nama | Bawaan | Arti |
 | --- | --- | --- |
-| `KIRIM_WA_PORT` | `3307` | hanya `127.0.0.1` |
+| `KIRIM_WA_PORT` | `3310` | hanya `127.0.0.1` |
 | `KIRIM_WA_AUTH_ROOT` | — | folder auth state |
 | `KIRIM_WA_MEDIA_ROOT` | — | folder media |
 | `KIRIM_WA_DATA_KEYS` | — | `kid:base64(32 byte)`, kunci worker, **berbeda** dari `KIRIM_DATA_KEYS` |
@@ -276,7 +276,7 @@ Worker (`final.env` yang sama, dibaca oleh proses worker):
 
 ## 12. Akses dan privasi
 
-- Worker mendengar hanya di `127.0.0.1:3307`; tidak ada rute edge, tidak ada hostname tunnel.
+- Worker mendengar hanya di `127.0.0.1:3310`; tidak ada rute edge, tidak ada hostname tunnel.
 - Semua rute kecuali `/health` menuntut `Authorization: Bearer <KIRIM_WA_PLATFORM_KEY>`, dibandingkan dengan `timingSafeEqual`.
 - Nomor telepon, isi pesan, QR, dan kode pairing **tidak pernah** masuk log worker. Redaksi konsol libsignal (`libsignal-console-redaction.ts`) dipasang sebelum Baileys dimuat.
 - Isi pesan yang tersimpan di worker (indeks pesan, buffer impor riwayat, hasil idempotensi) disegel dengan kunci worker sendiri (§7).
@@ -312,8 +312,8 @@ Uji baru di Hub:
 
 1. PR menyentuh autentikasi (kunci platform worker), izin (rute admin baru), dan migration → **satu putaran review independen** sebelum merge (aturan owner).
 2. Rilis Hub lewat `hub-release.sh` seperti biasa: dump database dulu, dry-run migrasi, bukan jam 19 UTC, rollback otomatis bila tidak sehat.
-3. `sq-core-launch.sh` mendapat layanan `kirim-wa`; `sq-core-worker.sh` mendapat gate `ready()`-nya (`GET http://127.0.0.1:3307/health` = 200) sehingga watchdog menyalakannya ulang dalam ±2 menit. `hub-release.sh` menulis ulang jalur rilis worker sama seperti `hub`.
-4. Verifikasi kesehatan: 3301, 3302, 3303, 3304, 3305, 3306, 9000 = 200, ditambah 3307 untuk worker.
+3. `sq-core-launch.sh` mendapat layanan `kirim-wa`; `sq-core-worker.sh` mendapat gate `ready()`-nya (`GET http://127.0.0.1:3310/health` = 200) sehingga watchdog menyalakannya ulang dalam ±2 menit. `hub-release.sh` menulis ulang jalur rilis worker sama seperti `hub`.
+4. Verifikasi kesehatan: 3301, 3302, 3303, 3304, 3305, 3306, 9000 = 200, ditambah 3310 untuk worker.
 5. Cutover nomor satu per satu (§9), masing-masing dengan catatan memori.
 6. **Pemensiunan JalurPesan** hanya setelah keempat nomor pindah dan stabil beberapa hari: proses `jalurpesan` web dan API dimatikan dan dicabut dari `sq-core-worker.sh`, **`/srv/jalurpesan` tidak dihapus** dan tetap menjadi jalur mundur. Penghapusan nanti menuntut backup state ke Drive `mi8_crypt` lebih dulu.
 
@@ -326,6 +326,27 @@ Uji baru di Hub:
 
 ---
 
-## 16. Pertanyaan terbuka
+## 16. Jalannya di production (2026-11-17)
+
+Rilis `hub-8418d324-20261117` lewat `hub-release.sh`: dump `/srv/sq-hub/backups/pre-hub-8418d324-20261117.dump`, dry-run migrasi bersih, `0025_kirim_engine_wa.sql` diterapkan, sehat 16 detik. Mesin `kirim-wa` berjalan di `127.0.0.1:3310`, diawasi `sq-core-worker.sh`.
+
+**Cutover 1 — `luar-2` (Aplikasi luar 2, dipakai Samijaya), 2026-11-17 04:31 UTC.** Dilakukan persis menurut §9.1: nomor diparkir di JalurPesan (`requires_session_reset = 1`), API JalurPesan di-restart, folder auth disalin (830 berkas, 0,14 MB; **asal tidak dihapus**), mesin ditukar lewat `KirimAdminService.updateDevice` (antrean dijeda, tidak ada pesan menggantung, penjaga nomor ganda lolos). **Sesi tersambung kembali dalam 3 detik tanpa pindai QR.** Diuji: satu pesan ke nomor itu sendiri lewat mesin (id `3EB0461BC8D5EABF9AF983`, ulangan dengan kunci idempotensi sama tidak mengirim dua kali), lalu satu pesan ujung ke ujung memakai kunci API Samijaya lewat Kirim (id `3EB0DB7CAF0508F6E9DB0B`, tersimpan `provider = 'wa'`, `diserahkan` pada percobaan pertama).
+
+| Ukuran (kB) | Sebelum | Sesudah |
+| --- | --- | --- |
+| MemAvailable | 961.580 | 1.026.408 |
+| JalurPesan API | 169.520 | 136.088 |
+| JalurPesan web | 53.276 | 53.276 |
+| `kirim-wa` | 89.944 (0 sesi) | 96.724 (1 sesi) |
+
+Memori **naik** 64 MB: JalurPesan melepas 33 MB, mesin memakai 7 MB untuk sesi yang sama. Gate §10 terlampaui dengan baik.
+
+**Koreksi terhadap angka di §1.** JalurPesan API hari ini 136–169 MB, bukan 335 MB seperti perkiraan awal. Penghematan akhir setelah JalurPesan dimatikan karena itu diperkirakan **±190 MB (API + web) dikurangi RSS mesin**, bukan ±388 MB. Angka sebenarnya dicatat pada tiap cutover.
+
+**Keadaan nomor yang ditemukan (bukan akibat perpindahan ini).** Nomor `spmb` di Kirim menunjuk tenant JalurPesan `spmb-2`, yang **tidak pernah dipasangkan**; sesi SPMB yang sebenarnya ada di tenant `spmb` (nomor yang sama, `+62851…78`) dan diparkir dengan `requires_session_reset = 1`. Karena itu WhatsApp SPMB sudah terputus sebelum pekerjaan ini. Pemulihannya sama dengan §9.1: salin folder auth tenant `spmb` menjadi `auth/spmb/`, lalu tukar mesin nomor `spmb` ke `wa`. Bila kredensialnya ternyata sudah mati, nomor itu tetap seperti sekarang dan perlu pindai QR — mencobanya tidak menambah risiko.
+
+**Sisa cutover** (gate §9: stabil ≥24 jam dulu): `spmb`, `luar` (belum pernah dipasangkan, perlu pindai QR apa pun mesinnya), lalu `hcis` (paling ramai, terakhir).
+
+## 17. Pertanyaan terbuka
 
 Tidak ada yang memblokir. Keputusan bisnis yang belum tertulis diambil sebagai `DRAFT` dan dicatat di §2, §4.3, §7, §11.

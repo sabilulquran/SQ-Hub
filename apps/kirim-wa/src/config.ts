@@ -33,8 +33,11 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): WaConfig {
     throw new ConfigError("KIRIM_WA_WEBHOOK_URL and KIRIM_WA_WEBHOOK_SECRET must be configured together");
   }
   return {
-    // 0 asks the operating system for a free port; only tests pass it.
-    port: integer(env, "KIRIM_WA_PORT", 3307, 0, 65_535),
+    // 3310, not 3307: on Mi8 the WordPress stack's MariaDB listens on 3307, and it answers a
+    // TCP connection without speaking HTTP, so a health probe there looks like "nothing is
+    // running" rather than "taken". 0 asks the operating system for a free port; only tests
+    // pass it.
+    port: integer(env, "KIRIM_WA_PORT", 3310, 0, 65_535),
     // Loopback only (§12). Overridable for tests, never for production.
     host: optional(env, "KIRIM_WA_HOST") ?? "127.0.0.1",
     databaseUrl,
