@@ -288,10 +288,19 @@ export class WaEngine {
 
   // ----------------------------------------------------------------------------- lifecycle
 
-  async start(): Promise<void> {
+  /** Reads what the worker knows before it serves anything; cheap, and awaited by the caller. */
+  async load(): Promise<void> {
     await this.stores.devices.load();
     await this.stores.phoneState.load();
     await this.stores.media.init();
+  }
+
+  /**
+   * Opens a socket for every number that has stored credentials. Slow and unbounded: one number
+   * whose phone is unreachable holds its `connect()` for the Baileys timeout, so this is started
+   * after the port is open (see `startWorker`), never before it.
+   */
+  async start(): Promise<void> {
     const restored = await this.devices.restoreIfAuthenticated();
     this.log(
       {
@@ -307,7 +316,6 @@ export class WaEngine {
   /** Housekeeping, on the slow beat; each step is independent and a failure is only logged. */
   async housekeeping(): Promise<void> {
     const steps: Array<[string, () => Promise<number>]> = [
-      ["idempotency_stale", async () => 0],
       ["media", () => this.stores.media.expire(this.config.mediaTtlHours)],
       ["messages", () => this.stores.messages.prune(this.config.messageRetentionDays)],
       ["events", () => this.stores.events.prune(7)],

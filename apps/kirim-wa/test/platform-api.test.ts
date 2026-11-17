@@ -101,10 +101,12 @@ class FakeService implements ManagedWhatsAppService {
   async getGroupMetadata(): Promise<never> {
     throw new Error("not used here");
   }
-  async sendGroupText() {
+  async sendGroupText(groupJid: string, message: string) {
+    this.sent.push({ to: groupJid, body: message });
     return { messageId: this.nextMessageId };
   }
-  async sendGroupMedia() {
+  async sendGroupMedia(groupJid: string, media: { caption: string | null }) {
+    this.sent.push({ to: groupJid, body: media.caption ?? "<no caption>" });
     return { messageId: this.nextMessageId };
   }
   async requestMessageHistory(): Promise<string> {
@@ -342,6 +344,42 @@ describe.skipIf(!DATABASE_URL)("platform contract", () => {
 
     expect((await call("/luar/device/unpark", { method: "POST" })).status).toBe(200);
     expect((await call("/luar/device/connect", { method: "POST" })).status).toBe(200);
+  });
+
+  it("keeps the caption on a group file, because the caption is the announcement", async () => {
+    await call("/luar/device", { method: "PUT", body: JSON.stringify({ name: "Aplikasi luar" }) });
+    await call("/luar/device/connect", { method: "POST" });
+    const form = new FormData();
+    form.append("file", new Blob([Buffer.from("%PDF-1.4 pengumuman")], { type: "application/pdf" }), "pengumuman.pdf");
+    const uploaded = await fetch(`${worker.url}/api/v1/platform/tenants/luar/media?type=document`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${PLATFORM_KEY}` },
+      body: form,
+    });
+    const { mediaId } = (await uploaded.json()) as { mediaId: string };
+
+    const sent = await call("/luar/groups/120363000000000000%40g.us/messages", {
+      method: "POST",
+      body: JSON.stringify({ mediaId, caption: "Pengumuman rapat Senin" }),
+      headers: { "idempotency-key": randomUUID() },
+    });
+
+    expect(sent.status).toBe(200);
+    expect(services.get("luar")!.sent).toEqual([{ to: "120363000000000000@g.us", body: "Pengumuman rapat Senin" }]);
+  });
+
+  it("answers the health check straight away, before the numbers have reconnected", async () => {
+    // The Mi8 watchdog kills a service that cannot answer within 90 seconds, so the port must be
+    // open before the sockets are restored, not after.
+    const response = await fetch(`${worker.url}/health`);
+    expect(response.status).toBe(200);
+  });
+
+  it("answers a key of the wrong shape with 401, not a server error", async () => {
+    for (const key of ["", "short", "kunci-yang-panjangnya-sama-tapi-é", "x".repeat(200)]) {
+      const response = await fetch(`${worker.url}/api/v1/platform/tenants/luar/device`, { headers: { authorization: `Bearer ${key}` } });
+      expect(response.status).toBe(401);
+    }
   });
 
   it("refuses a history request for a chat it has never seen a message in", async () => {

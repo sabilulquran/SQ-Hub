@@ -1,4 +1,4 @@
-import { timingSafeEqual } from "node:crypto";
+import { createHash, timingSafeEqual } from "node:crypto";
 
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 
@@ -61,10 +61,10 @@ export async function registerPlatformRoutes(app: FastifyInstance, deps: Platfor
     if (!request.url.startsWith("/api/v1/platform/")) return;
     const header = request.headers.authorization ?? "";
     const presented = header.startsWith("Bearer ") ? header.slice(7) : "";
-    const expected = config.platformKey;
-    const ok =
-      presented.length === expected.length &&
-      timingSafeEqual(Buffer.from(presented, "utf8"), Buffer.from(expected, "utf8"));
+    // Digests, not the keys themselves: `timingSafeEqual` throws on buffers of different byte
+    // length, and a presented key with a multibyte character can match in string length while
+    // differing in bytes. That would answer a bad credential with a 500 instead of a 401.
+    const ok = timingSafeEqual(sha256(presented), sha256(config.platformKey));
     if (!ok) return reply.code(401).send({ success: false, error: "Unauthorized" });
   });
 
@@ -260,7 +260,8 @@ export async function registerPlatformRoutes(app: FastifyInstance, deps: Platfor
       safetyContent: `${mediaId ?? ""}${text ?? caption ?? ""}`,
       run: async () => {
         if (!mediaId) return engine.devices.sendGroupTextWithDevice(id, groupJid, text!, options);
-        const media = await requireMedia(deps, id, mediaId);
+        // The caption is the message: Kirim SQ sends a group announcement as a file plus its text.
+        const media = await requireMedia(deps, id, mediaId, caption);
         return engine.devices.sendGroupMediaWithDevice(id, groupJid, media, options);
       },
     });
@@ -1054,6 +1055,10 @@ function groupBody(group: WhatsAppGroupMetadata) {
     participants: group.participants,
     ...(group.settings ? { settings: group.settings } : {}),
   };
+}
+
+function sha256(value: string): Buffer {
+  return createHash("sha256").update(value, "utf8").digest();
 }
 
 function headerValue(value: unknown): string | null {

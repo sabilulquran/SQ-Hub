@@ -56,20 +56,30 @@ export async function startWorker(env: NodeJS.ProcessEnv = process.env, override
   const idempotency = new IdempotencyStore(pool, crypto);
   const engine = new WaEngine(config, stores, log, overrides.serviceFactory);
 
+  await engine.load();
+
   const app = Fastify({ logger: false, bodyLimit: 32 * 1024 * 1024 });
   await app.register(multipart, { limits: { fileSize: 64 * 1024 * 1024, files: 1 } });
   await registerPlatformRoutes(app, { config, engine, stores, idempotency, log });
 
-  await engine.start();
-
   // The push path (§5): a nudge so Kirim SQ pulls sooner. It is never the source of truth, so a
-  // failed push is logged and forgotten; the cursor still carries the event.
+  // failed push is logged and forgotten; the cursor still carries the event. Wrapped before the
+  // numbers connect, so the messages WhatsApp replays on reconnect are pushed too.
   if (config.webhook) notifyOnAppend(stores, config.webhook, log);
 
   await app.listen({ port: config.port, host: config.host });
   const address = app.server.address();
   const port = typeof address === "object" && address ? address.port : config.port;
   log({ event: "kirim_wa.listening", port }, "kirim-wa is listening on loopback");
+
+  // Reconnecting the numbers happens after the port is open, and is not awaited. The Mi8 watchdog
+  // gives a service 90 seconds to answer `/health` before it kills and relaunches it, and one
+  // number whose phone is unreachable can hold a `connect()` far longer than that. Restoring
+  // before listening would therefore let a single bad number restart-loop the whole engine and
+  // keep every other number down with it.
+  const restored = engine
+    .start()
+    .catch((error: unknown) => log({ event: "kirim_wa.restore.failed", errorType: error instanceof Error ? error.name : "unknown" }, "restoring numbers failed"));
 
   const housekeeping = setInterval(() => {
     void (async () => {
@@ -84,6 +94,7 @@ export async function startWorker(env: NodeJS.ProcessEnv = process.env, override
     url: `http://${config.host}:${port}`,
     async stop() {
       clearInterval(housekeeping);
+      await restored;
       await app.close().catch(() => undefined);
       await pool.end().catch(() => undefined);
     },
