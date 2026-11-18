@@ -100,7 +100,7 @@ export class SekretariatKotak {
       // What makes a list scannable (SEK-IMPL-003): the opening words of the body with whitespace
       // folded into single spaces, and how many live files the letter carries.
       `SELECT m.id, m.kanal, m.dari, m.perihal, m.diterima_pada, m.status,
-              left(btrim(regexp_replace(m.isi_teks, '[[:space:]]+', ' ', 'g')), 180) AS cuplikan,
+              left(btrim(regexp_replace(left(m.isi_teks, 1000), '[[:space:]]+', ' ', 'g')), 180) AS cuplikan,
               (SELECT count(*) FROM sekretariat_berkas b
                 WHERE b.pemilik_jenis = 'surat_masuk' AND b.pemilik_id = m.id AND NOT b.dihapus) AS lampiran
          FROM sekretariat_surat_masuk m

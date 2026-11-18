@@ -201,7 +201,8 @@ export function registerSekretariatRoutes(app: FastifyInstance, deps: Sekretaria
   get("/kotak", (_request, v, isAdmin) => deps.kotak.list(v, isAdmin));
   get("/kotak/:id/surat", (request, v, isAdmin) => {
     const query = request.query as Record<string, string | undefined>;
-    return deps.kotak.isi(v, isAdmin, params(request).id!, query.status, pageOf(request), query.q);
+    // `?q=a&q=b` arrives as an array; only a single string is a search.
+    return deps.kotak.isi(v, isAdmin, params(request).id!, query.status, pageOf(request), typeof query.q === "string" ? query.q : undefined);
   });
   write("POST", "/kotak/:id/surat", (request, v, isAdmin) => deps.kotak.catatFisik(v, isAdmin, params(request).id!, fisikSchema.parse(body(request))), 201);
   get("/surat-masuk/:id", (request, v, isAdmin) => deps.kotak.detail(v, isAdmin, params(request).id!));

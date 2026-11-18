@@ -32,6 +32,7 @@ export function SekretariatApp() {
   const [route, setRoute] = useState<SekretariatRoute>(() => resolveSekretariatRoute(window.location.pathname));
   const [launcherApplications, setLauncherApplications] = useState<WorkspaceApplication[] | null>(null);
   const [kotak, setKotak] = useState<KotakRingkas[] | null>(null);
+  const [kotakGagal, setKotakGagal] = useState(false);
   const pathRef = useRef(window.location.pathname);
 
   const load = useCallback(async () => {
@@ -55,8 +56,10 @@ export function SekretariatApp() {
   const loadKotak = useCallback(async () => {
     try {
       setKotak((await sekretariatFetch<{ items: KotakRingkas[] }>("/kotak")).items);
+      setKotakGagal(false);
     } catch {
-      setKotak((current) => current ?? []);
+      // A failed request is not "no role": keep what was shown, and say it failed when nothing was.
+      setKotakGagal(true);
     }
   }, []);
 
@@ -128,7 +131,14 @@ export function SekretariatApp() {
           body={ready.directoryTersedia ? "Sekretariat memakai data pegawai dari HCIS. Hubungi HCM agar akun Anda ditautkan ke data kepegawaian Anda." : "Organization Directory belum tersedia. Coba lagi beberapa saat."}
         />
       ) : null}
-      {usable ? <Page route={route} context={ready} kotak={kotak} onChanged={() => void loadKotak()} /> : null}
+      {usable && kotak === null && kotakGagal ? (
+        <StateCard
+          kind="error"
+          title="Daftar kotak masuk belum dapat dimuat"
+          body="Periksa sambungan, lalu coba lagi."
+          action={<button type="button" className={secondaryButton} onClick={() => void loadKotak()}>Coba lagi</button>}
+        />
+      ) : usable ? <Page route={route} context={ready} kotak={kotak} onChanged={() => void loadKotak()} /> : null}
     </SekretariatShell>
   );
 }
@@ -137,7 +147,7 @@ function Page({ route, context, kotak, onChanged }: { route: SekretariatRoute; c
   switch (route.name) {
     case "beranda": return <BerandaPage kotak={kotak} />;
     case "kotak": return <KotakPage key={route.kotakId} kotakId={route.kotakId} kotak={kotak} context={context} onChanged={onChanged} />;
-    case "surat-masuk": return <SuratMasukRedirect key={route.suratMasukId} suratMasukId={route.suratMasukId} />;
+    case "surat-masuk": return <SuratMasukRedirect key={route.suratMasukId} suratMasukId={route.suratMasukId} kotak={kotak} />;
     case "surat-keluar": return <SuratKeluarPage context={context} />;
     case "penerbit-surat": return <PenerbitSuratPage key={route.penerbitId} penerbitId={route.penerbitId} />;
     case "surat": return <SuratPage key={route.suratId} suratId={route.suratId} />;

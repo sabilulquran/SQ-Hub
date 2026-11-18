@@ -1,7 +1,7 @@
 import {
   ChevronLeft, ChevronRight, FileText, Inbox, Mail, Paperclip, PenLine, Search, Send, ShieldAlert, Upload,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { DetailDialog } from "@/components/DetailDialog";
 import { useDialogParam } from "@/components/useDialogParam";
@@ -82,19 +82,31 @@ export function KotakPage({ kotakId, kotak, context, onChanged }: {
     () => sekretariatFetch<{ kotak: { id: string; jenis: string }; items: SuratMasukRingkas[]; total: number; pageSize: number }>(`/kotak/${kotakId}/surat?${query}`),
     `${kotakId}:${query}`,
   );
+  // Searching or filtering keeps the last rows on screen until the new ones arrive, so the list
+  // never collapses into a skeleton and back while someone types (SEK-IMPL-003 T-5).
+  const terakhir = useRef<{ items: SuratMasukRingkas[]; total: number; pageSize: number } | null>(null);
+  if (state.status === "ready") terakhir.current = state.data;
+  const data = state.status === "ready" ? state.data : state.status === "loading" ? terakhir.current : null;
+  const memuat = state.status === "loading";
   const ini = kotak?.find((item) => item.id === kotakId);
   const judul = ini ? kotakLabel(ini) : "Kotak masuk";
   const refresh = () => { void reload(); onChanged(); };
 
   if (state.status === "error" && state.code === "tidak_ditemukan") {
-    return <StateCard kind="forbidden" title="Kotak ini bukan milik Anda" body="Kotak masuk hanya terbuka bagi petugas penerbitnya." action={<Link className={secondaryButton} href="/">Ke kotak masuk Anda</Link>} />;
+    return (
+      <>
+        <StateCard kind="forbidden" title="Kotak ini bukan milik Anda" body="Kotak masuk hanya terbuka bagi petugas penerbitnya." action={<Link className={secondaryButton} href="/">Ke kotak masuk Anda</Link>} />
+        {/* A letter the viewer may read still opens; the server decides on the letter itself. */}
+        {suratId ? <SuratDialog suratId={suratId} context={context} onClose={tutupSurat} onChanged={refresh} /> : null}
+      </>
+    );
   }
 
   return (
     <div>
       <PageHeader
         title={judul}
-        eyebrow={ini && ini.baru > 0 ? `${ini.baru} belum dibaca` : "Kotak masuk"}
+        eyebrow={ini && ini.baru > 0 ? `${ini.baru} surat baru` : "Kotak masuk"}
         actions={<button type="button" className={primaryButton} onClick={() => setCatat(true)}><PenLine className="h-4 w-4" aria-hidden="true" />Catat surat fisik</button>}
       />
 
@@ -131,11 +143,11 @@ export function KotakPage({ kotakId, kotak, context, onChanged }: {
           </div>
         </div>
 
-        {state.status === "loading" ? (
-          <ListSkeleton />
-        ) : state.status === "error" ? (
+        {state.status === "error" ? (
           <div className="p-4"><StateCard kind="error" title="Kotak masuk belum dapat dimuat" body={state.message} /></div>
-        ) : state.data.items.length === 0 ? (
+        ) : data === null ? (
+          <ListSkeleton />
+        ) : data.items.length === 0 ? (
           <div className="flex flex-col items-center px-6 py-16 text-center">
             <Inbox className="h-8 w-8 text-muted-foreground" aria-hidden="true" />
             <p className="mt-3 text-sm font-bold text-foreground">{cari || status ? "Tidak ada surat yang cocok" : "Kotak ini kosong"}</p>
@@ -148,13 +160,13 @@ export function KotakPage({ kotakId, kotak, context, onChanged }: {
             </p>
           </div>
         ) : (
-          <ul className="divide-y divide-border/70">
-            {state.data.items.map((item) => <SuratRow key={item.id} item={item} onOpen={() => bukaSurat(item.id)} />)}
+          <ul className={["divide-y divide-border/70 transition-opacity", memuat ? "opacity-60" : ""].join(" ")} aria-busy={memuat}>
+            {data.items.map((item) => <SuratRow key={item.id} item={item} onOpen={() => bukaSurat(item.id)} />)}
           </ul>
         )}
 
-        {state.status === "ready" && state.data.total > 0 ? (
-          <Pager page={page} total={state.data.total} pageSize={state.data.pageSize} onPage={setPage} />
+        {data && data.total > 0 ? (
+          <Pager page={page} total={data.total} pageSize={data.pageSize} onPage={setPage} />
         ) : null}
       </Panel>
 
@@ -203,7 +215,7 @@ function SuratRow({ item, onOpen }: { item: SuratMasukRingkas; onOpen: () => voi
             {tanggal}
           </time>
         </span>
-        <span className="sr-only">{unread ? ", belum dibaca" : ""}</span>
+        <span className="sr-only">{unread ? ", baru" : ""}</span>
       </button>
     </li>
   );
@@ -498,11 +510,21 @@ function SelesaiDialog({ disposisiId, onClose, onDone }: { disposisiId: string; 
 }
 
 /** The old `/surat-masuk/<id>` link lands on the same letter as a pop-up over its inbox. */
-export function SuratMasukRedirect({ suratMasukId }: { suratMasukId: string }) {
+export function SuratMasukRedirect({ suratMasukId, kotak }: { suratMasukId: string; kotak: KotakRingkas[] | null }) {
   const { state } = useLoad(() => sekretariatFetch<SuratMasukDetail>(`/surat-masuk/${suratMasukId}`), suratMasukId);
   useEffect(() => {
-    if (state.status === "ready") navigate(`/kotak/${state.data.kotak.id}?surat=${suratMasukId}`, true);
-  }, [state, suratMasukId]);
+    if (state.status !== "ready" || kotak === null) return;
+    // A letter disposed from the foundation inbox lives there, but a penerbit officer may read it
+    // only through their own inbox. Land on an inbox the viewer can open: the letter's own when
+    // it is theirs, else the inbox of a penerbit it was disposed to, else the first one they have.
+    const surat = state.data;
+    const bisa = new Set(kotak.map((item) => item.id));
+    const kodeDisposisi = new Set(surat.disposisi.map((item) => item.kePenerbit?.kode).filter(Boolean));
+    const tujuan = bisa.has(surat.kotak.id)
+      ? surat.kotak.id
+      : kotak.find((item) => item.penerbit?.kode && kodeDisposisi.has(item.penerbit.kode))?.id ?? kotak[0]?.id;
+    if (tujuan) navigate(`/kotak/${tujuan}?surat=${suratMasukId}`, true);
+  }, [state, suratMasukId, kotak]);
   if (state.status === "error") return <StateCard kind="error" title="Surat belum dapat dibuka" body={state.message} action={<Link className={secondaryButton} href="/">Ke kotak masuk</Link>} />;
   return <StateCard kind="loading" title="Membuka surat" />;
 }
