@@ -13,7 +13,7 @@ import {
   type LiveStatus,
   type PairingResult,
 } from "@/kirim/api";
-import { GerbangCard, GerbangDialog, type GerbangDeviceAction } from "@/kirim/GerbangCard";
+import { KunciDialog, NomorLuarCard, TambahNomorLuarTile } from "@/kirim/NomorLuarCard";
 import { deviceStatusLabel, deviceStatusTone } from "@/kirim/labels";
 import { dangerButton, Field, Panel, primaryButton, ReasonDialog, secondaryButton, StateCard } from "@/kirim/KirimShell";
 
@@ -33,7 +33,7 @@ type Dialog =
   | { kind: "tambah"; card: KirimModuleCard }
   | { kind: "ubah-pemakai"; card: KirimModuleCard }
   | { kind: "putuskan-modul"; card: KirimModuleCard }
-  | { kind: "gerbang" };
+  | { kind: "kunci"; kode: string };
 
 const POLL_MS = 3_000;
 const POLL_LIMIT_MS = 2 * 60_000;
@@ -104,18 +104,22 @@ export function NomorPage({ preview }: { preview?: NomorState }) {
     return card && canReconnect(device) ? () => { setError(null); setDialog({ kind: "ganti-nomor", device, modul: card.nama }); } : undefined;
   };
 
-  /** A number of the Aplikasi luar card: its dialogs return to the card's pop-up, not to the page. */
-  const isGerbang = (device: KirimDevice) => device.pemilik === "aplikasi-luar";
-  const afterDevice = (device: KirimDevice) => { if (isGerbang(device)) setDialog({ kind: "gerbang" }); else close(); void load(); };
-  const openGerbangDevice = (action: GerbangDeviceAction) => { setError(null); setDialog(action); };
+  /**
+   * Owner decision 2026-11-17: an outside number is a card of its own, so its actions go straight
+   * to the page's own dialogs, like any other card's, instead of returning into a combined pop-up.
+   */
+  const addNumber = () => void run(
+    () => kirimFetch<KirimDevice>("/gerbang/nomor-baru", { method: "POST", body: {} }),
+    (device) => (device.provider !== "log" ? { kind: "pair", device } : null),
+  );
 
   return (
     <>
-      <NomorView state={state} onOpen={(next) => { setError(null); setDialog(next); }} onRetry={() => { setState({ status: "loading" }); void load(); }} />
-      {dialog?.kind === "gerbang" ? <GerbangDialog onDevice={openGerbangDevice} onClose={close} onChanged={load} /> : null}
+      <NomorView state={state} busy={busy} onAddNumber={addNumber} onOpen={(next) => { setError(null); setDialog(next); }} onRetry={() => { setState({ status: "loading" }); void load(); }} />
+      {dialog?.kind === "kunci" ? <KunciDialog kode={dialog.kode} onClose={close} onChanged={load} /> : null}
       {dialog?.kind === "disconnect" ? (
         <ReasonDialog title={`Putuskan ${dialog.device.label}?`} body={sharedBody(shared(dialog.device), "Sesi WhatsApp di mesin dilepas. Nomor perlu dipasang ulang sebelum bisa mengirim lagi.")} confirmLabel="Putuskan" danger busy={busy} error={error} onClose={close}
-          onConfirm={(alasan) => void run(() => kirimFetch(`/devices/${dialog.device.kode}/disconnect`, { method: "POST", body: { alasan } }), () => (isGerbang(dialog.device) ? { kind: "gerbang" } : null))}>
+          onConfirm={(alasan) => void run(() => kirimFetch(`/devices/${dialog.device.kode}/disconnect`, { method: "POST", body: { alasan } }))}>
           <GantiHint onGanti={ganti(dialog.device)} />
         </ReasonDialog>
       ) : null}
@@ -169,7 +173,7 @@ export function NomorPage({ preview }: { preview?: NomorState }) {
       {(dialog?.kind === "tambah" || dialog?.kind === "ubah-pemakai") && state.status === "ready" ? (
         <TambahDialog
           card={dialog.card}
-          numbers={state.list.devices.filter((device) => device.status !== "nonaktif" && device.kode !== dialog.card.nomor?.kode && !isGerbang(device))}
+          numbers={state.list.devices.filter((device) => device.status !== "nonaktif" && device.kode !== dialog.card.nomor?.kode && device.pemilik !== "aplikasi-luar")}
           owners={Object.fromEntries(state.list.modules.filter((card) => card.peran === "pemilik" && card.nomor).map((card) => [card.nomor!.kode, card.nama]))}
           editing={dialog.kind === "ubah-pemakai"}
           busy={busy}
@@ -195,7 +199,7 @@ export function NomorPage({ preview }: { preview?: NomorState }) {
           ganti={dialog.kind === "ganti-nomor" ? dialog.modul : undefined}
           sharers={dialog.kind === "ganti-nomor" ? shared(dialog.device) : []}
           onDuplicate={(ke) => { setError(null); setDialog({ kind: "gabung", device: dialog.device, ke }); void load(); }}
-          onClose={() => afterDevice(dialog.device)}
+          onClose={() => { close(); void load(); }}
         />
       ) : null}
     </>
@@ -288,7 +292,13 @@ export function GantiHint({ onGanti }: { onGanti?: (() => void) | undefined }) {
   );
 }
 
-export function NomorView({ state, onOpen, onRetry }: { state: NomorState; onOpen: (dialog: Dialog) => void; onRetry: () => void }) {
+export function NomorView({ state, onOpen, onRetry, onAddNumber, busy = false }: {
+  state: NomorState;
+  onOpen: (dialog: Dialog) => void;
+  onRetry: () => void;
+  onAddNumber?: () => void;
+  busy?: boolean;
+}) {
   return (
     <>
       <div>
@@ -312,7 +322,15 @@ export function NomorView({ state, onOpen, onRetry }: { state: NomorState; onOpe
                 {state.list.modules.map((card) => (
                   <li key={card.application_key}><ModuleCard card={card} onOpen={onOpen} /></li>
                 ))}
-                {state.list.gerbang ? <li key="gerbang"><GerbangCard card={state.list.gerbang} onOpen={() => onOpen({ kind: "gerbang" })} /></li> : null}
+                {/* Owner 2026-11-17: each outside number is its own card, beside the application cards. */}
+                {(state.list.gerbang?.nomor ?? []).map((nomor) => (
+                  <li key={nomor.kode}>
+                    <NomorLuarCard nomor={nomor} onDevice={onOpen} onKeys={() => onOpen({ kind: "kunci", kode: nomor.kode })} />
+                  </li>
+                ))}
+                {state.list.gerbang && onAddNumber ? (
+                  <li key="tambah-nomor-luar"><TambahNomorLuarTile busy={busy} onAdd={onAddNumber} /></li>
+                ) : null}
               </ul>
             )}
           </>
@@ -580,7 +598,7 @@ function DialogFrame({ title, children }: { title: string; children: ReactNode }
   );
 }
 
-function EditDeviceDialog({ device, consumers, busy, error, onClose, onSave, onGanti }: { device: KirimDevice; consumers: KirimConsumer[]; busy: boolean; error: string | null; onClose: () => void; onSave: (body: Record<string, unknown>) => void; onGanti?: (() => void) | undefined }) {
+export function EditDeviceDialog({ device, consumers, busy, error, onClose, onSave, onGanti }: { device: KirimDevice; consumers: KirimConsumer[]; busy: boolean; error: string | null; onClose: () => void; onSave: (body: Record<string, unknown>) => void; onGanti?: (() => void) | undefined }) {
   const [form, setForm] = useState({
     label: device.label,
     pemilik: device.pemilik,
@@ -591,6 +609,7 @@ function EditDeviceDialog({ device, consumers, busy, error, onClose, onSave, onG
     provider_ref: device.provider_ref ?? "",
     alasan: "",
   });
+  const lockedOwner = device.pemilik === "aplikasi-luar";
   const providerChanged = form.provider !== device.provider || (form.provider === "jalurpesan" && form.provider_ref !== (device.provider_ref ?? ""));
   const rate = Number(form.rate_per_menit);
   const valid = form.label.trim() && form.jam_kirim_mulai < form.jam_kirim_selesai && Number.isInteger(rate) && rate >= 1 && rate <= 60
@@ -601,10 +620,20 @@ function EditDeviceDialog({ device, consumers, busy, error, onClose, onSave, onG
       <GantiHint onGanti={onGanti} />
       <div className="mt-3 space-y-3">
         <Field label="Label"><input className="sq-admin-input" value={form.label} onChange={(event) => setForm({ ...form, label: event.target.value })} /></Field>
+        {/*
+          * An outside number stays with the outside-application consumer. Its API key is bound to
+          * the number, so moving the number to another application would leave that key sending
+          * through someone else's number, and no screen could rotate or revoke it any more. The
+          * API refuses the move too.
+          */}
         <Field label="Aplikasi pemilik">
-          <select className="sq-admin-input" value={form.pemilik} onChange={(event) => setForm({ ...form, pemilik: event.target.value })}>
-            {consumers.map((consumer) => <option key={consumer.nama} value={consumer.nama}>{consumer.nama}</option>)}
-          </select>
+          {lockedOwner ? (
+            <p className="sq-admin-helper">{device.pemilik} · nomor aplikasi luar tetap milik pemakai ini.</p>
+          ) : (
+            <select className="sq-admin-input" value={form.pemilik} onChange={(event) => setForm({ ...form, pemilik: event.target.value })}>
+              {consumers.map((consumer) => <option key={consumer.nama} value={consumer.nama}>{consumer.nama}</option>)}
+            </select>
+          )}
         </Field>
         <div className="grid grid-cols-2 gap-3">
           <Field label="Jam mulai (WIB)"><input className="sq-admin-input" type="time" value={form.jam_kirim_mulai} onChange={(event) => setForm({ ...form, jam_kirim_mulai: event.target.value })} /></Field>
@@ -631,7 +660,7 @@ function EditDeviceDialog({ device, consumers, busy, error, onClose, onSave, onG
         <button type="button" className={secondaryButton} onClick={onClose} disabled={busy}>Batal</button>
         <button type="button" className={primaryButton} disabled={busy || !valid} onClick={() => onSave({
           label: form.label.trim(),
-          pemilik: form.pemilik,
+          ...(lockedOwner ? {} : { pemilik: form.pemilik }),
           jam_kirim_mulai: form.jam_kirim_mulai,
           jam_kirim_selesai: form.jam_kirim_selesai,
           rate_per_menit: rate,
