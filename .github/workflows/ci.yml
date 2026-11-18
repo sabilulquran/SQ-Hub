@@ -200,5 +200,10 @@ jobs:
 
       # Keep the audit mandatory while allowing the preceding checks to report
       # their results when an existing dependency advisory is present.
+      #
+      # `npm audit --audit-level=high` was the gate until 2026-11-18, when an advisory against
+      # picomatch with no fixed release made it fail on every run, including runs that changed no
+      # dependency. The gate now fails on advisories that can be acted on and reports the dead ends
+      # instead, so it keeps meaning something. See scripts/audit-gate.mjs.
       - name: Dependency audit
-        run: npm audit --audit-level=high
+        run: node scripts/audit-gate.mjs
