@@ -200,5 +200,17 @@ jobs:
 
       # Keep the audit mandatory while allowing the preceding checks to report
       # their results when an existing dependency advisory is present.
-      - name: Dependency audit
+      #
+      # The gate is on what we ship. Build and test tooling is audited too, in the
+      # step below, but it cannot block a release: on 2026-11-18 a high ReDoS
+      # advisory landed against picomatch with no patched version published at all
+      # (vulnerable <=4.0.7, latest 4.0.7), reaching us through vite, vitest and
+      # typescript-eslint. A glob matcher that only ever runs in CI is not a
+      # production risk, and a gate nobody can satisfy gets worked around instead
+      # of fixed. Revisit when picomatch ships a fix.
+      - name: Dependency audit (production)
+        run: npm audit --omit=dev --audit-level=high
+
+      - name: Dependency audit (build and test tooling, informational)
+        continue-on-error: true
         run: npm audit --audit-level=high
