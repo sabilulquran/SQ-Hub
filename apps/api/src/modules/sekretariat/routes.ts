@@ -199,8 +199,10 @@ export function registerSekretariatRoutes(app: FastifyInstance, deps: Sekretaria
   get("/jenis", () => deps.buku.jenisList(true));
   get("/penerbit", () => deps.pengaturan.penerbitAktif());
   get("/kotak", (_request, v, isAdmin) => deps.kotak.list(v, isAdmin));
-  get("/kotak/:id/surat", (request, v, isAdmin) =>
-    deps.kotak.isi(v, isAdmin, params(request).id!, (request.query as Record<string, string | undefined>).status, pageOf(request)));
+  get("/kotak/:id/surat", (request, v, isAdmin) => {
+    const query = request.query as Record<string, string | undefined>;
+    return deps.kotak.isi(v, isAdmin, params(request).id!, query.status, pageOf(request), query.q);
+  });
   write("POST", "/kotak/:id/surat", (request, v, isAdmin) => deps.kotak.catatFisik(v, isAdmin, params(request).id!, fisikSchema.parse(body(request))), 201);
   get("/surat-masuk/:id", (request, v, isAdmin) => deps.kotak.detail(v, isAdmin, params(request).id!));
   write("POST", "/surat-masuk/:id/disposisi", (request, v, isAdmin) => deps.kotak.disposisi(v, isAdmin, params(request).id!, disposisiSchema.parse(body(request))), 201);
@@ -317,10 +319,29 @@ export function registerSekretariatRoutes(app: FastifyInstance, deps: Sekretaria
   adminGet("/penerbit", () => deps.pengaturan.penerbitList());
   adminWrite("POST", "/penerbit", (request, actor) => deps.pengaturan.buatPanitia(actor, panitiaSchema.parse(body(request))), 201);
   adminWrite("PATCH", "/penerbit/:id", (request, actor) => deps.pengaturan.ubahPenerbit(actor, params(request).id!, penerbitPatchSchema.parse(body(request))));
-  adminGet("/petugas", () => deps.pengaturan.petugasList());
+  // SEK-IMPL-003: people are picked by name and shown by name; the admin never types or reads a
+  // `hcis:employee:<uuid>`. Same rule as Kerja's room admin: active people only, at least two
+  // characters, 25 results, matched on name or NIP.
+  adminGet("/orang", async (request) => {
+    const q = z.object({ q: z.string().trim().max(100).default("") }).parse(request.query).q.toLocaleLowerCase();
+    const view = await deps.directory.view();
+    if (!view) throw new SekretariatError(503, "directory_belum_tersedia", "Organization Directory belum tersedia.");
+    if (q.length < 2) return { items: [] };
+    return {
+      items: [...view.people.values()]
+        .filter((person) => person.aktif && (person.nama.toLocaleLowerCase().includes(q) || person.nip.toLocaleLowerCase().includes(q)))
+        .slice(0, 25)
+        .map((person) => ({ id: person.id, nama: person.nama, unit: person.unitId ? view.units.get(person.unitId)?.nama ?? null : null })),
+    };
+  });
+  const withNama = async <T extends { personId: string }>(list: { items: T[] }) => {
+    const view = await deps.directory.view();
+    return { items: list.items.map((item) => ({ ...item, nama: view?.people.get(item.personId)?.nama ?? null })) };
+  };
+  adminGet("/petugas", async () => withNama(await deps.pengaturan.petugasList()));
   adminWrite("POST", "/petugas", (request, actor) => deps.pengaturan.tambahPetugas(actor, petugasSchema.parse(body(request))), 201);
   adminWrite("POST", "/petugas/:id/cabut", (request, actor) => deps.pengaturan.cabutPetugas(actor, params(request).id!, cabutSchema.parse(body(request)).alasan));
-  adminGet("/disposisi-pemegang", () => deps.pengaturan.pemegangDisposisiList());
+  adminGet("/disposisi-pemegang", async () => withNama(await deps.pengaturan.pemegangDisposisiList()));
   adminWrite("POST", "/disposisi-pemegang", (request, actor) => deps.pengaturan.tambahPemegangDisposisi(actor, pemegangSchema.parse(body(request))), 201);
   adminWrite("POST", "/disposisi-pemegang/:id/cabut", (request, actor) => deps.pengaturan.cabutPemegangDisposisi(actor, params(request).id!, cabutSchema.parse(body(request)).alasan));
   adminGet("/jenis", () => deps.buku.jenisList(false));

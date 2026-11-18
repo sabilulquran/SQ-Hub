@@ -7,6 +7,11 @@ import { loadPeran, requireKotak, requireSuratMasuk, type Viewer } from "./akses
 import type { SekretariatBerkas } from "./berkas.js";
 import { invalid, notFound, SekretariatError, withTransaction, writeAudit } from "./db.js";
 
+/** LIKE treats `%`, `_` and the escape character as patterns; a search for them means them literally. */
+export function escapeLike(value: string): string {
+  return value.replace(/[\\%_]/g, (char) => `\\${char}`);
+}
+
 /**
  * SEK-IMPL-001 §7: the inbox. E-mail arrives through the fetcher into the foundation inbox;
  * scanned physical letters are registered by officers. Disposition forwards foundation-inbox
@@ -64,7 +69,7 @@ export class SekretariatKotak {
    * One inbox's contents: its own letters, and — for an issuer inbox — items disposed to it from
    * the foundation inbox.
    */
-  async isi(viewer: Viewer, admin: boolean, kotakId: string, status: string | undefined, page: number) {
+  async isi(viewer: Viewer, admin: boolean, kotakId: string, status: string | undefined, page: number, cari?: string) {
     const peran = await loadPeran(this.pool, viewer, admin);
     const kotak = await requireKotak(this.pool, peran, kotakId);
     const statusFilter = status && ["baru", "didisposisi", "selesai", "spam"].includes(status) ? status : null;
@@ -79,10 +84,26 @@ export class SekretariatKotak {
     } else if (kotak.jenis === "yayasan") {
       where += " AND m.status <> 'spam'";
     }
+    // SEK-IMPL-003: one search box over sender, subject and body, applied before the page limit
+    // (ENG-LIST-001). LIKE wildcards typed by a person are escaped, so "50%" means fifty percent.
+    const needle = cari?.trim().slice(0, 100);
+    if (needle) {
+      params.push(`%${escapeLike(needle)}%`);
+      const at = `$${params.length}`;
+      where += ` AND (m.dari ILIKE ${at} OR m.perihal ILIKE ${at} OR m.isi_teks ILIKE ${at})`;
+    }
     const total = Number((await this.pool.query<{ c: string }>(`SELECT count(*) AS c FROM sekretariat_surat_masuk m WHERE ${where}`, params)).rows[0]!.c);
     params.push((page - 1) * 25);
-    const rows = await this.pool.query<{ id: string; kanal: string; dari: string; perihal: string; diterima_pada: Date; status: string }>(
-      `SELECT m.id, m.kanal, m.dari, m.perihal, m.diterima_pada, m.status FROM sekretariat_surat_masuk m
+    const rows = await this.pool.query<{
+      id: string; kanal: string; dari: string; perihal: string; diterima_pada: Date; status: string; cuplikan: string; lampiran: string;
+    }>(
+      // What makes a list scannable (SEK-IMPL-003): the opening words of the body with whitespace
+      // folded into single spaces, and how many live files the letter carries.
+      `SELECT m.id, m.kanal, m.dari, m.perihal, m.diterima_pada, m.status,
+              left(btrim(regexp_replace(m.isi_teks, '[[:space:]]+', ' ', 'g')), 180) AS cuplikan,
+              (SELECT count(*) FROM sekretariat_berkas b
+                WHERE b.pemilik_jenis = 'surat_masuk' AND b.pemilik_id = m.id AND NOT b.dihapus) AS lampiran
+         FROM sekretariat_surat_masuk m
        WHERE ${where} ORDER BY m.diterima_pada DESC, m.id LIMIT 25 OFFSET $${params.length}`,
       params,
     );
@@ -90,6 +111,7 @@ export class SekretariatKotak {
       kotak: { id: kotak.id, jenis: kotak.jenis },
       items: rows.rows.map((row) => ({
         id: row.id, kanal: row.kanal, dari: row.dari, perihal: row.perihal, diterimaPada: row.diterima_pada.toISOString(), status: row.status,
+        cuplikan: row.cuplikan, lampiran: Number(row.lampiran),
       })),
       total,
       page,

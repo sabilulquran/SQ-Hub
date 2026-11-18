@@ -11,6 +11,10 @@ interface AccountMenuProps {
   platformAdministration?: boolean;
   onLogout?: () => void | Promise<void>;
   previewOpen?: boolean;
+  /** Role badge for apps outside SQ Hub (for example "Pengelola Sekretariat"); Hub derives its own. */
+  roleLabel?: string;
+  /** Where "Akun SQ" leads. Inside SQ Hub `/account`; another app host links to SQ Hub's page. */
+  accountHref?: string;
 }
 
 /**
@@ -22,6 +26,8 @@ export function AccountMenu({
   platformAdministration = false,
   onLogout,
   previewOpen = false,
+  roleLabel: roleLabelOverride,
+  accountHref = "/account",
 }: AccountMenuProps) {
   const [open, setOpen] = useState(previewOpen);
   const [loggingOut, setLoggingOut] = useState(false);
@@ -31,11 +37,11 @@ export function AccountMenu({
   useDismiss(open, close, rootRef, triggerRef);
 
   // A member of an Organ Yayasan may not be staff, so the organ replaces the default role label.
-  const roleLabel = platformAdministration
+  const roleLabel = roleLabelOverride ?? (platformAdministration
     ? "Platform Administrator"
     : user.organ
       ? organBadge(user.organ)
-      : "Pegawai";
+      : "Pegawai");
 
   const handleLogout = async () => {
     if (!onLogout) return;
@@ -105,7 +111,7 @@ export function AccountMenu({
             </div>
             <div className="my-1 h-px bg-border/70" aria-hidden="true" />
             <a
-              href="/account"
+              href={accountHref}
               role="menuitem"
               className="flex min-h-11 items-center gap-3 rounded-xl px-3 py-2 text-sm font-semibold text-foreground transition hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >

@@ -25,6 +25,17 @@ export interface SuratMasukRingkas {
   perihal: string;
   diterimaPada: string;
   status: "baru" | "didisposisi" | "selesai" | "spam";
+  /** SEK-IMPL-003: the opening words of the body, whitespace folded; empty for a physical letter. */
+  cuplikan: string;
+  /** Live files attached to the letter. */
+  lampiran: number;
+}
+
+/** SEK-IMPL-003: one person from the Organization Directory, picked by name. */
+export interface Orang {
+  id: string;
+  nama: string;
+  unit: string | null;
 }
 
 export interface Berkas {
@@ -36,7 +47,7 @@ export interface Berkas {
   terkunci: boolean;
 }
 
-export interface SuratMasukDetail extends SuratMasukRingkas {
+export interface SuratMasukDetail extends Omit<SuratMasukRingkas, "cuplikan" | "lampiran"> {
   kotak: { id: string; jenis: "yayasan" | "penerbit" };
   isiTeks: string;
   dicatatOleh: string | null;
