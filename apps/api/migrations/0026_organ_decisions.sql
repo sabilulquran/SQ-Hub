@@ -29,7 +29,8 @@ ALTER TABLE applications
   ADD CONSTRAINT applications_decision_contract_check CHECK (
     (decision_path IS NULL AND decision_audience IS NULL)
     OR (
-      decision_path ~ '^/[A-Za-z0-9._~!$&''()*+,;=:@%/-]{0,255}$'
+      decision_path ~ '^/[A-Za-z0-9._~!$&''()*+,;=:@%/-]{0,511}$'
+      AND decision_path !~ '^//'
       AND decision_audience ~ '^[A-Za-z0-9._:-]{1,255}$'
     )
   );

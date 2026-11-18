@@ -1,5 +1,7 @@
 import { LoaderCircle } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+
+import { requestIdFor, type DecisionDirection } from "@/organ-portal/decisions";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 /**
  * ORGAN-IMPL-001 §4.2 (R2) — deciding inside the portal.
@@ -192,12 +194,21 @@ function DecisionDialog({
   const [note, setNote] = useState("");
   const [sending, setSending] = useState<Sending>(null);
   const [problem, setProblem] = useState<string | null>(null);
-  // One id per action, kept across retries of the same action so a resend cannot decide twice.
-  const [requestId] = useState(() => crypto.randomUUID());
+  /**
+   * One id per action, where the action is this step AND this direction, kept across retries of
+   * that same action so a resend cannot decide twice.
+   *
+   * One id for the whole dialog would be wrong in a way nobody would notice: after a rejection
+   * whose answer never arrived, pressing Setujui would reach the application with the id the
+   * rejection already used, and the application would answer by repeating that first decision.
+   * The dialog would close on a 200 and the member would believe they had approved.
+   */
+  const requestIds = useRef<Partial<Record<DecisionDirection, string>>>({});
 
-  const decide = useCallback(async (decision: "approve" | "reject") => {
+  const decide = useCallback(async (decision: DecisionDirection) => {
     setSending({ decision });
     setProblem(null);
+    const requestId = requestIdFor(requestIds.current, decision, () => crypto.randomUUID());
     try {
       const response = await fetch(`/api/organ/decisions/${encodeURIComponent(card.applicationKey)}/${encodeURIComponent(item.stepId)}`, {
         method: "POST",
@@ -214,6 +225,17 @@ function DecisionDialog({
         goStepUp(body.stepUpPath);
         return;
       }
+      // The session ended, or Akun SQ wants the member to sign in again. Sending them back to
+      // the sign-in is the only way out; leaving the message on screen is a dead end.
+      if (response.status === 401 || response.status === 428) {
+        window.location.assign("/api/auth/oidc/start");
+        return;
+      }
+      if (response.status === 503 && body.error === "decision_not_sent") {
+        // Nothing reached the application, so trying again is the right move, not a reload.
+        setProblem("Keputusan belum terkirim. Coba lagi.");
+        return;
+      }
       if (response.status === 503) {
         // §4.2 step 5: the result is not certain. Never resend by itself.
         setProblem("Hasil belum pasti. Muat ulang daftar untuk melihat keadaan terakhir sebelum mencoba lagi.");
@@ -225,7 +247,7 @@ function DecisionDialog({
     } finally {
       setSending(null);
     }
-  }, [card.applicationKey, item.stepId, note, onDecided, requestId]);
+  }, [card.applicationKey, item.stepId, note, onDecided]);
 
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-0 sm:items-center sm:p-6" role="presentation" onClick={onClose}>

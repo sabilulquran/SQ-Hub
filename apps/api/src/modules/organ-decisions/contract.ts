@@ -62,3 +62,23 @@ export const decisionCommandSchema = z
   .strict();
 
 export type DecisionCommand = z.infer<typeof decisionCommandSchema>;
+
+/**
+ * What the portal passes back to the browser after forwarding a decision. The application owns
+ * the outcome, so this is read loosely — unknown fields are dropped rather than relayed, and a
+ * body that does not match at all becomes an empty object rather than an error, because by then
+ * the decision has already been taken and saying otherwise would be false.
+ */
+export const decisionResultSchema = z
+  .object({
+    requestId: z.string().max(255).optional(),
+    requestStatus: z.string().max(64).optional(),
+    stepStatus: z.string().max(64).optional(),
+    nextPendingStepId: z.string().max(255).nullable().optional(),
+    hcHandling: z.string().max(64).optional(),
+    hcTaskStatus: z.string().max(64).nullable().optional(),
+    criticalReviewStatus: z.string().max(64).nullable().optional(),
+  })
+  .strip();
+
+export type DecisionResult = z.infer<typeof decisionResultSchema>;

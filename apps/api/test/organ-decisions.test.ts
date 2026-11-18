@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { createHmac } from "node:crypto";
 
 import { describe, expect, it } from "vitest";
 
@@ -6,6 +6,7 @@ import type { HubSessionRecord } from "../src/modules/hub-auth/repository.js";
 import type { ExchangeTarget } from "../src/modules/governance/token-exchange.js";
 import {
   DecisionApplicationUnknownError,
+  DecisionNotSentError,
   DecisionRefusedError,
   DecisionUnavailableError,
   OrganDecisionService,
@@ -19,6 +20,7 @@ import {
 
 const ISSUER = "https://login.example/realms/sq-staff";
 const NOW = new Date("2026-11-17T10:00:00Z");
+const DIGEST_KEY = "synthetic-portal-secret";
 
 const HCIS: OrganDecisionApplication = {
   applicationKey: "hcis",
@@ -81,6 +83,7 @@ function build(options: {
       },
     },
     events: { record: async (input) => { events.push(input as unknown as Record<string, unknown>); } },
+    digestKey: DIGEST_KEY,
     now: () => NOW.getTime(),
     fetch: (async (input: URL | string, init?: RequestInit) => {
       const call: Call = {
@@ -216,6 +219,70 @@ describe("ORGAN-IMPL-001 §4.2: what the portal does with the application's answ
   });
 });
 
+describe("ORGAN-IMPL-001 §4.2: a request that never went out is not an uncertain result", () => {
+  const fresh = () => session(new Date(NOW.getTime() - 60_000));
+
+  it("says the decision was not sent when the exchange fails, and records nothing", async () => {
+    const calls: unknown[] = [];
+    const events: unknown[] = [];
+    const service = new OrganDecisionService({
+      applications: { listForIdentity: async () => [HCIS] },
+      userAccessToken: async () => "user-access-token",
+      exchanger: { exchange: async () => { throw new Error("token exchange failed (400)"); } },
+      events: { record: async (input) => { events.push(input); } },
+      digestKey: DIGEST_KEY,
+      now: () => NOW.getTime(),
+      fetch: (async () => { calls.push("fetch"); return new Response("{}"); }) as unknown as typeof fetch,
+    });
+
+    await expect(service.decide(fresh(), "token", "hcis", "step-1", {
+      decision: "approve", requestId: "11111111-1111-4111-8111-111111111111",
+    })).rejects.toBeInstanceOf(DecisionNotSentError);
+    // Nothing reached the application, so there is nothing to be uncertain about and nothing to
+    // record: telling the member "the result is unclear" would stop them doing the right thing.
+    expect(calls).toEqual([]);
+    expect(events).toEqual([]);
+  });
+
+  it("marks a card failed, not ready, when the list cannot be exchanged for", async () => {
+    const service = new OrganDecisionService({
+      applications: { listForIdentity: async () => [HCIS] },
+      userAccessToken: async () => "user-access-token",
+      exchanger: { exchange: async () => { throw new Error("token exchange failed (400)"); } },
+      events: { record: async () => undefined },
+      digestKey: DIGEST_KEY,
+      now: () => NOW.getTime(),
+      fetch: (async () => new Response("{}")) as unknown as typeof fetch,
+    });
+    await expect(service.list(fresh(), "token")).resolves.toMatchObject({ cards: [{ state: "failed" }] });
+  });
+});
+
+describe("ORGAN-IMPL-001 §4.2: what comes back from the application", () => {
+  const fresh = () => session(new Date(NOW.getTime() - 60_000));
+
+  it("accepts any 2xx as taken, not only 200", async () => {
+    const { service } = build({ respond: () => ({ status: 202, body: { requestStatus: "approved" } }) });
+    await expect(service.decide(fresh(), "token", "hcis", "step-1", {
+      decision: "approve", requestId: "11111111-1111-4111-8111-111111111111",
+    })).resolves.toMatchObject({ requestStatus: "approved" });
+  });
+
+  it("passes on the outcome and drops whatever else the application put in the body", async () => {
+    const { service } = build({
+      respond: () => ({
+        status: 200,
+        body: { requestStatus: "approved", stepStatus: "approved", approverName: "Pegawai Sintetis", decisionNote: "catatan" },
+      }),
+    });
+    const result = await service.decide(fresh(), "token", "hcis", "step-1", {
+      decision: "approve", requestId: "11111111-1111-4111-8111-111111111111",
+    });
+    expect(result).toEqual({ requestStatus: "approved", stepStatus: "approved" });
+    expect(JSON.stringify(result)).not.toContain("Pegawai Sintetis");
+  });
+});
+
 describe("ORGAN-IMPL-001 §4.2: the forwarding event", () => {
   const fresh = () => session(new Date(NOW.getTime() - 60_000));
 
@@ -230,7 +297,7 @@ describe("ORGAN-IMPL-001 §4.2: the forwarding event", () => {
     expect(events).toHaveLength(1);
     const event = events[0]!;
     expect(event).toEqual({
-      actorDigest: createHash("sha256").update(`${ISSUER}\nketua`).digest("hex"),
+      actorDigest: createHmac("sha256", DIGEST_KEY).update(`${ISSUER}\nketua`).digest("hex"),
       applicationKey: "hcis",
       stepId: "step-1",
       decision: "approve",
@@ -243,7 +310,15 @@ describe("ORGAN-IMPL-001 §4.2: the forwarding event", () => {
   });
 
   it("derives the digest from issuer and subject together", () => {
-    expect(actorDigest({ issuer: ISSUER, subject: "ketua" })).toMatch(/^[0-9a-f]{64}$/);
-    expect(actorDigest({ issuer: ISSUER, subject: "ketua" })).not.toBe(actorDigest({ issuer: ISSUER, subject: "sekretaris" }));
+    expect(actorDigest({ issuer: ISSUER, subject: "ketua" }, DIGEST_KEY)).toMatch(/^[0-9a-f]{64}$/);
+    expect(actorDigest({ issuer: ISSUER, subject: "ketua" }, DIGEST_KEY))
+      .not.toBe(actorDigest({ issuer: ISSUER, subject: "sekretaris" }, DIGEST_KEY));
+  });
+
+  // Unkeyed, the digest would be a plain hash over a handful of subjects that sit in this same
+  // database, so anyone who could read the event table could undo it by trying them all.
+  it("cannot be recomputed without the key", () => {
+    const identity = { issuer: ISSUER, subject: "ketua" };
+    expect(actorDigest(identity, DIGEST_KEY)).not.toBe(actorDigest(identity, "another-secret"));
   });
 });

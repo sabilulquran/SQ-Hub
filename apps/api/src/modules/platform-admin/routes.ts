@@ -143,11 +143,11 @@ export function registerPlatformAdminRoutes(
                 summaryPath: body.governanceSummaryPath || null,
                 audience: body.governanceAudience || null,
                 order: body.governanceOrder ?? 0,
-                ...(decisionProvided
-                  ? { decisionPath: body.decisionPath || null, decisionAudience: body.decisionAudience || null }
-                  : {}),
               },
             }
+          : {}),
+        ...(decisionProvided
+          ? { decision: { path: body.decisionPath || null, audience: body.decisionAudience || null } }
           : {}),
         ...(body.kind ? { kind: body.kind } : {}),
         ...(whatsappProvided

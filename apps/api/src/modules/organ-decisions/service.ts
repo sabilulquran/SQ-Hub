@@ -1,4 +1,4 @@
-import { createHash, randomUUID } from "node:crypto";
+import { createHmac, randomUUID } from "node:crypto";
 
 import type { Pool } from "pg";
 
@@ -7,7 +7,7 @@ import type { IdentityRef } from "../application-access/types.js";
 import type { HubSessionRecord } from "../hub-auth/repository.js";
 import { HubAuthError } from "../hub-auth/service.js";
 import type { TokenExchanger } from "../governance/token-exchange.js";
-import { decisionListSchema, type DecisionCommand, type DecisionItem } from "./contract.js";
+import { decisionListSchema, decisionResultSchema, type DecisionCommand, type DecisionItem } from "./contract.js";
 
 /**
  * ORGAN-IMPL-001 §4.2 / ADR-0012 D4 — forwarding one member's decision to the application that
@@ -70,6 +70,20 @@ export class DecisionRefusedError extends Error {
   }
 }
 
+/**
+ * Nothing left this process: the user token could not be refreshed, the exchange failed, or the
+ * registry path would not build into a URL on the application's origin.
+ *
+ * Kept apart from DecisionUnavailableError deliberately. "The result is uncertain, do not resend"
+ * is the right thing to say when a request went out and no answer came back; it is the wrong
+ * thing to say when nothing went out, where trying again is exactly what should happen. No
+ * forwarding event is written for this either, because no decision was forwarded.
+ */
+export class DecisionNotSentError extends Error {
+  readonly statusCode = 503;
+  readonly code = "decision_not_sent";
+}
+
 export interface OrganDecisionCard {
   applicationKey: string;
   name: string;
@@ -79,8 +93,18 @@ export interface OrganDecisionCard {
 
 const MAX_BODY_BYTES = 256 * 1024;
 
-export function actorDigest(identity: IdentityRef): string {
-  return createHash("sha256").update(`${identity.issuer}\n${identity.subject}`).digest("hex");
+/**
+ * A keyed pseudonym for the member, not a bare hash.
+ *
+ * A plain SHA-256 would hide nothing here: the board is a handful of people, and their Keycloak
+ * subjects sit in `hub_sessions` in this same database, so anyone who could read the event table
+ * could recompute every digest in a moment. Under HMAC with the portal's client secret the table
+ * alone no longer names anyone. It stays a pseudonym rather than anonymous: whoever holds the key
+ * can still match a member to their history, which is what makes a disputed decision traceable at
+ * all, and rotating the secret starts a new series instead of rewriting the old one.
+ */
+export function actorDigest(identity: IdentityRef, key: string): string {
+  return createHmac("sha256", key).update(`${identity.issuer}\n${identity.subject}`).digest("hex");
 }
 
 export class OrganDecisionService {
@@ -94,6 +118,8 @@ export class OrganDecisionService {
       userAccessToken: (sessionToken: string | null) => Promise<string>;
       exchanger: TokenExchanger;
       events: OrganDecisionEventStore;
+      /** Keys the actor pseudonym; the portal's OIDC client secret in production. */
+      digestKey: string;
       fetch?: typeof fetch;
       now?: () => number;
       timeoutMs?: number;
@@ -155,7 +181,7 @@ export class OrganDecisionService {
       .find((item) => item.applicationKey === applicationKey);
     if (!application) throw new DecisionApplicationUnknownError(applicationKey);
 
-    const digest = actorDigest(identity);
+    const digest = actorDigest(identity, this.deps.digestKey);
     let response: { status: number; body: unknown };
     try {
       response = await this.call(application, sessionToken, {
@@ -165,6 +191,8 @@ export class OrganDecisionService {
       });
     } catch (error) {
       if (error instanceof HubAuthError) throw error;
+      // Nothing was sent, so there is nothing to be uncertain about and nothing to record.
+      if (error instanceof DecisionNotSentError) throw error;
       // The result is genuinely unknown: the decision may or may not have landed. The portal
       // reloads rather than resending by itself, and the same requestId makes a later resend safe.
       await this.record(digest, applicationKey, stepId, command.decision, 0);
@@ -173,7 +201,14 @@ export class OrganDecisionService {
 
     await this.record(digest, applicationKey, stepId, command.decision, response.status);
 
-    if (response.status === 200) return response.body;
+    // Any 2xx means the application took the decision. Only 200 is defined today, but reading a
+    // 202 as a failure would tell the member their decision was lost when it was not.
+    if (response.status >= 200 && response.status < 300) {
+      // The portal passes on the outcome, not whatever the application happened to put in the
+      // body: unknown fields are dropped rather than forwarded to the browser.
+      const parsed = decisionResultSchema.safeParse(response.body);
+      return parsed.success ? parsed.data : {};
+    }
     const body = response.body as { code?: unknown; message?: unknown } | null;
     throw new DecisionRefusedError(
       response.status >= 400 && response.status <= 599 ? response.status : 503,
@@ -212,20 +247,27 @@ export class OrganDecisionService {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), this.timeoutMs);
     try {
-      const subjectToken = await this.deps.userAccessToken(sessionToken);
-      const exchanged = await this.deps.exchanger.exchange(
-        subjectToken,
-        {
-          audience: application.decisionAudience,
-          scope: `${DECISION_SCOPE_PREFIX}${application.applicationKey}`,
-        },
-        controller.signal,
-      );
+      let exchanged: string;
+      let url: URL;
+      try {
+        const subjectToken = await this.deps.userAccessToken(sessionToken);
+        exchanged = await this.deps.exchanger.exchange(
+          subjectToken,
+          {
+            audience: application.decisionAudience,
+            scope: `${DECISION_SCOPE_PREFIX}${application.applicationKey}`,
+          },
+          controller.signal,
+        );
 
-      const path = input.method === "GET"
-        ? application.decisionPath
-        : `${application.decisionPath.replace(/\/$/, "")}/${encodeURIComponent(input.stepId)}`;
-      const url = governanceSummaryUrl(application.canonicalUrl, path);
+        const path = input.method === "GET"
+          ? application.decisionPath
+          : `${application.decisionPath.replace(/\/$/, "")}/${encodeURIComponent(input.stepId)}`;
+        url = governanceSummaryUrl(application.canonicalUrl, path);
+      } catch (error) {
+        if (error instanceof HubAuthError) throw error;
+        throw new DecisionNotSentError("the request was never sent");
+      }
 
       const response = await (this.deps.fetch ?? fetch)(url, {
         method: input.method,

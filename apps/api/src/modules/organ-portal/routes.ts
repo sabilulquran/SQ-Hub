@@ -14,6 +14,7 @@ import {
 import { HubAuthError, readCookie, type HubAuthRuntime } from "../hub-auth/service.js";
 import {
   DecisionApplicationUnknownError,
+  DecisionNotSentError,
   DecisionRefusedError,
   DecisionUnavailableError,
   StepUpRequiredError,
@@ -254,6 +255,8 @@ function fail(reply: FastifyReply, error: unknown) {
     return reply.status(error.statusCode).send({ error: error.code, stepUpPath: "/api/auth/oidc/start?stepUp=1" });
   }
   if (error instanceof DecisionApplicationUnknownError) return reply.status(404).send({ error: error.code });
+  // Nothing was sent, so the browser may simply try again; the uncertain case must not.
+  if (error instanceof DecisionNotSentError) return reply.status(503).send({ error: error.code });
   if (error instanceof DecisionUnavailableError) return reply.status(503).send({ error: error.code });
   if (error instanceof DecisionRefusedError) {
     return reply.status(error.statusCode).send({ error: error.code, ...(error.detail ? { message: error.detail } : {}) });

@@ -50,9 +50,14 @@ export interface ApplicationUpsertInput {
     summaryPath: string | null;
     audience: string | null;
     order: number;
-    /** ORGAN-IMPL-001 §4.2. Undefined leaves the stored decision contract untouched. */
-    decisionPath?: string | null | undefined;
-    decisionAudience?: string | null | undefined;
+  };
+  /**
+   * ORGAN-IMPL-001 §4.2. Its own group, not part of `governance`: a caller that sets only the
+   * decision contract must not clear the summary registration, and the other way round.
+   */
+  decision?: {
+    path: string | null;
+    audience: string | null;
   };
   /** Omitted: an existing application keeps its kind; a new one is `modul`. */
   kind?: ApplicationKind;
@@ -174,9 +179,9 @@ export class PgApplicationAccessRepository implements ApplicationAccessRepositor
           Boolean(input.whatsapp),
           input.whatsapp?.capable ?? null,
           input.whatsapp?.machineClientId ?? null,
-          input.governance?.decisionPath ?? null,
-          input.governance?.decisionAudience ?? null,
-          input.governance?.decisionPath !== undefined || input.governance?.decisionAudience !== undefined,
+          input.decision?.path ?? null,
+          input.decision?.audience ?? null,
+          Boolean(input.decision),
         ],
       );
       const row = result.rows[0];

@@ -107,6 +107,9 @@ export function createOrganPortalModule(input: {
         clientSecret: config.oidc.clientSecret,
       }),
       events: new PgOrganDecisionEventStore(pool),
+      // The portal's own client secret keys the actor pseudonym: it never leaves this process and
+      // is not readable from the event table, which is the whole point of keying it.
+      digestKey: config.oidc.clientSecret,
       ...(input.fetch ? { fetch: input.fetch } : {}),
     })
     : undefined;
