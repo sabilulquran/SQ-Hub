@@ -45,11 +45,25 @@ export const governanceRegistrationSchema = z
     summaryPath: governanceSummaryPathSchema.nullable(),
     audience: governanceAudienceSchema.nullable(),
     order: governanceOrderSchema,
+    // ORGAN-IMPL-001 §4.2: where decisions go, under their own audience. Optional so every
+    // caller that registered a summary before R2 keeps working unchanged.
+    decisionPath: governanceSummaryPathSchema.nullable().optional(),
+    decisionAudience: governanceAudienceSchema.nullable().optional(),
   })
   .strict()
   .refine((value) => (value.summaryPath === null) === (value.audience === null), {
     message: "governance audience is required exactly when a summary path is set",
     path: ["audience"],
+  })
+  .refine((value) => ((value.decisionPath ?? null) === null) === ((value.decisionAudience ?? null) === null), {
+    message: "decision audience is required exactly when a decision path is set",
+    path: ["decisionAudience"],
+  })
+  // A decision token that also opens the summary would defeat the separation ADR-0012 D4 is
+  // built on, so the registry refuses to name one audience for both.
+  .refine((value) => (value.decisionAudience ?? null) === null || value.decisionAudience !== value.audience, {
+    message: "the decision audience must differ from the governance summary audience",
+    path: ["decisionAudience"],
   });
 
 /** KIRIM-IMPL-003 K-2 and migration 0013 `applications_machine_client_check`: WhatsApp needs a machine client. */

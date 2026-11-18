@@ -12,10 +12,23 @@ import {
   type GovernanceService,
 } from "../governance/service.js";
 import { HubAuthError, readCookie, type HubAuthRuntime } from "../hub-auth/service.js";
+import {
+  DecisionApplicationUnknownError,
+  DecisionNotSentError,
+  DecisionRefusedError,
+  DecisionUnavailableError,
+  StepUpRequiredError,
+  STEP_UP_MAX_AGE_SECONDS,
+  type OrganDecisionService,
+} from "../organ-decisions/service.js";
+import { decisionCommandSchema } from "../organ-decisions/contract.js";
 import type { Organ } from "../organ-membership/repository.js";
 
 export const ORGAN_SESSION_COOKIE_NAME = "sq_organ_session";
 export const ORGAN_OIDC_TRANSACTION_COOKIE_NAME = "sq_organ_oidc_tx";
+
+/** ADR-0012 D4 (`DRAFT` T-3): the level TOTP reaches. A trusted device does not reach it. */
+export const ORGAN_STEP_UP_ACR = "2";
 
 export interface OrganGate {
   access: { checkAccess(identity: IdentityRef, applicationKey: string): Promise<{ allowed: boolean }> };
@@ -62,10 +75,19 @@ export function registerOrganAuthRoutes(
 ) {
   const constraints = hostConstraint(input.publicOrigin);
 
-  app.get("/auth/oidc/start", { constraints }, async (_request, reply) => {
+  app.get("/auth/oidc/start", { constraints }, async (request, reply) => {
     reply.header("Cache-Control", "no-store");
+    // §4.2 step 2: `?stepUp=1` asks the realm for the TOTP Level of Authentication and a
+    // fresh authentication. The callback refuses anything less, so this cannot be used to
+    // mint a step-up the member did not actually perform.
+    const stepUp = (request.query as { stepUp?: unknown } | undefined)?.stepUp === "1";
     try {
-      const result = await input.auth.beginLogin(undefined, "/");
+      const result = await input.auth.beginLogin(
+        undefined,
+        "/",
+        null,
+        ...(stepUp ? [{ acr: ORGAN_STEP_UP_ACR, maxAgeSeconds: STEP_UP_MAX_AGE_SECONDS }] as const : []),
+      );
       reply.header("Set-Cookie", result.setCookie);
       return reply.redirect(result.authorizationUrl.href);
     } catch {
@@ -114,7 +136,14 @@ export function registerOrganAuthRoutes(
 /** §3, §4.1: the portal's browser API. Every route re-checks the gate before anything else. */
 export function registerOrganRoutes(
   app: FastifyInstance,
-  input: { auth: HubAuthRuntime; governance: GovernanceService; publicOrigin: string; gate: OrganGate },
+  input: {
+    auth: HubAuthRuntime;
+    governance: GovernanceService;
+    publicOrigin: string;
+    gate: OrganGate;
+    /** R2 only. Undefined while PORTAL_ORGAN_DECISIONS_ENABLED is off: no decision route exists. */
+    decisions?: OrganDecisionService;
+  },
 ) {
   const constraints = hostConstraint(input.publicOrigin);
 
@@ -138,6 +167,9 @@ export function registerOrganRoutes(
       return reply.send({
         user: { displayName: session.displayName },
         membership: { organ: membership.organ, ...(membership.positionLabel ? { positionLabel: membership.positionLabel } : {}) },
+        // R2: whether this portal can take the decision itself. While it is false the
+        // Keputusan tab keeps linking to the owning application, exactly as in R1.
+        capabilities: { decisions: Boolean(input.decisions) },
       });
     } catch (error) {
       return fail(reply, error);
@@ -168,6 +200,40 @@ export function registerOrganRoutes(
     }
   });
 
+  // §4.2 R2: the member's own pending steps, from each application that takes decisions. The
+  // step-up is checked before any token exchange, so a stale one costs nothing but a redirect.
+  app.get("/organ/decisions", { constraints }, async (request, reply) => {
+    reply.header("Cache-Control", "no-store");
+    if (!input.decisions) return reply.status(404).send({ error: "not_found" });
+    try {
+      const { session, sessionToken } = await member(request);
+      return reply.send(await input.decisions.list(session, sessionToken));
+    } catch (error) {
+      return fail(reply, error);
+    }
+  });
+
+  // One decision, forwarded to the application that owns the rule. The portal decides nothing:
+  // the answer below, including every refusal, is the application's own.
+  app.post("/organ/decisions/:applicationKey/:stepId", { constraints }, async (request, reply) => {
+    reply.header("Cache-Control", "no-store");
+    if (!input.decisions) return reply.status(404).send({ error: "not_found" });
+    if (request.headers.origin !== input.publicOrigin) {
+      return reply.status(403).send({ error: "origin_forbidden" });
+    }
+    try {
+      const params = z.object({
+        applicationKey: applicationKeySchema,
+        stepId: z.string().trim().min(1).max(255),
+      }).parse(request.params);
+      const command = decisionCommandSchema.parse(request.body);
+      const { session, sessionToken } = await member(request);
+      return reply.send(await input.decisions.decide(session, sessionToken, params.applicationKey, params.stepId, command));
+    } catch (error) {
+      return fail(reply, error);
+    }
+  });
+
   // Retry for one failed card; bypasses the in-memory cache for that application only.
   app.get("/organ/summaries/:applicationKey", { constraints }, async (request, reply) => {
     reply.header("Cache-Control", "no-store");
@@ -184,6 +250,17 @@ export function registerOrganRoutes(
 
 function fail(reply: FastifyReply, error: unknown) {
   if (error instanceof OrganPortalError) return reply.status(error.statusCode).send({ error: error.code });
+  // R2: the browser turns this one into a step-up redirect; everything else it shows as is.
+  if (error instanceof StepUpRequiredError) {
+    return reply.status(error.statusCode).send({ error: error.code, stepUpPath: "/api/auth/oidc/start?stepUp=1" });
+  }
+  if (error instanceof DecisionApplicationUnknownError) return reply.status(404).send({ error: error.code });
+  // Nothing was sent, so the browser may simply try again; the uncertain case must not.
+  if (error instanceof DecisionNotSentError) return reply.status(503).send({ error: error.code });
+  if (error instanceof DecisionUnavailableError) return reply.status(503).send({ error: error.code });
+  if (error instanceof DecisionRefusedError) {
+    return reply.status(error.statusCode).send({ error: error.code, ...(error.detail ? { message: error.detail } : {}) });
+  }
   if (error instanceof HubAuthError) return reply.status(error.statusCode).send({ error: error.code });
   if (error instanceof GovernanceForbiddenError) return reply.status(403).send({ error: "organ_membership_required" });
   if (error instanceof GovernanceApplicationRefusedError) return reply.status(403).send({ error: "application_refused" });

@@ -24,6 +24,10 @@ export interface ApplicationRecord {
   /** Keycloak client ID used as the token-exchange audience; required with the path. */
   governanceAudience: string | null;
   governanceOrder: number;
+  /** ORGAN-IMPL-001 §4.2: path on the canonical_url origin where this application takes decisions. */
+  decisionPath: string | null;
+  /** The token-exchange audience for decisions; never the summary audience, and required with the path. */
+  decisionAudience: string | null;
   /** ADR-0011 amendment 2026-11-16: `modul` is an SQ Core module, `luar` an application outside SQ Core. A label only. */
   kind: ApplicationKind;
   /** KIRIM-IMPL-003 K-2: the application gets a Kirim SQ card and may send WhatsApp through it. */

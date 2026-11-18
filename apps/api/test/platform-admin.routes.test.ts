@@ -107,6 +107,8 @@ function makeApp(input: {
           governanceSummaryPath: null,
           governanceAudience: null,
           governanceOrder: 0,
+          decisionPath: null,
+          decisionAudience: null,
           kind: payload.kind ?? "modul",
           whatsappCapable: payload.whatsapp?.capable ?? false,
           machineClientId: payload.whatsapp?.machineClientId ?? null,
@@ -234,6 +236,8 @@ describe("SQ Admin Center routes", () => {
           governanceSummaryPath: null,
           governanceAudience: null,
           governanceOrder: 0,
+          decisionPath: null,
+          decisionAudience: null,
           kind: "modul",
           whatsappCapable: false,
           machineClientId: null,
@@ -373,6 +377,8 @@ describe("Registry: aplikasi luar and WhatsApp lewat Kirim", () => {
           governanceSummaryPath: null,
           governanceAudience: null,
           governanceOrder: 0,
+          decisionPath: null,
+          decisionAudience: null,
           kind: payload.kind ?? "modul",
           whatsappCapable: payload.whatsapp?.capable ?? false,
           machineClientId: payload.whatsapp?.machineClientId ?? null,
@@ -432,6 +438,41 @@ describe("Registry: aplikasi luar and WhatsApp lewat Kirim", () => {
     });
     expect(alone.statusCode).toBe(200);
     expect(calls[1]).not.toHaveProperty("whatsapp");
+    await app.close();
+  });
+
+  // ORGAN-IMPL-001 §4.2: the decision contract is its own group. Sending it must not clear the
+  // summary registration, and sending the summary must not clear it.
+  it("passes the decision contract on its own, without touching the governance registration", async () => {
+    const calls: Array<Parameters<ApplicationAccessService["upsertApplication"]>[0]> = [];
+    const app = makeApp({
+      upsertApplication: async (payload) => {
+        calls.push(payload);
+        return {
+          id: "app-hcis", applicationKey: payload.applicationKey, name: payload.name, canonicalUrl: payload.canonicalUrl, status: payload.status,
+          governanceSummaryPath: null, governanceAudience: null, governanceOrder: 0,
+          decisionPath: null, decisionAudience: null, kind: "modul", whatsappCapable: false, machineClientId: null,
+        };
+      },
+    });
+    const base = { name: "HCIS", canonicalUrl: "https://hcis-staging.example.test", status: "active" };
+
+    const decisionOnly = await app.inject({
+      method: "PUT", url: "/admin/applications/hcis", headers: mutationHeaders,
+      payload: { ...base, decisionPath: "/governance/decisions", decisionAudience: "hcis-organ-decision" },
+    });
+    expect(decisionOnly.statusCode).toBe(200);
+    // It reaches the registry even though no governance field came with it, and it does not drag
+    // the governance group along, which would have cleared the stored summary registration.
+    expect(calls[0]?.decision).toEqual({ path: "/governance/decisions", audience: "hcis-organ-decision" });
+    expect(calls[0]).not.toHaveProperty("governance");
+
+    const summaryOnly = await app.inject({
+      method: "PUT", url: "/admin/applications/hcis", headers: mutationHeaders,
+      payload: { ...base, governanceSummaryPath: "/governance/summary", governanceAudience: "hcis", governanceOrder: 1 },
+    });
+    expect(summaryOnly.statusCode).toBe(200);
+    expect(calls[1]).not.toHaveProperty("decision");
     await app.close();
   });
 

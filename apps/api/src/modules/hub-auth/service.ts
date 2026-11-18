@@ -1,6 +1,6 @@
 import { createHash, randomBytes } from "node:crypto";
 
-import type { HubOidcAction, HubOidcProviderLike } from "./oidc-provider.js";
+import type { HubOidcAction, HubOidcProviderLike, HubOidcStepUp } from "./oidc-provider.js";
 import type {
   HubAuthStore,
   HubRequestContext,
@@ -51,6 +51,7 @@ export interface HubAuthRuntime {
     action?: HubOidcAction,
     returnPath?: "/" | "/account",
     replaceSessionToken?: string | null,
+    stepUp?: HubOidcStepUp,
   ): Promise<{ authorizationUrl: URL; setCookie: string }>;
   completeLogin(
     callbackUrl: URL,
@@ -130,8 +131,9 @@ export class HubAuthService implements HubAuthRuntime {
     action?: HubOidcAction,
     returnPath: "/" | "/account" = "/",
     replaceSessionToken?: string | null,
+    stepUp?: HubOidcStepUp,
   ): Promise<{ authorizationUrl: URL; setCookie: string }> {
-    const request = await this.oidcProvider.createAuthorizationRequest(action);
+    const request = await this.oidcProvider.createAuthorizationRequest(action, stepUp);
     const transactionToken = generateOpaqueToken();
     const replacementSession = replaceSessionToken
       ? await this.getRequiredSession(replaceSessionToken)
@@ -211,6 +213,28 @@ export class HubAuthService implements HubAuthRuntime {
       }
     }
 
+    // ADR-0012 D4: a step-up is only a step-up if the realm actually answered with the level
+    // asked for. Keycloak may return a lower `acr` than requested, and a realm that ignores
+    // `max_age` would hand back an old `auth_time`. Both are refused here rather than trusted,
+    // and a missing claim is refused too: no proof is not proof.
+    const stepUp = stored.transaction.stepUp;
+    let steppedUpAt: Date | null = null;
+    if (stepUp) {
+      const authTime = completed.authTime;
+      const fresh = typeof authTime === "number"
+        && authTime * 1000 <= Date.now() + 60_000
+        && Date.now() - authTime * 1000 <= stepUp.maxAgeSeconds * 1000;
+      if (completed.acr !== stepUp.acr || !fresh) {
+        throw new HubAuthError(
+          400,
+          "OIDC_STEP_UP_FAILED",
+          "Verifikasi dua langkah belum terbukti. Coba lagi.",
+          stored.transaction.returnPath ?? "/",
+        );
+      }
+      steppedUpAt = new Date(authTime! * 1000);
+    }
+
     const sessionToken = generateOpaqueToken();
     const encryptedRefreshToken = completed.refreshToken
       ? this.tokenVault.seal(completed.refreshToken)
@@ -224,6 +248,7 @@ export class HubAuthService implements HubAuthRuntime {
       expiresAt: new Date(Date.now() + this.maxSeconds * 1000),
       context,
       clientId: this.sessionClient?.clientId ?? null,
+      steppedUpAt,
     });
     const sessionCookieMaxAge = Math.max(
       1,

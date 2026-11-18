@@ -1,6 +1,6 @@
 # ORGAN-IMPL-001 — Portal Organ Yayasan
 
-**Status:** ACCEPTED (Product Owner, 2026-11-12) bersama ADR-0012. Butir bertanda `DRAFT` adalah default agent yang menunggu konfirmasi, dan butir `TBD` belum diputuskan. **R1 diimplementasikan** di repository (bawaan `PORTAL_ORGAN_ENABLED=false`); langkah production ada di [ORGAN-IMPL-001-keycloak.md](../operations/ORGAN-IMPL-001-keycloak.md). R2 dan R3 belum dimulai.
+**Status:** ACCEPTED (Product Owner, 2026-11-12) bersama ADR-0012. Butir bertanda `DRAFT` adalah default agent yang menunggu konfirmasi, dan butir `TBD` belum diputuskan. **R1 live di production** sejak 2026-11-13; langkahnya ada di [ORGAN-IMPL-001-keycloak.md](../operations/ORGAN-IMPL-001-keycloak.md). **R2 diimplementasikan** di repository (bawaan `PORTAL_ORGAN_DECISIONS_ENABLED=false`), menunggu konfigurasi realm di [ORGAN-IMPL-001-r2-keycloak.md](../operations/ORGAN-IMPL-001-r2-keycloak.md). R3 belum dimulai.
 **Arsitektur:** [ADR-0012](../architecture/adr/0012-portal-organ-yayasan.md)
 **Menggantikan:** HUB-IMPL-021 §5, yaitu halaman Ringkasan Yayasan sebagai pintu masuk organ. Bagian lain HUB-IMPL-021 dipakai ulang: keanggotaan (§1), field registry (§2), kontrak ringkasan (§3, di sini diperluas menjadi v1.1), dan perilaku fetch (§4).
 **Terkait:** HUB-IMPL-012, HUB-IMPL-021, HUB-IMPL-023; HCIS ORG-003, ORG-004, ORG-010, ORG-013, GOV-001
@@ -30,7 +30,7 @@ Portal tidak membuka modul staf.
 | Tahap | Isi | Prasyarat di luar SQ Hub |
 |---|---|---|
 | **R1** | Host, client, gerbang anggota, dasbor, ringkasan keputusan berupa jumlah dan tautan ke aplikasi asal, redirect `/yayasan` | DNS (owner); client Keycloak `sq-organ`; HCIS menerima `azp` `sq-organ` di `/governance/summary` dan menerbitkan blok `decisions` (amandemen ORG-010) |
-| **R2** | Memutuskan di portal | Level of Authentication untuk TOTP di realm, dibuktikan terbawa ke token hasil exchange; HCIS: audience keputusan, `jti` sekali pakai, route keputusan bearer (amandemen ORG-010 dan ORG-013-3); ORG-004 `STRUCTURE` aktif untuk cuti |
+| **R2** | Memutuskan di portal | Level of Authentication untuk TOTP di realm, dibuktikan terbawa ke token hasil exchange; HCIS: audience keputusan, `jti` sekali pakai, route keputusan bearer (ORG-015, menutup `TBD` ORG-013-3); ORG-004 `STRUCTURE` aktif untuk cuti |
 | **R3** | Laporan bulanan dan catatan analisis Claude | Client mesin `sq-organ-reports`; HCIS: endpoint snapshot bulanan dan penanda tutup bulan; `ANTHROPIC_API_KEY` di environment Hub |
 
 Setiap tahap dirilis terpisah di belakang flag-nya sendiri.
@@ -120,6 +120,19 @@ Alur di portal:
    - `jti` dibelanjakan sekali pakai;
    - kepemilikan langkah, capability, dan larangan self-approval berdasarkan orang (ORG-013-1).
 5. **Idempotency.** `requestId` dibuat sekali per aksi dan dipakai ulang saat kirim ulang. Bila hasilnya belum pasti, portal memuat ulang daftar dan tidak mengirim ulang otomatis.
+
+**Catatan implementasi R2.**
+
+- Sisi aplikasi untuk HCIS adalah ORG-015 (`hcisysq`, `docs/domain/organ-decision-route.md`): `GET /governance/decisions` dan `POST /governance/decisions/:stepId`, audience `hcis-organ-decision`.
+- Kedua route di sisi HCIS membelanjakan `jti`, bukan hanya yang memutuskan. Daftar dibaca dengan kelas token yang sama dengan yang bisa memutuskan, jadi token daftar yang direkam tidak boleh tetap bisa menyetujui.
+- Umur token keputusan 60 detik dihitung tanpa menambahkan toleransi jam.
+- Field registry `decision_path` dan `decision_audience` ditolak bila audience-nya sama dengan `governance_audience` aplikasi itu.
+- Sesi portal menyimpan `stepped_up_at`, diisi hanya bila realm benar-benar menjawab `acr` yang diminta dengan `auth_time` yang masih dalam jendela. Gagal salah satu berarti tidak ada sesi, bukan sesi tanpa cap.
+- Event `organ.decision.forwarded` tersimpan di tabel `organ_decision_events` dengan digest aktor, aplikasi, id langkah, arah keputusan, status HTTP, dan waktu.
+- Digest aktor memakai HMAC dengan client secret portal, bukan hash biasa. Hash biasa tidak menyembunyikan apa pun di sini karena subjek anggota organ ada di tabel sesi pada database yang sama, sehingga siapa pun yang bisa membaca tabel event dapat menghitung ulang semuanya.
+- `requestId` dibuat satu per langkah **dan** per arah keputusan. Satu id untuk kedua tombol membuat penolakan yang jawabannya hilang terulang sebagai jawaban atas penekanan Setujui berikutnya, lalu ditampilkan sebagai berhasil.
+- Kegagalan sebelum apa pun terkirim (token pengguna, exchange, path registry yang tidak bisa jadi URL) dibedakan dari hasil yang tidak pasti: tidak ada event yang ditulis dan anggota diminta mencoba lagi.
+- **Keterbatasan yang diketahui (`TBD`).** Step-up membawa anggota keluar halaman dan mendarat kembali di Ringkasan, sehingga tab Keputusan dan catatan yang sedang diketik hilang. Mengembalikan keduanya butuh return path yang lebih kaya daripada yang dipakai alur masuk sekarang.
 
 Respons `GET /api/organ/decisions` berstatus `Cache-Control: no-store`, tidak di-cache di memori, dan tidak pernah dikirim ke Claude.
 
