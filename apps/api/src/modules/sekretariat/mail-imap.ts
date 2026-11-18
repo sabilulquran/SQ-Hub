@@ -22,6 +22,10 @@ export class ImapMailFetcher implements MailFetcher {
       host: this.options.host,
       port: this.options.port,
       secure: this.options.port === 993,
+      // On 143 imapflow would otherwise treat STARTTLS as optional and, if the server does not
+      // advertise it or a man in the middle strips it, send LOGIN in the clear. Demanding it
+      // makes that case fail instead.
+      ...(this.options.port === 993 ? {} : { doSTARTTLS: true as const }),
       auth: { user: this.options.user, pass: this.options.pass },
       logger: false,
     });
@@ -54,5 +58,27 @@ export class ImapMailFetcher implements MailFetcher {
     } finally {
       await client.logout().catch(() => undefined);
     }
+  }
+}
+
+/**
+ * SEK-IMPL-002 M-4: prove the credentials before the row is saved. Connects, opens INBOX
+ * read-only and logs out — it reads no message and changes nothing in the mailbox.
+ */
+export async function probeImapMailbox(settings: { host: string; port: number; user: string; pass: string }): Promise<void> {
+  const { ImapFlow } = await import("imapflow");
+  const client = new ImapFlow({
+    host: settings.host,
+    port: settings.port,
+    secure: settings.port === 993,
+    ...(settings.port === 993 ? {} : { doSTARTTLS: true as const }),
+    auth: { user: settings.user, pass: settings.pass },
+    logger: false,
+  });
+  await client.connect();
+  try {
+    await client.mailboxOpen("INBOX", { readOnly: true });
+  } finally {
+    await client.logout().catch(() => undefined);
   }
 }

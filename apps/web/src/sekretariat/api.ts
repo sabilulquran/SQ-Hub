@@ -100,6 +100,40 @@ export interface Penerbit {
   petugasAktif: number;
 }
 
+/**
+ * SEK-IMPL-002 §5: one connected mailbox. The field names are the server's (snake_case), and the
+ * password is never part of it — M-3 keeps it out of the browser entirely, masked or not.
+ */
+export interface Mailbox {
+  id: string;
+  alamat: string;
+  host: string;
+  port: number;
+  pengguna: string;
+  kotak_id: string;
+  kotak_nama: string;
+  status: "aktif" | "nonaktif" | "auth_gagal";
+  gagal_berturut: number;
+  sebab_terakhir: string | null;
+  galat_terakhir: string | null;
+  galat_pada: string | null;
+  tarik_terakhir_pada: string | null;
+  surat_masuk: number;
+}
+
+/** `tersedia` is false while the server encryption key is missing: the form cannot be used (§6). */
+export interface MailboxDaftar {
+  tersedia: boolean;
+  mailbox: Mailbox[];
+  kotak: Array<{ id: string; nama: string }>;
+}
+
+export const STATUS_MAILBOX: Record<Mailbox["status"], string> = {
+  aktif: "Aktif",
+  nonaktif: "Nonaktif",
+  auth_gagal: "Dihentikan sementara",
+};
+
 export class SekretariatRequestError extends Error {
   constructor(
     public readonly status: number,
@@ -111,7 +145,7 @@ export class SekretariatRequestError extends Error {
   }
 }
 
-type Method = "GET" | "POST" | "PATCH" | "DELETE";
+type Method = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
 
 async function request<T>(base: string, path: string, init: { method?: Method; body?: unknown } = {}): Promise<T> {
   const response = await fetch(`${base}${path}`, {
@@ -125,6 +159,8 @@ async function request<T>(base: string, path: string, init: { method?: Method; b
     const payload = (await response.json().catch(() => ({}))) as { error?: string; message?: string };
     throw new SekretariatRequestError(response.status, payload.error ?? "unknown", payload.message ?? "Permintaan gagal.");
   }
+  // 204 for deletes; there is no body to parse.
+  if (response.status === 204) return undefined as T;
   return (await response.json()) as T;
 }
 

@@ -12,8 +12,11 @@ import { KerjaDirectory, type KerjaDirectorySource } from "../kerja/directory.js
 import { assertMediaRoot, SekretariatBerkas } from "./berkas.js";
 import { SekretariatBuku } from "./buku.js";
 import type { SekretariatConfig } from "./config.js";
+import { SekretariatCrypto } from "./crypto.js";
 import { SekretariatKotak } from "./kotak.js";
+import { ImapMailFetcher, probeImapMailbox } from "./mail-imap.js";
 import { LogMailFetcher, SekretariatMail, type MailFetcher } from "./mail.js";
+import { classifyMailboxFailure, SekretariatMailbox, type MailboxProbe } from "./mailbox.js";
 import { SekretariatPengaturan } from "./pengaturan.js";
 import { registerSekretariatInternalRoutes } from "./routes-internal.js";
 import {
@@ -38,6 +41,7 @@ export interface SekretariatModule {
   berkas: SekretariatBerkas;
   pengaturan: SekretariatPengaturan;
   mail: SekretariatMail;
+  mailbox: SekretariatMailbox;
   register(app: FastifyInstance): void;
   start(log: SekretariatLog): Promise<() => Promise<void>>;
 }
@@ -56,6 +60,7 @@ export function createSekretariatModule(input: {
   /** Test seams. */
   auth?: HubAuthRuntime;
   mailFetcher?: MailFetcher;
+  mailboxProbe?: MailboxProbe;
   now?: () => Date;
   freeBytes?: (path: string) => Promise<number>;
   log?: SekretariatLog;
@@ -75,6 +80,13 @@ export function createSekretariatModule(input: {
   const pengaturan = new SekretariatPengaturan(pool);
   const fetcher = input.mailFetcher ?? new LogMailFetcher();
   const mail = new SekretariatMail(pool, fetcher, berkas, config.maxUploadBytes, log);
+  // SEK-IMPL-002: without SEKRETARIAT_DATA_KEYS there is no safe place for a password, so the
+  // screen says so and the env path (M-5) keeps working untouched.
+  const mailbox = new SekretariatMailbox(
+    pool,
+    config.dataKeys ? new SekretariatCrypto(config.dataKeys) : null,
+    input.mailboxProbe ?? probeImapMailbox,
+  );
   const workspaceApplications = input.workspaceApplications ?? new PgHubWorkspaceRepository(pool);
 
   const auth = input.auth ?? new HubAuthService(
@@ -104,6 +116,7 @@ export function createSekretariatModule(input: {
     berkas,
     pengaturan,
     mail,
+    mailbox,
     register(app) {
       registerSekretariatAuthRoutes(app, { auth, publicOrigin: config.publicOrigin });
       registerSekretariatRoutes(app, {
@@ -117,6 +130,7 @@ export function createSekretariatModule(input: {
         berkas,
         pengaturan,
         mail,
+        mailbox,
         publicOrigin: config.publicOrigin,
         launcher: { applications: workspaceApplications, ...(input.hubOrigin ? { hubOrigin: input.hubOrigin } : {}) },
         log,
@@ -136,10 +150,41 @@ export function createSekretariatModule(input: {
           skip -= 1;
           return;
         }
-        const result = await mail.runOnce();
-        backoffRounds = result.gagal ? Math.min(backoffRounds === 0 ? 1 : backoffRounds * 2, Math.ceil(3_600_000 / config.mailIntervalMs)) : 0;
+        // M-6: the list is read every round, so adding or parking a mailbox needs no restart.
+        // M-5: an empty table means the env still decides, which is how R1 is running today.
+        const runtimes = await mailbox.aktif();
+        // M-5 is about an empty TABLE. With rows that are merely deactivated or parked, falling
+        // back to the env would quietly resume pulling mail the admin just switched off.
+        const kosong = runtimes.length === 0 && (await mailbox.jumlah()) === 0;
+        let baru = 0;
+        let gagal: boolean;
+        if (kosong) {
+          const result = await mail.runOnce();
+          baru = result.baru;
+          gagal = result.gagal;
+        } else {
+          let gagalCount = 0;
+          for (const runtime of runtimes) {
+            // M-7: each mailbox stands alone; one refusal must not silence the others.
+            const result = await mail.runFor(
+              new ImapMailFetcher({ host: runtime.host, port: runtime.port, user: runtime.pengguna, pass: runtime.sandi }),
+              runtime.kotakId,
+              runtime.alamat,
+              runtime.id,
+            );
+            baru += result.baru;
+            if (result.gagal) {
+              gagalCount += 1;
+              await mailbox.catatGagal(runtime.id, classifyMailboxFailure(result.error));
+            } else {
+              await mailbox.catatSukses(runtime.id);
+            }
+          }
+          gagal = runtimes.length > 0 && gagalCount === runtimes.length;
+        }
+        backoffRounds = gagal ? Math.min(backoffRounds === 0 ? 1 : backoffRounds * 2, Math.ceil(3_600_000 / config.mailIntervalMs)) : 0;
         skip = backoffRounds;
-        if (result.baru > 0) startLog({ event: "sekretariat.mail", baru: result.baru }, "sekretariat mail ingested");
+        if (baru > 0) startLog({ event: "sekretariat.mail", baru }, "sekretariat mail ingested");
       };
       const daily = async () => {
         const dibuang = await berkas.purgeDeleted();

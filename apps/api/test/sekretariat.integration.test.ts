@@ -93,6 +93,9 @@ let app: FastifyInstance;
 let fetcher: FakeFetcher;
 let now = new Date("2026-11-13T03:00:00Z");
 let machineAllowed = true;
+/** SEK-IMPL-002: what the fake IMAP probe was handed, and whether it refuses. */
+let probeCalls: Array<{ host: string; user: string; pass: string }> = [];
+let probeRefusal: string | null = null;
 
 function config(): SekretariatConfig {
   return {
@@ -102,12 +105,13 @@ function config(): SekretariatConfig {
     maxUploadBytes: 64 * 1024,
     mail: { mode: "log" },
     mailIntervalMs: 300_000,
+    dataKeys: [{ kid: "k1", key: Buffer.alloc(32, 7) }],
     allowedMachineClients: new Set(["hcis-sekretariat"]),
     minFreeDiskBytes: 0,
   };
 }
 
-async function call(who: string | null, method: "GET" | "POST" | "PATCH" | "DELETE", url: string, payload?: unknown, options: { origin?: string | null } = {}) {
+async function call(who: string | null, method: "GET" | "POST" | "PATCH" | "PUT" | "DELETE", url: string, payload?: unknown, options: { origin?: string | null } = {}) {
   const response = await app.inject({
     method,
     url,
@@ -191,12 +195,14 @@ afterAll(async () => {
 beforeEach(async () => {
   await pool.query(`TRUNCATE sekretariat_petugas, sekretariat_disposisi_pemegang, sekretariat_penghitung, sekretariat_nomor,
     sekretariat_surat_keluar, sekretariat_berkas, sekretariat_surat_masuk, sekretariat_disposisi, sekretariat_mail_state,
-    sekretariat_admins, sekretariat_audit CASCADE`);
+    sekretariat_admins, sekretariat_audit, sekretariat_mailbox CASCADE`);
   await pool.query("DELETE FROM sekretariat_kotak WHERE penerbit_id IN (SELECT id FROM sekretariat_penerbit WHERE kelompok IN ('panitia', 'lainnya'))");
   await pool.query("DELETE FROM sekretariat_penerbit WHERE kelompok IN ('panitia', 'lainnya')");
   await pool.query("DELETE FROM sekretariat_jenis WHERE urutan = 900");
   now = new Date("2026-11-13T03:00:00Z");
   machineAllowed = true;
+  probeCalls = [];
+  probeRefusal = null;
   fetcher = new FakeFetcher();
   sekretariat = createSekretariatModule({
     pool,
@@ -211,6 +217,11 @@ beforeEach(async () => {
     },
     auth,
     mailFetcher: fetcher,
+    mailboxProbe: async (settings) => {
+      probeCalls.push({ host: settings.host, user: settings.user, pass: settings.pass });
+      const refuse = probeRefusal;
+      if (refuse) throw new Error(refuse);
+    },
     now: () => now,
     freeBytes: async () => 50 * 1024 * 1024 * 1024,
   });
@@ -456,7 +467,10 @@ describe("SEK-IMPL-001 penarik email (§7 nomor 1)", () => {
   it("kegagalan IMAP tercatat untuk layar admin dan tidak melempar", async () => {
     fetcher.fail = true;
     const hasil = await sekretariat.mail.runOnce();
-    expect(hasil).toEqual({ baru: 0, dilewati: 0, gagal: true });
+    // SEK-IMPL-002: a failed round now also carries the fetcher's error so the caller can
+    // classify it per mailbox, hence a shape check rather than an exact one.
+    expect(hasil).toMatchObject({ baru: 0, dilewati: 0, gagal: true });
+    expect(hasil.error).toBeInstanceOf(Error);
     const status = await call(HCM, "GET", "/admin/sekretariat/mail");
     expect(status.body.items[0].galatTerakhir).toBe("Error");
   });
@@ -542,5 +556,207 @@ describe("SEK-IMPL-001 audit (§9)", () => {
     expect(after - before).toBeGreaterThanOrEqual(3);
     const tanpaAlasan = await call(HCM, "POST", "/admin/sekretariat/penerbit", { kode: "PAN.LAIN", nama: "Panitia", berakhir_pada: "2027-01-31", alasan: "" });
     expect(tanpaAlasan.status).toBe(400);
+  });
+});
+
+describe("SEK-IMPL-002 kotak masuk disambungkan dari layar", () => {
+  const MAILBOX = { alamat: "sekretariat@sabilulquran.or.id", host: "mail.sabilulquran.or.id", port: 993, sandi: "rahasia-uji", kotak_id: "" };
+
+  async function kotakYayasan(): Promise<string> {
+    return (await pool.query<{ id: string }>("SELECT id FROM sekretariat_kotak WHERE jenis = 'yayasan'")).rows[0]!.id;
+  }
+
+  async function tambah(who = HCM, override: Record<string, unknown> = {}) {
+    return call(who, "POST", "/admin/sekretariat/mailbox", { ...MAILBOX, kotak_id: await kotakYayasan(), ...override });
+  }
+
+  it("hanya sekretariat_admin yang melihat dan mengubahnya (M-9)", async () => {
+    expect((await call(TU_SDIT, "GET", "/admin/sekretariat/mailbox")).status).toBe(403);
+    expect((await tambah(TU_SDIT)).status).toBe(403);
+    expect((await call(HCM, "GET", "/admin/sekretariat/mailbox")).status).toBe(200);
+  });
+
+  it("menguji login sungguhan sebelum menyimpan, dan menolak menyimpan bila ditolak (M-4)", async () => {
+    probeRefusal = "Invalid credentials (Failure)";
+    const gagal = await tambah();
+    expect(gagal.status).toBe(400);
+    expect(gagal.body.error).toBe("sambungan_sandi_ditolak");
+    expect((await pool.query("SELECT 1 FROM sekretariat_mailbox")).rowCount).toBe(0);
+
+    probeRefusal = null;
+    const ok = await tambah();
+    expect(ok.status).toBe(201);
+    expect(probeCalls.at(-1)).toMatchObject({ host: MAILBOX.host, user: MAILBOX.alamat, pass: MAILBOX.sandi });
+  });
+
+  it("tidak pernah mengirim sandi kembali, dan menyimpannya terenkripsi (M-2, M-3)", async () => {
+    const dibuat = await tambah();
+    expect(JSON.stringify(dibuat.body)).not.toContain(MAILBOX.sandi);
+    const daftar = await call(HCM, "GET", "/admin/sekretariat/mailbox");
+    expect(JSON.stringify(daftar.body)).not.toContain(MAILBOX.sandi);
+    const row = (await pool.query<{ sandi_terenkripsi: string }>("SELECT sandi_terenkripsi FROM sekretariat_mailbox")).rows[0]!;
+    expect(row.sandi_terenkripsi).not.toContain(MAILBOX.sandi);
+    expect(row.sandi_terenkripsi.startsWith("v1.k1.")).toBe(true);
+    const audit = await pool.query<{ metadata: unknown }>("SELECT metadata FROM sekretariat_audit WHERE aksi = 'mailbox.tambah'");
+    expect(audit.rowCount).toBe(1);
+    expect(JSON.stringify(audit.rows[0]!.metadata)).not.toContain(MAILBOX.sandi);
+  });
+
+  it("mengubah tanpa mengisi sandi memakai sandi lama selama tujuannya sama (M-3)", async () => {
+    const dibuat = await tambah();
+    const id = dibuat.body.id as string;
+    const diubah = await call(HCM, "PUT", `/admin/sekretariat/mailbox/${id}`, {
+      alamat: MAILBOX.alamat, host: MAILBOX.host, port: 993, kotak_id: await kotakYayasan(),
+    });
+    expect(diubah.status).toBe(200);
+    expect(probeCalls.at(-1)!.pass).toBe(MAILBOX.sandi);
+  });
+
+  it("menolak memakai sandi tersimpan ke host lain, supaya tidak bisa dibaca balik (M-3a)", async () => {
+    const id = (await tambah()).body.id as string;
+    const sebelum = probeCalls.length;
+    const curi = await call(HCM, "PUT", `/admin/sekretariat/mailbox/${id}`, {
+      alamat: MAILBOX.alamat, host: "mesin-penyerang.example", port: 993, kotak_id: await kotakYayasan(),
+    });
+    expect(curi.status).toBe(400);
+    expect(curi.body.error).toBe("sandi_wajib_tujuan_berubah");
+    // Yang penting: sandinya tidak pernah dikirim ke host itu.
+    expect(probeCalls).toHaveLength(sebelum);
+  });
+
+  it("menolak pengguna lain dengan sandi tersimpan (M-3a)", async () => {
+    const id = (await tambah()).body.id as string;
+    const ganti = await call(HCM, "PUT", `/admin/sekretariat/mailbox/${id}`, {
+      alamat: MAILBOX.alamat, host: MAILBOX.host, port: 993, pengguna: "orang-lain@sabilulquran.or.id", kotak_id: await kotakYayasan(),
+    });
+    expect(ganti.body.error).toBe("sandi_wajib_tujuan_berubah");
+  });
+
+  it("mencatat setiap percobaan sambungan, berhasil maupun gagal (§6)", async () => {
+    await tambah();
+    probeRefusal = "Command failed";
+    await tambah(HCM, { alamat: "lain@sabilulquran.or.id" });
+    const audit = await pool.query<{ metadata: { hasil: string; host: string } }>(
+      "SELECT metadata FROM sekretariat_audit WHERE aksi = 'mailbox.uji' ORDER BY id",
+    );
+    expect(audit.rowCount).toBe(2);
+    expect(audit.rows[0]!.metadata.hasil).toBe("berhasil");
+    expect(audit.rows[1]!.metadata.hasil).not.toBe("berhasil");
+    expect(JSON.stringify(audit.rows)).not.toContain(MAILBOX.sandi);
+  });
+
+  it("hanya menerima port IMAP 993 dan 143 (M-8a)", async () => {
+    expect((await tambah(HCM, { port: 2525 })).status).toBe(400);
+    expect((await tambah(HCM, { port: 143 })).status).toBe(201);
+  });
+
+  it("menolak alamat ganda dan kotak yang tidak dikenal", async () => {
+    expect((await tambah()).status).toBe(201);
+    expect((await tambah()).body.error).toBe("alamat_ganda");
+    const salahKotak = await call(HCM, "POST", "/admin/sekretariat/mailbox", { ...MAILBOX, kotak_id: randomUUID() });
+    expect(salahKotak.body.error).toBe("kotak_tidak_dikenal");
+  });
+
+  it("menambah tanpa sandi ditolak", async () => {
+    const tanpa = await call(HCM, "POST", "/admin/sekretariat/mailbox", {
+      alamat: MAILBOX.alamat, host: MAILBOX.host, port: 993, kotak_id: await kotakYayasan(),
+    });
+    expect(tanpa.body.error).toBe("sandi_wajib");
+  });
+
+  it("tidak memarkir karena empat waktu habis lalu satu sandi ditolak (M-8)", async () => {
+    const id = (await tambah()).body.id as string;
+    for (let attempt = 0; attempt < 4; attempt += 1) await sekretariat.mailbox.catatGagal(id, "waktu_habis");
+    await sekretariat.mailbox.catatGagal(id, "sandi_ditolak");
+    const row = (await pool.query<{ status: string; gagal_berturut: number }>(
+      "SELECT status, gagal_berturut FROM sekretariat_mailbox WHERE id = $1", [id])).rows[0]!;
+    expect(row.status).toBe("aktif");
+    expect(row.gagal_berturut).toBe(1);
+  });
+
+  it("memarkir mailbox setelah lima penolakan sandi berturut-turut (M-8)", async () => {
+    const id = (await tambah()).body.id as string;
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      await sekretariat.mailbox.catatGagal(id, "sandi_ditolak");
+    }
+    const row = (await pool.query<{ status: string; gagal_berturut: number }>("SELECT status, gagal_berturut FROM sekretariat_mailbox WHERE id = $1", [id])).rows[0]!;
+    expect(row.status).toBe("auth_gagal");
+    expect(await sekretariat.mailbox.aktif()).toHaveLength(0);
+
+    // Menyimpan ulang menghidupkannya kembali.
+    await call(HCM, "PUT", `/admin/sekretariat/mailbox/${id}`, { ...MAILBOX, kotak_id: await kotakYayasan() });
+    expect((await pool.query<{ status: string }>("SELECT status FROM sekretariat_mailbox WHERE id = $1", [id])).rows[0]!.status).toBe("aktif");
+  });
+
+  it("kegagalan lain tidak memarkir mailbox", async () => {
+    const id = (await tambah()).body.id as string;
+    for (let attempt = 0; attempt < 6; attempt += 1) {
+      await sekretariat.mailbox.catatGagal(id, "waktu_habis");
+    }
+    expect((await pool.query<{ status: string }>("SELECT status FROM sekretariat_mailbox WHERE id = $1", [id])).rows[0]!.status).toBe("aktif");
+  });
+
+  it("menonaktifkan menghentikan penarikan, mengaktifkan memulihkannya", async () => {
+    const id = (await tambah()).body.id as string;
+    expect(await sekretariat.mailbox.aktif()).toHaveLength(1);
+    expect((await call(HCM, "POST", `/admin/sekretariat/mailbox/${id}/status`, { status: "nonaktif" })).status).toBe(200);
+    expect(await sekretariat.mailbox.aktif()).toHaveLength(0);
+    await call(HCM, "POST", `/admin/sekretariat/mailbox/${id}/status`, { status: "aktif" });
+    expect(await sekretariat.mailbox.aktif()).toHaveLength(1);
+  });
+
+  it("menghapus mailbox tidak menghapus surat yang sudah masuk (M-11)", async () => {
+    const id = (await tambah()).body.id as string;
+    await pool.query(
+      `INSERT INTO sekretariat_surat_masuk (id, kotak_id, kanal, dari, perihal, isi_teks, diterima_pada, email_message_id, email_uidvalidity, email_uid)
+       VALUES ($1, $2, 'email', 'pengirim@luar.id', 'Surat uji', 'isi', now(), $3, '1', 1)`,
+      [randomUUID(), await kotakYayasan(), `uji-${randomUUID()}@luar.id`],
+    );
+    expect((await call(HCM, "DELETE", `/admin/sekretariat/mailbox/${id}`)).status).toBe(204);
+    expect((await pool.query("SELECT 1 FROM sekretariat_mailbox")).rowCount).toBe(0);
+    expect((await pool.query("SELECT 1 FROM sekretariat_surat_masuk")).rowCount).toBe(1);
+  });
+
+  it("membuka sandi tersimpan untuk penarik, terikat pada barisnya (M-2)", async () => {
+    await tambah();
+    const runtimes = await sekretariat.mailbox.aktif();
+    expect(runtimes).toHaveLength(1);
+    expect(runtimes[0]).toMatchObject({ host: MAILBOX.host, pengguna: MAILBOX.alamat, sandi: MAILBOX.sandi });
+  });
+
+  it("env hanya dipakai saat tabelnya benar-benar kosong (M-5)", async () => {
+    expect(await sekretariat.mailbox.jumlah()).toBe(0);
+    const id = (await tambah()).body.id as string;
+    await call(HCM, "POST", `/admin/sekretariat/mailbox/${id}/status`, { status: "nonaktif" });
+    // Tidak ada baris aktif, tetapi tabelnya tidak kosong: penarik tidak boleh kembali ke env.
+    expect(await sekretariat.mailbox.aktif()).toHaveLength(0);
+    expect(await sekretariat.mailbox.jumlah()).toBe(1);
+  });
+
+  it("alamat ganda saat mengubah juga dijawab 400, bukan 503", async () => {
+    const pertama = (await tambah()).body.id as string;
+    await tambah(HCM, { alamat: "kedua@sabilulquran.or.id" });
+    const bentrok = await call(HCM, "PUT", `/admin/sekretariat/mailbox/${pertama}`, {
+      alamat: "kedua@sabilulquran.or.id", host: MAILBOX.host, port: 993, pengguna: MAILBOX.alamat, sandi: MAILBOX.sandi, kotak_id: await kotakYayasan(),
+    });
+    expect(bentrok.status).toBe(400);
+    expect(bentrok.body.error).toBe("alamat_ganda");
+  });
+
+  it("kunci yang hilang memberi kalimat yang bisa ditindaklanjuti, bukan 503", async () => {
+    const id = (await tambah()).body.id as string;
+    await pool.query("UPDATE sekretariat_mailbox SET sandi_terenkripsi = $2 WHERE id = $1", [id, "v1.k9.AAAAAAAAAAAAAAAA.AAAA.AAAAAAAAAAAAAAAAAAAAAA"]);
+    const ubah = await call(HCM, "PUT", `/admin/sekretariat/mailbox/${id}`, {
+      alamat: MAILBOX.alamat, host: MAILBOX.host, port: 993, kotak_id: await kotakYayasan(),
+    });
+    expect(ubah.status).toBe(400);
+    expect(ubah.body.error).toBe("sandi_wajib_kunci_hilang");
+  });
+
+  it("baris yang kuncinya hilang langsung diparkir, tidak dicoba berulang", async () => {
+    const id = (await tambah()).body.id as string;
+    await pool.query("UPDATE sekretariat_mailbox SET sandi_terenkripsi = $2 WHERE id = $1", [id, "v1.k9.AAAAAAAAAAAAAAAA.AAAA.AAAAAAAAAAAAAAAAAAAAAA"]);
+    expect(await sekretariat.mailbox.aktif()).toHaveLength(0);
+    expect((await pool.query<{ status: string }>("SELECT status FROM sekretariat_mailbox WHERE id = $1", [id])).rows[0]!.status).toBe("auth_gagal");
   });
 });

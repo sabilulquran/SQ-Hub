@@ -7,6 +7,7 @@ export type SekretariatRoute =
   | { name: "surat"; suratId: string }
   | { name: "buku" }
   | { name: "pengaturan" }
+  | { name: "pengaturan-kotak-masuk" }
   | { name: "not-found" };
 
 const ID = "([0-9a-f-]{36})";
@@ -16,6 +17,7 @@ export function resolveSekretariatRoute(pathname: string): SekretariatRoute {
   if (path === "/" || path === "/ringkasan") return { name: "ringkasan" };
   if (path === "/buku") return { name: "buku" };
   if (path === "/pengaturan") return { name: "pengaturan" };
+  if (path === "/pengaturan/kotak-masuk") return { name: "pengaturan-kotak-masuk" };
   const match = (pattern: string) => new RegExp(`^${pattern}$`, "i").exec(path)?.[1];
   const kotak = match(`/kotak/${ID}`);
   if (kotak) return { name: "kotak", kotakId: kotak };

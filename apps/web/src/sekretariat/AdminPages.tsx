@@ -5,7 +5,7 @@ import {
   type Jenis, type Penerbit, type RegisterItem, type SekretariatContext,
 } from "@/sekretariat/api";
 import { Pager } from "@/sekretariat/KotakPages";
-import { ErrorNote, Field, PageHeader, Panel, primaryButton, ReasonDialog, secondaryButton, StateCard, StatusBadge, useLoad } from "@/sekretariat/ui";
+import { ErrorNote, Field, Link, PageHeader, Panel, primaryButton, ReasonDialog, secondaryButton, StateCard, StatusBadge, useLoad } from "@/sekretariat/ui";
 
 /** SEK-IMPL-001 §9 Buku nomor: the combined register, scoped by the server to the viewer's issuers. */
 export function BukuPage({ context }: { context: SekretariatContext }) {
@@ -261,7 +261,9 @@ export function PengaturanPage() {
 
       <Panel>
         <h2 className="font-display text-base font-bold text-brand-heading">Penarik email</h2>
-        <ul className="mt-2 space-y-1 text-sm">
+        <p className="mt-1 text-sm text-muted-foreground">Alamat yang ditarik disambungkan dari layar Kotak masuk, bukan dari berkas pengaturan di server.</p>
+        <Link href="/pengaturan/kotak-masuk" className={`${secondaryButton} mt-3`}>Kelola kotak masuk</Link>
+        <ul className="mt-3 space-y-1 text-sm">
           {data.mail.map((item) => (
             <li key={item.mailbox} className="flex flex-wrap items-center gap-2">
               <span className="font-semibold">{item.mailbox}</span>

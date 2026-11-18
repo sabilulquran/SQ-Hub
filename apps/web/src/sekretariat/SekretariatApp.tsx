@@ -3,6 +3,7 @@ import { useCallback, useEffect, useState } from "react";
 import { BukuPage, PengaturanPage } from "@/sekretariat/AdminPages";
 import { loadSekretariatLauncher, sekretariatFetch, SekretariatRequestError, type SekretariatContext } from "@/sekretariat/api";
 import { KotakPage, RingkasanPage, SuratMasukPage } from "@/sekretariat/KotakPages";
+import { MailboxPage } from "@/sekretariat/MailboxPage";
 import { resolveSekretariatRoute, type SekretariatRoute } from "@/sekretariat/routes";
 import { SekretariatShell } from "@/sekretariat/SekretariatShell";
 import { PenerbitSuratPage, SuratPage } from "@/sekretariat/SuratPages";
@@ -119,6 +120,7 @@ function Page({ route, context }: { route: SekretariatRoute; context: Sekretaria
     case "surat": return <SuratPage key={route.suratId} suratId={route.suratId} />;
     case "buku": return <BukuPage context={context} />;
     case "pengaturan": return <PengaturanPage />;
+    case "pengaturan-kotak-masuk": return <MailboxPage />;
     default: return <StateCard kind="empty" title="Halaman tidak ditemukan" action={<Link className={secondaryButton} href="/">Ke Ringkasan</Link>} />;
   }
 }

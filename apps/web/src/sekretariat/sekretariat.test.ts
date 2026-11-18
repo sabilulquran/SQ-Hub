@@ -8,6 +8,7 @@ describe("Sekretariat routes (SEK-IMPL-001 §9)", () => {
     expect(resolveSekretariatRoute("/")).toEqual({ name: "ringkasan" });
     expect(resolveSekretariatRoute("/buku")).toEqual({ name: "buku" });
     expect(resolveSekretariatRoute("/pengaturan")).toEqual({ name: "pengaturan" });
+    expect(resolveSekretariatRoute("/pengaturan/kotak-masuk")).toEqual({ name: "pengaturan-kotak-masuk" });
     expect(resolveSekretariatRoute(`/kotak/${id}`)).toEqual({ name: "kotak", kotakId: id });
     expect(resolveSekretariatRoute(`/surat-masuk/${id}`)).toEqual({ name: "surat-masuk", suratMasukId: id });
     expect(resolveSekretariatRoute(`/penerbit/${id}/surat`)).toEqual({ name: "penerbit-surat", penerbitId: id });
