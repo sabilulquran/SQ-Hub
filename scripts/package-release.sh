@@ -26,6 +26,12 @@ npm ci --omit=dev --no-audit --no-fund
 rm -rf node_modules/@sq-hub
 
 mkdir -p "$OUT"
-tar -czf "$OUT/$NAME.tar.gz" package.json node_modules apps/api/package.json apps/api/dist apps/api/migrations apps/web/dist
+# apps/kirim-wa ships too: sq-core-launch.sh runs its worker from inside the release directory
+# (KIRIM-IMPL-005), and hub-release.sh rewrites that path to the new release. A bundle without it
+# points the launcher at a directory that does not exist and stops the WhatsApp engine.
+tar -czf "$OUT/$NAME.tar.gz" package.json node_modules \
+  apps/api/package.json apps/api/dist apps/api/migrations \
+  apps/kirim-wa/package.json apps/kirim-wa/dist \
+  apps/web/dist
 echo "$OUT/$NAME.tar.gz"
 sha256sum "$OUT/$NAME.tar.gz"
