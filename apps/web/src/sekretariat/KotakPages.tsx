@@ -1,9 +1,17 @@
-import { useState } from "react";
+import {
+  ChevronLeft, ChevronRight, FileText, Inbox, Mail, Paperclip, PenLine, Search, Send, ShieldAlert, Upload,
+} from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 
+import { DetailDialog } from "@/components/DetailDialog";
+import { useDialogParam } from "@/components/useDialogParam";
 import {
   berkasUrl, errorMessage, formatTanggal, formatUkuran, sekretariatFetch, sekretariatUpload, STATUS_SURAT_MASUK,
   type KotakRingkas, type SekretariatContext, type SuratMasukDetail, type SuratMasukRingkas,
 } from "@/sekretariat/api";
+import { navigate } from "@/sekretariat/routes";
+import { kotakLabel, parseSender, tanggalRingkas } from "@/sekretariat/format";
+import { ErrorNote, Field, Link, PageHeader, Panel, primaryButton, secondaryButton, StateCard, StatusBadge, useLoad } from "@/sekretariat/ui";
 
 export interface PenerbitRingkas {
   id: string;
@@ -11,337 +19,476 @@ export interface PenerbitRingkas {
   nama: string;
   kelompok: string;
 }
-import { navigate } from "@/sekretariat/routes";
-import { ErrorNote, Field, Link, PageHeader, Panel, primaryButton, secondaryButton, StateCard, StatusBadge, useLoad } from "@/sekretariat/ui";
 
-function kotakLabel(kotak: KotakRingkas): string {
-  return kotak.jenis === "yayasan" ? "Kotak yayasan" : `${kotak.penerbit?.nama ?? kotak.penerbit?.kode ?? "Penerbit"}`;
-}
+type StatusSaring = "" | SuratMasukRingkas["status"];
+
+const SARING: Array<{ value: StatusSaring; label: string }> = [
+  { value: "", label: "Semua" },
+  { value: "baru", label: "Baru" },
+  { value: "didisposisi", label: "Didisposisi" },
+  { value: "selesai", label: "Selesai" },
+  { value: "spam", label: "Spam" },
+];
 
 function statusTone(status: SuratMasukRingkas["status"]): "biasa" | "baik" | "perhatian" | "bahaya" {
   return status === "selesai" ? "baik" : status === "didisposisi" ? "perhatian" : status === "spam" ? "bahaya" : "biasa";
 }
 
-/** SEK-IMPL-001 §9 Ringkasan: the inboxes and issuers the viewer may open, plus mail errors for the admin. */
-export function RingkasanPage({ context }: { context: SekretariatContext }) {
-  const { state } = useLoad(
-    async () => {
-      const [kotak, penerbit] = await Promise.all([
-        sekretariatFetch<{ kotak: KotakRingkas[]; mail: { items: Array<{ mailbox: string; terakhirTarikPada: string | null; galatTerakhir: string | null }> } | null }>("/ringkasan"),
-        sekretariatFetch<{ items: PenerbitRingkas[] }>("/penerbit"),
-      ]);
-      return { ...kotak, penerbitAktif: penerbit.items };
-    },
-    "ringkasan",
-  );
-  if (state.status === "loading") return <StateCard kind="loading" title="Memuat ringkasan" />;
-  if (state.status === "error") return <StateCard kind="error" title="Ringkasan belum dapat dimuat" body={state.message} />;
-  const { kotak, mail, penerbitAktif } = state.data;
-  const milikku = new Set(context.peran?.penerbitIds ?? []);
-  const penerbitku = context.pengelola ? penerbitAktif : penerbitAktif.filter((penerbit) => milikku.has(penerbit.id));
-  return (
-    <div className="space-y-5">
-      <PageHeader title="Ringkasan" eyebrow="Sekretariat Yayasan Sabilul Qur'an" />
-      {kotak.length === 0 ? (
-        <StateCard
-          kind="empty"
-          title="Anda belum ditunjuk sebagai petugas"
-          body="Akses kotak masuk, register nomor, dan arsip diberikan per penerbit oleh pengelola Sekretariat. Hubungi Kepala HCM."
-        />
-      ) : (
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {kotak.map((item) => (
-            <Link key={item.id} href={`/kotak/${item.id}`} className="block">
-              <Panel className="h-full transition hover:border-brand-primary/50">
-                <div className="flex items-start justify-between gap-2">
-                  <h2 className="font-display text-base font-bold text-brand-heading">{kotakLabel(item)}</h2>
-                  {item.baru > 0 ? <StatusBadge label={`${item.baru} baru`} tone="perhatian" /> : <StatusBadge label="Tidak ada yang baru" tone="biasa" />}
-                </div>
-                <p className="mt-1 text-sm text-muted-foreground">
-                  {item.jenis === "yayasan" ? "Email sekretariat@ dan surat fisik untuk yayasan" : item.penerbit?.kode}
-                </p>
-                {item.disposisiTerbuka > 0 ? <p className="mt-2 text-xs font-bold text-warning-ink">{item.disposisiTerbuka} disposisi belum selesai</p> : null}
-              </Panel>
-            </Link>
-          ))}
-        </div>
-      )}
-      {penerbitku.length > 0 ? (
-        <Panel>
-          <h2 className="font-display text-base font-bold text-brand-heading">Surat keluar</h2>
-          <p className="mt-1 text-sm text-muted-foreground">Register nomor dan arsip surat per penerbit.</p>
-          <ul className="mt-3 flex flex-wrap gap-2">
-            {penerbitku.map((penerbit) => (
-              <li key={penerbit.id}>
-                <Link href={`/penerbit/${penerbit.id}/surat`} className={secondaryButton}>{penerbit.kode}</Link>
-              </li>
-            ))}
-          </ul>
-        </Panel>
-      ) : null}
-      {context.pengelola && mail ? (
-        <Panel>
-          <h2 className="font-display text-base font-bold text-brand-heading">Penarik email</h2>
-          {mail.items.length === 0 ? <p className="mt-1 text-sm text-muted-foreground">Belum pernah menarik email.</p> : null}
-          <ul className="mt-2 space-y-1 text-sm">
-            {mail.items.map((item) => (
-              <li key={item.mailbox} className="flex flex-wrap items-center gap-2">
-                <span className="font-semibold">{item.mailbox}</span>
-                <span className="text-muted-foreground">tarik terakhir {formatTanggal(item.terakhirTarikPada)}</span>
-                {item.galatTerakhir ? <StatusBadge label={`galat: ${item.galatTerakhir}`} tone="bahaya" /> : <StatusBadge label="sehat" tone="baik" />}
-              </li>
-            ))}
-          </ul>
-        </Panel>
-      ) : null}
-    </div>
-  );
-}
-
-/** One inbox: e-mail and physical letters, with the register form for a scanned letter. */
-export function KotakPage({ kotakId }: { kotakId: string }) {
-  const [page, setPage] = useState(1);
-  const [status, setStatus] = useState("");
-  const { state } = useLoad(
-    () => sekretariatFetch<{ kotak: { jenis: string }; items: SuratMasukRingkas[]; total: number; pageSize: number }>(
-      `/kotak/${kotakId}/surat?page=${page}${status ? `&status=${status}` : ""}`,
-    ),
-    `${kotakId}:${page}:${status}`,
-  );
-  const [form, setForm] = useState<{ dari: string; perihal: string } | null>(null);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  if (state.status === "loading") return <StateCard kind="loading" title="Memuat kotak masuk" />;
-  if (state.status === "error") {
-    return state.code === "tidak_ditemukan"
-      ? <StateCard kind="forbidden" title="Kotak ini bukan milik Anda" body="Kotak masuk hanya terbuka bagi petugas penerbitnya." action={<Link className={secondaryButton} href="/">Ke Ringkasan</Link>} />
-      : <StateCard kind="error" title="Kotak masuk belum dapat dimuat" body={state.message} />;
+/** `/` — a mail client opens on its inbox, so home is the first inbox the viewer may open. */
+export function BerandaPage({ kotak }: { kotak: KotakRingkas[] | null }) {
+  const first = kotak?.[0];
+  useEffect(() => {
+    if (first) navigate(`/kotak/${first.id}${window.location.search}`, true);
+  }, [first]);
+  if (kotak === null) return <StateCard kind="loading" title="Memuat kotak masuk" />;
+  if (!first) {
+    return (
+      <StateCard
+        kind="empty"
+        title="Anda belum ditunjuk sebagai petugas"
+        body="Akses kotak masuk, register nomor, dan arsip diberikan per penerbit oleh pengelola Sekretariat. Hubungi Kepala HCM."
+      />
+    );
   }
-  const data = state.data;
+  return <StateCard kind="loading" title="Membuka kotak masuk" />;
+}
+
+/**
+ * SEK-IMPL-003: one inbox, read like a mail client. Dense rows with sender, subject and the opening
+ * words; unread ("baru") in bold with a dot; a search box and status filter that never move the
+ * list; the letter opens as a pop-up over the list (`?surat=<id>`), so Back closes it and the list
+ * keeps its place.
+ */
+export function KotakPage({ kotakId, kotak, context, onChanged }: {
+  kotakId: string;
+  kotak: KotakRingkas[] | null;
+  context: SekretariatContext;
+  onChanged: () => void;
+}) {
+  const [page, setPage] = useState(1);
+  const [status, setStatus] = useState<StatusSaring>("");
+  const [ketik, setKetik] = useState("");
+  const [cari, setCari] = useState("");
+  const [suratId, bukaSurat, tutupSurat] = useDialogParam("surat");
+  const [catat, setCatat] = useState(false);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => { setCari(ketik.trim()); setPage(1); }, 300);
+    return () => window.clearTimeout(timer);
+  }, [ketik]);
+
+  const query = `page=${page}${status ? `&status=${status}` : ""}${cari ? `&q=${encodeURIComponent(cari)}` : ""}`;
+  const { state, reload } = useLoad(
+    () => sekretariatFetch<{ kotak: { id: string; jenis: string }; items: SuratMasukRingkas[]; total: number; pageSize: number }>(`/kotak/${kotakId}/surat?${query}`),
+    `${kotakId}:${query}`,
+  );
+  // Searching or filtering keeps the last rows on screen until the new ones arrive, so the list
+  // never collapses into a skeleton and back while someone types (SEK-IMPL-003 T-5).
+  const terakhir = useRef<{ items: SuratMasukRingkas[]; total: number; pageSize: number } | null>(null);
+  if (state.status === "ready") terakhir.current = state.data;
+  const data = state.status === "ready" ? state.data : state.status === "loading" ? terakhir.current : null;
+  const memuat = state.status === "loading";
+  const ini = kotak?.find((item) => item.id === kotakId);
+  const judul = ini ? kotakLabel(ini) : "Kotak masuk";
+  const refresh = () => { void reload(); onChanged(); };
+
+  if (state.status === "error" && state.code === "tidak_ditemukan") {
+    return (
+      <>
+        <StateCard kind="forbidden" title="Kotak ini bukan milik Anda" body="Kotak masuk hanya terbuka bagi petugas penerbitnya." action={<Link className={secondaryButton} href="/">Ke kotak masuk Anda</Link>} />
+        {/* A letter the viewer may read still opens; the server decides on the letter itself. */}
+        {suratId ? <SuratDialog suratId={suratId} context={context} onClose={tutupSurat} onChanged={refresh} /> : null}
+      </>
+    );
+  }
+
   return (
-    <div className="space-y-4">
-      <PageHeader eyebrow={<Link href="/" className="hover:underline">Ringkasan</Link>} title={data.kotak.jenis === "yayasan" ? "Kotak yayasan" : "Kotak masuk"} actions={
-        <>
-          <select value={status} onChange={(event) => { setStatus(event.target.value); setPage(1); }} className="sq-admin-input !mt-0 w-auto" aria-label="Saring status">
-            <option value="">Semua status</option>
-            {Object.entries(STATUS_SURAT_MASUK).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-          </select>
-          <button type="button" className={primaryButton} onClick={() => setForm({ dari: "", perihal: "" })}>Catat surat fisik</button>
-        </>
-      } />
-      {form ? (
-        <Panel>
-          <h2 className="font-display text-base font-bold text-brand-heading">Catat surat fisik</h2>
-          <div className="mt-3 grid gap-3 sm:grid-cols-2">
-            <Field label="Dari"><input className="sq-admin-input" value={form.dari} onChange={(event) => setForm({ ...form, dari: event.target.value })} placeholder="Pengirim surat" /></Field>
-            <Field label="Perihal"><input className="sq-admin-input" value={form.perihal} onChange={(event) => setForm({ ...form, perihal: event.target.value })} placeholder="Perihal surat" /></Field>
+    <div>
+      <PageHeader
+        title={judul}
+        eyebrow={ini && ini.baru > 0 ? `${ini.baru} surat baru` : "Kotak masuk"}
+        actions={<button type="button" className={primaryButton} onClick={() => setCatat(true)}><PenLine className="h-4 w-4" aria-hidden="true" />Catat surat fisik</button>}
+      />
+
+      <Panel className="!p-0">
+        {/* The toolbar has a fixed height and lives above the list; typing or filtering never moves the rows. */}
+        <div className="flex flex-col gap-2 border-b border-border px-3 py-3 sm:flex-row sm:items-center sm:gap-3 sm:px-4">
+          <label className="relative flex min-w-0 flex-1 items-center">
+            <Search className="pointer-events-none absolute left-3 h-4 w-4 text-muted-foreground" aria-hidden="true" />
+            <span className="sr-only">Cari surat</span>
+            <input
+              type="search"
+              value={ketik}
+              onChange={(event) => setKetik(event.target.value)}
+              placeholder="Cari pengirim, perihal, atau isi"
+              className="sq-admin-input !mt-0 w-full !pl-9"
+            />
+          </label>
+          <div role="tablist" aria-label="Saring status" className="flex shrink-0 gap-1 overflow-x-auto">
+            {SARING.map((item) => (
+              <button
+                key={item.value || "semua"}
+                type="button"
+                role="tab"
+                aria-selected={status === item.value}
+                onClick={() => { setStatus(item.value); setPage(1); }}
+                className={[
+                  "min-h-9 shrink-0 rounded-lg px-3 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                  status === item.value ? "bg-brand-primary-pale font-bold text-brand-primary-deep" : "font-semibold text-muted-foreground hover:bg-muted hover:text-foreground",
+                ].join(" ")}
+              >
+                {item.label}
+              </button>
+            ))}
           </div>
-          <ErrorNote message={error} />
-          <div className="mt-3 flex gap-2">
-            <button
-              type="button"
-              className={primaryButton}
-              disabled={busy}
-              onClick={() => {
-                setBusy(true);
-                setError(null);
-                sekretariatFetch<{ id: string }>(`/kotak/${kotakId}/surat`, { method: "POST", body: { dari: form.dari, perihal: form.perihal } })
-                  .then((created) => navigate(`/surat-masuk/${created.id}`))
-                  .catch((failure) => setError(errorMessage(failure)))
-                  .finally(() => setBusy(false));
-              }}
-            >
-              Simpan lalu unggah pindaian
-            </button>
-            <button type="button" className={secondaryButton} onClick={() => setForm(null)}>Batal</button>
+        </div>
+
+        {state.status === "error" ? (
+          <div className="p-4"><StateCard kind="error" title="Kotak masuk belum dapat dimuat" body={state.message} /></div>
+        ) : data === null ? (
+          <ListSkeleton />
+        ) : data.items.length === 0 ? (
+          <div className="flex flex-col items-center px-6 py-16 text-center">
+            <Inbox className="h-8 w-8 text-muted-foreground" aria-hidden="true" />
+            <p className="mt-3 text-sm font-bold text-foreground">{cari || status ? "Tidak ada surat yang cocok" : "Kotak ini kosong"}</p>
+            <p className="mt-1 max-w-sm text-sm text-muted-foreground">
+              {cari || status
+                ? "Ubah kata pencarian atau pilih status lain."
+                : ini?.jenis === "yayasan"
+                  ? "Email ke sekretariat@sabilulquran.or.id dan surat fisik yang dicatat akan muncul di sini."
+                  : "Disposisi dari kotak yayasan dan surat fisik penerbit ini akan muncul di sini."}
+            </p>
           </div>
-        </Panel>
+        ) : (
+          <ul className={["divide-y divide-border/70 transition-opacity", memuat ? "opacity-60" : ""].join(" ")} aria-busy={memuat}>
+            {data.items.map((item) => <SuratRow key={item.id} item={item} onOpen={() => bukaSurat(item.id)} />)}
+          </ul>
+        )}
+
+        {data && data.total > 0 ? (
+          <Pager page={page} total={data.total} pageSize={data.pageSize} onPage={setPage} />
+        ) : null}
+      </Panel>
+
+      {suratId ? <SuratDialog suratId={suratId} context={context} onClose={tutupSurat} onChanged={refresh} /> : null}
+      {catat ? (
+        <CatatFisikDialog
+          kotakId={kotakId}
+          onClose={() => setCatat(false)}
+          onCreated={(id) => { setCatat(false); refresh(); bukaSurat(id); }}
+        />
       ) : null}
-      {data.items.length === 0 ? (
-        <StateCard kind="empty" title="Kotak ini kosong" body="Email baru ke sekretariat@sabilulquran.or.id dan surat fisik yang dicatat akan muncul di sini." />
-      ) : (
-        <Panel className="divide-y divide-border/60 !p-0">
-          {data.items.map((item) => (
-            <Link key={item.id} href={`/surat-masuk/${item.id}`} className="flex items-center gap-3 px-4 py-3 hover:bg-muted">
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-bold text-foreground">{item.perihal || "(tanpa perihal)"}</p>
-                <p className="truncate text-xs text-muted-foreground">{item.kanal === "email" ? "Email" : "Fisik"} · {item.dari} · {formatTanggal(item.diterimaPada)}</p>
-              </div>
-              <StatusBadge label={STATUS_SURAT_MASUK[item.status]} tone={statusTone(item.status)} />
-            </Link>
-          ))}
-        </Panel>
-      )}
-      <Pager page={page} total={data.total} pageSize={data.pageSize} onPage={setPage} />
     </div>
   );
 }
 
+function SuratRow({ item, onOpen }: { item: SuratMasukRingkas; onOpen: () => void }) {
+  const unread = item.status === "baru";
+  const pengirim = parseSender(item.dari);
+  const tanggal = tanggalRingkas(item.diterimaPada);
+  return (
+    <li>
+      <button
+        type="button"
+        onClick={onOpen}
+        className={[
+          "grid w-full grid-cols-[12px_minmax(0,1fr)_auto] items-start gap-x-3 px-3 py-3 text-left transition-colors hover:bg-muted focus-visible:bg-muted focus-visible:outline-none sm:grid-cols-[12px_minmax(0,13rem)_minmax(0,1fr)_auto] sm:items-center sm:px-4 sm:py-2.5",
+          unread ? "" : "text-muted-foreground",
+        ].join(" ")}
+      >
+        <span className="flex h-5 items-center justify-center sm:h-auto" aria-hidden="true">
+          {unread ? <span className="h-2 w-2 rounded-full bg-brand-primary" /> : null}
+        </span>
+        <span className={["min-w-0 truncate text-sm sm:col-auto", unread ? "font-bold text-foreground" : "font-semibold"].join(" ")}>
+          {pengirim.nama}
+        </span>
+        {/* On phones subject and preview take the second line under the sender. */}
+        <span className="col-start-2 col-end-4 row-start-2 min-w-0 truncate text-sm sm:col-auto sm:row-auto">
+          <span className={unread ? "font-bold text-foreground" : "font-semibold text-foreground"}>{item.perihal || "(tanpa perihal)"}</span>
+          {item.cuplikan ? <span className="text-muted-foreground"> — {item.cuplikan}</span> : null}
+        </span>
+        <span className="col-start-3 row-start-1 flex shrink-0 items-center gap-2 justify-self-end sm:col-auto sm:row-auto">
+          {item.kanal === "fisik" ? <span className="text-[11px] font-semibold text-muted-foreground">Fisik</span> : null}
+          {item.status !== "baru" ? <StatusBadge label={STATUS_SURAT_MASUK[item.status]} tone={statusTone(item.status)} /> : null}
+          {item.lampiran > 0 ? <Paperclip className="h-4 w-4 text-muted-foreground" aria-label={`${item.lampiran} lampiran`} /> : null}
+          <time dateTime={item.diterimaPada} className={["w-14 text-right text-xs tabular-nums", unread ? "font-bold text-foreground" : "text-muted-foreground"].join(" ")}>
+            {tanggal}
+          </time>
+        </span>
+        <span className="sr-only">{unread ? ", baru" : ""}</span>
+      </button>
+    </li>
+  );
+}
+
+function ListSkeleton() {
+  return (
+    <ul className="divide-y divide-border/70" aria-busy="true" aria-label="Memuat surat">
+      {Array.from({ length: 6 }, (_, index) => (
+        <li key={index} className="flex items-center gap-3 px-4 py-3.5">
+          <span className="h-3 w-32 rounded bg-muted" />
+          <span className="h-3 flex-1 rounded bg-muted" />
+          <span className="h-3 w-10 rounded bg-muted" />
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+/** "1–25 dari 103" with previous and next, the way a mail list pages. Shared with Buku nomor. */
 export function Pager({ page, total, pageSize, onPage }: { page: number; total: number; pageSize: number; onPage: (page: number) => void }) {
   const last = Math.max(1, Math.ceil(total / pageSize));
-  if (last <= 1) return null;
+  const from = total === 0 ? 0 : (page - 1) * pageSize + 1;
+  const to = Math.min(total, page * pageSize);
   return (
-    <div className="flex items-center justify-between text-sm">
-      <button type="button" className={secondaryButton} disabled={page <= 1} onClick={() => onPage(page - 1)}>Sebelumnya</button>
-      <span className="text-muted-foreground">Halaman {page} dari {last} · {total} baris</span>
-      <button type="button" className={secondaryButton} disabled={page >= last} onClick={() => onPage(page + 1)}>Berikutnya</button>
+    <div className="flex items-center justify-end gap-1 border-t border-border px-3 py-2 text-xs text-muted-foreground sm:px-4">
+      <span className="mr-2 tabular-nums">{from}–{to} dari {total}</span>
+      <button type="button" aria-label="Halaman sebelumnya" disabled={page <= 1} onClick={() => onPage(page - 1)}
+        className="inline-flex h-9 w-9 items-center justify-center rounded-lg transition-colors hover:bg-muted disabled:opacity-40 disabled:hover:bg-transparent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+        <ChevronLeft className="h-4 w-4" aria-hidden="true" />
+      </button>
+      <button type="button" aria-label="Halaman berikutnya" disabled={page >= last} onClick={() => onPage(page + 1)}
+        className="inline-flex h-9 w-9 items-center justify-center rounded-lg transition-colors hover:bg-muted disabled:opacity-40 disabled:hover:bg-transparent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+        <ChevronRight className="h-4 w-4" aria-hidden="true" />
+      </button>
     </div>
   );
 }
 
-/** One incoming letter: content, attachments, dispositions, replies, the disposition form. */
-export function SuratMasukPage({ suratMasukId, context }: { suratMasukId: string; context: SekretariatContext }) {
-  const { state, reload } = useLoad(() => sekretariatFetch<SuratMasukDetail>(`/surat-masuk/${suratMasukId}`), suratMasukId);
+function CatatFisikDialog({ kotakId, onClose, onCreated }: { kotakId: string; onClose: () => void; onCreated: (id: string) => void }) {
+  const [form, setForm] = useState({ dari: "", perihal: "" });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [disposisi, setDisposisi] = useState<{ kePenerbitId: string; catatan: string; tenggat: string } | null>(null);
-  const [penerbitPilihan, setPenerbitPilihan] = useState<PenerbitRingkas[] | null>(null);
-  if (state.status === "loading") return <StateCard kind="loading" title="Memuat surat" />;
-  if (state.status === "error") return <StateCard kind="error" title="Surat belum dapat dimuat" body={state.message} />;
+  return (
+    <DetailDialog title="Catat surat fisik" description="Isi pengirim dan perihal, lalu unggah pindaiannya dari surat yang terbuka." onClose={onClose}>
+      <div className="grid gap-3">
+        <Field label="Dari"><input className="sq-admin-input" value={form.dari} onChange={(event) => setForm({ ...form, dari: event.target.value })} placeholder="Pengirim surat" autoFocus /></Field>
+        <Field label="Perihal"><input className="sq-admin-input" value={form.perihal} onChange={(event) => setForm({ ...form, perihal: event.target.value })} placeholder="Perihal surat" /></Field>
+      </div>
+      <ErrorNote message={error} />
+      <div className="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+        <button type="button" className={secondaryButton} onClick={onClose} disabled={busy}>Batal</button>
+        <button
+          type="button"
+          className={primaryButton}
+          disabled={busy || !form.dari.trim()}
+          onClick={() => {
+            setBusy(true);
+            setError(null);
+            sekretariatFetch<{ id: string }>(`/kotak/${kotakId}/surat`, { method: "POST", body: { dari: form.dari, perihal: form.perihal } })
+              .then((created) => onCreated(created.id))
+              .catch((failure) => setError(errorMessage(failure)))
+              .finally(() => setBusy(false));
+          }}
+        >
+          Simpan
+        </button>
+      </div>
+    </DetailDialog>
+  );
+}
+
+/**
+ * The open letter: who sent it and when, the text set for reading (not a code box), the files as
+ * attachments, then the dispositions. Actions sit at the top where a mail client keeps them.
+ */
+function SuratDialog({ suratId, context, onClose, onChanged }: { suratId: string; context: SekretariatContext; onClose: () => void; onChanged: () => void }) {
+  const { state, reload } = useLoad(() => sekretariatFetch<SuratMasukDetail>(`/surat-masuk/${suratId}`), suratId);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [disposisi, setDisposisi] = useState(false);
+  const [selesai, setSelesai] = useState<string | null>(null);
+
+  if (state.status !== "ready") {
+    return (
+      <DetailDialog label="Surat" onClose={onClose}>
+        {state.status === "loading"
+          ? <StateCard kind="loading" title="Membuka surat" />
+          : <StateCard kind="error" title="Surat belum dapat dibuka" body={state.message} />}
+      </DetailDialog>
+    );
+  }
   const surat = state.data;
+  const pengirim = parseSender(surat.dari);
   const bolehDisposisi = surat.kotak.jenis === "yayasan" && (context.pengelola || context.peran?.disposisi) && surat.status !== "spam";
   const run = (work: () => Promise<unknown>) => {
     setBusy(true);
     setError(null);
-    work().then(() => reload()).catch((failure) => setError(errorMessage(failure))).finally(() => setBusy(false));
+    work().then(() => { void reload(); onChanged(); }).catch((failure) => setError(errorMessage(failure))).finally(() => setBusy(false));
   };
+
   return (
-    <div className="space-y-4">
-      <PageHeader eyebrow={<Link href={`/kotak/${surat.kotak.id}`} className="hover:underline">Kotak masuk</Link>} title={surat.perihal || "(tanpa perihal)"} actions={
-        <>
-          {bolehDisposisi ? (
-            <button
-              type="button"
-              className={primaryButton}
-              onClick={() => {
-                setDisposisi({ kePenerbitId: "", catatan: "", tenggat: "" });
-                if (!penerbitPilihan) {
-                  void sekretariatFetch<{ items: PenerbitRingkas[] }>("/penerbit")
-                    .then((body) => setPenerbitPilihan(body.items))
-                    .catch(() => setPenerbitPilihan([]));
-                }
-              }}
-            >
-              Disposisi
-            </button>
-          ) : null}
-          {bolehDisposisi && surat.status === "baru" ? (
-            <button type="button" className={secondaryButton} disabled={busy} onClick={() => run(() => sekretariatFetch(`/surat-masuk/${surat.id}/spam`, { method: "POST", body: {} }))}>Tandai spam</button>
-          ) : null}
-        </>
-      }>
-        <p className="mt-1 text-sm text-muted-foreground">{surat.kanal === "email" ? "Email" : "Surat fisik"} · {surat.dari} · {formatTanggal(surat.diterimaPada)} · <StatusBadge label={STATUS_SURAT_MASUK[surat.status]} tone={statusTone(surat.status)} /></p>
-      </PageHeader>
+    <DetailDialog title={surat.perihal || "(tanpa perihal)"} onClose={onClose}>
+      <div className="flex flex-wrap items-center gap-2">
+        {bolehDisposisi ? (
+          <button type="button" className={primaryButton} disabled={busy} onClick={() => setDisposisi(true)}>
+            <Send className="h-4 w-4" aria-hidden="true" />Disposisi
+          </button>
+        ) : null}
+        <label className={`${secondaryButton} cursor-pointer`}>
+          <Upload className="h-4 w-4" aria-hidden="true" />Unggah pindaian
+          <input
+            type="file"
+            accept="application/pdf,image/jpeg,image/png"
+            className="sr-only"
+            disabled={busy}
+            onChange={(event) => {
+              const file = event.target.files?.[0];
+              event.target.value = "";
+              if (file) run(() => sekretariatUpload(`/surat-masuk/${surat.id}/berkas`, file));
+            }}
+          />
+        </label>
+        {bolehDisposisi && surat.status === "baru" ? (
+          <button type="button" className={secondaryButton} disabled={busy} onClick={() => run(() => sekretariatFetch(`/surat-masuk/${surat.id}/spam`, { method: "POST", body: {} }))}>
+            <ShieldAlert className="h-4 w-4" aria-hidden="true" />Tandai spam
+          </button>
+        ) : null}
+      </div>
       <ErrorNote message={error} />
-      {disposisi ? (
-        <Panel>
-          <h2 className="font-display text-base font-bold text-brand-heading">Disposisi ke penerbit</h2>
-          <div className="mt-3 grid gap-3 sm:grid-cols-3">
-            <Field label="Penerbit tujuan">
-              <select className="sq-admin-input" value={disposisi.kePenerbitId} onChange={(event) => setDisposisi({ ...disposisi, kePenerbitId: event.target.value })}>
-                <option value="">— pilih —</option>
-                {(penerbitPilihan ?? []).map((penerbit) => <option key={penerbit.id} value={penerbit.id}>{penerbit.kode} — {penerbit.nama}</option>)}
-              </select>
-            </Field>
-            <Field label="Catatan"><input className="sq-admin-input" value={disposisi.catatan} onChange={(event) => setDisposisi({ ...disposisi, catatan: event.target.value })} placeholder="Apa yang diminta" /></Field>
-            <Field label="Tenggat (opsional)"><input type="date" className="sq-admin-input" value={disposisi.tenggat} onChange={(event) => setDisposisi({ ...disposisi, tenggat: event.target.value })} /></Field>
-          </div>
-          <div className="mt-3 flex gap-2">
-            <button
-              type="button"
-              className={primaryButton}
-              disabled={busy || !disposisi.kePenerbitId || !disposisi.catatan.trim()}
-              onClick={() => run(async () => {
-                await sekretariatFetch(`/surat-masuk/${surat.id}/disposisi`, {
-                  method: "POST",
-                  body: { ke_penerbit_id: disposisi.kePenerbitId, catatan: disposisi.catatan, ...(disposisi.tenggat ? { tenggat_pada: disposisi.tenggat } : {}) },
-                });
-                setDisposisi(null);
-              })}
-            >
-              Kirim disposisi
-            </button>
-            <button type="button" className={secondaryButton} onClick={() => setDisposisi(null)}>Batal</button>
-          </div>
-        </Panel>
-      ) : null}
-      {surat.isiTeks ? (
-        <Panel>
-          <h2 className="font-display text-base font-bold text-brand-heading">Isi</h2>
-          <pre className="mt-2 max-h-96 overflow-auto whitespace-pre-wrap break-words text-sm text-foreground">{surat.isiTeks}</pre>
-        </Panel>
-      ) : null}
-      <Panel>
-        <div className="flex items-center justify-between">
-          <h2 className="font-display text-base font-bold text-brand-heading">Berkas</h2>
-          <label className={secondaryButton}>
-            Unggah pindaian
-            <input
-              type="file"
-              accept="application/pdf,image/jpeg,image/png"
-              className="sr-only"
-              onChange={(event) => {
-                const file = event.target.files?.[0];
-                event.target.value = "";
-                if (file) run(() => sekretariatUpload(`/surat-masuk/${surat.id}/berkas`, file));
-              }}
-            />
-          </label>
+
+      {/* Sender block, the way a letter or an e-mail header reads. */}
+      <div className="mt-5 flex items-start gap-3 border-b border-border pb-4">
+        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-brand-primary-pale text-brand-primary-deep" aria-hidden="true">
+          {surat.kanal === "email" ? <Mail className="h-[18px] w-[18px]" /> : <FileText className="h-[18px] w-[18px]" />}
+        </span>
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-sm font-bold text-foreground">{pengirim.nama}</p>
+          <p className="truncate text-xs text-muted-foreground">
+            {pengirim.alamat ?? (surat.kanal === "fisik" ? "Surat fisik" : "Email")}
+          </p>
         </div>
-        {surat.berkas.length === 0 ? <p className="mt-2 text-sm text-muted-foreground">Belum ada berkas.</p> : (
-          <ul className="mt-2 space-y-1">
+        <div className="shrink-0 text-right">
+          <p className="text-xs tabular-nums text-muted-foreground">{formatTanggal(surat.diterimaPada)}</p>
+          <div className="mt-1"><StatusBadge label={STATUS_SURAT_MASUK[surat.status]} tone={statusTone(surat.status)} /></div>
+        </div>
+      </div>
+
+      {surat.isiTeks ? (
+        <div className="mt-4 whitespace-pre-wrap break-words text-[15px] leading-7 text-foreground">{surat.isiTeks}</div>
+      ) : (
+        <p className="mt-4 text-sm text-muted-foreground">{surat.kanal === "fisik" ? "Isi surat ada di pindaiannya." : "Email ini tidak berisi teks."}</p>
+      )}
+
+      {surat.berkas.length > 0 ? (
+        <section aria-label="Lampiran" className="mt-6">
+          <p className="mb-2 text-xs font-semibold text-muted-foreground">{surat.berkas.length} lampiran</p>
+          <ul className="flex flex-wrap gap-2">
             {surat.berkas.map((berkas) => (
-              <li key={berkas.id} className="flex items-center justify-between gap-2 text-sm">
-                <a className="truncate font-semibold text-brand-primary-deep hover:underline" href={berkasUrl(berkas.id)} target="_blank" rel="noreferrer">{berkas.nama}</a>
-                <span className="shrink-0 text-xs text-muted-foreground">{formatUkuran(berkas.ukuran)}</span>
+              <li key={berkas.id}>
+                <a
+                  href={berkasUrl(berkas.id)}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="flex max-w-[16rem] items-center gap-2 rounded-xl border border-border px-3 py-2 text-sm transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                >
+                  <Paperclip className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+                  <span className="min-w-0 flex-1 truncate font-semibold text-foreground">{berkas.nama}</span>
+                  <span className="shrink-0 text-xs tabular-nums text-muted-foreground">{formatUkuran(berkas.ukuran)}</span>
+                </a>
               </li>
             ))}
           </ul>
-        )}
-      </Panel>
-      <Panel>
-        <h2 className="font-display text-base font-bold text-brand-heading">Disposisi</h2>
-        {surat.disposisi.length === 0 ? <p className="mt-2 text-sm text-muted-foreground">Belum ada disposisi.</p> : (
-          <ul className="mt-2 space-y-2">
+        </section>
+      ) : null}
+
+      {surat.disposisi.length > 0 || surat.balasan.length > 0 ? (
+        <section aria-label="Disposisi" className="mt-6 border-t border-border pt-4">
+          <p className="mb-2 text-xs font-semibold text-muted-foreground">Disposisi</p>
+          <ul className="space-y-2">
             {surat.disposisi.map((item) => (
-              <li key={item.id} className="rounded-xl border border-border/60 p-3 text-sm">
+              <li key={item.id} className="rounded-xl border border-border px-3 py-2.5 text-sm">
                 <div className="flex flex-wrap items-center gap-2">
-                  <span className="font-bold text-brand-heading">{item.kePenerbit ? `${item.kePenerbit.kode}` : "—"}</span>
+                  <span className="font-bold text-foreground">{item.kePenerbit?.nama ?? item.kePenerbit?.kode ?? "Penerbit"}</span>
                   {item.tenggatPada ? <span className="text-xs text-muted-foreground">tenggat {formatTanggal(item.tenggatPada)}</span> : null}
-                  {item.selesaiPada
-                    ? <StatusBadge label={`Selesai ${formatTanggal(item.selesaiPada)}`} tone="baik" />
-                    : <StatusBadge label="Belum selesai" tone="perhatian" />}
+                  <span className="ml-auto">
+                    {item.selesaiPada
+                      ? <StatusBadge label={`Selesai ${formatTanggal(item.selesaiPada)}`} tone="baik" />
+                      : <StatusBadge label="Belum selesai" tone="perhatian" />}
+                  </span>
                 </div>
                 <p className="mt-1 text-foreground">{item.catatan}</p>
-                {item.selesaiKeterangan ? <p className="mt-1 text-muted-foreground">Keterangan: {item.selesaiKeterangan}</p> : null}
-                {!item.selesaiPada ? <SelesaiButton disposisiId={item.id} onDone={() => void reload()} /> : null}
+                {item.selesaiKeterangan ? <p className="mt-1 text-muted-foreground">{item.selesaiKeterangan}</p> : null}
+                {!item.selesaiPada ? (
+                  <button type="button" className={`${secondaryButton} mt-2`} onClick={() => setSelesai(item.id)}>Tandai selesai</button>
+                ) : null}
               </li>
             ))}
           </ul>
-        )}
-        {surat.balasan.length > 0 ? (
-          <p className="mt-3 text-sm text-muted-foreground">
-            Balasan: {surat.balasan.map((balasan) => (
-              <Link key={balasan.id} href={`/surat/${balasan.id}`} className="font-semibold text-brand-primary-deep hover:underline">{balasan.nomor ?? `(draf ${balasan.status})`}</Link>
-            ))}
-          </p>
-        ) : null}
-      </Panel>
-    </div>
+          {surat.balasan.length > 0 ? (
+            <p className="mt-3 text-sm text-muted-foreground">
+              Dibalas dengan{" "}
+              {surat.balasan.map((balasan, index) => (
+                <span key={balasan.id}>
+                  {index > 0 ? ", " : null}
+                  <Link href={`/surat/${balasan.id}`} className="font-semibold text-brand-primary-deep hover:underline">{balasan.nomor ?? `draf ${balasan.status}`}</Link>
+                </span>
+              ))}
+            </p>
+          ) : null}
+        </section>
+      ) : null}
+
+      {disposisi ? <DisposisiDialog suratId={surat.id} onClose={() => setDisposisi(false)} onDone={() => { setDisposisi(false); void reload(); onChanged(); }} /> : null}
+      {selesai ? <SelesaiDialog disposisiId={selesai} onClose={() => setSelesai(null)} onDone={() => { setSelesai(null); void reload(); onChanged(); }} /> : null}
+    </DetailDialog>
   );
 }
 
-function SelesaiButton({ disposisiId, onDone }: { disposisiId: string; onDone: () => void }) {
-  const [open, setOpen] = useState(false);
+/** Stacked once on the open letter, which the shell rule allows for a confirmation-sized form. */
+function DisposisiDialog({ suratId, onClose, onDone }: { suratId: string; onClose: () => void; onDone: () => void }) {
+  const { state } = useLoad(() => sekretariatFetch<{ items: PenerbitRingkas[] }>("/penerbit"), "penerbit-disposisi");
+  const [value, setValue] = useState({ kePenerbitId: "", catatan: "", tenggat: "" });
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  return (
+    <DetailDialog title="Disposisi" description="Teruskan surat ini ke kotak masuk penerbit yang menindaklanjuti." onClose={onClose}>
+      <div className="grid gap-3">
+        <Field label="Ke penerbit">
+          <select className="sq-admin-input" value={value.kePenerbitId} onChange={(event) => setValue({ ...value, kePenerbitId: event.target.value })} disabled={state.status !== "ready"}>
+            <option value="">{state.status === "loading" ? "Memuat penerbit" : "Pilih penerbit"}</option>
+            {state.status === "ready" ? state.data.items.map((penerbit) => <option key={penerbit.id} value={penerbit.id}>{penerbit.nama} ({penerbit.kode})</option>) : null}
+          </select>
+        </Field>
+        <Field label="Catatan"><textarea className="sq-admin-input" rows={3} value={value.catatan} onChange={(event) => setValue({ ...value, catatan: event.target.value })} placeholder="Apa yang diminta" /></Field>
+        <Field label="Tenggat" helper="Boleh dikosongkan"><input type="date" className="sq-admin-input" value={value.tenggat} onChange={(event) => setValue({ ...value, tenggat: event.target.value })} /></Field>
+      </div>
+      <ErrorNote message={state.status === "error" ? state.message : error} />
+      <div className="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+        <button type="button" className={secondaryButton} onClick={onClose} disabled={busy}>Batal</button>
+        <button
+          type="button"
+          className={primaryButton}
+          disabled={busy || !value.kePenerbitId || !value.catatan.trim()}
+          onClick={() => {
+            setBusy(true);
+            setError(null);
+            sekretariatFetch(`/surat-masuk/${suratId}/disposisi`, {
+              method: "POST",
+              body: { ke_penerbit_id: value.kePenerbitId, catatan: value.catatan, ...(value.tenggat ? { tenggat_pada: value.tenggat } : {}) },
+            })
+              .then(onDone)
+              .catch((failure) => setError(errorMessage(failure)))
+              .finally(() => setBusy(false));
+          }}
+        >
+          Kirim disposisi
+        </button>
+      </div>
+    </DetailDialog>
+  );
+}
+
+function SelesaiDialog({ disposisiId, onClose, onDone }: { disposisiId: string; onClose: () => void; onDone: () => void }) {
   const [keterangan, setKeterangan] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  if (!open) return <button type="button" className={`${secondaryButton} mt-2`} onClick={() => setOpen(true)}>Tandai selesai</button>;
   return (
-    <div className="mt-2 space-y-2">
-      <Field label="Keterangan penyelesaian"><input className="sq-admin-input" value={keterangan} onChange={(event) => setKeterangan(event.target.value)} placeholder="Apa yang sudah dikerjakan" /></Field>
+    <DetailDialog title="Tandai disposisi selesai" onClose={onClose}>
+      <Field label="Apa yang sudah dikerjakan"><textarea className="sq-admin-input" rows={3} value={keterangan} onChange={(event) => setKeterangan(event.target.value)} autoFocus /></Field>
       <ErrorNote message={error} />
-      <div className="flex gap-2">
+      <div className="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+        <button type="button" className={secondaryButton} onClick={onClose} disabled={busy}>Batal</button>
         <button
           type="button"
           className={primaryButton}
@@ -357,8 +504,60 @@ function SelesaiButton({ disposisiId, onDone }: { disposisiId: string; onDone: (
         >
           Selesai
         </button>
-        <button type="button" className={secondaryButton} onClick={() => setOpen(false)}>Batal</button>
       </div>
+    </DetailDialog>
+  );
+}
+
+/** The old `/surat-masuk/<id>` link lands on the same letter as a pop-up over its inbox. */
+export function SuratMasukRedirect({ suratMasukId, kotak }: { suratMasukId: string; kotak: KotakRingkas[] | null }) {
+  const { state } = useLoad(() => sekretariatFetch<SuratMasukDetail>(`/surat-masuk/${suratMasukId}`), suratMasukId);
+  useEffect(() => {
+    if (state.status !== "ready" || kotak === null) return;
+    // A letter disposed from the foundation inbox lives there, but a penerbit officer may read it
+    // only through their own inbox. Land on an inbox the viewer can open: the letter's own when
+    // it is theirs, else the inbox of a penerbit it was disposed to, else the first one they have.
+    const surat = state.data;
+    const bisa = new Set(kotak.map((item) => item.id));
+    const kodeDisposisi = new Set(surat.disposisi.map((item) => item.kePenerbit?.kode).filter(Boolean));
+    const tujuan = bisa.has(surat.kotak.id)
+      ? surat.kotak.id
+      : kotak.find((item) => item.penerbit?.kode && kodeDisposisi.has(item.penerbit.kode))?.id ?? kotak[0]?.id;
+    if (tujuan) navigate(`/kotak/${tujuan}?surat=${suratMasukId}`, true);
+  }, [state, suratMasukId, kotak]);
+  if (state.status === "error") return <StateCard kind="error" title="Surat belum dapat dibuka" body={state.message} action={<Link className={secondaryButton} href="/">Ke kotak masuk</Link>} />;
+  return <StateCard kind="loading" title="Membuka surat" />;
+}
+
+/** Surat keluar: the issuers whose register and archive the viewer may open. */
+export function SuratKeluarPage({ context }: { context: SekretariatContext }) {
+  const { state } = useLoad(() => sekretariatFetch<{ items: PenerbitRingkas[] }>("/penerbit"), "surat-keluar");
+  if (state.status === "loading") return <StateCard kind="loading" title="Memuat penerbit" />;
+  if (state.status === "error") return <StateCard kind="error" title="Penerbit belum dapat dimuat" body={state.message} />;
+  const milikku = new Set(context.peran?.penerbitIds ?? []);
+  const items = context.pengelola ? state.data.items : state.data.items.filter((penerbit) => milikku.has(penerbit.id));
+  return (
+    <div>
+      <PageHeader title="Surat keluar" eyebrow="Register nomor dan arsip per penerbit" />
+      {items.length === 0 ? (
+        <StateCard kind="empty" title="Anda belum memegang penerbit" body="Hak menerbitkan surat diberikan per penerbit oleh pengelola Sekretariat." />
+      ) : (
+        <Panel className="!p-0">
+          <ul className="divide-y divide-border/70">
+            {items.map((penerbit) => (
+              <li key={penerbit.id}>
+                <Link href={`/penerbit/${penerbit.id}/surat`} className="flex min-h-14 items-center gap-3 px-4 py-3 transition-colors hover:bg-muted">
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-sm font-bold text-foreground">{penerbit.nama}</span>
+                    <span className="block truncate text-xs text-muted-foreground">{penerbit.kode}</span>
+                  </span>
+                  <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </Panel>
+      )}
     </div>
   );
 }

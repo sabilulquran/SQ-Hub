@@ -106,3 +106,13 @@ describe("SEK-IMPL-002 sebab kegagalan sambungan (M-8)", () => {
     expect(classifyMailboxFailure("bukan Error")).toBe("lainnya");
   });
 });
+
+describe("SEK-IMPL-003 pencarian kotak masuk", () => {
+  it("meloloskan wildcard LIKE supaya dicari harfiah", async () => {
+    const { escapeLike } = await import("../src/modules/sekretariat/kotak.js");
+    expect(escapeLike("50%")).toBe(String.raw`50\%`);
+    expect(escapeLike("nama_file")).toBe(String.raw`nama\_file`);
+    expect(escapeLike(String.raw`a\b`)).toBe(String.raw`a\\b`);
+    expect(escapeLike("biasa")).toBe("biasa");
+  });
+});

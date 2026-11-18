@@ -760,3 +760,63 @@ describe("SEK-IMPL-002 kotak masuk disambungkan dari layar", () => {
     expect((await pool.query<{ status: string }>("SELECT status FROM sekretariat_mailbox WHERE id = $1", [id])).rows[0]!.status).toBe("auth_gagal");
   });
 });
+
+describe("SEK-IMPL-003 kotak masuk yang mudah dibaca dan dicari", () => {
+  async function suratEmail(perihal: string, isi: string, dari = "\"Dinas Pendidikan\" <disdik@example.go.id>") {
+    const id = randomUUID();
+    await pool.query(
+      `INSERT INTO sekretariat_surat_masuk (id, kotak_id, kanal, dari, perihal, isi_teks, diterima_pada, email_message_id, email_uidvalidity, email_uid)
+       VALUES ($1, $2, 'email', $3, $4, $5, now(), $6, '1', (SELECT coalesce(max(email_uid), 0) + 1 FROM sekretariat_surat_masuk))`,
+      [id, await kotakYayasanId(), dari, perihal, isi, `uji-${id}@example.go.id`],
+    );
+    return id;
+  }
+
+  it("setiap baris membawa cuplikan isi dengan spasi dilipat dan jumlah lampiran", async () => {
+    const id = await suratEmail("Undangan sosialisasi", "Dengan hormat,\n\n   kami mengundang\tkepala sekolah.");
+    const daftar = await call(HCM, "GET", `/sekretariat/kotak/${await kotakYayasanId()}/surat`);
+    const baris = daftar.body.items.find((item: { id: string }) => item.id === id);
+    expect(baris.cuplikan).toBe("Dengan hormat, kami mengundang kepala sekolah.");
+    expect(baris.lampiran).toBe(0);
+  });
+
+  it("mencari lewat pengirim, perihal, dan isi, sebelum batas halaman", async () => {
+    const lewatIsi = await suratEmail("Konfirmasi", "Perpanjangan kerja sama payroll berakhir bulan depan");
+    const lewatPerihal = await suratEmail("Pendaftaran MTQ kabupaten", "Kepada pimpinan lembaga");
+    await suratEmail("Hal lain", "Tidak relevan", "Bank <bank@example.co.id>");
+    const yayasan = await kotakYayasanId();
+    const cari = async (q: string) => (await call(HCM, "GET", `/sekretariat/kotak/${yayasan}/surat?q=${encodeURIComponent(q)}`)).body;
+    expect((await cari("payroll")).items.map((item: { id: string }) => item.id)).toEqual([lewatIsi]);
+    expect((await cari("mtq")).items.map((item: { id: string }) => item.id)).toEqual([lewatPerihal]);
+    expect((await cari("disdik")).total).toBe(2);
+  });
+
+  it("memperlakukan % dan _ dalam pencarian sebagai huruf biasa", async () => {
+    await suratEmail("Diskon 50% pendaftaran", "isi");
+    await suratEmail("Diskon 50 persen", "isi");
+    const yayasan = await kotakYayasanId();
+    const hasil = (await call(HCM, "GET", `/sekretariat/kotak/${yayasan}/surat?q=${encodeURIComponent("50%")}`)).body;
+    expect(hasil.total).toBe(1);
+    expect(hasil.items[0].perihal).toBe("Diskon 50% pendaftaran");
+  });
+
+  it("pencarian tetap dibatasi hak akses kotak", async () => {
+    await suratEmail("Rahasia yayasan", "isi");
+    expect((await call(TU_SDIT, "GET", `/sekretariat/kotak/${await kotakYayasanId()}/surat?q=rahasia`)).status).toBe(404);
+  });
+
+  it("mencari orang hanya untuk admin, butuh dua huruf, dan mengembalikan nama, bukan hanya id", async () => {
+    expect((await call(TU_SDIT, "GET", "/admin/sekretariat/orang?q=di")).status).toBe(403);
+    expect((await call(HCM, "GET", "/admin/sekretariat/orang?q=d")).body.items).toEqual([]);
+    const hasil = await call(HCM, "GET", "/admin/sekretariat/orang?q=direk");
+    expect(hasil.status).toBe(200);
+    expect(hasil.body.items).toEqual([expect.objectContaining({ id: DIREKTUR, nama: "Direktur" })]);
+  });
+
+  it("daftar petugas dan pemberi disposisi membawa nama dari direktori", async () => {
+    const petugas = await call(HCM, "GET", "/admin/sekretariat/petugas");
+    expect(petugas.body.items.find((item: { personId: string }) => item.personId === TU_SDIT).nama).toBe("TU SDIT");
+    const pemegang = await call(HCM, "GET", "/admin/sekretariat/disposisi-pemegang");
+    expect(pemegang.body.items[0].nama).toBe("Direktur");
+  });
+});
