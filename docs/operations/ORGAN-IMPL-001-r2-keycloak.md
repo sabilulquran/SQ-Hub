@@ -1,6 +1,6 @@
 # ORGAN-IMPL-001 R2 — Keycloak and configuration for deciding in the Portal Organ Yayasan
 
-**Status:** PREPARED, NOT APPLIED. Nothing here has been applied to Mi8VPS or the realm. Each step follows the SQ Core release rules (dry run first, report afterwards, never at 19 UTC).
+**Status:** §1 and §2 APPLIED to the realm on 2026-11-18. §3 to §7 not started: both flags are off, so nothing has changed for anyone. Each step follows the SQ Core release rules (dry run first, report afterwards, never at 19 UTC).
 
 **Scope:** realm `sq-staff`, the existing client `sq-organ`, a new audience-only client for decisions, and the realm's Level of Authentication. R1 (`ORGAN-IMPL-001-keycloak.md`) is a prerequisite and is already live.
 
@@ -16,13 +16,66 @@
 
 The third is not a blocker for switching R2 on: an empty list is correct and harmless. It is a blocker for seeing anything happen.
 
-## 1. Level of Authentication in the realm
+## 1. Level of Authentication in the realm — APPLIED 2026-11-18
 
-In `Authentication → Flows`, on the browser flow `sq-organ` uses, set the conditional OTP step's **Level of Authentication** to `2`, and in `Realm settings → Sessions / Tokens` map `acr` to the loa values so `1` is password and `2` is password plus OTP.
+`organ-r2-keycloak.sh stepup` in `sq-core-ops` does this, and `stepup-off` undoes it.
 
-A trusted device (HUB-IMPL-012) and a recovery code must **not** reach level 2 (`DRAFT`, T-3). Check this after the mapping: signing in with a trusted device must yield `acr = "1"`.
+What the realm looked like before it ran told us the original plan would not work. The bound browser
+flow is `akun-sq-browser-trusted-device`, and its conditional 2FA sub-flow holds `OTP Form`, `WebAuthn`
+and `Recovery Authentication Code Form` all **DISABLED**; the only enabled second factor is
+`sq-trusted-device-otp` (HUB-IMPL-012). So there was no OTP step to give a Level of Authentication to,
+and the one step that existed is precisely the one that must never reach level 2 — a remembered device
+is not a fresh proof. `acr.loa.map` was unset on both the realm and `sq-organ`.
 
-## 2. The decision audience client
+What is in place now is a conditional sub-flow of its own, **inside** the flow's `forms` sub-flow:
+
+```
+akun-sq-browser-trusted-device forms
+  Username Password Form                  REQUIRED      priority 0
+  … Browser - Conditional 2FA             CONDITIONAL   priority 10   (unchanged)
+  organ-stepup-loa2                       CONDITIONAL   priority 1000 (new)
+    Condition - Level of Authentication   REQUIRED      level 2, max age 900s
+    OTP Form                              REQUIRED
+```
+
+Inside `forms`, never beside the top level's alternatives. Keycloak throws away every ALTERNATIVE on a
+level that also holds a REQUIRED or an enabled CONDITIONAL — `DefaultAuthenticationFlow` in
+`keycloak-services-26.7.2.jar` carries the literal *"REQUIRED and ALTERNATIVE elements at same level!
+Those alternative executions will be ignored"* followed by a `clear()`. A conditional at the top level
+would therefore, the moment it fired, drop Cookie, the identity-provider redirector and `forms` itself,
+and the step-up would reach an OTP form with nobody signed in. The `forms` level holds no alternative.
+
+Two details that cost a run each, and are worth keeping:
+
+- The `forms` sub-flow's alias carries the bound flow's name and so contains spaces. kcadm does not
+  encode the path (`Illegal character in path at index 95`), so the script encodes it itself.
+- A new execution is created with priority 0, tying with the username-password form, and two executions
+  tied at 0 order arbitrarily. `lower-priority` then swaps 0 with 0 and does nothing. The requirement
+  and an explicit priority go in one `PUT …/executions`.
+
+900 seconds matches `STEP_UP_MAX_AGE_SECONDS` in `organ-decisions/service.ts`: the realm and the portal
+have to agree on how long a proof stays fresh.
+
+`acr.loa.map` is `{"1":1,"2":2}` on the client `sq-organ` **only**, not on the realm, so no other
+application's `acr` claim changed. `sq-hub` has neither the map nor the decision scope.
+
+A trusted device (HUB-IMPL-012) and a recovery code must **not** reach level 2 (`DRAFT`, T-3). The
+structure makes that so by construction — the step-up sub-flow contains `auth-otp-form` and nothing
+else — but it is still to be confirmed with a real sign-in, in §4.
+
+### What was checked after it was applied
+
+| Check | Result |
+| --- | --- |
+| `sq-organ` authorization endpoint with PKCE, no `acr_values` | `200`, the ordinary username and password form |
+| the same with `acr_values=2` | `200`, the ordinary username and password form (the OTP step comes after it) |
+| Keycloak `runtime.log` | no "REQUIRED and ALTERNATIVE elements at same level" warning |
+| `stepup` run twice more | no change, and the sub-flow stays the last step of `forms` |
+
+Rollback is `organ-r2-keycloak.sh stepup-off`. The backup each run writes to
+`/data/local/mi8vps/backups/organ-r2-flow-<stamp>.json` is the flow as it was.
+
+## 2. The decision audience client — APPLIED 2026-11-18
 
 Create an OpenID Connect client `hcis-organ-decision`:
 
@@ -35,6 +88,11 @@ Then, in the realm's client scopes, create an **optional** scope `sq-organ-decis
 - Assign it to `sq-organ` as **Optional**, never Default.
 
 The scope must not be assigned to `sq-hub`. SQ Hub never decides (ADR-0012 D4).
+
+`organ-r2-keycloak.sh audience` does this. After it ran, `hcis-organ-decision` reports
+`standardFlowEnabled`, `serviceAccountsEnabled` and `directAccessGrantsEnabled` all false with no
+redirect URI, and `sq-organ`'s optional scopes are `sq-governance-aset-sq`, `sq-governance-hcis`,
+`sq-governance-karir-sq`, `sq-organ-decision-hcis`. `sq-hub` does not have the decision scope.
 
 ## 3. Configuration
 
