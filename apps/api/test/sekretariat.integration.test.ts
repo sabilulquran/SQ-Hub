@@ -467,7 +467,10 @@ describe("SEK-IMPL-001 penarik email (§7 nomor 1)", () => {
   it("kegagalan IMAP tercatat untuk layar admin dan tidak melempar", async () => {
     fetcher.fail = true;
     const hasil = await sekretariat.mail.runOnce();
-    expect(hasil).toEqual({ baru: 0, dilewati: 0, gagal: true });
+    // SEK-IMPL-002: a failed round now also carries the fetcher's error so the caller can
+    // classify it per mailbox, hence a shape check rather than an exact one.
+    expect(hasil).toMatchObject({ baru: 0, dilewati: 0, gagal: true });
+    expect(hasil.error).toBeInstanceOf(Error);
     const status = await call(HCM, "GET", "/admin/sekretariat/mail");
     expect(status.body.items[0].galatTerakhir).toBe("Error");
   });
@@ -577,7 +580,7 @@ describe("SEK-IMPL-002 kotak masuk disambungkan dari layar", () => {
     probeRefusal = "Invalid credentials (Failure)";
     const gagal = await tambah();
     expect(gagal.status).toBe(400);
-    expect(gagal.body.code).toBe("sambungan_sandi_ditolak");
+    expect(gagal.body.error).toBe("sambungan_sandi_ditolak");
     expect((await pool.query("SELECT 1 FROM sekretariat_mailbox")).rowCount).toBe(0);
 
     probeRefusal = null;
@@ -616,7 +619,7 @@ describe("SEK-IMPL-002 kotak masuk disambungkan dari layar", () => {
       alamat: MAILBOX.alamat, host: "mesin-penyerang.example", port: 993, kotak_id: await kotakYayasan(),
     });
     expect(curi.status).toBe(400);
-    expect(curi.body.code).toBe("sandi_wajib_tujuan_berubah");
+    expect(curi.body.error).toBe("sandi_wajib_tujuan_berubah");
     // Yang penting: sandinya tidak pernah dikirim ke host itu.
     expect(probeCalls).toHaveLength(sebelum);
   });
@@ -626,13 +629,13 @@ describe("SEK-IMPL-002 kotak masuk disambungkan dari layar", () => {
     const ganti = await call(HCM, "PUT", `/admin/sekretariat/mailbox/${id}`, {
       alamat: MAILBOX.alamat, host: MAILBOX.host, port: 993, pengguna: "orang-lain@sabilulquran.or.id", kotak_id: await kotakYayasan(),
     });
-    expect(ganti.body.code).toBe("sandi_wajib_tujuan_berubah");
+    expect(ganti.body.error).toBe("sandi_wajib_tujuan_berubah");
   });
 
   it("mencatat setiap percobaan sambungan, berhasil maupun gagal (§6)", async () => {
     await tambah();
     probeRefusal = "Command failed";
-    await tambah({ alamat: "lain@sabilulquran.or.id" });
+    await tambah(HCM, { alamat: "lain@sabilulquran.or.id" });
     const audit = await pool.query<{ metadata: { hasil: string; host: string } }>(
       "SELECT metadata FROM sekretariat_audit WHERE aksi = 'mailbox.uji' ORDER BY id",
     );
@@ -649,16 +652,16 @@ describe("SEK-IMPL-002 kotak masuk disambungkan dari layar", () => {
 
   it("menolak alamat ganda dan kotak yang tidak dikenal", async () => {
     expect((await tambah()).status).toBe(201);
-    expect((await tambah()).body.code).toBe("alamat_ganda");
+    expect((await tambah()).body.error).toBe("alamat_ganda");
     const salahKotak = await call(HCM, "POST", "/admin/sekretariat/mailbox", { ...MAILBOX, kotak_id: randomUUID() });
-    expect(salahKotak.body.code).toBe("kotak_tidak_dikenal");
+    expect(salahKotak.body.error).toBe("kotak_tidak_dikenal");
   });
 
   it("menambah tanpa sandi ditolak", async () => {
     const tanpa = await call(HCM, "POST", "/admin/sekretariat/mailbox", {
       alamat: MAILBOX.alamat, host: MAILBOX.host, port: 993, kotak_id: await kotakYayasan(),
     });
-    expect(tanpa.body.code).toBe("sandi_wajib");
+    expect(tanpa.body.error).toBe("sandi_wajib");
   });
 
   it("tidak memarkir karena empat waktu habis lalu satu sandi ditolak (M-8)", async () => {
@@ -705,8 +708,8 @@ describe("SEK-IMPL-002 kotak masuk disambungkan dari layar", () => {
   it("menghapus mailbox tidak menghapus surat yang sudah masuk (M-11)", async () => {
     const id = (await tambah()).body.id as string;
     await pool.query(
-      `INSERT INTO sekretariat_surat_masuk (id, kotak_id, kanal, dari, perihal, isi_teks, diterima_pada, email_message_id)
-       VALUES ($1, $2, 'email', 'pengirim@luar.id', 'Surat uji', 'isi', now(), $3)`,
+      `INSERT INTO sekretariat_surat_masuk (id, kotak_id, kanal, dari, perihal, isi_teks, diterima_pada, email_message_id, email_uidvalidity, email_uid)
+       VALUES ($1, $2, 'email', 'pengirim@luar.id', 'Surat uji', 'isi', now(), $3, '1', 1)`,
       [randomUUID(), await kotakYayasan(), `uji-${randomUUID()}@luar.id`],
     );
     expect((await call(HCM, "DELETE", `/admin/sekretariat/mailbox/${id}`)).status).toBe(204);
@@ -737,7 +740,7 @@ describe("SEK-IMPL-002 kotak masuk disambungkan dari layar", () => {
       alamat: "kedua@sabilulquran.or.id", host: MAILBOX.host, port: 993, pengguna: MAILBOX.alamat, sandi: MAILBOX.sandi, kotak_id: await kotakYayasan(),
     });
     expect(bentrok.status).toBe(400);
-    expect(bentrok.body.code).toBe("alamat_ganda");
+    expect(bentrok.body.error).toBe("alamat_ganda");
   });
 
   it("kunci yang hilang memberi kalimat yang bisa ditindaklanjuti, bukan 503", async () => {
@@ -747,7 +750,7 @@ describe("SEK-IMPL-002 kotak masuk disambungkan dari layar", () => {
       alamat: MAILBOX.alamat, host: MAILBOX.host, port: 993, kotak_id: await kotakYayasan(),
     });
     expect(ubah.status).toBe(400);
-    expect(ubah.body.code).toBe("sandi_wajib_kunci_hilang");
+    expect(ubah.body.error).toBe("sandi_wajib_kunci_hilang");
   });
 
   it("baris yang kuncinya hilang langsung diparkir, tidak dicoba berulang", async () => {
