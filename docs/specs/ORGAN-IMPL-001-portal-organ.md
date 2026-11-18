@@ -129,6 +129,10 @@ Alur di portal:
 - Field registry `decision_path` dan `decision_audience` ditolak bila audience-nya sama dengan `governance_audience` aplikasi itu.
 - Sesi portal menyimpan `stepped_up_at`, diisi hanya bila realm benar-benar menjawab `acr` yang diminta dengan `auth_time` yang masih dalam jendela. Gagal salah satu berarti tidak ada sesi, bukan sesi tanpa cap.
 - Event `organ.decision.forwarded` tersimpan di tabel `organ_decision_events` dengan digest aktor, aplikasi, id langkah, arah keputusan, status HTTP, dan waktu.
+- Digest aktor memakai HMAC dengan client secret portal, bukan hash biasa. Hash biasa tidak menyembunyikan apa pun di sini karena subjek anggota organ ada di tabel sesi pada database yang sama, sehingga siapa pun yang bisa membaca tabel event dapat menghitung ulang semuanya.
+- `requestId` dibuat satu per langkah **dan** per arah keputusan. Satu id untuk kedua tombol membuat penolakan yang jawabannya hilang terulang sebagai jawaban atas penekanan Setujui berikutnya, lalu ditampilkan sebagai berhasil.
+- Kegagalan sebelum apa pun terkirim (token pengguna, exchange, path registry yang tidak bisa jadi URL) dibedakan dari hasil yang tidak pasti: tidak ada event yang ditulis dan anggota diminta mencoba lagi.
+- **Keterbatasan yang diketahui (`TBD`).** Step-up membawa anggota keluar halaman dan mendarat kembali di Ringkasan, sehingga tab Keputusan dan catatan yang sedang diketik hilang. Mengembalikan keduanya butuh return path yang lebih kaya daripada yang dipakai alur masuk sekarang.
 
 Respons `GET /api/organ/decisions` berstatus `Cache-Control: no-store`, tidak di-cache di memori, dan tidak pernah dikirim ke Claude.
 
