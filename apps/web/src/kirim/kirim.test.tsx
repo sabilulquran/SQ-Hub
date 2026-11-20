@@ -382,6 +382,11 @@ describe("KIRIM-IMPL-002 §12 screens", () => {
     expect(html).toContain("Tanpa media");
     expect(html).toContain("12 masuk");
     expect(html).toMatch(/disabled=""[^>]*>.*Impor semua dari salinan awal/);
+    // UX-FLOW-001: the export flow opens on its upload step; the preview step is not stacked below it.
+    expect(html).toContain("Langkah impor berkas ekspor");
+    expect(html).toContain("Lihat pratinjau");
+    expect(html).not.toContain("Masukkan ke Kirim SQ");
+    expect(html).not.toContain("Nama nomor yayasan di berkas ini");
   });
 
   it("offers Impor semua dari salinan awal and labels stored-copy rows (KIRIM-IMPL-002 §10.3)", () => {
