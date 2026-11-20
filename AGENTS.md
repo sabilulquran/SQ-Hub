@@ -111,6 +111,7 @@ Untuk task visual lintas aplikasi, baca `docs/design/hcis-baseline.md` sebelum m
 - Semua aplikasi di SQ Suite harus menggunakan prinsip visual, semantic tokens, dan shared UI patterns yang senada dengan baseline tersebut.
 - SQ Identity/Keycloak harus ditheme mengikuti SQ design language; jangan menerima default provider UI sebagai final product experience.
 - Jangan menciptakan pola UI baru jika pola HCIS/SQ yang sesuai sudah ada.
+- Alur bertahap mengikuti **satu langkah per layar** (`docs/design/sq-step-flow.md`, UX-FLOW-001, keputusan owner 2026-11-20): langkah berikutnya menggantikan layar langkah sebelumnya dan tidak pernah ditumpuk di bawahnya; langkah disimpan di `?langkah=` agar tombol Kembali mundur satu langkah.
 - Jangan menyalin business-specific HCIS component lalu menganggapnya generic shared component.
 - Komponen shared baru dibuat saat reuse nyata atau kebutuhan lintas aplikasi terbukti.
 - Business-specific UI tetap berada di aplikasi domain.

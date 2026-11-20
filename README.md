@@ -51,6 +51,7 @@ Mulai dari:
 - [`docs/migration/hcis-auth-cutover-plan.md`](docs/migration/hcis-auth-cutover-plan.md) — executable migration/cutover runbook untuk HCIS -> SQ Identity.
 - [`docs/design/design-system-direction.md`](docs/design/design-system-direction.md) — arah SQ Design System.
 - [`docs/design/hcis-baseline.md`](docs/design/hcis-baseline.md) — snapshot/ringkasan visual HCIS yang menjadi baseline SQ.
+- [`docs/design/sq-step-flow.md`](docs/design/sq-step-flow.md) — UX-FLOW-001: satu langkah per layar untuk semua alur bertahap di SQ Suite.
 - [`docs/operations/operational-baseline.md`](docs/operations/operational-baseline.md) — environment, observability, backup, dan recovery minimum.
 - [`docs/development/ai-assisted-workflow.md`](docs/development/ai-assisted-workflow.md) — workflow pengembangan AI-assisted.
 
