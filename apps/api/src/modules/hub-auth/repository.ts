@@ -162,6 +162,11 @@ export class PgHubAuthRepository implements HubAuthStore {
     );
     const row = result.rows[0];
     if (!row) return null;
+    // Half a requirement is not "no requirement": reading it as one is the very fail-open this
+    // pair of columns exists to close, so it stops here instead (CHECK in migration 0029).
+    if ((row.stepUpAcr === null) !== (row.stepUpMaxAgeSeconds === null)) {
+      throw new Error("OIDC transaction holds half a step-up requirement");
+    }
     return {
       transaction: {
         state: row.state,
@@ -173,7 +178,7 @@ export class PgHubAuthRepository implements HubAuthStore {
           : {}),
         ...(row.expectedIssuer ? { expectedIssuer: row.expectedIssuer } : {}),
         ...(row.expectedSubject ? { expectedSubject: row.expectedSubject } : {}),
-        ...(row.stepUpAcr && row.stepUpMaxAgeSeconds
+        ...(row.stepUpAcr !== null && row.stepUpMaxAgeSeconds !== null
           ? { stepUp: { acr: row.stepUpAcr, maxAgeSeconds: row.stepUpMaxAgeSeconds } }
           : {}),
       },
