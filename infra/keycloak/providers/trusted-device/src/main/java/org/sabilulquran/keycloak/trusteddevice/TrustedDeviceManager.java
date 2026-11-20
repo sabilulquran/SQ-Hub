@@ -16,7 +16,16 @@ import javax.crypto.spec.SecretKeySpec;
 final class TrustedDeviceManager {
     static final int LIFETIME_SECONDS = 30 * 24 * 60 * 60;
     static final int MAX_DEVICES = 10;
+    /**
+     * How long a just-rotated proof keeps working. One sign-in can reach the authenticator more
+     * than once - a reload, a retried step, or two applications asking for authentication at the
+     * same moment - and without this window the second request presents a copy consumed moments
+     * earlier, loses the trust, and makes the person enter a code again for the next 30 days.
+     */
+    static final int ROTATION_GRACE_SECONDS = 120;
     private static final String VERSION = "v1";
+    /** Server-side record layout; v1 records (four fields) are still read so trust survives upgrade. */
+    private static final String RECORD_VERSION = "v2";
 
     private final byte[] signingKey;
     private final Clock clock;
@@ -58,11 +67,8 @@ final class TrustedDeviceManager {
 
         List<String> records = prune(currentRecords, credentialFingerprint);
         records.removeIf(value -> recordNonceHash(value).equals(nonceHash));
-        records.add(record(expiresAt, nonceHash, credentialFingerprint));
-        if (records.size() > MAX_DEVICES) {
-            records = new ArrayList<>(records.subList(records.size() - MAX_DEVICES, records.size()));
-        }
-        return new Issue(cookie, List.copyOf(records), expiresAt);
+        records.add(record(expiresAt, nonceHash, credentialFingerprint, expiresAt));
+        return new Issue(cookie, List.copyOf(cap(records)), expiresAt);
     }
 
     Validation validateAndRotate(String cookie, String realmId, String userId,
@@ -100,10 +106,21 @@ final class TrustedDeviceManager {
             return Validation.rejected(pruned, Reason.BAD_SIGNATURE);
         }
 
-        String matchedRecord = record(expiresAt, digest(parts[2]), credentialFingerprint);
-        if (!pruned.remove(matchedRecord)) {
+        String nonceHash = digest(parts[2]);
+        String matchedRecord = find(pruned, expiresAt, nonceHash, credentialFingerprint);
+        if (matchedRecord == null) {
             return Validation.rejected(pruned, Reason.NO_SERVER_RECORD);
         }
+        if (isWithinGrace(matchedRecord)) {
+            // A copy the browser still had in flight when the rotation happened. The jar already
+            // holds the rotated proof, so this request is trusted and nothing is issued: no second
+            // cookie, no extra record, however many stale copies arrive inside the window.
+            return new Validation(true, null, List.copyOf(pruned), recordExpiry(matchedRecord), Reason.TRUSTED);
+        }
+        pruned.remove(matchedRecord);
+        // Keep the proof just consumed alive briefly, so requests the same browser sent before the
+        // rotation reached it still pass. After the window the copy fails closed exactly as before.
+        pruned.add(record(expiresAt, nonceHash, credentialFingerprint, now + ROTATION_GRACE_SECONDS));
 
         Issue rotated = issue(realmId, userId, credentialFingerprint, pruned);
         return new Validation(true, rotated.cookie(), rotated.records(), rotated.expiresAt(), Reason.TRUSTED);
@@ -116,21 +133,50 @@ final class TrustedDeviceManager {
             return result;
         }
         for (String value : records) {
-            String[] fields = value.split("\\|", -1);
-            if (fields.length != 4 || !VERSION.equals(fields[0])) {
-                continue;
-            }
-            try {
-                long expiry = Long.parseLong(fields[1]);
-                if (expiry > now && expiry <= now + LIFETIME_SECONDS
-                        && constantTimeEquals(fields[3], credentialFingerprint)) {
-                    result.add(value);
-                }
-            } catch (NumberFormatException ignored) {
-                // Invalid server-side state is discarded, never trusted.
+            // Invalid server-side state is discarded, never trusted.
+            long expiry = recordExpiry(value);
+            long validUntil = recordValidUntil(value);
+            if (expiry > now && expiry <= now + LIFETIME_SECONDS && validUntil > now
+                    && constantTimeEquals(recordFingerprint(value), credentialFingerprint)) {
+                result.add(value);
             }
         }
         return result;
+    }
+
+    /**
+     * Keeps an account within {@link #MAX_DEVICES}. Proofs inside their rotation grace are dropped
+     * first: they are about to disappear anyway, and they must never push out a device that is
+     * still trusted. Otherwise the oldest record goes.
+     */
+    private static List<String> cap(List<String> records) {
+        List<String> result = new ArrayList<>(records);
+        while (result.size() > MAX_DEVICES) {
+            int victim = 0;
+            for (int index = 0; index < result.size(); index++) {
+                if (isWithinGrace(result.get(index))) {
+                    victim = index;
+                    break;
+                }
+            }
+            result.remove(victim);
+        }
+        return result;
+    }
+
+    private static String find(List<String> records, long expiresAt, String nonceHash, String fingerprint) {
+        for (String value : records) {
+            if (recordExpiry(value) == expiresAt
+                    && constantTimeEquals(recordNonceHash(value), nonceHash)
+                    && constantTimeEquals(recordFingerprint(value), fingerprint)) {
+                return value;
+            }
+        }
+        return null;
+    }
+
+    private static boolean isWithinGrace(String record) {
+        return recordValidUntil(record) < recordExpiry(record);
     }
 
     private String sign(String payload) {
@@ -160,13 +206,55 @@ final class TrustedDeviceManager {
         return Base64.getUrlEncoder().withoutPadding().encodeToString(value);
     }
 
-    private static String record(long expiresAt, String nonceHash, String credentialFingerprint) {
-        return String.join("|", VERSION, Long.toString(expiresAt), nonceHash, credentialFingerprint);
+    private static String record(long expiresAt, String nonceHash, String credentialFingerprint, long validUntil) {
+        return String.join("|", RECORD_VERSION, Long.toString(expiresAt), nonceHash, credentialFingerprint,
+                Long.toString(validUntil));
+    }
+
+    private static String[] fieldsOf(String record) {
+        String[] fields = record == null ? new String[0] : record.split("\\|", -1);
+        if (fields.length == 4 && VERSION.equals(fields[0])) {
+            return fields;
+        }
+        if (fields.length == 5 && RECORD_VERSION.equals(fields[0])) {
+            return fields;
+        }
+        return new String[0];
     }
 
     private static String recordNonceHash(String record) {
-        String[] fields = record.split("\\|", -1);
-        return fields.length == 4 ? fields[2] : "";
+        String[] fields = fieldsOf(record);
+        return fields.length == 0 ? "" : fields[2];
+    }
+
+    private static String recordFingerprint(String record) {
+        String[] fields = fieldsOf(record);
+        return fields.length == 0 ? "" : fields[3];
+    }
+
+    private static long recordExpiry(String record) {
+        return parseField(fieldsOf(record), 1);
+    }
+
+    /**
+     * When a record stops being accepted: the proof expiry for a live record, or the end of the
+     * rotation grace for one that has just been replaced.
+     */
+    private static long recordValidUntil(String record) {
+        String[] fields = fieldsOf(record);
+        return fields.length == 5 ? parseField(fields, 4) : parseField(fields, 1);
+    }
+
+    private static long parseField(String[] fields, int index) {
+        if (fields.length <= index) {
+            return 0L;
+        }
+        try {
+            long value = Long.parseLong(fields[index]);
+            return value > 0 ? value : 0L;
+        } catch (NumberFormatException ignored) {
+            return 0L;
+        }
     }
 
     record Issue(String cookie, List<String> records, long expiresAt) {
