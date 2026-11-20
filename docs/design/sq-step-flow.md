@@ -51,3 +51,16 @@ Yang tidak termasuk:
 - Alur baru wajib mengikuti aturan ini sejak spesifikasinya ditulis. Spesifikasi alur bertahap mencantumkan nama langkah dan nilai `?langkah=`.
 - Alur lama yang masih bertumpuk dicatat oleh aplikasinya masing-masing dan diperbaiki ketika alur itu disentuh, atau lebih cepat bila diminta Product Owner. Pengecualian hanya sah bila ditulis di spesifikasi alur beserta alasannya.
 - Komponen bersama (penanda langkah, layar selesai, hook langkah) dipindahkan ke design system di repository ini setelah aplikasi kedua memakainya (AGENTS §8). Sampai itu, implementasi rujukan HCIS di atas menjadi acuan perilakunya.
+
+## Status penerapan (audit 2026-11-20)
+
+"Diperbaiki" artinya sudah diubah di branch. Status ini bukan berarti sudah dirilis.
+
+| Aplikasi | Alur | Langkah (`?langkah=`) |
+| --- | --- | --- |
+| Admin SQ (Organ Yayasan) | Tambah anggota | pilih (tanpa query) → `isi` → `periksa` → `selesai` |
+| Admin SQ (Organ Yayasan) | Akhiri keanggotaan (dialog) | layar akhiri menggantikan detail di dalam dialog (state dialog) |
+| Kirim SQ | Impor dari berkas ekspor chat | unggah (tanpa query) → `pratinjau` → `selesai` |
+| HCIS | lihat `docs/development/step-flow-audit-2026-11-20.md` di repository `hcisysq` | — |
+
+Implementasi platform: `apps/web/src/components/useWizardStep.ts` (memakai `pushState`/`popstate` seperti `useDialogParam`, karena aplikasi web Hub tidak memakai router) dan `apps/web/src/components/WizardSteps.tsx`.

@@ -2,6 +2,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
 import { navigationItems } from "@/components/shellNavigation";
+import { readWizardStep } from "@/components/useWizardStep";
 import { organOverviewFixture } from "@/dev/organFixture";
 import { workspaceFixture } from "@/dev/workspaceFixture";
 import { OrganMembershipPage } from "@/OrganMembershipPage";
@@ -23,6 +24,22 @@ describe("Organ Yayasan admin section (HUB-IMPL-021 §1)", () => {
     expect(html).toContain("Akun SQ khusus organ");
     // Raw OIDC subjects are mutation handles only and never rendered.
     expect(html).not.toContain("preview-subject-1");
+  });
+
+  it("opens Tambah anggota on its own choice step, with no form stacked under it (UX-FLOW-001)", () => {
+    const html = renderToStaticMarkup(<OrganMembershipPage workspace={workspaceFixture} previewOverview={organOverviewFixture} />);
+    expect(html).toContain("Langkah tambah anggota");
+    expect(html).toContain("Lanjutkan");
+    expect(html).not.toContain("Mulai menjabat");
+    expect(html).not.toContain("Cari NIP, e-mail, atau nama");
+    expect(html).not.toContain("Simpan keanggotaan");
+  });
+
+  it("reads the step from ?langkah= and falls back to the first step (UX-FLOW-001)", () => {
+    const steps = ["pilih", "isi", "periksa"] as const;
+    expect(readWizardStep("?langkah=periksa&anggota=x", steps)).toBe("periksa");
+    expect(readWizardStep("?langkah=lain", steps)).toBe("pilih");
+    expect(readWizardStep("", steps)).toBe("pilih");
   });
 
   it("disables the new-identity path when provisioning is unavailable", () => {
