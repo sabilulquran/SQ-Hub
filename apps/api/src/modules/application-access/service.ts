@@ -152,6 +152,27 @@ export class ApplicationAccessService {
         }
       })
       .parse(input);
+
+    // The check above can only compare what this call sent, and the two contracts travel in
+    // separate groups: a call that sets the decision contract without the governance group would
+    // otherwise be free to name the summary audience that is already stored. Migration 0027 holds
+    // the same rule at the table, for callers that never pass through here.
+    if (parsed.decision?.audience && !parsed.governance) {
+      const stored = (await this.repository.listApplications()).find(
+        (application) => application.applicationKey === parsed.applicationKey,
+      );
+      if (stored?.governanceAudience && stored.governanceAudience === parsed.decision.audience) {
+        throw new z.ZodError([
+          {
+            code: "custom",
+            path: ["decision", "audience"],
+            message: "the decision audience must differ from the governance summary audience",
+            input: parsed.decision.audience,
+          },
+        ]);
+      }
+    }
+
     const upsert: ApplicationUpsertInput = {
       applicationKey: parsed.applicationKey,
       name: parsed.name,
