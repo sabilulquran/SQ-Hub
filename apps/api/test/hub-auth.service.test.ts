@@ -66,6 +66,7 @@ class MemoryStore implements HubAuthStore {
     replaceSessionTokenHash?: string | null;
     expiresAt: Date;
     context: HubRequestContext;
+    steppedUpAt?: Date | null;
   }) {
     let effectiveExpiresAt = input.expiresAt;
     if (input.replaceSessionTokenHash) {
@@ -87,6 +88,7 @@ class MemoryStore implements HubAuthStore {
       accountRefreshTokenCiphertext: input.accountRefreshTokenCiphertext,
       createdAt: new Date(),
       expiresAt: effectiveExpiresAt,
+      steppedUpAt: input.steppedUpAt ?? null,
     };
     this.session = { tokenHash: input.tokenHash, identity: input.identity, record };
     return record;
@@ -116,12 +118,20 @@ class FakeOidcProvider implements HubOidcProviderLike {
   completedWith: HubOidcAuthorizationTransaction | null = null;
   requestedAction: HubOidcAction | undefined;
   refreshInput: string | null = null;
+  /** What the realm answers with. Undefined is a realm that said nothing, which is not proof. */
+  acr: string | undefined;
+  authTime: number | undefined;
 
-  async createAuthorizationRequest(action?: HubOidcAction) {
+  async createAuthorizationRequest(
+    action?: HubOidcAction,
+    stepUp?: { acr: string; maxAgeSeconds: number },
+  ) {
     this.requestedAction = action;
     return {
       url: new URL("https://login.example.test/authorize"),
-      transaction: this.transaction,
+      // As the real provider does: the requirement rides along in the transaction, because the
+      // callback has nothing to hold the answer against without it.
+      transaction: { ...this.transaction, ...(stepUp ? { stepUp } : {}) },
     };
   }
 
@@ -140,6 +150,8 @@ class FakeOidcProvider implements HubOidcProviderLike {
         emailVerified: true,
       },
       refreshToken: "refresh-token-plaintext",
+      ...(this.acr === undefined ? {} : { acr: this.acr }),
+      ...(this.authTime === undefined ? {} : { authTime: this.authTime }),
     };
   }
 
@@ -553,5 +565,58 @@ describe("HubAuthService", () => {
     expect(store.revokedHash).not.toBe(sessionToken);
     expect(result.clearCookie).toContain("Max-Age=0");
     expect(result.logoutUrl?.href).toBe("https://login.example.test/logout");
+  });
+});
+
+/**
+ * ORGAN-IMPL-001 §4.2 / ADR-0012 D4. A step-up is only a step-up if the realm answered with the
+ * level that was asked for, and answered it just now. Everything below the bar must leave no
+ * session at all, because a session is what the decision routes read `stepped_up_at` from.
+ */
+describe("ADR-0012 D4 step-up is verified, not trusted", () => {
+  const stepUp = { acr: "2", maxAgeSeconds: 900 };
+
+  async function stepUpLogin(provider: FakeOidcProvider, auth: ReturnType<typeof service>["auth"]) {
+    const started = await auth.beginLogin(undefined, "/", null, stepUp);
+    const transactionToken = cookieValue(started.setCookie, HUB_OIDC_TRANSACTION_COOKIE_NAME);
+    return auth.completeLogin(
+      new URL("https://hub.example.test/api/auth/callback?code=abc&state=state-001"),
+      transactionToken,
+      context,
+    );
+  }
+
+  it("admits a login that reached the level, and records when", async () => {
+    const { auth, store, provider } = service();
+    provider.acr = "2";
+    provider.authTime = Math.floor(Date.now() / 1000) - 5;
+    await stepUpLogin(provider, auth);
+    expect(provider.completedWith?.stepUp).toEqual(stepUp);
+    expect(store.session?.record.steppedUpAt).toBeInstanceOf(Date);
+  });
+
+  it.each([
+    ["a lower level", "1", 0],
+    ["no level at all", undefined, 0],
+    ["the right level but a stale authentication", "2", 1_000],
+  ])("refuses %s, and mints no session", async (_label, acr, ageSeconds) => {
+    const { auth, store, provider } = service();
+    provider.acr = acr;
+    provider.authTime = Math.floor(Date.now() / 1000) - (ageSeconds as number) - 5;
+    await expect(stepUpLogin(provider, auth)).rejects.toThrow(/OIDC_STEP_UP_FAILED|dua langkah/);
+    expect(store.session).toBeNull();
+  });
+
+  it("leaves an ordinary sign-in unstepped", async () => {
+    const { auth, store, provider } = service();
+    provider.acr = "1";
+    const started = await auth.beginLogin();
+    const transactionToken = cookieValue(started.setCookie, HUB_OIDC_TRANSACTION_COOKIE_NAME);
+    await auth.completeLogin(
+      new URL("https://hub.example.test/api/auth/callback?code=abc&state=state-001"),
+      transactionToken,
+      context,
+    );
+    expect(store.session?.record.steppedUpAt).toBeNull();
   });
 });

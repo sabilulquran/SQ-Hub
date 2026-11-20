@@ -75,6 +75,8 @@ interface TransactionRow {
   replaceSessionTokenHash: string | null;
   expectedIssuer: string | null;
   expectedSubject: string | null;
+  stepUpAcr: string | null;
+  stepUpMaxAgeSeconds: number | null;
   expiresAt: Date;
 }
 
@@ -112,8 +114,10 @@ export class PgHubAuthRepository implements HubAuthStore {
           replace_session_token_hash,
           expected_identity_issuer,
           expected_identity_subject,
+          step_up_acr,
+          step_up_max_age_seconds,
           expires_at
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
       `,
       [
         randomUUID(),
@@ -125,6 +129,10 @@ export class PgHubAuthRepository implements HubAuthStore {
         input.transaction.replaceSessionTokenHash ?? null,
         input.transaction.expectedIssuer ?? null,
         input.transaction.expectedSubject ?? null,
+        // ADR-0012 D4: the requirement has to survive the redirect, or the callback has nothing
+        // to hold the realm's answer against.
+        input.transaction.stepUp?.acr ?? null,
+        input.transaction.stepUp?.maxAgeSeconds ?? null,
         input.expiresAt,
       ],
     );
@@ -146,12 +154,19 @@ export class PgHubAuthRepository implements HubAuthStore {
           replace_session_token_hash AS "replaceSessionTokenHash",
           expected_identity_issuer AS "expectedIssuer",
           expected_identity_subject AS "expectedSubject",
+          step_up_acr AS "stepUpAcr",
+          step_up_max_age_seconds AS "stepUpMaxAgeSeconds",
           expires_at AS "expiresAt"
       `,
       [tokenHash],
     );
     const row = result.rows[0];
     if (!row) return null;
+    // Half a requirement is not "no requirement": reading it as one is the very fail-open this
+    // pair of columns exists to close, so it stops here instead (CHECK in migration 0029).
+    if ((row.stepUpAcr === null) !== (row.stepUpMaxAgeSeconds === null)) {
+      throw new Error("OIDC transaction holds half a step-up requirement");
+    }
     return {
       transaction: {
         state: row.state,
@@ -163,6 +178,9 @@ export class PgHubAuthRepository implements HubAuthStore {
           : {}),
         ...(row.expectedIssuer ? { expectedIssuer: row.expectedIssuer } : {}),
         ...(row.expectedSubject ? { expectedSubject: row.expectedSubject } : {}),
+        ...(row.stepUpAcr !== null && row.stepUpMaxAgeSeconds !== null
+          ? { stepUp: { acr: row.stepUpAcr, maxAgeSeconds: row.stepUpMaxAgeSeconds } }
+          : {}),
       },
       expiresAt: row.expiresAt,
     };
