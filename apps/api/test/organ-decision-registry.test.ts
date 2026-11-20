@@ -44,13 +44,18 @@ function harness(stored: ApplicationRecord[] = []) {
   return { service, seen };
 }
 
-const base = {
+/** The shape the route sends when the body carries no governance field at all. */
+const withoutGovernance = {
   applicationKey: "hcis",
   name: "HCIS",
   canonicalUrl: "https://hcis.sabilulquran.or.id",
   status: "active" as const,
-  governance: { summaryPath: "/governance/summary", audience: "hcis", order: 1 },
   actor: { kind: "system" as const, ref: "ops:test" },
+};
+
+const base = {
+  ...withoutGovernance,
+  governance: { summaryPath: "/governance/summary", audience: "hcis", order: 1 },
 };
 
 describe("ORGAN-IMPL-001 §4.2 registry: the decision contract", () => {
@@ -82,7 +87,6 @@ describe("ORGAN-IMPL-001 §4.2 registry: the decision contract", () => {
         machineClientId: null,
       },
     ]);
-    const { governance: _governance, ...withoutGovernance } = base;
     await expect(
       service.upsertApplication({
         ...withoutGovernance,
@@ -94,7 +98,6 @@ describe("ORGAN-IMPL-001 §4.2 registry: the decision contract", () => {
 
   it("allows a decision-only update with an audience of its own", async () => {
     const { service, seen } = harness();
-    const { governance: _governance, ...withoutGovernance } = base;
     await service.upsertApplication({
       ...withoutGovernance,
       decision: { path: "/governance/decisions", audience: "hcis-organ-decision" },
