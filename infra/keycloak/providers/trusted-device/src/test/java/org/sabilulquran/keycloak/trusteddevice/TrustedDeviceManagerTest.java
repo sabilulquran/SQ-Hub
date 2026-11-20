@@ -146,12 +146,17 @@ class TrustedDeviceManagerTest {
 
     private static TrustedDeviceManager managerAt(Instant instant) {
         SecureRandom deterministic = new SecureRandom() {
-            private int value;
+            private int call;
 
             @Override
             public void nextBytes(byte[] bytes) {
+                // One distinct nonce per call: byte 0 carries the call counter, so a 32-byte nonce
+                // no longer repeats every eight calls (the old per-byte counter wrapped at 256 and
+                // could only produce eight distinct 32-byte values). Production uses a real
+                // SecureRandom; the tests only need enough distinct nonces to fill the device list.
+                call++;
                 for (int index = 0; index < bytes.length; index++) {
-                    bytes[index] = (byte) value++;
+                    bytes[index] = (byte) (call + index);
                 }
             }
         };
