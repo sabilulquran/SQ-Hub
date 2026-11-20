@@ -45,25 +45,31 @@ export const governanceRegistrationSchema = z
     summaryPath: governanceSummaryPathSchema.nullable(),
     audience: governanceAudienceSchema.nullable(),
     order: governanceOrderSchema,
-    // ORGAN-IMPL-001 §4.2: where decisions go, under their own audience. Optional so every
-    // caller that registered a summary before R2 keeps working unchanged.
-    decisionPath: governanceSummaryPathSchema.nullable().optional(),
-    decisionAudience: governanceAudienceSchema.nullable().optional(),
   })
   .strict()
   .refine((value) => (value.summaryPath === null) === (value.audience === null), {
     message: "governance audience is required exactly when a summary path is set",
     path: ["audience"],
+  });
+
+/**
+ * ORGAN-IMPL-001 §4.2: where an application takes decisions, under an audience of its own.
+ *
+ * A group of its own, not a field of the governance registration, because that is the shape the
+ * platform-admin route sends and the shape the repository writes. It travelled inside the
+ * governance group once, and the two ends never met: the route's body was refused as an
+ * unrecognized key, and anything that did get through was dropped before the UPDATE.
+ * Omitting the group leaves whatever is stored alone; sending it with nulls clears it.
+ */
+export const decisionRegistrationSchema = z
+  .object({
+    path: governanceSummaryPathSchema.nullable(),
+    audience: governanceAudienceSchema.nullable(),
   })
-  .refine((value) => ((value.decisionPath ?? null) === null) === ((value.decisionAudience ?? null) === null), {
+  .strict()
+  .refine((value) => (value.path === null) === (value.audience === null), {
     message: "decision audience is required exactly when a decision path is set",
-    path: ["decisionAudience"],
-  })
-  // A decision token that also opens the summary would defeat the separation ADR-0012 D4 is
-  // built on, so the registry refuses to name one audience for both.
-  .refine((value) => (value.decisionAudience ?? null) === null || value.decisionAudience !== value.audience, {
-    message: "the decision audience must differ from the governance summary audience",
-    path: ["decisionAudience"],
+    path: ["audience"],
   });
 
 /** KIRIM-IMPL-003 K-2 and migration 0013 `applications_machine_client_check`: WhatsApp needs a machine client. */
@@ -100,6 +106,7 @@ export class ApplicationAccessService {
     canonicalUrl: string;
     status: "active" | "inactive";
     governance?: { summaryPath: string | null; audience: string | null; order: number };
+    decision?: { path: string | null; audience: string | null };
     kind?: "modul" | "luar";
     whatsapp?: { capable: boolean; machineClientId: string | null };
     actor: ActorRef;
@@ -111,12 +118,26 @@ export class ApplicationAccessService {
         canonicalUrl: z.string().url().max(2048),
         status: z.enum(["active", "inactive"]),
         governance: governanceRegistrationSchema.optional(),
+        decision: decisionRegistrationSchema.optional(),
         kind: z.enum(["modul", "luar"]).optional(),
         whatsapp: whatsappRegistrationSchema.optional(),
         actor: actorSchema,
       })
       .strict()
       .superRefine((value, ctx) => {
+        // A decision token that also opens the summary would defeat the separation ADR-0012 D4
+        // is built on, so the registry refuses to name one audience for both.
+        if (
+          value.decision?.audience &&
+          value.governance?.audience &&
+          value.decision.audience === value.governance.audience
+        ) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ["decision", "audience"],
+            message: "the decision audience must differ from the governance summary audience",
+          });
+        }
         if (!value.governance?.summaryPath) return;
         try {
           const canonical = new URL(value.canonicalUrl);
@@ -138,6 +159,7 @@ export class ApplicationAccessService {
       status: parsed.status,
       actor: parsed.actor,
       ...(parsed.governance ? { governance: parsed.governance } : {}),
+      ...(parsed.decision ? { decision: parsed.decision } : {}),
       ...(parsed.kind ? { kind: parsed.kind } : {}),
       ...(parsed.whatsapp ? { whatsapp: parsed.whatsapp } : {}),
     };
