@@ -1,4 +1,6 @@
-# Rapat SQ — Rancangan modul (PRD)
+# Rapat SQ — Rancangan aplikasi (PRD)
+
+> **Istilah (ADR-0014, 2026-11-16).** Rapat SQ adalah **aplikasi** di SQ Suite, bukan "modul"; modul adalah bagian di dalam satu aplikasi. Ia dirancang berjalan di dalam proses Hub (ADR-0014 D6, alasan 3, kompromi) dan tetap memiliki tabel, aturan, dan flag rilisnya sendiri. Isi dokumen di bawah ditulis sebelum keputusan itu dan tidak ditulis ulang: baca "modul" untuk Rapat SQ sebagai "aplikasi", "modul SQ Hub"/"modul bersama" sebagai "aplikasi yang berjalan di proses Hub", dan "SQ Core" sebagai "SQ Suite". Nama berkas ini tetap. Status terkini ada di [`struktur-sq-suite.md`](struktur-sq-suite.md) §5.
 
 **Status:** DRAFT / DISCOVERY. Dokumen ini tidak mengizinkan implementasi, pembelian, atau perubahan production.
 **Spesifikasi:** RAPAT-001 (usulan). Spesifikasi implementasi belum ada.

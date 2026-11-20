@@ -1,7 +1,8 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type MouseEvent, type ReactNode } from "react";
 
 import type { Label, Orang } from "@/kerja/api";
-import { WARNA } from "@/kerja/format";
+import { tanggalTile, WARNA } from "@/kerja/format";
+import { CalendarDays } from "lucide-react";
 import { navigate } from "@/kerja/routes";
 
 // Shared SQ Core primitives already used by Kirim SQ; reused here rather than copied.
@@ -27,7 +28,43 @@ export function Link({ href, className, children, ariaCurrent, onNavigate }: { h
 }
 
 export function LabelChip({ label }: { label: Pick<Label, "nama" | "warna"> }) {
-  return <span className={`inline-flex max-w-full items-center truncate rounded-md px-1.5 py-0.5 text-[11px] font-bold ${WARNA[label.warna].kelas}`}>{label.nama}</span>;
+  return (
+    <span className="inline-flex max-w-full items-center gap-1.5 truncate rounded-md border border-border/80 px-1.5 py-0.5 text-xs font-medium text-muted-foreground">
+      <span className={`h-2 w-2 shrink-0 rounded-full ${WARNA[label.warna].titik}`} aria-hidden="true" />
+      {label.nama}
+    </span>
+  );
+}
+
+/**
+ * Signature of Kerja: a deadline reads like a torn agenda page, day over month. Overdue turns the
+ * day danger red; due within a day turns it warning amber. Nothing else gets a colour.
+ */
+export function DateTile({ iso, nada, size = "md" }: { iso: string | null; nada?: "lewat" | "dekat" | "biasa" | "selesai"; size?: "sm" | "md" }) {
+  const box = size === "sm" ? "h-10 w-10" : "h-12 w-12";
+  if (!iso) {
+    return <span className={`flex ${box} shrink-0 flex-col items-center justify-center rounded-xl border border-dashed border-border text-[11px] text-muted-foreground`} aria-label="Tanpa tenggat">—</span>;
+  }
+  const t = tanggalTile(iso);
+  const ink = nada === "lewat" ? "text-danger-ink" : nada === "dekat" ? "text-warning-ink" : nada === "selesai" ? "text-muted-foreground" : "text-foreground";
+  return (
+    <span className={`flex ${box} shrink-0 flex-col items-center justify-center overflow-hidden rounded-xl border border-border bg-surface-raised`} aria-label={`Tenggat ${t.hari} ${t.bulan} ${t.jam}`}>
+      <span className="w-full border-b border-border bg-muted/70 text-center text-[10px] font-medium leading-4 text-muted-foreground">{t.bulan}</span>
+      <span className={`flex-1 content-center text-base font-semibold leading-none tabular-nums ${ink}`}>{t.hari}</span>
+    </span>
+  );
+}
+
+/** Quiet deadline text for dense places like board cards: colour only when it is late or close. */
+export function DueText({ iso, nada }: { iso: string; nada: "lewat" | "dekat" | "biasa" }) {
+  const t = tanggalTile(iso);
+  const ink = nada === "lewat" ? "text-danger-ink" : nada === "dekat" ? "text-warning-ink" : "text-muted-foreground";
+  return (
+    <span className={`inline-flex items-center gap-1 text-xs tabular-nums ${ink}`}>
+      <CalendarDays className="h-3.5 w-3.5" aria-hidden="true" />
+      {nada === "lewat" ? "Lewat " : ""}{t.hari} {t.bulan}, {t.jam}
+    </span>
+  );
 }
 
 export function initials(nama: string): string {
@@ -101,13 +138,13 @@ export function ErrorNote({ message }: { message: string | null }) {
 
 export function PageHeader({ eyebrow, title, actions, children }: { eyebrow?: ReactNode; title: string; actions?: ReactNode; children?: ReactNode }) {
   return (
-    <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+    <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
       <div className="min-w-0">
-        {eyebrow ? <div className="mb-1 text-xs font-semibold text-muted-foreground">{eyebrow}</div> : null}
-        <h1 className="font-display text-2xl font-bold text-brand-heading">{title}</h1>
+        {eyebrow ? <div className="mb-1 text-xs text-muted-foreground">{eyebrow}</div> : null}
+        <h1 className="font-display text-2xl font-semibold tracking-[-0.01em] text-brand-heading">{title}</h1>
         {children}
       </div>
-      {actions ? <div className="flex flex-wrap gap-2">{actions}</div> : null}
+      {actions ? <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-nowrap">{actions}</div> : null}
     </div>
   );
 }

@@ -23,6 +23,12 @@ export interface HubSessionRecord extends HubSessionIdentity {
   accountRefreshTokenCiphertext: string | null;
   createdAt: Date;
   expiresAt: Date;
+  /**
+   * ORGAN-IMPL-001 §4.2: when this session last proved TOTP as a Level of Authentication.
+   * Null for every session that did not go through a step-up, which is all of them outside
+   * the Portal Organ Yayasan.
+   */
+  steppedUpAt: Date | null;
 }
 
 /**
@@ -53,6 +59,8 @@ export interface HubAuthStore {
     context: HubRequestContext;
     /** ORGAN-IMPL-001 §1.2: the OIDC client that issued the session. */
     clientId?: string | null;
+    /** ORGAN-IMPL-001 §4.2: set only when the login proved the step-up level. */
+    steppedUpAt?: Date | null;
   }): Promise<HubSessionRecord>;
   getSession(tokenHash: string, idleSeconds: number, client?: HubSessionClient): Promise<HubSessionRecord | null>;
   updateAccountRefreshToken(sessionId: string, ciphertext: string): Promise<void>;
@@ -67,6 +75,8 @@ interface TransactionRow {
   replaceSessionTokenHash: string | null;
   expectedIssuer: string | null;
   expectedSubject: string | null;
+  stepUpAcr: string | null;
+  stepUpMaxAgeSeconds: number | null;
   expiresAt: Date;
 }
 
@@ -81,6 +91,7 @@ interface SessionRow {
   accountRefreshTokenCiphertext: string | null;
   createdAt: Date;
   expiresAt: Date;
+  steppedUpAt: Date | null;
 }
 
 export class PgHubAuthRepository implements HubAuthStore {
@@ -103,8 +114,10 @@ export class PgHubAuthRepository implements HubAuthStore {
           replace_session_token_hash,
           expected_identity_issuer,
           expected_identity_subject,
+          step_up_acr,
+          step_up_max_age_seconds,
           expires_at
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
       `,
       [
         randomUUID(),
@@ -116,6 +129,10 @@ export class PgHubAuthRepository implements HubAuthStore {
         input.transaction.replaceSessionTokenHash ?? null,
         input.transaction.expectedIssuer ?? null,
         input.transaction.expectedSubject ?? null,
+        // ADR-0012 D4: the requirement has to survive the redirect, or the callback has nothing
+        // to hold the realm's answer against.
+        input.transaction.stepUp?.acr ?? null,
+        input.transaction.stepUp?.maxAgeSeconds ?? null,
         input.expiresAt,
       ],
     );
@@ -137,12 +154,19 @@ export class PgHubAuthRepository implements HubAuthStore {
           replace_session_token_hash AS "replaceSessionTokenHash",
           expected_identity_issuer AS "expectedIssuer",
           expected_identity_subject AS "expectedSubject",
+          step_up_acr AS "stepUpAcr",
+          step_up_max_age_seconds AS "stepUpMaxAgeSeconds",
           expires_at AS "expiresAt"
       `,
       [tokenHash],
     );
     const row = result.rows[0];
     if (!row) return null;
+    // Half a requirement is not "no requirement": reading it as one is the very fail-open this
+    // pair of columns exists to close, so it stops here instead (CHECK in migration 0029).
+    if ((row.stepUpAcr === null) !== (row.stepUpMaxAgeSeconds === null)) {
+      throw new Error("OIDC transaction holds half a step-up requirement");
+    }
     return {
       transaction: {
         state: row.state,
@@ -154,6 +178,9 @@ export class PgHubAuthRepository implements HubAuthStore {
           : {}),
         ...(row.expectedIssuer ? { expectedIssuer: row.expectedIssuer } : {}),
         ...(row.expectedSubject ? { expectedSubject: row.expectedSubject } : {}),
+        ...(row.stepUpAcr !== null && row.stepUpMaxAgeSeconds !== null
+          ? { stepUp: { acr: row.stepUpAcr, maxAgeSeconds: row.stepUpMaxAgeSeconds } }
+          : {}),
       },
       expiresAt: row.expiresAt,
     };
@@ -167,6 +194,7 @@ export class PgHubAuthRepository implements HubAuthStore {
     expiresAt: Date;
     context: HubRequestContext;
     clientId?: string | null;
+    steppedUpAt?: Date | null;
   }): Promise<HubSessionRecord> {
     const client = await this.pool.connect();
     try {
@@ -232,8 +260,9 @@ export class PgHubAuthRepository implements HubAuthStore {
             expires_at,
             ip_address,
             user_agent,
-            client_id
-          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+            client_id,
+            stepped_up_at
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
           RETURNING
             id AS "sessionId",
             identity_issuer AS "identityIssuer",
@@ -244,7 +273,8 @@ export class PgHubAuthRepository implements HubAuthStore {
             email_verified AS "emailVerified",
             account_refresh_token_ciphertext AS "accountRefreshTokenCiphertext",
             created_at AS "createdAt",
-            expires_at AS "expiresAt"
+            expires_at AS "expiresAt",
+            stepped_up_at AS "steppedUpAt"
         `,
         [
           sessionId,
@@ -260,6 +290,7 @@ export class PgHubAuthRepository implements HubAuthStore {
           input.context.ipAddress,
           input.context.userAgent,
           input.clientId ?? null,
+          input.steppedUpAt ?? null,
         ],
       );
       const row = result.rows[0];
@@ -311,6 +342,7 @@ export class PgHubAuthRepository implements HubAuthStore {
         accountRefreshTokenCiphertext: row.accountRefreshTokenCiphertext,
         createdAt: row.createdAt,
         expiresAt: row.expiresAt,
+        steppedUpAt: row.steppedUpAt ?? null,
       };
     } catch (error) {
       await client.query("ROLLBACK");
@@ -333,7 +365,8 @@ export class PgHubAuthRepository implements HubAuthStore {
           email_verified AS "emailVerified",
           account_refresh_token_ciphertext AS "accountRefreshTokenCiphertext",
           created_at AS "createdAt",
-          expires_at AS "expiresAt"
+          expires_at AS "expiresAt",
+          stepped_up_at AS "steppedUpAt"
         FROM hub_sessions
         WHERE token_hash = $1
           AND revoked_at IS NULL
@@ -363,6 +396,7 @@ export class PgHubAuthRepository implements HubAuthStore {
       accountRefreshTokenCiphertext: row.accountRefreshTokenCiphertext,
       createdAt: row.createdAt,
       expiresAt: row.expiresAt,
+      steppedUpAt: row.steppedUpAt ?? null,
     };
   }
 

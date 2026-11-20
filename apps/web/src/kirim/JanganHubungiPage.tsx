@@ -17,7 +17,7 @@ export interface OptoutFilter {
   page: number;
 }
 
-const CAKUPAN_LABEL: Record<KirimOptout["cakupan"], string> = { semua: "Semua", device: "Nomor", consumer: "Modul" };
+const CAKUPAN_LABEL: Record<KirimOptout["cakupan"], string> = { semua: "Semua", device: "Nomor", consumer: "Aplikasi" };
 
 /** Jangan hubungi (KIRIM-IMPL-002 §12): masked numbers only; admins remove only their own rows. */
 export function JanganHubungiPage({ preview }: { preview?: JanganHubungiState }) {
@@ -130,14 +130,14 @@ export function JanganHubungiView({
                   <option value="">Semua cakupan</option>
                   <option value="semua">Semua pesan otomatis</option>
                   <option value="device">Per nomor</option>
-                  <option value="consumer">Per modul</option>
+                  <option value="consumer">Per aplikasi</option>
                 </select>
               </Field>
               <Field label="Sumber">
                 <select className="sq-admin-input" value={filter.sumber} onChange={(event) => onFilter({ ...filter, sumber: event.target.value as OptoutFilter["sumber"], page: 1 })}>
                   <option value="">Semua sumber</option>
                   <option value="admin">Pengelola Kirim SQ</option>
-                  <option value="consumer">Modul</option>
+                  <option value="consumer">Aplikasi</option>
                 </select>
               </Field>
             </div>
@@ -153,14 +153,14 @@ export function JanganHubungiView({
                       <p className="font-mono text-sm font-bold text-brand-heading">{optout.nomor_tersamar ?? "—"}</p>
                       <p className="mt-0.5 text-sm text-muted-foreground">
                         <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] font-bold text-foreground">{CAKUPAN_LABEL[optout.cakupan]}</span>{" "}
-                        {cakupanText(optout)} · {optout.sumber === "admin" ? "oleh pengelola" : `oleh modul ${optout.modul ?? ""}`} · {formatTime(optout.dibuat)}
+                        {cakupanText(optout)} · {optout.sumber === "admin" ? "oleh pengelola" : `oleh aplikasi ${optout.modul ?? ""}`} · {formatTime(optout.dibuat)}
                       </p>
                       <p className="mt-1 break-words text-sm">{optout.alasan}</p>
                     </div>
                     {optout.bisa_dihapus ? (
                       <button type="button" className={dangerButton} onClick={() => onRemove(optout)}><Trash2 className="h-4 w-4" aria-hidden="true" /> Hapus</button>
                     ) : (
-                      <span className="text-xs text-muted-foreground">Dicabut oleh modulnya</span>
+                      <span className="text-xs text-muted-foreground">Dicabut oleh aplikasinya</span>
                     )}
                   </Panel>
                 </li>

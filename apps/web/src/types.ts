@@ -142,6 +142,15 @@ export interface AdminApplication {
   governanceSummaryPath?: string | null;
   governanceAudience?: string | null;
   governanceOrder?: number;
+  /** ORGAN-IMPL-001 §4.2: where the portal sends a decision, under an audience of its own. */
+  decisionPath?: string | null;
+  decisionAudience?: string | null;
+  /** ADR-0011 amendment 2026-11-16: `modul` (SQ Core module) or `luar` (application outside SQ Core); a label only. */
+  kind?: "modul" | "luar";
+  /** KIRIM-IMPL-003 K-2: the application gets a card in Kirim SQ and sends WhatsApp through it. */
+  whatsappCapable?: boolean;
+  /** Keycloak machine client (service account) the application calls SQ Hub with; required with WhatsApp. */
+  machineClientId?: string | null;
 }
 
 export interface AdminStaff {

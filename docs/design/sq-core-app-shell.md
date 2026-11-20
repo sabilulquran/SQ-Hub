@@ -1,10 +1,12 @@
-# SQ Core app shell
+# SQ Suite app shell
 
-**Status:** ACCEPTED by the Product Owner on 2026-10-16. Every SQ Core app follows it (SQ Hub, HCIS, Aset SQ, and future apps).
+**Status:** ACCEPTED by the Product Owner on 2026-10-16. Every application in SQ Suite follows it (the SQ Hub platform's own pages, HCIS, Aset SQ, and future applications).
 
-**Part of:** [SQ Core design system, direction C](sq-core-design-system-c.md), which covers colour, type, logo and components. This document covers the **shell**: where account, app switching, the way back to SQ Hub, and admin areas live.
+**Terms (ADR-0014, 2026-11-16):** "SQ Core" was the earlier name for the ecosystem now called SQ Suite; this file keeps its name `sq-core-app-shell.md` because file names do not change. In the rules below "SQ Hub" keeps its meaning: the launcher row and links labelled "SQ Hub" lead to the landing page and launcher at `hub.sabilulquran.or.id`, and "SQ Hub" in the migration tables means the SQ Hub platform's own web pages (the landing page, Akun SQ, Admin SQ). The launcher row reads the same in every application: title "SQ Hub", subtitle "Beranda semua aplikasi Anda". The shared top bar of ADR-0014 D5 is the target this shell grows into.
 
-**Mockup:** "SQ Core Design System Mockup", artboards 5a–5e (private design canvas).
+**Part of:** [SQ Suite design system, direction C](sq-core-design-system-c.md), which covers colour, type, logo and components. This document covers the **shell**: where account, app switching, the way back to SQ Hub, and admin areas live.
+
+**Mockup:** "SQ Core Design System Mockup", artboards 5a–5e (private design canvas; the canvas keeps its original title).
 
 ## Why
 
@@ -109,5 +111,12 @@ Still allowed in place: editing a single field inline, dropdown menus and popove
 | SQ Hub | Add the sidebar; keep the header. Show the account menu items above. The switcher appears for platform administrators once Admin Center uses this shell. |
 | HCIS | Remove the sidebar profile card and the header "Administrasi HCIS" link. Add the switcher. Make employee and admin shells one shell with two sidebars. |
 | Aset SQ | Remove the sidebar profile card, Keluar button and "Aset SQ" info box. Add the header with notifications, launcher and account menu. |
+
+### Detail views as pop-ups
+
+| App | Screen | Status |
+| --- | --- | --- |
+| SQ Hub | Kerja card (`?kartu=<id>`) | Follows the rule. |
+| SQ Hub | Admin Center: Registry aplikasi (`?aplikasi=<key>`, `?aplikasi=baru`), Akses aplikasi, Peran HCIS, Pegawai masuk & keluar and Admin Platform (`?orang=<username>`), Organ Yayasan member (`?anggota=<id>`) | Follows the rule since 2026-11-13. The URL carries the Akun SQ username, never the raw OIDC subject. Still in place by design: the "Tambah anggota" column on Organ Yayasan (a create form beside the list, not an item's detail). |
 
 Each app ships this as one PR referencing this document, with light and dark screenshots of desktop, the admin area (where present), and 390 px with the Lainnya sheet open.

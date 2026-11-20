@@ -61,7 +61,7 @@ A membership is **effective** when `status = "active"`, `termStart <= today`, an
 - Every change requires a fresh session, a reason, and a same-origin request, and writes a platform audit event (actor, target identity, organ, term, reason, outcome), like Application Access changes in HUB-IMPL-009.
 - An administrator cannot grant or end their own membership.
 - Offboarding under HUB-IMPL-013 ends any effective membership as an additional step. (Amendment to HUB-IMPL-013, accepted with this spec on 2026-10-17.)
-- The membership detail page shows, read-only, which participating applications currently return a summary for that identity. This lets an operator see a missing domain role. It never changes domain roles.
+- The membership detail (a pop-up over the member list, `?anggota=<id>`, per sq-core-app-shell.md "Detail views open as a pop-up") shows, read-only, which participating applications currently return a summary for that identity. This lets an operator see a missing domain role. It never changes domain roles.
 - Organ does not change what Hub shows: Pembina, Pengurus, and Pengawas see the same page (Product Owner decision, 2026-10-17).
 
 ### Adding a member: two paths

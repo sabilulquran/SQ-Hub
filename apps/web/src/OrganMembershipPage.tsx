@@ -1,7 +1,12 @@
-import { CalendarClock, Landmark, RefreshCw, Search, UserMinus, UserPlus } from "lucide-react";
-import { useCallback, useEffect, useState, type ReactNode } from "react";
+import { ArrowLeft, ArrowRight, CalendarClock, Landmark, RefreshCw, Search, UserMinus, UserPlus } from "lucide-react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 
+import { answerStillWanted } from "@/admin-staff-dialog";
 import { AppShell } from "@/components/AppShell";
+import { DetailDialog } from "@/components/DetailDialog";
+import { useDialogParam } from "@/components/useDialogParam";
+import { useWizardStep } from "@/components/useWizardStep";
+import { WizardSteps } from "@/components/WizardSteps";
 import { organLabel } from "@/organ";
 import type {
   AdminStaff,
@@ -41,6 +46,15 @@ const errors: Record<string, string> = {
 
 type AddPath = "existing_staff" | "organ_identity";
 
+const PATH_LABELS: Record<AddPath, string> = { existing_staff: "Sudah punya Akun SQ", organ_identity: "Belum punya Akun SQ" };
+
+/**
+ * UX-FLOW-001: "Tambah anggota" shows one step at a time, kept in `?langkah=`: pick the path,
+ * fill in the person and the term, review, then the result replaces the review.
+ */
+const ADD_STEPS = ["pilih", "isi", "periksa", "selesai"] as const;
+const ADD_STEP_LABELS = ["Pilih jalur", "Isi data", "Periksa"] as const;
+
 interface TermForm {
   organ: Organ;
   positionLabel: string;
@@ -65,6 +79,14 @@ export function OrganMembershipPage({ workspace, onLogout, onAuthorizationDenied
   const [selectedApps, setSelectedApps] = useState<string[] | null>(null);
   const [result, setResult] = useState<OrganOperationResult | null>(null);
   const [detail, setDetail] = useState<OrganMembershipDetail | null>(null);
+  const addFlowRef = useRef<HTMLDivElement>(null);
+  const { step: addStep, index: addIndex, goTo: goToAdd } = useWizardStep(ADD_STEPS, addFlowRef);
+  // A member's detail opens as a pop-up, `?anggota=<membership id>` (sq-core-app-shell.md "Detail
+  // views open as a pop-up"); a link or Back to that address opens the same member.
+  const [memberParam, openMember, closeMember] = useDialogParam("anggota");
+  // The member open right now, read by answers that arrive later (see answerStillWanted).
+  const openMemberRef = useRef(memberParam);
+  openMemberRef.current = memberParam;
 
   const adminFetch = useCallback(async <T,>(url: string, init?: RequestInit): Promise<T> => {
     const response = await fetch(url, {
@@ -127,6 +149,41 @@ export function OrganMembershipPage({ workspace, onLogout, onAuthorizationDenied
     if (body.staff.length === 0) setMessage("Akun SQ tidak ditemukan. Jika orang ini belum staf, pilih \"Belum punya Akun SQ\".");
   });
 
+  const reviewReady = Boolean(path && terms.reason.trim() && terms.termStart && (path !== "existing_staff" || chosen));
+
+  // UX-FLOW-001 rule 7: a later step opened without its data goes back to the first relevant step.
+  useEffect(() => {
+    if (addStep === "isi" && !path) goToAdd("pilih", { replace: true });
+    if (addStep === "periksa" && !reviewReady) goToAdd(path ? "isi" : "pilih", { replace: true });
+    if (addStep === "selesai" && !result) goToAdd("pilih", { replace: true });
+  }, [addStep, path, reviewReady, result, goToAdd]);
+
+  const toReview = () => {
+    setMessage(null);
+    if (!terms.reason.trim() || !terms.termStart) {
+      setMessage(errors.INVALID_REQUEST ?? null);
+      return;
+    }
+    goToAdd("periksa");
+  };
+
+  const resetAddForm = () => {
+    setTerms(emptyTerms);
+    setPerson({ firstName: "", lastName: "", email: "" });
+    setQuery("");
+    setStaff([]);
+    setChosen(null);
+    setSelectedApps(null);
+  };
+
+  const startOver = () => {
+    resetAddForm();
+    setPath(null);
+    setResult(null);
+    setMessage(null);
+    goToAdd("pilih");
+  };
+
   const submit = () => run(async () => {
     if (!terms.reason.trim() || !terms.termStart) throw new Error("INVALID_REQUEST");
     const common = { ...termPayload(), applicationKeys: appsToGrant };
@@ -140,12 +197,44 @@ export function OrganMembershipPage({ workspace, onLogout, onAuthorizationDenied
           body: JSON.stringify({ ...person, email: person.email.trim().toLowerCase(), ...common }),
         });
     setResult(response);
+    // UX-FLOW-001 rule 6: the result replaces the review step, so Back never reopens a summary
+    // that could be saved twice. A saved person is cleared; a failed or partial save keeps the
+    // entries for "Periksa lalu simpan lagi".
+    goToAdd("selesai", { replace: true });
+    if (response.outcome === "succeeded") resetAddForm();
     await load();
   });
 
-  const openDetail = (membership: OrganMembershipView) => run(async () => {
-    setDetail(await adminFetch<OrganMembershipDetail>(`/api/admin/organ-memberships/${membership.id}`));
+  const openDetail = (membership: OrganMembershipView) => {
+    setDetail(null);
+    setMessage(null);
+    openMember(membership.id);
+  };
+
+  /**
+   * An action for one member: its answer and its refusal are dropped once another member's pop-up
+   * is open, so they never show under someone else. With the pop-up closed a refusal still shows on
+   * the page.
+   */
+  const runForMember = (membershipId: string) => (task: () => Promise<void>) => run(async () => {
+    try { await task(); } catch (error) {
+      if (answerStillWanted(membershipId, openMemberRef.current, true)) throw error;
+    }
   });
+
+  const overviewReady = overview !== null;
+  useEffect(() => {
+    if (!memberParam || !overviewReady || detail?.membership.id === memberParam) return;
+    const requested = memberParam;
+    setDetail(null);
+    void runForMember(requested)(async () => {
+      const next = await adminFetch<OrganMembershipDetail>(`/api/admin/organ-memberships/${encodeURIComponent(requested)}`);
+      if (answerStillWanted(next.membership.id, openMemberRef.current)) setDetail(next);
+    });
+    // Load once each time a member's pop-up opens.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [memberParam, overviewReady]);
+  const shownDetail = memberParam && detail?.membership.id === memberParam ? detail : null;
 
   return (
     <AppShell workspace={workspace} space="admin" active="admin-organ" breadcrumb={["Administrasi", "Organ Yayasan"]} onLogout={onLogout}>
@@ -153,7 +242,7 @@ export function OrganMembershipPage({ workspace, onLogout, onAuthorizationDenied
       <p className="mt-1 max-w-3xl text-sm leading-6 text-muted-foreground">
         Catat Pembina, Pengurus, dan Pengawas beserta masa jabatannya. Keanggotaan hanya membuka Ringkasan Yayasan di SQ Hub; peran tata kelola tetap diberikan oleh masing-masing aplikasi.
       </p>
-      {message ? <p className="sq-admin-message mt-4" role="status">{message}</p> : null}
+      {message && !memberParam && addStep === "pilih" ? <p className="sq-admin-message mt-4" role="status">{message}</p> : null}
       {loadError ? (
         <Panel className="mt-5 text-center">
           <p className="text-sm text-muted-foreground">Daftar Organ Yayasan belum dapat dimuat.</p>
@@ -199,47 +288,60 @@ export function OrganMembershipPage({ workspace, onLogout, onAuthorizationDenied
             </Panel>
 
             <Panel>
-              <h2 className="flex items-center gap-2 font-display text-lg font-bold text-brand-heading"><UserPlus className="h-5 w-5" /> Tambah anggota</h2>
-              <fieldset className="mt-3">
-                <legend className="text-sm font-bold text-foreground">Apakah orang ini sudah memiliki Akun SQ sebagai staf?</legend>
-                <div className="mt-2 grid gap-2 sm:grid-cols-2">
-                  <Choice checked={path === "existing_staff"} onSelect={() => { setPath("existing_staff"); setResult(null); }} title="Sudah punya Akun SQ" body="Misalnya Pengurus bergaji yang tercatat sebagai pegawai." />
-                  <Choice checked={path === "organ_identity"} onSelect={() => { setPath("organ_identity"); setResult(null); }} title="Belum punya Akun SQ" body="Misalnya Pembina. SQ Hub membuat Akun SQ dengan e-mail sebagai nama pengguna." disabled={!overview.capabilities.addNewIdentity} />
-                </div>
-                {!overview.capabilities.addNewIdentity ? <p className="sq-admin-helper">Pembuatan Akun SQ baru belum diaktifkan di lingkungan ini.</p> : null}
-              </fieldset>
+              <div ref={addFlowRef} className="scroll-mt-4">
+                <h2 className="flex items-center gap-2 font-display text-lg font-bold text-brand-heading"><UserPlus className="h-5 w-5" /> Tambah anggota</h2>
+                <WizardSteps steps={ADD_STEP_LABELS} current={addIndex} label="Langkah tambah anggota" />
+              </div>
+              {message && !memberParam && addStep !== "pilih" ? <p className="sq-admin-message mt-4" role="status">{message}</p> : null}
 
-              {path === "existing_staff" ? (
-                <div className="mt-4">
-                  <div className="flex gap-2">
-                    <input className="sq-admin-input" value={query} onChange={(event) => setQuery(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") void searchStaff(); }} placeholder="Cari NIP, e-mail, atau nama" />
-                    <button type="button" className={secondary} disabled={busy || query.trim().length < 2} onClick={() => void searchStaff()}><Search className="h-4 w-4" /> Cari</button>
-                  </div>
-                  <div className="mt-2 space-y-1.5">
-                    {staff.map((entry) => (
-                      <button key={entry.subject} type="button" onClick={() => setChosen(entry)} className={chosen?.subject === entry.subject ? "w-full rounded-xl border border-brand-primary/40 bg-brand-primary-pale/55 p-3 text-left text-sm" : "w-full rounded-xl border border-border p-3 text-left text-sm"}>
-                        <strong>{entry.displayName}</strong>
-                        <span className="block text-xs text-muted-foreground">{entry.username}{entry.email ? ` · ${entry.email}` : ""} · {entry.security.totpConfigured ? "verifikasi dua langkah aktif" : "verifikasi dua langkah akan diwajibkan"}</span>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              ) : null}
-
-              {path === "organ_identity" ? (
-                <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                  <Field label="Nama depan"><input className="sq-admin-input" value={person.firstName} onChange={(event) => setPerson({ ...person, firstName: event.target.value })} /></Field>
-                  <Field label="Nama belakang"><input className="sq-admin-input" value={person.lastName} onChange={(event) => setPerson({ ...person, lastName: event.target.value })} /></Field>
-                  <div className="sm:col-span-2">
-                    <Field label="E-mail" helper="Menjadi nama pengguna Akun SQ. Akun SQ mengirim tautan verifikasi e-mail dan pembuatan kata sandi (12 jam); verifikasi dua langkah wajib saat masuk pertama. Tidak ada NIP.">
-                      <input className="sq-admin-input" type="email" value={person.email} onChange={(event) => setPerson({ ...person, email: event.target.value })} />
-                    </Field>
-                  </div>
-                </div>
-              ) : null}
-
-              {path ? (
+              {addStep === "pilih" ? (
                 <>
+                  <fieldset className="mt-4">
+                    <legend className="text-sm font-bold text-foreground">Apakah orang ini sudah memiliki Akun SQ sebagai staf?</legend>
+                    <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                      <Choice checked={path === "existing_staff"} onSelect={() => { setPath("existing_staff"); setResult(null); }} title="Sudah punya Akun SQ" body="Misalnya Pengurus bergaji yang tercatat sebagai pegawai." />
+                      <Choice checked={path === "organ_identity"} onSelect={() => { setPath("organ_identity"); setResult(null); }} title="Belum punya Akun SQ" body="Misalnya Pembina. SQ Hub membuat Akun SQ dengan e-mail sebagai nama pengguna." disabled={!overview.capabilities.addNewIdentity} />
+                    </div>
+                    {!overview.capabilities.addNewIdentity ? <p className="sq-admin-helper">Pembuatan Akun SQ baru belum diaktifkan di lingkungan ini.</p> : null}
+                  </fieldset>
+                  <button type="button" className={primary} disabled={!path} onClick={() => { setMessage(null); goToAdd("isi"); }}>
+                    Lanjutkan <ArrowRight className="h-4 w-4" />
+                  </button>
+                </>
+              ) : null}
+
+              {addStep === "isi" && path ? (
+                <>
+                  <p className="mt-4 flex flex-wrap items-center justify-between gap-2 text-sm">
+                    <span><span className="text-muted-foreground">Jalur:</span> <strong>{PATH_LABELS[path]}</strong></span>
+                    <button type="button" className="text-sm font-bold text-brand-primary-deep" onClick={() => goToAdd("pilih")}>Ganti jalur</button>
+                  </p>
+                  {path === "existing_staff" ? (
+                    <div className="mt-3">
+                      <div className="flex gap-2">
+                        <input className="sq-admin-input" value={query} onChange={(event) => setQuery(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") void searchStaff(); }} placeholder="Cari NIP, e-mail, atau nama" />
+                        <button type="button" className={secondary} disabled={busy || query.trim().length < 2} onClick={() => void searchStaff()}><Search className="h-4 w-4" /> Cari</button>
+                      </div>
+                      <div className="mt-2 space-y-1.5">
+                        {staff.map((entry) => (
+                          <button key={entry.subject} type="button" onClick={() => setChosen(entry)} className={chosen?.subject === entry.subject ? "w-full rounded-xl border border-brand-primary/40 bg-brand-primary-pale/55 p-3 text-left text-sm" : "w-full rounded-xl border border-border p-3 text-left text-sm"}>
+                            <strong>{entry.displayName}</strong>
+                            <span className="block text-xs text-muted-foreground">{entry.username}{entry.email ? ` · ${entry.email}` : ""} · {entry.security.totpConfigured ? "verifikasi dua langkah aktif" : "verifikasi dua langkah akan diwajibkan"}</span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                      <Field label="Nama depan"><input className="sq-admin-input" value={person.firstName} onChange={(event) => setPerson({ ...person, firstName: event.target.value })} /></Field>
+                      <Field label="Nama belakang"><input className="sq-admin-input" value={person.lastName} onChange={(event) => setPerson({ ...person, lastName: event.target.value })} /></Field>
+                      <div className="sm:col-span-2">
+                        <Field label="E-mail" helper="Menjadi nama pengguna Akun SQ. Akun SQ mengirim tautan verifikasi e-mail dan pembuatan kata sandi (12 jam); verifikasi dua langkah wajib saat masuk pertama. Tidak ada NIP.">
+                          <input className="sq-admin-input" type="email" value={person.email} onChange={(event) => setPerson({ ...person, email: event.target.value })} />
+                        </Field>
+                      </div>
+                    </div>
+                  )}
                   <TermFields terms={terms} onChange={setTerms} />
                   {governanceApps.length > 0 ? (
                     <fieldset className="mt-4">
@@ -255,26 +357,80 @@ export function OrganMembershipPage({ workspace, onLogout, onAuthorizationDenied
                       <p className="sq-admin-helper">Akses aplikasi hanya pintu masuk. Peran tata kelola tetap diberikan oleh aplikasi itu sendiri.</p>
                     </fieldset>
                   ) : null}
-                  <button type="button" className={primary} disabled={busy || (path === "existing_staff" && !chosen)} onClick={() => void submit()}>
-                    <UserPlus className="h-4 w-4" /> Simpan keanggotaan
+                  <button type="button" className={primary} disabled={busy || (path === "existing_staff" && !chosen)} onClick={toReview}>
+                    Lanjutkan <ArrowRight className="h-4 w-4" />
                   </button>
                 </>
               ) : null}
 
-              {result ? <OperationResult result={result} /> : null}
+              {addStep === "periksa" && path && reviewReady ? (
+                <>
+                  <dl className="mt-4 divide-y divide-border/70 rounded-xl border border-border text-sm">
+                    <ReviewRow label="Jalur" value={PATH_LABELS[path]} />
+                    {path === "existing_staff" && chosen ? (
+                      <ReviewRow label="Akun SQ" value={`${chosen.displayName} · ${chosen.username}${chosen.email ? ` · ${chosen.email}` : ""}`} />
+                    ) : (
+                      <>
+                        <ReviewRow label="Nama" value={`${person.firstName} ${person.lastName}`.trim() || "-"} />
+                        <ReviewRow label="E-mail" value={person.email.trim().toLowerCase() || "-"} />
+                      </>
+                    )}
+                    <ReviewRow label="Organ" value={`${organLabel(terms.organ)}${terms.positionLabel.trim() ? ` · ${terms.positionLabel.trim()}` : ""}`} />
+                    <ReviewRow label="Masa jabatan" value={formatTerm({ termStart: terms.termStart, termEnd: terms.termEnd || null })} />
+                    <ReviewRow label="Alasan" value={terms.reason.trim()} />
+                    {governanceApps.length > 0 ? (
+                      <ReviewRow label="Akses aplikasi" value={governanceApps.filter((app) => appsToGrant.includes(app.key)).map((app) => app.name).join(", ") || "Tidak ada"} />
+                    ) : null}
+                  </dl>
+                  <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:items-center">
+                    <button type="button" className={`${primary} mt-0 justify-center`} disabled={busy} onClick={() => void submit()}>
+                      <UserPlus className="h-4 w-4" /> Simpan keanggotaan
+                    </button>
+                    <button type="button" className={`${secondary} justify-center`} disabled={busy} onClick={() => goToAdd("isi")}>
+                      <ArrowLeft className="h-4 w-4" /> Ubah data
+                    </button>
+                  </div>
+                </>
+              ) : null}
+
+              {addStep === "selesai" && result ? (
+                <>
+                  <OperationResult result={result} />
+                  <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:items-center">
+                    {result.outcome !== "succeeded" && reviewReady ? (
+                      <button type="button" className={`${secondary} justify-center`} onClick={() => goToAdd("periksa")}>
+                        <ArrowLeft className="h-4 w-4" /> Periksa lalu simpan lagi
+                      </button>
+                    ) : null}
+                    <button type="button" className={`${secondary} justify-center`} onClick={startOver}>
+                      <UserPlus className="h-4 w-4" /> Tambah anggota lain
+                    </button>
+                  </div>
+                </>
+              ) : null}
             </Panel>
           </div>
 
-          {detail ? (
-            <MembershipDetail
-              key={detail.membership.id}
-              detail={detail}
-              busy={busy}
-              run={run}
-              adminFetch={adminFetch}
-              onChanged={async (next) => { setDetail(next); await load(); }}
-              canEndNewIdentity={overview.capabilities.endNewIdentity}
-            />
+          {memberParam ? (
+            <DetailDialog title={shownDetail?.membership.displayName ?? "Keanggotaan organ"} wide onClose={closeMember}>
+              {message ? <p className="sq-admin-message mb-4" role="status">{message}</p> : null}
+              {shownDetail ? (
+                <MembershipDetail
+                  key={shownDetail.membership.id}
+                  detail={shownDetail}
+                  busy={busy}
+                  run={runForMember(shownDetail.membership.id)}
+                  adminFetch={adminFetch}
+                  onChanged={async (next) => {
+                    if (answerStillWanted(next.membership.id, openMemberRef.current)) setDetail(next);
+                    await load();
+                  }}
+                  canEndNewIdentity={overview.capabilities.endNewIdentity}
+                />
+              ) : !message ? (
+                <p className="flex items-center gap-2 text-sm text-muted-foreground"><RefreshCw className="h-4 w-4 animate-spin" /> Memuat keanggotaan...</p>
+              ) : null}
+            </DetailDialog>
           ) : null}
         </>
       ) : null}
@@ -309,6 +465,14 @@ function MembershipDetail({
   const [endReason, setEndReason] = useState("");
   const [confirmed, setConfirmed] = useState(false);
   const [steps, setSteps] = useState<OrganOperationStep[]>([]);
+  // UX-FLOW-001 inside a dialog: ending the membership is its own step that replaces the detail
+  // and the edit form, kept in the dialog's state and reset when the dialog closes.
+  const [view, setView] = useState<"detail" | "akhiri">("detail");
+  const topRef = useRef<HTMLDivElement>(null);
+  const showView = (next: "detail" | "akhiri") => {
+    setView(next);
+    topRef.current?.scrollIntoView({ block: "start" });
+  };
   const active = membership.status === "active";
   const refresh = async () => onChanged(await adminFetch<OrganMembershipDetail>(`/api/admin/organ-memberships/${membership.id}`));
 
@@ -329,6 +493,9 @@ function MembershipDetail({
 
   const loadPreview = () => run(async () => {
     setPreview(await adminFetch<OrganMembershipEndPreview>(`/api/admin/organ-memberships/${membership.id}/end-preview`));
+    setEndReason("");
+    setConfirmed(false);
+    showView("akhiri");
   });
 
   const end = () => run(async () => {
@@ -339,6 +506,7 @@ function MembershipDetail({
     });
     setSteps(outcome.steps);
     await refresh();
+    showView("detail");
   });
 
   const resend = () => run(async () => {
@@ -351,12 +519,28 @@ function MembershipDetail({
     setSteps([outcome.step]);
   });
 
+  if (view === "akhiri" && preview && active) {
+    const blocked = preview.path === "organ_identity" && !canEndNewIdentity;
+    return (
+      <div ref={topRef} className="scroll-mt-4">
+        <h3 className="flex items-center gap-2 text-sm font-bold text-brand-heading"><UserMinus className="h-4 w-4" /> Akhiri keanggotaan</h3>
+        <p className="mt-1 text-sm">{organLabel(membership.organ)}{membership.positionLabel ? ` · ${membership.positionLabel}` : ""} · {formatTerm(membership)}</p>
+        <EndPreview preview={preview} disabled={blocked} />
+        <Field label="Alasan"><textarea className="sq-admin-input mt-3" value={endReason} onChange={(event) => setEndReason(event.target.value)} /></Field>
+        <label className="mt-2 flex items-center gap-2 text-sm"><input type="checkbox" checked={confirmed} onChange={(event) => setConfirmed(event.target.checked)} /> Saya sudah memeriksa langkah di atas.</label>
+        <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center">
+          <button type="button" className={`${danger} mt-0 justify-center`} disabled={busy || !confirmed || !endReason.trim() || blocked} onClick={() => void end()}>Akhiri keanggotaan</button>
+          <button type="button" className={`${secondary} justify-center`} disabled={busy} onClick={() => showView("detail")}><ArrowLeft className="h-4 w-4" /> Kembali</button>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <Panel className="mt-5">
+    <div ref={topRef} className="scroll-mt-4">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <h2 className="font-display text-lg font-bold text-brand-heading">{membership.displayName ?? "Akun SQ"}</h2>
-          <p className="mt-0.5 text-xs text-muted-foreground">{membership.username ?? ""}{membership.email ? ` · ${membership.email}` : ""}</p>
+          <p className="text-xs text-muted-foreground">{membership.username ?? ""}{membership.email ? ` · ${membership.email}` : ""}</p>
           <p className="mt-1 text-sm">{organLabel(membership.organ)}{membership.positionLabel ? ` · ${membership.positionLabel}` : ""} · {formatTerm(membership)}</p>
           <PathBadge path={membership.provisioningPath} />
         </div>
@@ -391,25 +575,14 @@ function MembershipDetail({
           </div>
           <div>
             <h3 className="flex items-center gap-2 text-sm font-bold text-brand-heading"><UserMinus className="h-4 w-4" /> Akhiri keanggotaan</h3>
-            {!preview ? (
-              <button type="button" className={`${secondary} mt-3`} disabled={busy} onClick={() => void loadPreview()}>Lihat langkah yang akan dijalankan</button>
-            ) : (
-              <EndPreview preview={preview} disabled={preview.path === "organ_identity" && !canEndNewIdentity} />
-            )}
-            {preview ? (
-              <>
-                <Field label="Alasan"><textarea className="sq-admin-input mt-3" value={endReason} onChange={(event) => setEndReason(event.target.value)} /></Field>
-                <label className="mt-2 flex items-center gap-2 text-sm"><input type="checkbox" checked={confirmed} onChange={(event) => setConfirmed(event.target.checked)} /> Saya sudah memeriksa langkah di atas.</label>
-                <button type="button" className={danger} disabled={busy || !confirmed || !endReason.trim() || (preview.path === "organ_identity" && !canEndNewIdentity)} onClick={() => void end()}>Akhiri keanggotaan</button>
-              </>
-            ) : null}
+            <button type="button" className={`${secondary} mt-3`} disabled={busy} onClick={() => void loadPreview()}>Lihat langkah yang akan dijalankan</button>
           </div>
         </div>
       ) : (
         <p className="mt-4 text-sm text-muted-foreground">Keanggotaan ini sudah berakhir{membership.endedAt ? ` pada ${formatDate(membership.endedAt.slice(0, 10))}` : ""}.</p>
       )}
       {steps.length > 0 ? <StepList steps={steps} /> : null}
-    </Panel>
+    </div>
   );
 }
 
@@ -491,6 +664,15 @@ function Choice({ checked, onSelect, title, body, disabled = false }: { checked:
       <input type="radio" name="organ-path" checked={checked} disabled={disabled} onChange={onSelect} className="mt-1" />
       <span><span className="block font-bold text-brand-heading">{title}</span><span className="block text-xs leading-5 text-muted-foreground">{body}</span></span>
     </label>
+  );
+}
+
+function ReviewRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="grid gap-0.5 p-3 sm:grid-cols-[9rem_minmax(0,1fr)] sm:gap-3">
+      <dt className="text-xs font-bold text-muted-foreground">{label}</dt>
+      <dd className="break-words text-foreground">{value}</dd>
+    </div>
   );
 }
 

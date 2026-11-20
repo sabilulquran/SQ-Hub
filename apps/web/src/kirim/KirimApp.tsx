@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 
 import { AktivitasPage, type AktivitasState } from "@/kirim/AktivitasPage";
+import { DokumentasiApiPage } from "@/kirim/DokumentasiApiPage";
 import { AntreanPage, type AntreanState } from "@/kirim/AntreanPage";
 import { ImporPage, type ImporState } from "@/kirim/ImporPage";
 import { JanganHubungiPage, type JanganHubungiState } from "@/kirim/JanganHubungiPage";
@@ -55,12 +56,14 @@ export function KirimApp() {
   }, []);
 
   useEffect(() => {
-    document.title = "Kirim SQ · Yayasan Sabilul Qur'an";
+    document.title = route === "dokumentasi-api" ? "Dokumentasi API Kirim · Yayasan Sabilul Qur'an" : "Kirim SQ · Yayasan Sabilul Qur'an";
     if (startupError()) return;
+    // The API guide is public: no session check, no redirect to sign-in.
+    if (route === "dokumentasi-api") return;
     void load();
     // HUB-IMPL-022: independent of the access check, so the way back to SQ Hub shows on every screen.
     void loadKirimLauncher().then(setLauncherApplications);
-  }, [load]);
+  }, [load, route]);
 
   const logout = useCallback(async () => {
     try {
@@ -102,6 +105,13 @@ export function KirimAppView({
   preview?: { nomor?: NomorState; antrean?: AntreanState; janganHubungi?: JanganHubungiState; aktivitas?: AktivitasState; impor?: ImporState };
 }) {
   const displayName = state.status === "ready" ? state.context.displayName : undefined;
+  if (route === "dokumentasi-api") {
+    return (
+      <KirimShell active={route} launcherApplications={launcherApplications ?? null} {...(displayName ? { displayName } : {})} {...(state.status === "ready" && onLogout ? { onLogout } : {})}>
+        <DokumentasiApiPage />
+      </KirimShell>
+    );
+  }
   return (
     <KirimShell active={route} launcherApplications={launcherApplications ?? null} {...(displayName ? { displayName } : {})} {...(state.status === "ready" && onLogout ? { onLogout } : {})}>
       {state.status === "loading" ? <StateCard kind="loading" title="Memeriksa akses Kirim SQ" /> : null}
@@ -116,7 +126,7 @@ export function KirimAppView({
       {state.status === "ready" && route === "jangan-hubungi" ? <JanganHubungiPage {...(preview?.janganHubungi ? { preview: preview.janganHubungi } : {})} /> : null}
       {state.status === "ready" && route === "aktivitas" ? <AktivitasPage {...(preview?.aktivitas ? { preview: preview.aktivitas } : {})} /> : null}
       {state.status === "ready" && route === "impor" ? <ImporPage {...(preview?.impor ? { preview: preview.impor } : {})} /> : null}
-      {state.status === "ready" && route === "not-found" ? <StateCard kind="empty" title="Halaman tidak ditemukan" action={<a className={secondaryButton} href="/nomor">Ke Modul</a>} /> : null}
+      {state.status === "ready" && route === "not-found" ? <StateCard kind="empty" title="Halaman tidak ditemukan" action={<a className={secondaryButton} href="/nomor">Ke Aplikasi</a>} /> : null}
     </KirimShell>
   );
 }

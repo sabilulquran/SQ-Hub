@@ -1,4 +1,4 @@
-import { CalendarClock, FolderOpen, Plus, Search, Settings2 } from "lucide-react";
+import { CheckSquare, FolderOpen, Plus, Search, Settings2 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 
 import { errorMessage, KerjaRequestError, kerjaFetch, type JenisSelesai, type KartuRingkas, type Papan } from "@/kerja/api";
@@ -6,7 +6,7 @@ import { JENIS_SELESAI, relatifTenggat } from "@/kerja/format";
 import { CardDialog, openCard, useOpenCard } from "@/kerja/CardDialog";
 import { navigate } from "@/kerja/routes";
 import { CardCounters } from "@/kerja/TugasPage";
-import { AvatarStack, ErrorNote, LabelChip, Link, primaryButton, secondaryButton, StateCard, useLoad } from "@/kerja/ui";
+import { AvatarStack, DueText, ErrorNote, LabelChip, Link, primaryButton, secondaryButton, StateCard, useLoad } from "@/kerja/ui";
 
 interface DragState {
   kartuId: string;
@@ -204,8 +204,8 @@ export function PapanPage({ papanId, preview }: { papanId: string; preview?: Pap
       <div className="min-w-0">
         <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
           <div className="min-w-0">
-            <Link href={`/ruang/${data.ruang.id}`} className="text-xs font-semibold text-muted-foreground hover:underline">{data.ruang.nama}{data.ruang.status === "arsip" ? " · diarsipkan" : ""}</Link>
-            <h1 className="font-display text-2xl font-bold text-brand-heading">{data.nama}</h1>
+            <Link href={`/ruang/${data.ruang.id}`} className="text-xs text-muted-foreground hover:underline">{data.ruang.nama}{data.ruang.status === "arsip" ? " · diarsipkan" : ""}</Link>
+            <h1 className="font-display text-2xl font-semibold tracking-[-0.01em] text-brand-heading">{data.nama}</h1>
           </div>
           <div className="flex flex-wrap gap-2">
             <Link href={`/ruang/${data.ruang.id}/cari`} className={secondaryButton}><Search className="h-4 w-4" aria-hidden="true" />Cari</Link>
@@ -220,15 +220,15 @@ export function PapanPage({ papanId, preview }: { papanId: string; preview?: Pap
             ))}
           </nav>
         ) : null}
-        <div className="mb-3 grid grid-cols-2 gap-2 sm:flex">
-          <select aria-label="Saring label" className="sq-admin-input sm:w-48" value={labelFilter} onChange={(event) => setLabelFilter(event.target.value)}>
+        <div className="mb-4 grid grid-cols-2 gap-2 sm:flex sm:justify-start">
+          <div className="w-full sm:w-44"><select aria-label="Saring label" className="sq-admin-input" value={labelFilter} onChange={(event) => setLabelFilter(event.target.value)}>
             <option value="">Semua label</option>
             {data.label.map((label) => <option key={label.id} value={label.id}>{label.nama}</option>)}
-          </select>
-          <select aria-label="Saring penanggung jawab" className="sq-admin-input sm:w-56" value={personFilter} onChange={(event) => setPersonFilter(event.target.value)}>
+          </select></div>
+          <div className="w-full sm:w-52"><select aria-label="Saring penanggung jawab" className="sq-admin-input" value={personFilter} onChange={(event) => setPersonFilter(event.target.value)}>
             <option value="">Semua orang</option>
             {data.anggota.filter((member) => member.peran !== "peninjau").map((member) => <option key={member.id} value={member.id}>{member.nama}</option>)}
-          </select>
+          </select></div>
         </div>
         <ErrorNote message={error} />
         {totalCards === 0 && canWork ? <p className="mb-3 rounded-xl bg-info-soft px-3 py-2 text-sm text-info-ink">Papan ini masih kosong. Buat kartu pertama di kolom paling kiri, lalu tugaskan kepada anggota ruang.</p> : null}
@@ -259,11 +259,11 @@ export function PapanPage({ papanId, preview }: { papanId: string; preview?: Pap
                 key={column.id}
                 data-kolom-id={column.id}
                 aria-label={`Kolom ${column.nama}`}
-                className={`w-full shrink-0 rounded-2xl bg-muted/60 p-2 sm:w-72 ${index === mobileColumn ? "block" : "hidden sm:block"} ${isTarget ? "ring-2 ring-brand-primary" : ""}`}
+                className={`w-full shrink-0 rounded-[20px] bg-muted/60 p-2 sm:w-72 ${index === mobileColumn ? "block" : "hidden sm:block"} ${isTarget ? "ring-2 ring-brand-primary" : ""}`}
               >
-                <h2 className="flex items-center justify-between px-1.5 pb-2 pt-1 text-sm font-bold text-brand-heading">
+                <h2 className="flex items-center justify-between px-2 pb-2 pt-1 text-sm font-semibold text-brand-heading">
                   <span className="truncate">{column.nama}</span>
-                  <span className="text-xs font-semibold text-muted-foreground">{cards.length}</span>
+                  <span className="text-xs font-normal tabular-nums text-muted-foreground">{cards.length}</span>
                 </h2>
                 <ul className="flex min-h-12 flex-col gap-2">
                   {cards.map((card, cardIndex) => (
@@ -350,18 +350,19 @@ function CardTile({
       onPointerUp={onPointerUp}
       onPointerCancel={onPointerCancel}
       onContextMenu={(event) => draggable && event.preventDefault()}
-      className={`cursor-pointer select-none rounded-xl border bg-surface-raised p-2.5 shadow-[var(--shadow-soft)] outline-none focus-visible:ring-2 focus-visible:ring-ring ${selected ? "border-brand-primary" : "border-border/70"} ${dragging ? "opacity-40" : ""}`}
+      className={`cursor-pointer select-none rounded-xl border bg-surface-raised p-3 shadow-[0_1px_2px_rgba(0,0,0,0.05)] outline-none transition-colors hover:border-brand-primary/40 focus-visible:ring-2 focus-visible:ring-ring ${selected ? "border-brand-primary" : "border-border/70"} ${dragging ? "opacity-40" : ""}`}
       style={{ touchAction: "manipulation", WebkitTouchCallout: "none" }}
     >
-      {card.label.length > 0 ? <div className="mb-1.5 flex flex-wrap gap-1">{card.label.map((label) => <LabelChip key={label.id} label={label} />)}</div> : null}
-      <p className={`text-sm font-semibold leading-snug ${card.selesaiJenis ? "text-muted-foreground" : "text-foreground"}`}>{card.judul}</p>
-      <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[11px]">
-        {card.selesaiJenis ? <span className="rounded-md bg-success-soft px-1.5 py-0.5 font-bold text-success-ink">{JENIS_SELESAI[card.selesaiJenis]}</span> : null}
-        {due && !card.selesaiJenis ? (
-          <span className={`inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 font-bold ${due.nada === "lewat" ? "bg-danger-soft text-danger-ink" : due.nada === "dekat" ? "bg-warning-soft text-warning-ink" : "bg-muted text-muted-foreground"}`}>
-            <CalendarClock className="h-3 w-3" aria-hidden="true" />{due.teks.replace(/^Tenggat /, "")}
-          </span>
-        ) : null}
+      <p className={`text-sm font-medium leading-snug ${card.selesaiJenis ? "text-muted-foreground" : "text-foreground"}`}>{card.judul}</p>
+      {card.label.length > 0 ? <div className="mt-2 flex flex-wrap gap-1">{card.label.map((label) => <LabelChip key={label.id} label={label} />)}</div> : null}
+      {card.ceklis.total > 0 ? (
+        <div className="mt-3 h-1 overflow-hidden rounded-full bg-muted" aria-label={`Ceklis ${card.ceklis.selesai} dari ${card.ceklis.total}`}>
+          <div className="h-full rounded-full bg-brand-primary" style={{ width: `${(card.ceklis.selesai / card.ceklis.total) * 100}%` }} />
+        </div>
+      ) : null}
+      <div className="mt-3 flex min-h-6 flex-wrap items-center gap-3">
+        {card.selesaiJenis ? <span className="inline-flex items-center gap-1 text-xs font-medium text-success-ink"><CheckSquare className="h-3.5 w-3.5" aria-hidden="true" />{JENIS_SELESAI[card.selesaiJenis]}</span> : null}
+        {due && !card.selesaiJenis && card.tenggatPada ? <DueText iso={card.tenggatPada} nada={due.nada} /> : null}
         <CardCounters ceklis={card.ceklis} komentar={card.komentar} lampiran={card.lampiran} />
         <span className="ml-auto"><AvatarStack people={card.orang} /></span>
       </div>

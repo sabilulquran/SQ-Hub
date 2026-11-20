@@ -1,5 +1,7 @@
 # ADR-0013: Al-Qur'an as an SQ Hub Shared Module
 
+> **Terms: see ADR-0014 (2026-11-16).** Al-Qur'an is an application that runs inside the Hub process (D6 reason 3, a recorded compromise); "shared module" and "module" below mean that, not a part of another application.
+
 **Status:** ACCEPTED by the Product Owner on 2026-11-13 (decisions in `docs/product/quran-module-design.md` §2). Items marked `DRAFT` are agent defaults awaiting confirmation.
 **Date:** 2026-11-13
 **Specification:** QURAN-001 (`docs/product/quran-module-design.md`). Implementation needs its own `QURAN-IMPL-001`.

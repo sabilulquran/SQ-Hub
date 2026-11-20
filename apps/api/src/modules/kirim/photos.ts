@@ -7,7 +7,7 @@ import { columnAad, type KirimCrypto } from "./crypto.js";
 import { KirimApiError } from "./errors.js";
 import { jidFromCanonical } from "./message-refs.js";
 import type { KirimLog } from "./providers/log.js";
-import { ProviderOperationError, type DeviceRef, type KirimProvider } from "./providers/types.js";
+import { ProviderOperationError, type DeviceRef, type EngineProviderName, type KirimProvider, type ProviderName } from "./providers/types.js";
 import { withTransaction, type ConsumerRow } from "./repository.js";
 import type { KirimService } from "./service.js";
 
@@ -34,6 +34,8 @@ type Subject = { kind: "conversation"; id: string; jid: string } | { kind: "grou
 
 interface EngineDevice extends DeviceRef {
   status: string;
+  /** KIRIM-IMPL-005 §6: the engine this number uses, chosen per number. */
+  provider: EngineProviderName;
 }
 
 export class KirimProfilePhotos {
@@ -42,19 +44,23 @@ export class KirimProfilePhotos {
     private readonly crypto: KirimCrypto,
     private readonly service: KirimService,
     private readonly conversations: KirimConversations,
-    private readonly provider: KirimProvider | undefined,
+    private readonly providers: Record<ProviderName, KirimProvider | undefined>,
     private readonly options: { log?: KirimLog } = {},
   ) {}
 
   private onDemand = { windowStart: 0, count: 0 };
   private readonly inFlight = new Map<string, Promise<void>>();
 
+  /** The adapter for the engine this number uses; null when that engine is not configured here. */
+  private providerFor(device: EngineDevice): KirimProvider | null {
+    return this.providers[device.provider] ?? null;
+  }
+
   /** Timer in module.ts. Errors are logged without contact data and retried next round. */
   async runOnce(): Promise<{ fetched: number }> {
-    if (!this.provider) return { fetched: 0 };
     const devices = await this.pool.query<EngineDevice>(
-      `SELECT id, kode, provider_ref AS "providerRef", status FROM kirim_devices
-        WHERE provider = 'jalurpesan' AND status = 'tersambung' AND provider_ref IS NOT NULL ORDER BY kode`,
+      `SELECT id, kode, provider, provider_ref AS "providerRef", status FROM kirim_devices
+        WHERE provider <> 'log' AND status = 'tersambung' AND provider_ref IS NOT NULL ORDER BY kode`,
     );
     let fetched = 0;
     for (const device of devices.rows) fetched += await this.refreshDevice(device);
@@ -62,11 +68,13 @@ export class KirimProfilePhotos {
   }
 
   async refreshDevice(device: EngineDevice): Promise<number> {
+    const provider = this.providerFor(device);
+    if (!provider) return 0;
     let fetched = 0;
     for (const subject of await this.due(device.id)) {
       let data: Buffer | null;
       try {
-        data = await this.provider!.profilePicture(device, subject.jid);
+        data = await provider.profilePicture(device, subject.jid);
       } catch (error) {
         const code = error instanceof ProviderOperationError ? error.code : "error";
         // A JID the engine refuses is recorded as "no photo" so it is not asked again for a week; anything
@@ -87,7 +95,6 @@ export class KirimProfilePhotos {
 
   /** One subject's photo now (see ON_DEMAND_PER_MINUTE); false when it was not tried (limit, engine down, no route). */
   private async fetchNow(kind: "conversation" | "group", id: string): Promise<boolean> {
-    if (!this.provider) return false;
     const running = this.inFlight.get(id);
     if (running) {
       await running;
@@ -100,9 +107,11 @@ export class KirimProfilePhotos {
     const job = (async () => {
       const found = await this.subjectFor(kind, id);
       if (!found) return;
+      const provider = this.providerFor(found.device);
+      if (!provider) return;
       let data: Buffer | null;
       try {
-        data = await this.provider!.profilePicture(found.device, found.subject.jid);
+        data = await provider.profilePicture(found.device, found.subject.jid);
       } catch (error) {
         const code = error instanceof ProviderOperationError ? error.code : "error";
         if (code !== "engine_rejected") return; // engine down: asked again next time
@@ -132,8 +141,8 @@ export class KirimProfilePhotos {
       [id],
     );
     const row = result.rows[0];
-    if (!row || row.provider !== "jalurpesan" || row.status !== "tersambung" || !row.providerRef) return null;
-    const device = { id: row.deviceId, kode: row.kode, providerRef: row.providerRef, status: row.status } as EngineDevice;
+    if (!row || row.provider === "log" || row.status !== "tersambung" || !row.providerRef) return null;
+    const device = { id: row.deviceId, kode: row.kode, provider: row.provider as EngineProviderName, providerRef: row.providerRef, status: row.status } as EngineDevice;
     if (kind === "group") {
       return { device, subject: { kind: "group", id, jid: this.crypto.open(row.a, columnAad("kirim_groups", "group_jid_enc", id)) } };
     }

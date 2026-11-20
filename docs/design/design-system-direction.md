@@ -1,9 +1,9 @@
-# SQ Hub Design System Direction
+# SQ Suite Design System Direction
 
-**Status:** ACCEPTED
+**Status:** ACCEPTED. Names aligned to ADR-0014 on 2026-11-16.
 
 ## Goal
-Membuat HCIS, SQ Hub, SPMB, Finance, Workspace, Academic, dan aplikasi lain terasa sebagai satu keluarga produk tanpa memaksa seluruh business UI menjadi identik.
+Membuat semua aplikasi di SQ Suite (halaman platform SQ Hub sendiri, HCIS, SPMB SQ, Aset SQ, Karir SQ, Keuangan, Kerja SQ, Sekolah, dan lainnya; daftar di `docs/product/struktur-sq-suite.md`) terasa sebagai satu keluarga produk tanpa memaksa seluruh business UI menjadi identik.
 
 ## Initial baseline
 Visual system HCIS yang sudah sesuai brand ditetapkan sebagai baseline awal SQ Design System melalui ADR-0004.
@@ -12,8 +12,8 @@ Gunakan `docs/design/hcis-baseline.md` sebagai ringkasan machine-readable agar a
 
 Prinsip transisinya:
 1. HCIS adalah reference implementation awal;
-2. token/pattern yang benar-benar lintas aplikasi diekstrak dan dinormalisasi di SQ Hub;
-3. setelah shared primitives tersedia, SQ Hub menjadi canonical source untuk design system lintas produk;
+2. token/pattern yang benar-benar lintas aplikasi diekstrak dan dinormalisasi di repo `SQ-Hub` (platform SQ Hub);
+3. setelah shared primitives tersedia, repo `SQ-Hub` menjadi canonical source untuk design system lintas produk;
 4. HCIS kemudian consume/align ke shared primitives tersebut.
 
 Dengan demikian kita reuse desain HCIS tanpa menjadikan repository HCIS sebagai dependency desain permanen bagi semua aplikasi.
@@ -82,12 +82,12 @@ Nama package final mengikuti keputusan teknis implementasi.
 - Jangan membuat komponen shared hanya karena satu halaman membutuhkannya.
 - Jangan copy/fork shared component ke aplikasi untuk modifikasi lokal tanpa alasan terdokumentasi.
 - Perubahan semantic token atau shared interaction pattern harus dinilai dampaknya lintas aplikasi.
-- Jangan menyalin business-specific HCIS component ke SQ Hub/SPMB dan mengganti nama seolah sudah menjadi generic component.
+- Jangan menyalin business-specific HCIS component ke platform SQ Hub/SPMB SQ dan mengganti nama seolah sudah menjadi generic component.
 
 ## Remaining design work before shared UI implementation
 - normalisasi token HCIS menjadi semantic SQ tokens;
 - generalisasi SQ Identity/Auth shell;
 - generalisasi app shell tanpa business navigation HCIS;
-- minimum common component inventory berdasarkan consumer kedua (SQ Hub/SPMB);
+- minimum common component inventory berdasarkan consumer kedua (platform SQ Hub/SPMB SQ);
 - accessibility review dan responsive behavior verification;
 - strategi distribusi/versioning package shared.

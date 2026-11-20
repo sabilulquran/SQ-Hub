@@ -3,9 +3,10 @@ import { createHash } from "node:crypto";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 
-import { UnknownApplicationError } from "../application-access/repository.js";
+import { MachineClientInUseError, UnknownApplicationError } from "../application-access/repository.js";
 import {
   applicationKeySchema,
+  machineClientIdSchema,
   type ApplicationAccessService,
 } from "../application-access/service.js";
 import type { AuditRecord } from "../application-access/types.js";
@@ -33,8 +34,25 @@ const applicationBodySchema = z
     governanceSummaryPath: z.string().trim().max(512).nullable().optional(),
     governanceAudience: z.string().trim().max(255).nullable().optional(),
     governanceOrder: z.number().int().optional(),
+    // ORGAN-IMPL-001 §4.2. Sent together, like the summary pair above.
+    decisionPath: z.string().trim().max(512).nullable().optional(),
+    decisionAudience: z.string().trim().max(255).nullable().optional(),
+    // ADR-0011 amendment 2026-11-16: `modul` or `luar`; omitted keeps the stored kind.
+    kind: z.enum(["modul", "luar"]).optional(),
+    // KIRIM-IMPL-003 K-2. Sent together; omitted fields keep the stored registration.
+    whatsappCapable: z.boolean().optional(),
+    machineClientId: machineClientIdSchema.nullable().optional(),
   })
-  .strict();
+  .strict()
+  .refine((body) => !body.whatsappCapable || Boolean(body.machineClientId), {
+    message: "machineClientId is required when whatsappCapable is true",
+    path: ["machineClientId"],
+  })
+  // ADR-0011 amendment 2026-11-17: outside applications use API keys from the Kirim gateway card, not a Keycloak client.
+  .refine((body) => !(body.kind === "luar" && body.whatsappCapable), {
+    message: "an outside application uses a Kirim API key, not the WhatsApp switch",
+    path: ["whatsappCapable"],
+  });
 
 const accessMutationSchema = z
   .object({
@@ -111,6 +129,9 @@ export function registerPlatformAdminRoutes(
         body.governanceSummaryPath !== undefined ||
         body.governanceAudience !== undefined ||
         body.governanceOrder !== undefined;
+      const decisionProvided = body.decisionPath !== undefined || body.decisionAudience !== undefined;
+      // Both fields travel together: the GUI always sends both, and a client id alone must not switch WhatsApp off.
+      const whatsappProvided = body.whatsappCapable !== undefined;
       const application = await input.applicationRegistry.upsertApplication({
         applicationKey: params.applicationKey,
         name: body.name,
@@ -124,6 +145,13 @@ export function registerPlatformAdminRoutes(
                 order: body.governanceOrder ?? 0,
               },
             }
+          : {}),
+        ...(decisionProvided
+          ? { decision: { path: body.decisionPath || null, audience: body.decisionAudience || null } }
+          : {}),
+        ...(body.kind ? { kind: body.kind } : {}),
+        ...(whatsappProvided
+          ? { whatsapp: { capable: body.whatsappCapable ?? false, machineClientId: body.machineClientId || null } }
           : {}),
         actor: actorForSession(session),
       });
@@ -300,6 +328,11 @@ function toBrowserApplication(application: {
   governanceSummaryPath?: string | null;
   governanceAudience?: string | null;
   governanceOrder?: number;
+  decisionPath?: string | null;
+  decisionAudience?: string | null;
+  kind?: "modul" | "luar";
+  whatsappCapable?: boolean;
+  machineClientId?: string | null;
 }) {
   return {
     key: application.applicationKey,
@@ -308,7 +341,12 @@ function toBrowserApplication(application: {
     status: application.status,
     governanceSummaryPath: application.governanceSummaryPath ?? null,
     governanceAudience: application.governanceAudience ?? null,
+    decisionPath: application.decisionPath ?? null,
+    decisionAudience: application.decisionAudience ?? null,
     governanceOrder: application.governanceOrder ?? 0,
+    kind: application.kind ?? "modul",
+    whatsappCapable: application.whatsappCapable ?? false,
+    machineClientId: application.machineClientId ?? null,
   };
 }
 
@@ -339,6 +377,9 @@ function toBrowserAudit(record: AuditRecord) {
     "canonicalUrl",
     "governanceSummaryPath",
     "governanceAudience",
+    "kind",
+    "whatsappCapable",
+    "machineClientId",
     "organ",
     "positionLabel",
     "termStart",
@@ -377,6 +418,7 @@ function sendAdminError(
   if (error instanceof AdminOriginError) return reply.status(error.statusCode).send({ error: error.code });
   if (error instanceof z.ZodError) return reply.status(400).send({ error: "INVALID_REQUEST" });
   if (error instanceof UnknownApplicationError) return reply.status(404).send({ error: "UNKNOWN_APPLICATION" });
+  if (error instanceof MachineClientInUseError) return reply.status(error.statusCode).send({ error: error.code });
   if (error instanceof IdentityDirectoryError) {
     return reply.status(503).send({ error: "IDENTITY_DIRECTORY_UNAVAILABLE" });
   }

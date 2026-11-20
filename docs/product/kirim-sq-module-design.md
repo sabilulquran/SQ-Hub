@@ -1,6 +1,8 @@
-# Kirim SQ — Desain modul
+# Kirim SQ — Desain aplikasi
 
-**Status:** DRAFT / DISCOVERY. Dokumen ini tidak mengizinkan implementasi atau perubahan production.
+> **Istilah (ADR-0014, 2026-11-16).** Kirim SQ adalah **aplikasi** di SQ Suite, bukan "modul"; modul adalah bagian di dalam satu aplikasi. Ia berjalan di dalam proses Hub (ADR-0014 D6, alasan 1) dan tetap memiliki tabel, aturan, dan flag rilisnya sendiri. Isi dokumen di bawah ditulis sebelum keputusan itu dan tidak ditulis ulang: baca "modul" untuk Kirim SQ sebagai "aplikasi", "modul SQ Hub"/"modul bersama" sebagai "aplikasi yang berjalan di proses Hub", dan "SQ Core" sebagai "SQ Suite". Nama berkas ini tetap. Status terkini ada di [`struktur-sq-suite.md`](struktur-sq-suite.md) §5.
+
+**Status:** Rancangan produk (revisi 3). Bagian yang diterima untuk dibangun ada di KIRIM-IMPL-001 s.d. -004; Kirim SQ sudah berjalan di production (STRUKTUR-001 §5.2). Dokumen ini sendiri tidak mengizinkan implementasi atau perubahan production.
 **Spesifikasi:** KIRIM-001; spesifikasi implementasi R1: KIRIM-IMPL-001 (ACCEPTED 2026-10-17); R2: KIRIM-IMPL-002 (ACCEPTED 2026-10-19)
 **Tanggal:** 2026-10-19 (revisi 3)
 **Terkait:** ADR-0001, ADR-0006, ADR-0010, ADR-0011 (dengan amandemen 2026-10-19); SPMB SQ `sq-spmb/docs/product/kelola-peminat-dan-whatsapp.md` (SPMB-002), `sq-spmb/docs/product/module-design.md` (§6.8, §8), `sq-spmb/docs/specs/SPMB-IMPL-001-r0-fondasi-pengaturan-publik.md`; JalurPesan `jalurpesan.web.id/README.md`
@@ -162,6 +164,8 @@ Tambahan dari KIRIM-IMPL-001 (ACCEPTED 2026-10-17, §4): `kirim_webhook_deliveri
 
 Autentikasi backend: token **client credentials** realm `sq-staff` (pola `spmb-api`), dengan audience `sq-hub-kirim`. Kirim SQ memetakan `client_id` ke `kirim_consumers`.
 
+> **Aplikasi di luar SQ Suite (sejak 2026-11-17).** Kirim adalah gerbang API WhatsApp untuk portal dan aplikasi luar seperti Samijaya: satu kartu generik **Aplikasi luar** di panel Kirim yang menampung beberapa nomor, kunci API milik tiap nomor (`krm_…`, dibuat bersama nomornya, bisa disalin, diputar ulang, dan dicabut dari pop-up tanpa memutus WhatsApp; Kirim tidak tahu nama aplikasi pemakainya) sebagai pengganti client Keycloak dan pendaftaran aplikasi, dan endpoint kirim/status/jangan hubungi/webhook yang sama dengan §5.1–5.2. Dokumentasi untuk developer dibuka dari panel Kirim: `kirim.sabilulquran.or.id/dokumentasi-api`; versi repo: [Panduan gerbang API](../kirim/panduan-api-gateway-aplikasi-luar.md). Amandemen ADR-0011 2026-11-17 (menggantikan 2026-11-16).
+
 ### 5.1 Kirim pesan otomatis
 
 `POST /internal/kirim/messages` dengan header `Idempotency-Key`:
@@ -301,10 +305,19 @@ Karena R1 sudah menyimpan semua pesan, kotak masuk di modul pemilik langsung pun
 
 ## 10. Pindah mesin (runbook ringkas)
 
-1. Siapkan mesin baru dan provider-nya dengan provider `log` lalu nomor uji.
-2. Untuk setiap nomor: hentikan antrean, tunggu `diserahkan` = 0.
-3. Ganti `provider` dan `provider_ref` nomor itu, lalu **pairing ulang** (sesi WhatsApp tidak bisa dipindah).
-4. Jalankan lagi antrean dan pantau status 24 jam.
+> **Sejak 2026-11-17 (KIRIM-IMPL-005, amandemen ADR-0011):** mesin WhatsApp Yayasan sendiri,
+> `kirim-wa`, berjalan sebagai proses tersendiri di dalam rilis SQ Hub. JalurPesan tetap ada
+> sebagai jalur mundur. Mesin dipilih **per nomor**. Operasi hariannya ada di
+> [runbook mesin WhatsApp](../kirim/runbook-mesin-whatsapp.md); urutan cutover dan pemindahan
+> kunci sesi ada di [KIRIM-IMPL-005](../specs/KIRIM-IMPL-005-mesin-whatsapp-internal.md) §9.
+
+1. Siapkan mesin baru dan provider-nya; sebuah nomor uji boleh memakai provider `log` lebih dulu.
+2. Untuk setiap nomor, satu nomor per langkah: hentikan antrean, tunggu `diserahkan` = 0.
+3. Ganti `provider` nomor itu. Antara JalurPesan dan `kirim-wa`, kunci sesi Baileys bisa **disalin**
+   sehingga tidak perlu pindai QR ulang (KIRIM-IMPL-005 §9.1); ke mesin dengan format sesi lain,
+   nomor dipasang ulang dengan pindai QR.
+4. Jalankan lagi antrean, kirim satu pesan uji, dan pantau status minimal 24 jam sebelum nomor
+   berikutnya.
 5. Riwayat percakapan tetap ada di Kirim SQ, karena disimpan di `kirim_messages`, bukan di mesin.
 
 Modul pemakai tidak berubah sama sekali.
@@ -318,7 +331,8 @@ Modul pemakai tidak berubah sama sekali.
 - **HCIS:** "inbox admin HCIS" yang direncanakan mengikuti pola yang sama: dibangun di HCIS di atas API percakapan nomor `hcis`, atau sebagai komponen tampilan bersama bila SPMB dan HCIS sama-sama memakainya (SPMB-002 §12 no. 7). Bukan layar Kirim SQ.
 - **Keluarga SQ (KEL-IMPL-001):** relay kode `POST /internal/otp-deliveries` mengirim lewat Kirim SQ dengan `jenis: "kode"` di nomor `spmb`.
 - **KIRIM-IMPL-001 (R1, ACCEPTED):** tidak diubah. Daftar "Di luar R1" yang menyebut inbox, menu WhatsApp, `kirim_device_members`, dan `kirim_actions` untuk R2 digantikan dokumen ini. Kolom `kirim_conversations.ditangani_oleh` yang sudah ada di database tetap kosong (§13 no. 1). R2 butuh spesifikasi implementasi baru (usulan KIRIM-IMPL-002).
-- **ADR-0011:** diberi amandemen 2026-10-19 (Kirim SQ hanya mesin dan API; kotak masuk di modul pemilik nomor).
+- **ADR-0011:** diberi amandemen 2026-10-19 (Kirim SQ hanya mesin dan API; kotak masuk di modul pemilik nomor) dan amandemen 2026-11-17 (satu kartu generik Aplikasi luar dengan beberapa nomor dan kunci API terbitan Kirim; menggantikan amandemen 2026-11-16).
+- **Aplikasi luar (Samijaya dan berikutnya):** memakai [panduan gerbang API](../kirim/panduan-api-gateway-aplikasi-luar.md) dan halaman publik `/dokumentasi-api`; nomor dan kunci dibuat pengelola Kirim di kartu Aplikasi luar, tanpa pendaftaran client Keycloak dan tanpa perubahan kode untuk tiap aplikasi baru.
 
 ## 12. Operasional dan gate Mi8
 
@@ -366,4 +380,6 @@ adanya. Tidak ada pertanyaan terbuka yang tersisa, jadi KIRIM-IMPL-002 boleh dit
 | 2026-10-19 (revisi 3) | **Kirim SQ hanya mesin di balik layar** (API WhatsApp: nomor, kirim, terima, simpan chat dan media, status, jangan-hubungi, batas laju). Kotak masuk staf dan pengelolaan peminat dibangun di modul pemilik nomor, SPMB lebih dulu (SPMB-002). Kirim SQ R2 menjadi API percakapan. |
 | 2026-10-19 | Isi chat tetap di Kirim SQ (dikonfirmasi PO). Tambahan: API grup — baca dan balas di R2, buat grup dan tambah anggota di R3 — dan impor riwayat chat lama (SPMB-002 §7.6, §7.8). |
 | 2026-10-19 | **Enam pertanyaan teknis §13 no. 1–6 dijawab PO, seluruh saran disetujui:** kolom `ditangani_oleh` dihapus di migration R2; opt-out bertambah cakupan `device` yang hanya boleh dibuat pemilik nomor, sehingga "jangan hubungi" dari SPMB menghentikan semua pesan otomatis lewat nomor itu kecuali `kode`; petugas boleh membalas nomor ber-opt-out hanya bila orang itu menyapa dalam 24 jam terakhir; syarat sebelum memulai chat diperiksa modul pemilik nomor; pembacaan isi percakapan diaudit di Kirim SQ dan di modul; media petugas di R2 adalah PDF, JPEG dan PNG maksimal 5 MiB, voice note menyusul. KIRIM-IMPL-002 boleh ditulis. |
+| 2026-11-17 | **Desain ulang gerbang API** (keputusan owner 2026-11-16/17; amandemen ADR-0011 2026-11-17): kartu per aplikasi luar dihapus, diganti satu kartu generik **Aplikasi luar** dengan beberapa nomor; kunci API melekat pada tiap nomor (`krm_…`, dibuat bersama nomornya, tampil dan bisa disalin dari pop-up, diputar ulang, dicabut; tanpa nama aplikasi, tanpa pendaftaran, tanpa client Keycloak; koreksi owner 2026-11-17); webhook per nomor; dokumentasi publik `kirim.sabilulquran.or.id/dokumentasi-api`. Migration `0023` dan `0024`. Kasus pertama Samijaya (OTP admin). |
+| 2026-11-16 | Kirim menjadi API gateway WhatsApp untuk aplikasi di luar SQ Core (amandemen ADR-0011 2026-11-16): aplikasi luar didaftarkan dari Pusat Admin (jenis `luar`, migration `0022_applications_kind.sql`) dan mendapat kartu berlabel "aplikasi luar". **Kartu per aplikasi luar dibatalkan owner 2026-11-16** ("biar general aja"); jenis `luar` tetap sebagai label. |
 | 2026-10-19 | **KIRIM-IMPL-002 ACCEPTED.** Perubahan JalurPesan J-1 (pesan yang diketik di HP nomor itu ikut tercatat; gate kerja harian kotak masuk SPMB), J-2 (impor riwayat lewat platform API), J-3 (nama profil, nomor kontak LID, sebutan di grup); balasan petugas kedaluwarsa 72 jam dan tidak dihitung kuota harian; delegasi `kirim_admin` tetap CLI; Ekspor chat teks saja di R2; percakapan ganda LID/nomor tidak digabung otomatis. |

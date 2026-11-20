@@ -96,7 +96,7 @@ export function KerjaShell({
                 ariaCurrent={item.key === active}
                 className={[
                   "inline-flex min-h-10 flex-1 items-center justify-center gap-1.5 rounded-xl px-2 text-center text-sm leading-tight sm:flex-none sm:px-3",
-                  item.key === active ? "bg-brand-primary-pale font-bold text-brand-primary-deep" : "font-semibold text-muted-foreground hover:bg-muted",
+                  item.key === active ? "bg-brand-primary-pale font-semibold text-brand-primary-deep" : "font-medium text-muted-foreground transition-colors hover:bg-muted",
                 ].join(" ")}
               >
                 <Icon className="hidden h-4 w-4 shrink-0 sm:block" aria-hidden="true" />

@@ -139,7 +139,12 @@ describe("ORGAN-IMPL-001 R1 portal", () => {
     const session = await app.inject({ method: "GET", url: "/organ/session", headers: { ...HOST, cookie } });
     expect(session.statusCode).toBe(200);
     expect(session.headers["cache-control"]).toBe("no-store");
-    expect(session.json()).toEqual({ user: { displayName: "Anggota Sintetis" }, membership: { organ: "pengurus", positionLabel: "Ketua Pengurus" } });
+    expect(session.json()).toEqual({
+      user: { displayName: "Anggota Sintetis" },
+      membership: { organ: "pengurus", positionLabel: "Ketua Pengurus" },
+      // R2 is not wired in this setup, so the portal tells the browser it cannot decide here.
+      capabilities: { decisions: false },
+    });
 
     const summaries = await app.inject({ method: "GET", url: "/organ/summaries", headers: { ...HOST, cookie } });
     expect(summaries.statusCode).toBe(200);
@@ -217,7 +222,15 @@ describe("ORGAN-IMPL-001 §12 configuration", () => {
       oidc: { clientId: "sq-organ", clientSecret: "synthetic" },
       publicOrigin: "https://organ.sabilulquran.or.id",
       applicationKey: "organ",
+      decisionsEnabled: false,
     });
+  });
+
+  // R2 is a flag of its own: turning the portal on never turns deciding on with it.
+  it("keeps deciding off until its own flag is set", () => {
+    expect(loadOrganPortalConfig({ ...env, PORTAL_ORGAN_DECISIONS_ENABLED: "true" })?.decisionsEnabled).toBe(true);
+    expect(loadOrganPortalConfig({ ...env, PORTAL_ORGAN_DECISIONS_ENABLED: "false" })?.decisionsEnabled).toBe(false);
+    expect(loadOrganPortalConfig({ PORTAL_ORGAN_DECISIONS_ENABLED: "true" })).toBeNull();
   });
 
   it("refuses a client id or host shared with SQ Hub, Kirim or Kerja", () => {

@@ -11,6 +11,7 @@ import { PgHubWorkspaceRepository, type HubWorkspaceApplicationSource } from "..
 import { KirimMessageActions } from "./actions.js";
 import { KirimAdminService } from "./admin.js";
 import { KirimModuleCards } from "./cards.js";
+import { KirimGateway } from "./gateway.js";
 import { KIRIM_K32_DEFAULTS, type KirimConfig } from "./config.js";
 import { KirimConversations } from "./conversations.js";
 import { KirimHistoryImport } from "./history-import.js";
@@ -19,9 +20,10 @@ import { KirimBusiness } from "./business.js";
 import { KirimGroupAdmin } from "./groups-admin.js";
 import { KirimIngest } from "./ingest.js";
 import { JalurPesanProvider, type EngineMediaRefs } from "./providers/jalurpesan.js";
+import { WaEngineProvider } from "./providers/wa.js";
 import { KirimProfilePhotos } from "./photos.js";
 import { LogProvider, type KirimLog } from "./providers/log.js";
-import type { KirimProvider, ProviderName } from "./providers/types.js";
+import type { EngineProviderName, KirimProvider, ProviderName } from "./providers/types.js";
 import {
   KIRIM_OIDC_TRANSACTION_COOKIE_NAME,
   KIRIM_SESSION_COOKIE_NAME,
@@ -50,6 +52,7 @@ export interface KirimModule {
   history: KirimHistoryImport;
   admin: KirimAdminService;
   cards: KirimModuleCards;
+  gateway: KirimGateway;
   worker: KirimSendWorker;
   webhooks: KirimWebhookSender;
   ingest?: KirimIngest;
@@ -57,24 +60,28 @@ export interface KirimModule {
   start(log: KirimLog): Promise<() => Promise<void>>;
 }
 
-export function pgEngineMediaRefs(pool: Pool): EngineMediaRefs {
+/**
+ * KIRIM-IMPL-005 §8.4: one cache per engine. A file uploaded to JalurPesan is a file JalurPesan
+ * holds; the same file is uploaded again, once, the first time Kirim SQ's own engine needs it.
+ */
+export function pgEngineMediaRefs(pool: Pool, provider: EngineProviderName): EngineMediaRefs {
   return {
     async get(mediaId, deviceId) {
       const result = await pool.query<{ ref: string }>(
-        `SELECT provider_media_id AS ref FROM kirim_media_engine_refs WHERE media_id = $1 AND device_id = $2 AND provider = 'jalurpesan'`,
-        [mediaId, deviceId],
+        `SELECT provider_media_id AS ref FROM kirim_media_engine_refs WHERE media_id = $1 AND device_id = $2 AND provider = $3`,
+        [mediaId, deviceId, provider],
       );
       return result.rows[0]?.ref ?? null;
     },
     async put(mediaId, deviceId, providerMediaId) {
       await pool.query(
-        `INSERT INTO kirim_media_engine_refs (media_id, device_id, provider, provider_media_id) VALUES ($1, $2, 'jalurpesan', $3)
+        `INSERT INTO kirim_media_engine_refs (media_id, device_id, provider, provider_media_id) VALUES ($1, $2, $3, $4)
          ON CONFLICT (media_id, device_id, provider) DO UPDATE SET provider_media_id = EXCLUDED.provider_media_id, created_at = now()`,
-        [mediaId, deviceId, providerMediaId],
+        [mediaId, deviceId, provider, providerMediaId],
       );
     },
     async remove(mediaId, deviceId) {
-      await pool.query("DELETE FROM kirim_media_engine_refs WHERE media_id = $1 AND device_id = $2 AND provider = 'jalurpesan'", [mediaId, deviceId]);
+      await pool.query("DELETE FROM kirim_media_engine_refs WHERE media_id = $1 AND device_id = $2 AND provider = $3", [mediaId, deviceId, provider]);
     },
   };
 }
@@ -102,13 +109,18 @@ export function createKirimModule(input: {
   const log: KirimLog = (entry, message) => input.log?.(entry, message);
   const providers: Record<ProviderName, KirimProvider | undefined> = {
     log: input.providers?.log ?? new LogProvider(log),
-    jalurpesan: input.providers?.jalurpesan ?? (config.jalurpesan ? new JalurPesanProvider(config.jalurpesan, pgEngineMediaRefs(pool)) : undefined),
+    jalurpesan: input.providers?.jalurpesan ?? (config.jalurpesan ? new JalurPesanProvider(config.jalurpesan, pgEngineMediaRefs(pool, "jalurpesan")) : undefined),
+    // KIRIM-IMPL-005 §6: Kirim SQ's own engine, the `kirim-wa` worker on loopback.
+    wa: input.providers?.wa ?? (config.wa ? new WaEngineProvider(config.wa, pgEngineMediaRefs(pool, "wa")) : undefined),
   };
-  const ingest = providers.jalurpesan
-    ? new KirimIngest(pool, crypto, service, providers.jalurpesan, { inboundMediaMaxBytes: config.inboundMediaMaxBytes, log })
+  // One ingest for every engine: it picks the adapter per number from `kirim_devices.provider`,
+  // so a number can move between engines without restarting anything (KIRIM-IMPL-005 §6).
+  const ingest = providers.jalurpesan || providers.wa
+    ? new KirimIngest(pool, crypto, service, providers, { inboundMediaMaxBytes: config.inboundMediaMaxBytes, log })
     : undefined;
   const admin = new KirimAdminService(pool, crypto, service, providers, ingest);
   const cards = new KirimModuleCards(pool, crypto, admin, providers);
+  const gateway = new KirimGateway(pool, crypto, providers);
   const history = new KirimHistoryImport(pool, crypto, service, providers, {
     enabled: config.historyImportEnabled ?? false,
     inboundMediaMaxBytes: config.inboundMediaMaxBytes,
@@ -124,7 +136,7 @@ export function createKirimModule(input: {
     deleteWindowHours: config.deleteWindowHours ?? KIRIM_K32_DEFAULTS.deleteWindowHours,
     log,
   });
-  const photos = new KirimProfilePhotos(pool, crypto, service, conversations, providers.jalurpesan, { log });
+  const photos = new KirimProfilePhotos(pool, crypto, service, conversations, providers, { log });
   const groupAdmin = new KirimGroupAdmin(pool, crypto, service, conversations, providers, ingest, {
     addLimitPerHour: config.groupAddLimitPerHour ?? KIRIM_K32_DEFAULTS.groupAddLimitPerHour,
     log,
@@ -179,6 +191,7 @@ export function createKirimModule(input: {
     history,
     admin,
     cards,
+    gateway,
     worker,
     webhooks,
     ...(ingest ? { ingest } : {}),
@@ -186,6 +199,7 @@ export function createKirimModule(input: {
       registerKirimInternalRoutes(app, {
         service,
         cards,
+        gateway,
         conversations,
         actions,
         photos,
@@ -203,6 +217,7 @@ export function createKirimModule(input: {
           access: input.access,
           admin,
           cards,
+          gateway,
           history,
           publicOrigin: config.admin.publicOrigin,
           launcher: { applications: workspaceApplications, ...(input.hubOrigin ? { hubOrigin: input.hubOrigin } : {}) },

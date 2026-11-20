@@ -1,7 +1,9 @@
 import { KeyRound, RefreshCw, Search, UserMinus } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 
+import { useStaffDialog } from "@/admin-staff-dialog";
 import { AppShell } from "@/components/AppShell";
+import { DetailDialog } from "@/components/DetailDialog";
 import type { AdminStaff, HcisAccountLookup, HcisRoleCatalogEntry, WorkspaceSnapshot } from "@/types";
 
 interface Props {
@@ -127,6 +129,11 @@ export function HcisRolesPage({ workspace, onLogout, onAuthorizationDenied }: Pr
   const role = roles.find((entry) => entry.roleId === roleId) ?? null;
   const changeGrant = (apply: () => void) => { apply(); };
 
+  // The picked person opens as a pop-up, `?orang=<username>` (sq-core-app-shell.md "Detail views
+  // open as a pop-up"); a link or Back to that address opens the same person.
+  const staffDialog = useStaffDialog({ fetchJson: adminFetch, known: results, enabled: catalog.status === "ready" });
+  const dialogStaff = staffDialog.staff;
+
   const run = async (task: () => Promise<void>) => {
     setBusy(true); setMessage(null);
     try { await task(); } catch (error) {
@@ -139,20 +146,22 @@ export function HcisRolesPage({ workspace, onLogout, onAuthorizationDenied }: Pr
   };
 
   const loadPerson = async (staff: AdminStaff, nextPage = 1) => {
-    // A requestId belongs to one action for one person; another person is another action.
+    // An answer for a person whose pop-up is no longer open is dropped (answerStillWanted).
+    if (!staffDialog.isOpenFor(staff.username)) return;
+    // A requestId belongs to one action for one person; another person is another action. Closing
+    // and reopening the same person keeps it, so a resend after "outcome unknown" stays one action.
     if (person.status === "idle" || person.staff.subject !== staff.subject) {
       setGrantRequestId(crypto.randomUUID());
       setRevokeRequestIds({});
-      // The form belongs to one person too: an SK number or a term end must not follow the
-      // operator to the next person, and a role picked for one account type may not exist for the next.
-      setRoleId(""); setScopeType("organization"); setUnitId(""); setReason(""); setStartsOn(""); setEndsOn("");
     }
     setPerson({ status: "loading", staff });
     try {
       const lookup = await adminFetch<HcisAccountLookup>(`/api/admin/hcis-roles/staff/${encodeURIComponent(staff.subject)}?page=${nextPage}`);
+      if (!staffDialog.isOpenFor(staff.username)) return;
       setPage(nextPage);
       setPerson({ status: "ready", staff, lookup });
     } catch (error) {
+      if (!staffDialog.isOpenFor(staff.username)) return;
       if (error instanceof RequestError && error.code === "ROLE_ADMIN_ACCOUNT_NOT_FOUND") { setPerson({ status: "no_account", staff }); return; }
       setPerson({ status: "idle" });
       throw error;
@@ -171,8 +180,9 @@ export function HcisRolesPage({ workspace, onLogout, onAuthorizationDenied }: Pr
     if (role.mandateRequired && !reason.trim()) { setMessage("Peran ini menuntut mandat. Tulis dasar penugasannya, misalnya nomor SK."); return; }
     if (role.endDateRequired && !endsOn) { setMessage("Peran ini menuntut tanggal berakhir, yaitu akhir masa jabatan."); return; }
     if (!window.confirm(`Berikan peran ${role.name} kepada ${person.staff.displayName}?`)) return;
+    const target = person.staff;
     try {
-      await adminFetch(`/api/admin/hcis-roles/staff/${encodeURIComponent(person.staff.subject)}/assignments`, {
+      await adminFetch(`/api/admin/hcis-roles/staff/${encodeURIComponent(target.subject)}/assignments`, {
         method: "POST",
         body: JSON.stringify({
           requestId: grantRequestId,
@@ -186,16 +196,19 @@ export function HcisRolesPage({ workspace, onLogout, onAuthorizationDenied }: Pr
       });
     } catch (error) {
       await settleIfRecorded(error, () => setGrantRequestId(crypto.randomUUID()));
+      // A refusal for a person whose pop-up was closed or replaced is not shown under someone else.
+      if (!staffDialog.mayReport(target.username)) return;
       throw error;
     }
     setGrantRequestId(crypto.randomUUID());
-    await loadPerson(person.staff, page);
-    setMessage(`Peran ${role.name} diberikan kepada ${person.staff.displayName}. HCIS mencatatnya atas nama Anda.`);
+    await loadPerson(target, page);
+    if (staffDialog.mayReport(target.username)) setMessage(`Peran ${role.name} diberikan kepada ${target.displayName}. HCIS mencatatnya atas nama Anda.`);
   });
 
   const revoke = (assignment: HcisAccountLookup["assignments"]["items"][number]) => run(async () => {
     if (person.status !== "ready") return;
     if (!window.confirm(`Cabut peran ${assignment.roleName} dari ${person.staff.displayName}?`)) return;
+    const target = person.staff;
     // The same requestId for every resend of this one revocation (see grantRequestId).
     const requestId = revokeRequestIds[assignment.assignmentId] ?? crypto.randomUUID();
     setRevokeRequestIds((current) => ({ ...current, [assignment.assignmentId]: requestId }));
@@ -205,17 +218,18 @@ export function HcisRolesPage({ workspace, onLogout, onAuthorizationDenied }: Pr
       return next;
     });
     try {
-      await adminFetch(`/api/admin/hcis-roles/staff/${encodeURIComponent(person.staff.subject)}/assignments/${encodeURIComponent(assignment.assignmentId)}`, {
+      await adminFetch(`/api/admin/hcis-roles/staff/${encodeURIComponent(target.subject)}/assignments/${encodeURIComponent(assignment.assignmentId)}`, {
         method: "DELETE",
         body: JSON.stringify({ requestId }),
       });
     } catch (error) {
       await settleIfRecorded(error, forget);
+      if (!staffDialog.mayReport(target.username)) return;
       throw error;
     }
     forget();
-    await loadPerson(person.staff, page);
-    setMessage(`Peran ${assignment.roleName} dicabut dari ${person.staff.displayName}.`);
+    await loadPerson(target, page);
+    if (staffDialog.mayReport(target.username)) setMessage(`Peran ${assignment.roleName} dicabut dari ${target.displayName}.`);
   });
 
   /** HCIS saying the request was already recorded means the earlier attempt went through. */
@@ -224,6 +238,17 @@ export function HcisRolesPage({ workspace, onLogout, onAuthorizationDenied }: Pr
     done();
     await loadPerson(person.staff, page).catch(() => undefined);
   };
+
+  // The form belongs to one person: an SK number or a term end must not follow the operator to
+  // the next person (or to the same person reopened), and a role picked for one account type may
+  // not exist for the next. Each time the pop-up's person changes or it closes, the form starts empty.
+  useEffect(() => {
+    setRoleId(""); setScopeType("organization"); setUnitId(""); setReason(""); setStartsOn(""); setEndsOn("");
+    if (dialogStaff) void run(() => loadPerson(dialogStaff));
+    // Once per person shown in the pop-up.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dialogStaff?.subject]);
+  const shown = person.status !== "idle" && dialogStaff && person.staff.subject === dialogStaff.subject ? person : null;
 
   const account = person.status === "ready" ? person.lookup.account : null;
   const accountWarning = account && !account.grantable
@@ -237,65 +262,67 @@ export function HcisRolesPage({ workspace, onLogout, onAuthorizationDenied }: Pr
     <div className="mt-5 rounded-2xl border border-brand-primary/15 bg-brand-primary-pale/50 p-4 text-sm leading-6 text-brand-primary-deep">
       Anda memberi peran memakai akun pegawai Anda sendiri. Daftar peran, aturannya, dan catatan auditnya tetap milik HCIS; SQ Hub hanya menyampaikan perintah.
     </div>
-    {message ? <div className="mt-4 rounded-xl border border-border bg-surface-raised p-3 text-sm" role="status">{message}</div> : null}
+    {message && !staffDialog.username ? <div className="mt-4 rounded-xl border border-border bg-surface-raised p-3 text-sm" role="status">{message}</div> : null}
 
     {catalog.status === "loading" ? <p className="mt-6 flex items-center gap-2 text-sm text-muted-foreground"><RefreshCw className="h-4 w-4 animate-spin" /> Memuat katalog peran dari HCIS...</p> : null}
     {catalog.status === "inactive" ? <Notice title="Belum aktif" body="Kanal pemberian peran di HCIS belum dinyalakan. Ini keadaan yang direncanakan, bukan kerusakan. Sampai dinyalakan, peran HCIS masih diberikan lewat jalur break-glass HCIS." /> : null}
     {catalog.status === "not_configured" ? <Notice title="Belum dipasang" body="SQ Hub belum memegang akun mesin kanal pemberian peran HCIS. Tidak ada permintaan yang dikirim ke HCIS." /> : null}
     {catalog.status === "error" ? <Notice title="Katalog belum dapat dimuat" body={catalog.message} action={{ label: "Coba lagi", onClick: loadCatalog }} /> : null}
 
-    {catalog.status === "ready" ? <div className="mt-6 grid gap-6 xl:grid-cols-[minmax(16rem,0.7fr)_minmax(0,1.3fr)]">
-      <section className="rounded-2xl border border-border bg-surface-raised p-5 shadow-sm">
-        <h2 className="flex items-center gap-2 font-display text-lg font-bold"><Search className="h-5 w-5" /> Pilih pegawai</h2>
-        <div className="mt-4 flex gap-2"><input className={input} value={query} onChange={(e) => setQuery(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") void search(); }} placeholder="Cari NIP, email, atau nama" /><button className={secondary} disabled={busy || query.trim().length < 2} onClick={() => void search()}><Search className="h-4 w-4" /> Cari</button></div>
-        <div className="mt-3 space-y-2">{results.map((entry) => <button key={entry.subject} className={person.status !== "idle" && person.staff.subject === entry.subject ? "w-full rounded-xl border border-brand-primary/40 bg-brand-primary-pale/55 p-3 text-left text-sm" : "w-full rounded-xl border border-border p-3 text-left text-sm"} onClick={() => void run(() => loadPerson(entry))}><strong>{entry.displayName}</strong><span className="block text-xs text-muted-foreground">{entry.username}{entry.email ? ` · ${entry.email}` : ""}</span></button>)}</div>
-      </section>
+    {catalog.status === "ready" ? <section className="mt-6 rounded-2xl border border-border bg-surface-raised p-5 shadow-sm">
+      <h2 className="flex items-center gap-2 font-display text-lg font-bold"><Search className="h-5 w-5" /> Pilih pegawai</h2>
+      <div className="mt-4 flex gap-2"><input className={input} value={query} onChange={(e) => setQuery(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") void search(); }} placeholder="Cari NIP, email, atau nama" /><button className={secondary} disabled={busy || query.trim().length < 2} onClick={() => void search()}><Search className="h-4 w-4" /> Cari</button></div>
+      <div className="mt-3 grid gap-2 md:grid-cols-2 xl:grid-cols-3">{results.map((entry) => <button key={entry.subject} className={staffDialog.username === entry.username ? "w-full rounded-xl border border-brand-primary/40 bg-brand-primary-pale/55 p-3 text-left text-sm" : "w-full rounded-xl border border-border p-3 text-left text-sm"} onClick={() => { setMessage(null); staffDialog.open(entry); }}><strong>{entry.displayName}</strong><span className="block text-xs text-muted-foreground">{entry.username}{entry.email ? ` · ${entry.email}` : ""}</span></button>)}</div>
+      {results.length === 0 ? <p className="mt-3 text-sm text-muted-foreground">Pilih pegawai untuk melihat peran HCIS-nya. Perannya terbuka di jendela pop-up.</p> : null}
+    </section> : null}
 
-      <section className="rounded-2xl border border-border bg-surface-raised p-5 shadow-sm">
-        {person.status === "idle" ? <p className="text-sm text-muted-foreground">Pilih pegawai untuk melihat peran HCIS-nya.</p> : null}
-        {person.status === "loading" ? <p className="flex items-center gap-2 text-sm text-muted-foreground"><RefreshCw className="h-4 w-4 animate-spin" /> Membaca akun HCIS {person.staff.displayName}...</p> : null}
-        {person.status === "no_account" ? <p className="text-sm">SQ Hub tidak menemukan akun HCIS untuk <strong>{person.staff.displayName}</strong>, jadi peran HCIS tidak dapat diberikan dari sini.</p> : null}
-        {person.status === "ready" ? <>
-          <h2 className="font-display text-lg font-bold">{person.staff.displayName}</h2>
-          {accountWarning ? <p className="mt-2 rounded-xl bg-warning-soft p-3 text-xs text-warning-ink">{accountWarning}</p> : null}
-          {account?.principalType === "FOUNDATION_BOARD" ? <p className="mt-2 rounded-xl bg-brand-primary-pale/50 p-3 text-xs text-brand-primary-deep">Akun Organ Yayasan. HCIS hanya mengizinkan peran yang ditandai untuk organ, dengan nomor SK dan tanggal akhir masa jabatan.</p> : null}
-          <h3 className="mt-4 text-xs font-bold uppercase tracking-wide text-muted-foreground">Peran saat ini ({person.lookup.assignments.pagination.total})</h3>
-          {person.lookup.assignments.items.length === 0 ? <p className="mt-2 text-sm text-muted-foreground">Belum ada peran HCIS.</p> : <ul className="mt-2 divide-y divide-border/60 rounded-xl border border-border/70">
-            {person.lookup.assignments.items.map((assignment) => <li key={assignment.assignmentId} className="flex flex-col gap-2 p-3 text-sm sm:flex-row sm:items-center sm:justify-between">
-              <span><strong>{assignment.roleName}</strong><span className="block text-xs text-muted-foreground">{scopeLabels[assignment.scopeType] ?? assignment.scopeType}{assignment.organizationalUnitName ? ` · ${assignment.organizationalUnitName}` : ""}{assignment.endsOn ? ` · sampai ${assignment.endsOn}` : ""}</span></span>
-              {assignment.revocableViaHub
-                ? <button className={secondary} disabled={busy} onClick={() => void revoke(assignment)}><UserMinus className="h-4 w-4" /> Cabut</button>
-                : <span className="text-xs text-muted-foreground">Tidak dapat dicabut lewat SQ Hub</span>}
-            </li>)}
-          </ul>}
-          {person.lookup.assignments.pagination.pageCount > 1 ? <div className="mt-2 flex items-center justify-between gap-2 text-xs text-muted-foreground">
-            <span>Halaman {person.lookup.assignments.pagination.page} dari {person.lookup.assignments.pagination.pageCount} · {person.lookup.assignments.pagination.total} peran</span>
-            <span className="flex gap-2">
-              <button className={secondary} disabled={busy || page <= 1} onClick={() => void run(() => loadPerson(person.staff, page - 1))}>Sebelumnya</button>
-              <button className={secondary} disabled={busy || page >= person.lookup.assignments.pagination.pageCount} onClick={() => void run(() => loadPerson(person.staff, page + 1))}>Berikutnya</button>
-            </span>
-          </div> : null}
+    {catalog.status === "ready" && staffDialog.username ? <DetailDialog title={shown?.staff.displayName ?? "Peran HCIS"} description={shown ? shown.staff.username : undefined} onClose={staffDialog.close}>
+      {message ? <div className="mb-4 rounded-xl border border-border bg-surface-raised p-3 text-sm" role="status">{message}</div> : null}
+      {staffDialog.status === "loading" ? <p className="flex items-center gap-2 text-sm text-muted-foreground"><RefreshCw className="h-4 w-4 animate-spin" /> Mencari orang di Akun SQ...</p> : null}
+      {staffDialog.status === "missing" ? <p className="text-sm text-muted-foreground">Tidak ada Akun SQ dengan nama pengguna pada tautan ini. Tutup lalu cari ulang.</p> : null}
+      {staffDialog.status === "error" ? <p className="text-sm text-muted-foreground">Data orang ini belum dapat dimuat. Tutup lalu coba lagi beberapa saat.</p> : null}
+      {staffDialog.status === "ready" && !shown && !message ? <p className="flex items-center gap-2 text-sm text-muted-foreground"><RefreshCw className="h-4 w-4 animate-spin" /> Membaca akun HCIS {dialogStaff?.displayName}...</p> : null}
+      {shown?.status === "loading" ? <p className="flex items-center gap-2 text-sm text-muted-foreground"><RefreshCw className="h-4 w-4 animate-spin" /> Membaca akun HCIS {shown.staff.displayName}...</p> : null}
+      {shown?.status === "no_account" ? <p className="text-sm">SQ Hub tidak menemukan akun HCIS untuk <strong>{shown.staff.displayName}</strong>, jadi peran HCIS tidak dapat diberikan dari sini.</p> : null}
+      {shown?.status === "ready" ? <>
+        {accountWarning ? <p className="rounded-xl bg-warning-soft p-3 text-xs text-warning-ink">{accountWarning}</p> : null}
+        {account?.principalType === "FOUNDATION_BOARD" ? <p className="mt-2 rounded-xl bg-brand-primary-pale/50 p-3 text-xs text-brand-primary-deep">Akun Organ Yayasan. HCIS hanya mengizinkan peran yang ditandai untuk organ, dengan nomor SK dan tanggal akhir masa jabatan.</p> : null}
+        <h3 className="mt-4 text-xs font-bold uppercase tracking-wide text-muted-foreground">Peran saat ini ({shown.lookup.assignments.pagination.total})</h3>
+        {shown.lookup.assignments.items.length === 0 ? <p className="mt-2 text-sm text-muted-foreground">Belum ada peran HCIS.</p> : <ul className="mt-2 divide-y divide-border/60 rounded-xl border border-border/70">
+          {shown.lookup.assignments.items.map((assignment) => <li key={assignment.assignmentId} className="flex flex-col gap-2 p-3 text-sm sm:flex-row sm:items-center sm:justify-between">
+            <span><strong>{assignment.roleName}</strong><span className="block text-xs text-muted-foreground">{scopeLabels[assignment.scopeType] ?? assignment.scopeType}{assignment.organizationalUnitName ? ` · ${assignment.organizationalUnitName}` : ""}{assignment.endsOn ? ` · sampai ${assignment.endsOn}` : ""}</span></span>
+            {assignment.revocableViaHub
+              ? <button className={secondary} disabled={busy} onClick={() => void revoke(assignment)}><UserMinus className="h-4 w-4" /> Cabut</button>
+              : <span className="text-xs text-muted-foreground">Tidak dapat dicabut lewat SQ Hub</span>}
+          </li>)}
+        </ul>}
+        {shown.lookup.assignments.pagination.pageCount > 1 ? <div className="mt-2 flex items-center justify-between gap-2 text-xs text-muted-foreground">
+          <span>Halaman {shown.lookup.assignments.pagination.page} dari {shown.lookup.assignments.pagination.pageCount} · {shown.lookup.assignments.pagination.total} peran</span>
+          <span className="flex gap-2">
+            <button className={secondary} disabled={busy || page <= 1} onClick={() => void run(() => loadPerson(shown.staff, page - 1))}>Sebelumnya</button>
+            <button className={secondary} disabled={busy || page >= shown.lookup.assignments.pagination.pageCount} onClick={() => void run(() => loadPerson(shown.staff, page + 1))}>Berikutnya</button>
+          </span>
+        </div> : null}
 
-          <h3 className="mt-6 flex items-center gap-2 text-xs font-bold uppercase tracking-wide text-muted-foreground"><KeyRound className="h-4 w-4" /> Beri peran</h3>
-          <div className="mt-2 grid gap-3 sm:grid-cols-2">
-            <label className="text-xs font-bold sm:col-span-2">Peran<select className={input} value={roleId} onChange={(e) => changeGrant(() => { setRoleId(e.target.value); const next = roles.find((entry) => entry.roleId === e.target.value); setScopeType(next?.allowedScopes[0] ?? "organization"); })}>
-              <option value="">Pilih peran</option>
-              {roles.map((entry) => <option key={entry.roleId} value={entry.roleId}>{entry.name}</option>)}
-            </select></label>
-            {roles.length === 0 ? <p className="text-xs text-muted-foreground sm:col-span-2">HCIS tidak menerbitkan peran untuk jenis akun ini.</p> : null}
-            {role ? <p className="text-xs leading-5 text-muted-foreground sm:col-span-2">{role.description ?? "HCIS tidak menyertakan keterangan."} {role.permissions.length} izin.{role.mandateRequired ? " Menuntut mandat." : ""}</p> : null}
-            <label className="text-xs font-bold">Cakupan<select className={input} value={scopeType} onChange={(e) => changeGrant(() => setScopeType(e.target.value))} disabled={!role}>
-              {(role?.allowedScopes ?? ["organization"]).map((scope) => <option key={scope} value={scope}>{scopeLabels[scope] ?? scope}</option>)}
-            </select></label>
-            {scopeType === "unit" ? <label className="text-xs font-bold">ID unit organisasi<input className={input} value={unitId} onChange={(e) => changeGrant(() => setUnitId(e.target.value))} /></label> : null}
-            <label className="text-xs font-bold">Mulai (opsional)<input type="date" className={input} value={startsOn} onChange={(e) => changeGrant(() => setStartsOn(e.target.value))} /></label>
-            <label className="text-xs font-bold">{role?.endDateRequired ? "Berakhir (wajib, akhir masa jabatan)" : "Berakhir (opsional)"}<input type="date" className={input} value={endsOn} onChange={(e) => changeGrant(() => setEndsOn(e.target.value))} /></label>
-            <label className="text-xs font-bold sm:col-span-2">Mandat / alasan<textarea className={input} value={reason} onChange={(e) => changeGrant(() => setReason(e.target.value))} placeholder="Contoh: SK Ketua Pengurus No. 12/2026" /></label>
-          </div>
-          <button className={primary} disabled={busy || !role || !person.lookup.account.grantable} onClick={() => void grant()}><KeyRound className="h-4 w-4" /> Berikan peran</button>
-        </> : null}
-      </section>
-    </div> : null}
+        <h3 className="mt-6 flex items-center gap-2 text-xs font-bold uppercase tracking-wide text-muted-foreground"><KeyRound className="h-4 w-4" /> Beri peran</h3>
+        <div className="mt-2 grid gap-3 sm:grid-cols-2">
+          <label className="text-xs font-bold sm:col-span-2">Peran<select className={input} value={roleId} onChange={(e) => changeGrant(() => { setRoleId(e.target.value); const next = roles.find((entry) => entry.roleId === e.target.value); setScopeType(next?.allowedScopes[0] ?? "organization"); })}>
+            <option value="">Pilih peran</option>
+            {roles.map((entry) => <option key={entry.roleId} value={entry.roleId}>{entry.name}</option>)}
+          </select></label>
+          {roles.length === 0 ? <p className="text-xs text-muted-foreground sm:col-span-2">HCIS tidak menerbitkan peran untuk jenis akun ini.</p> : null}
+          {role ? <p className="text-xs leading-5 text-muted-foreground sm:col-span-2">{role.description ?? "HCIS tidak menyertakan keterangan."} {role.permissions.length} izin.{role.mandateRequired ? " Menuntut mandat." : ""}</p> : null}
+          <label className="text-xs font-bold">Cakupan<select className={input} value={scopeType} onChange={(e) => changeGrant(() => setScopeType(e.target.value))} disabled={!role}>
+            {(role?.allowedScopes ?? ["organization"]).map((scope) => <option key={scope} value={scope}>{scopeLabels[scope] ?? scope}</option>)}
+          </select></label>
+          {scopeType === "unit" ? <label className="text-xs font-bold">ID unit organisasi<input className={input} value={unitId} onChange={(e) => changeGrant(() => setUnitId(e.target.value))} /></label> : null}
+          <label className="text-xs font-bold">Mulai (opsional)<input type="date" className={input} value={startsOn} onChange={(e) => changeGrant(() => setStartsOn(e.target.value))} /></label>
+          <label className="text-xs font-bold">{role?.endDateRequired ? "Berakhir (wajib, akhir masa jabatan)" : "Berakhir (opsional)"}<input type="date" className={input} value={endsOn} onChange={(e) => changeGrant(() => setEndsOn(e.target.value))} /></label>
+          <label className="text-xs font-bold sm:col-span-2">Mandat / alasan<textarea className={input} value={reason} onChange={(e) => changeGrant(() => setReason(e.target.value))} placeholder="Contoh: SK Ketua Pengurus No. 12/2026" /></label>
+        </div>
+        <button className={primary} disabled={busy || !role || !shown.lookup.account.grantable} onClick={() => void grant()}><KeyRound className="h-4 w-4" /> Berikan peran</button>
+      </> : null}
+    </DetailDialog> : null}
   </AppShell>;
 }
 

@@ -179,3 +179,38 @@ describe("ORGAN-IMPL-001 §1.2 sessions bound to their client", () => {
     expect(await repository.getSession("d".repeat(64), 3600, organ)).toBeNull();
   });
 });
+
+/**
+ * ORGAN-IMPL-001 §4.2 / ADR-0012 D4. The callback refuses a login that did not reach the level the
+ * authorization request asked for — but only if it still knows what was asked. The transaction is
+ * persisted column by column, and the step-up requirement had no column: it was written nowhere and
+ * came back undefined, so the check never ran and the realm's answer was never looked at.
+ */
+describe("ORGAN-IMPL-001 §4.2 step-up survives the redirect", () => {
+  const transaction = {
+    state: "state-step-up",
+    codeVerifier: "verifier-step-up",
+    nonce: "nonce-step-up",
+    returnPath: "/" as const,
+  };
+
+  it("hands the requirement back to the callback", async () => {
+    await repository.createTransaction({
+      tokenHash: "e".repeat(64),
+      transaction: { ...transaction, stepUp: { acr: "2", maxAgeSeconds: 900 } },
+      expiresAt: new Date(Date.now() + 600_000),
+    });
+    const stored = await repository.consumeTransaction("e".repeat(64));
+    expect(stored?.transaction.stepUp).toEqual({ acr: "2", maxAgeSeconds: 900 });
+  });
+
+  it("leaves an ordinary sign-in without one", async () => {
+    await repository.createTransaction({
+      tokenHash: "f".repeat(64),
+      transaction,
+      expiresAt: new Date(Date.now() + 600_000),
+    });
+    const stored = await repository.consumeTransaction("f".repeat(64));
+    expect(stored?.transaction.stepUp).toBeUndefined();
+  });
+});

@@ -111,5 +111,5 @@ export const activityLabel: Record<string, string> = {
 export function cakupanText(optout: KirimOptout): string {
   if (optout.cakupan === "semua") return "Semua pesan otomatis";
   if (optout.cakupan === "device") return `Nomor ${optout.nomor ?? "—"}`;
-  return `Modul ${optout.modul ?? "—"}`;
+  return `Aplikasi ${optout.modul ?? "—"}`;
 }

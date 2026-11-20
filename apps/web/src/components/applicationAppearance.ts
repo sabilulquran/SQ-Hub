@@ -3,6 +3,7 @@ import {
   BriefcaseBusiness,
   GraduationCap,
   KanbanSquare,
+  Mailbox,
   MessageCircle,
   PanelsTopLeft,
   UsersRound,
@@ -23,6 +24,7 @@ const appearanceByKey: Record<string, ApplicationAppearance> = {
   "spmb-sq": { icon: GraduationCap, tile: "bg-cat-leave-soft text-cat-leave" },
   "kirim-sq": { icon: MessageCircle, tile: "bg-cat-pay-soft text-cat-pay" },
   "kerja-sq": { icon: KanbanSquare, tile: "bg-cat-attendance-soft text-cat-attendance" },
+  "sekretariat-sq": { icon: Mailbox, tile: "bg-cat-service-soft text-cat-service" },
 };
 
 const defaultAppearance: ApplicationAppearance = {

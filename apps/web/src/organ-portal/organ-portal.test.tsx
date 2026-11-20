@@ -2,7 +2,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
 import { governanceFixture } from "@/dev/governanceFixture";
-import { collectDecisions } from "@/organ-portal/decisions";
+import { collectDecisions, requestIdFor, type DecisionDirection } from "@/organ-portal/decisions";
 import { EmployeeListView } from "@/organ-portal/EmployeeList";
 import { OrganAppView } from "@/organ-portal/OrganApp";
 import { detailHref, isOrganHost, resolveOrganRoute } from "@/organ-portal/routes";
@@ -114,5 +114,30 @@ describe("Daftar pegawai (ORG-014)", () => {
   it("says so when nothing matches", () => {
     const empty = { ...page, items: [], pagination: { page: 1, pageSize: 25, total: 0, pageCount: 0 } };
     expect(text(renderToStaticMarkup(<EmployeeListView state={{ status: "ready", page: empty }} filters={{ page: 1, q: "zz", unitId: "" }} />))).toContain("Tidak ada pegawai yang cocok");
+  });
+});
+
+describe("ORGAN-IMPL-001 §4.2 R2: one requestId per action", () => {
+  function ids() {
+    let next = 0;
+    const store: Partial<Record<DecisionDirection, string>> = {};
+    return { store, make: () => `id-${++next}` };
+  }
+
+  it("keeps the same id when the same decision is tried again", () => {
+    const { store, make } = ids();
+    expect(requestIdFor(store, "approve", make)).toBe("id-1");
+    expect(requestIdFor(store, "approve", make)).toBe("id-1");
+  });
+
+  it("never lets a rejection's id carry an approval", () => {
+    // The sequence that matters: Tolak is pressed, its answer is lost, then Setujui is pressed.
+    // With one id for both, the application would replay the rejection and answer 200, and the
+    // member would be shown success for a decision that went the other way.
+    const { store, make } = ids();
+    const rejected = requestIdFor(store, "reject", make);
+    const approved = requestIdFor(store, "approve", make);
+    expect(approved).not.toBe(rejected);
+    expect(requestIdFor(store, "reject", make)).toBe(rejected);
   });
 });

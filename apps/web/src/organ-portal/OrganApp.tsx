@@ -5,6 +5,7 @@ import { GovernanceChartView } from "@/governance/GovernanceChartView";
 import { organBadge } from "@/organ";
 import { ApplicationSection, AttentionList, FigureBand, SectionStamp } from "@/organ-portal/ApplicationSection";
 import { collectDecisions, type DecisionRow } from "@/organ-portal/decisions";
+import { DecisionsInbox } from "@/organ-portal/DecisionsInbox";
 import { EmployeeList } from "@/organ-portal/EmployeeList";
 import { formatToday } from "@/organ-portal/format";
 import { OrganShell } from "@/organ-portal/OrganShell";
@@ -14,6 +15,8 @@ import type { GovernanceCard, GovernanceSnapshot, GovernanceSummary, Organ } fro
 interface OrganSession {
   user: { displayName: string };
   membership: { organ: Organ; positionLabel?: string };
+  /** R2: present once the portal can take the decision itself (ORGAN-IMPL-001 §4.2). */
+  capabilities?: { decisions?: boolean };
 }
 
 export type OrganViewState =
@@ -148,7 +151,12 @@ export function OrganAppView({
       {ready?.snapshot && route.name === "ringkasan" ? (
         <Overview session={ready.session} snapshot={ready.snapshot} retrying={retrying} onRetryCard={onRetryCard} now={now} />
       ) : null}
-      {ready?.snapshot && route.name === "keputusan" ? <DecisionsPage rows={collectDecisions(ready.snapshot.cards)} /> : null}
+      {ready?.snapshot && route.name === "keputusan" ? (
+        <DecisionsPage
+          rows={collectDecisions(ready.snapshot.cards)}
+          deciding={ready.session.capabilities?.decisions === true}
+        />
+      ) : null}
       {ready?.snapshot && route.name === "aplikasi" ? (
         <DetailPage card={ready.snapshot.cards.find((card) => card.applicationKey === route.applicationKey)} detail={detail} />
       ) : null}
@@ -246,16 +254,18 @@ function DetailPage({ card, detail }: { card: GovernanceCard | undefined; detail
   );
 }
 
-function DecisionsPage({ rows }: { rows: DecisionRow[] }) {
+function DecisionsPage({ rows, deciding }: { rows: DecisionRow[]; deciding: boolean }) {
   return (
     <>
       <header>
         <h1 className="text-[28px] font-semibold leading-tight tracking-[-0.01em] text-brand-heading sm:text-[32px]">Keputusan</h1>
         <p className="mt-2 max-w-2xl text-sm text-muted-foreground">
-          Pengajuan yang menunggu keputusan Anda. Keputusan diambil di aplikasi asalnya, yang mencatat aturan dan riwayatnya.
+          {deciding
+            ? "Pengajuan yang menunggu keputusan Anda. Aturan, riwayat, dan catatannya tetap berada di aplikasi asalnya."
+            : "Pengajuan yang menunggu keputusan Anda. Keputusan diambil di aplikasi asalnya, yang mencatat aturan dan riwayatnya."}
         </p>
       </header>
-      <DecisionsPanel rows={rows} />
+      {deciding ? <DecisionsInbox /> : <DecisionsPanel rows={rows} />}
     </>
   );
 }

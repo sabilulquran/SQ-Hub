@@ -1,5 +1,5 @@
 import type { AntreanState } from "@/kirim/AntreanPage";
-import type { KirimDevice } from "@/kirim/api";
+import type { KirimDevice, KirimGatewayDetail } from "@/kirim/api";
 import type { NomorState } from "@/kirim/NomorPage";
 
 /** Synthetic Kirim SQ data for previews and tests; numbers are masked, no message bodies exist here. */
@@ -19,6 +19,27 @@ const ujiDevice: KirimDevice = {
   status_berubah_at: "2026-10-17T02:00:00.000Z", antrean: { antre: 0, gagal_hari_ini: 0 },
 };
 
+/** ADR-0011 amendment 2026-11-17: a number on the "Aplikasi luar" card; no application name on the card. */
+const luarDevice: KirimDevice = {
+  kode: "luar", label: "Aplikasi luar", pemilik: "aplikasi-luar", provider: "jalurpesan", provider_ref: "luar", status: "tersambung",
+  nomor_tersamar: "+62 851-••••-2504", antrean_dijeda: false, rate_per_menit: 10, jam_kirim_mulai: "06:00", jam_kirim_selesai: "21:00",
+  status_berubah_at: "2026-11-17T01:00:00.000Z", antrean: { antre: 0, gagal_hari_ini: 0 },
+};
+
+const luarDevice2: KirimDevice = {
+  ...luarDevice, kode: "luar-2", label: "Aplikasi luar 2", status: "belum_dipasang", nomor_tersamar: null, antrean: { antre: 0, gagal_hari_ini: 0 },
+};
+
+/** Each number carries its own key; the pop-up can show and copy it. No application name anywhere. */
+export const kirimGerbangDetailFixture: KirimGatewayDetail = {
+  nama: "Aplikasi luar",
+  keterangan: "Portal atau aplikasi di luar Sabilul Qur'an Suite yang memakai API",
+  nomor: [
+    { ...luarDevice, webhook_terdaftar: false, kunci: { awalan: "krm_Ab12Cd34", kunci: "krm_Ab12Cd34EfGh56IjKl78MnOp90QrSt", dibuat_at: "2026-11-17T01:05:00.000Z", terakhir_dipakai_at: "2026-11-17T02:00:00.000Z" } },
+    { ...luarDevice2, webhook_terdaftar: false, kunci: null },
+  ],
+};
+
 export const kirimNomorFixture: NomorState = {
   status: "ready",
   consumers: [
@@ -34,7 +55,15 @@ export const kirimNomorFixture: NomorState = {
       { application_key: "keuangan", nama: "Keuangan", peran: "kosong", nomor: null, jenis: [], antrean: { antre: 0, gagal_hari_ini: 0 }, dipakai_juga_oleh: [], pemilik_nomor: null },
       { application_key: "spmb-sq", nama: "SPMB SQ", peran: "pemilik", nomor: spmbDevice, jenis: ["notifikasi", "kode"], antrean: { antre: 12, gagal_hari_ini: 1 }, dipakai_juga_oleh: ["Keluarga"], pemilik_nomor: null },
     ],
-    devices: [hcisDevice, spmbDevice, ujiDevice],
+    devices: [hcisDevice, spmbDevice, ujiDevice, luarDevice],
+    gerbang: {
+      nama: kirimGerbangDetailFixture.nama,
+      keterangan: kirimGerbangDetailFixture.keterangan,
+      nomor: [
+        { ...luarDevice, webhook_terdaftar: false, kunci: { awalan: "krm_Ab12Cd34", dibuat_at: "2026-11-17T01:05:00.000Z", terakhir_dipakai_at: "2026-11-17T02:00:00.000Z" } },
+        { ...luarDevice2, webhook_terdaftar: false, kunci: null },
+      ],
+    },
   },
 };
 

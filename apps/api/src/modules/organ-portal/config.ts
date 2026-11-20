@@ -6,6 +6,11 @@ export interface OrganPortalConfig {
   publicOrigin: string;
   /** Registry key of the portal itself; members need active Application Access to it (§1.2). */
   applicationKey: string;
+  /**
+   * ORGAN-IMPL-001 R2 (§4.2). Off by default: the Keputusan tab keeps linking to the owning
+   * application, and no decision route exists.
+   */
+  decisionsEnabled: boolean;
 }
 
 const booleanString = z.enum(["true", "false"]).transform((value) => value === "true");
@@ -14,6 +19,7 @@ const optionalNonempty = <T extends z.ZodTypeAny>(schema: T) =>
 
 const envSchema = z.object({
   PORTAL_ORGAN_ENABLED: booleanString.prefault("false"),
+  PORTAL_ORGAN_DECISIONS_ENABLED: booleanString.prefault("false"),
   ORGAN_OIDC_CLIENT_ID: optionalNonempty(z.string().trim().min(1)),
   ORGAN_OIDC_CLIENT_SECRET: optionalNonempty(z.string().min(1)),
   ORGAN_PUBLIC_ORIGIN: optionalNonempty(z.string().url()),
@@ -31,6 +37,7 @@ export function loadOrganPortalConfig(env: NodeJS.ProcessEnv = process.env): Org
     oidc: { clientId: parsed.ORGAN_OIDC_CLIENT_ID, clientSecret: parsed.ORGAN_OIDC_CLIENT_SECRET },
     publicOrigin: parsed.ORGAN_PUBLIC_ORIGIN.replace(/\/$/, ""),
     applicationKey: parsed.ORGAN_APPLICATION_KEY,
+    decisionsEnabled: parsed.PORTAL_ORGAN_DECISIONS_ENABLED,
   };
 }
 

@@ -45,8 +45,8 @@ export async function queueStoredImport(
   return withTransaction(pool, async (client) => {
     const device = await findDevice(client, input.kode, true);
     if (!device) throw new KirimApiError(404, "device_unknown", "Nomor tidak dikenal.");
-    if (device.provider !== "jalurpesan" || device.status === "nonaktif") {
-      throw new KirimApiError(409, "history_import_unavailable", "Impor dari salinan awal hanya untuk nomor JalurPesan yang aktif.");
+    if (device.provider === "log" || device.status === "nonaktif") {
+      throw new KirimApiError(409, "history_import_unavailable", "Impor dari salinan awal hanya untuk nomor yang aktif di sebuah mesin WhatsApp.");
     }
     // The device row is locked above (FOR UPDATE), so two requests for one number cannot both pass this check.
     const busy = await client.query(
@@ -218,8 +218,8 @@ export class KirimHistoryImport {
       ringkasan.dilewati += Number(row.dilewati);
     }
     return {
-      impor_perangkat_tersedia: this.options.enabled && device.provider === "jalurpesan",
-      impor_salinan_tersedia: this.options.enabled && device.provider === "jalurpesan" && device.status !== "nonaktif",
+      impor_perangkat_tersedia: this.options.enabled && device.provider !== "log",
+      impor_salinan_tersedia: this.options.enabled && device.provider !== "log" && device.status !== "nonaktif",
       ringkasan,
       impor: rows.rows.map((row) => ({
         id: row.id,
@@ -238,7 +238,7 @@ export class KirimHistoryImport {
   /** §10.1 step 2: one queued row per known private conversation of the number. */
   async startDeviceImport(actor: ImportActor, kode: string, input: z.infer<typeof deviceImportSchema>) {
     const device = await this.requireDevice(kode);
-    if (!this.options.enabled || device.provider !== "jalurpesan") {
+    if (!this.options.enabled || device.provider === "log") {
       throw new KirimApiError(409, "history_import_unavailable", "Impor dari WhatsApp belum tersedia di mesin nomor ini.");
     }
     return withTransaction(this.pool, async (client) => {

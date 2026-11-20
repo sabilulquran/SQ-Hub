@@ -13,7 +13,8 @@ export interface KirimDevice {
   kode: string;
   label: string;
   pemilik: string;
-  provider: "log" | "jalurpesan";
+  /** KIRIM-IMPL-005: `wa` is the Yayasan's own engine, `jalurpesan` the one it replaces. */
+  provider: "log" | "jalurpesan" | "wa";
   provider_ref: string | null;
   status: DeviceStatus;
   nomor_tersamar: string | null;
@@ -48,6 +49,42 @@ export interface KirimModuleCard {
 
 export interface KirimModuleList extends KirimDeviceList {
   modules: KirimModuleCard[];
+  /** ADR-0011 amendment 2026-11-17: the one "Aplikasi luar" card for applications outside SQ Suite. */
+  gerbang?: KirimGatewayCard;
+}
+
+/** The number's own API key as the pop-up shows it; `kunci` is null only for a key made before migration 0024. */
+export interface KirimGatewayKey {
+  awalan: string;
+  kunci: string | null;
+  dibuat_at: string;
+  terakhir_dipakai_at: string | null;
+}
+
+export interface KirimGatewayNumber extends KirimDevice {
+  kunci: KirimGatewayKey | null;
+  webhook_terdaftar?: boolean;
+}
+
+/** What a card shows about a number's key: never the key itself, which is read once in the pop-up. */
+export type KirimGatewayKeySummary = Omit<KirimGatewayKey, "kunci">;
+
+/** One outside number as its own card (owner decision 2026-11-17), beside the application cards. */
+export interface KirimGatewayCardNumber extends KirimDevice {
+  kunci: KirimGatewayKeySummary | null;
+  webhook_terdaftar?: boolean;
+}
+
+export interface KirimGatewayCard {
+  nama: string;
+  keterangan: string;
+  nomor: KirimGatewayCardNumber[];
+}
+
+export interface KirimGatewayDetail {
+  nama: string;
+  keterangan: string;
+  nomor: KirimGatewayNumber[];
 }
 
 export interface KirimConsumer {

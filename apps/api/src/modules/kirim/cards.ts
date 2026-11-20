@@ -6,7 +6,7 @@ import { z } from "zod";
 import { toBrowserDevice, type AdminActor, type KirimAdminService } from "./admin.js";
 import { columnAad, type KirimCrypto } from "./crypto.js";
 import { wibDayStart } from "./policy.js";
-import type { KirimProvider, ProviderName } from "./providers/types.js";
+import { defaultEngine, type KirimProvider, type ProviderName } from "./providers/types.js";
 import {
   dbNow,
   ensureApplicationConsumer,
@@ -87,7 +87,7 @@ export class KirimModuleCards {
    */
   async connectNewNumber(actor: AdminActor, applicationKey: string, input: z.infer<typeof newNumberSchema> = { nomor_berbeda: false }) {
     return this.change(applicationKey, async (client, application, consumer) => {
-      if (consumer.nomorDeviceId) throw new KirimApiError(409, "kartu_sudah_tersambung", "Modul ini sudah tersambung. Putuskan dulu sebelum memakai nomor lain.");
+      if (consumer.nomorDeviceId) throw new KirimApiError(409, "kartu_sudah_tersambung", "Aplikasi ini sudah tersambung. Putuskan dulu sebelum memakai nomor lain.");
       const own = await client.query<{ kode: string; label: string; status: string }>(
         "SELECT kode, label, status FROM kirim_devices WHERE pemilik_consumer_id = $1 ORDER BY created_at, kode",
         [consumer.id],
@@ -101,12 +101,12 @@ export class KirimModuleCards {
         );
       }
       const kode = await freeIdentifier(client, "kirim_devices", application.applicationKey);
-      const provider: ProviderName = this.providers.jalurpesan ? "jalurpesan" : "log";
+      const provider: ProviderName = defaultEngine(this.providers);
       const deviceId = randomUUID();
       await client.query(
         `INSERT INTO kirim_devices (id, kode, label, pemilik_consumer_id, provider, provider_ref, status)
          VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-        [deviceId, kode, `Nomor ${application.name}`.slice(0, 100), consumer.id, provider, provider === "jalurpesan" ? kode : null, provider === "log" ? "tersambung" : "belum_dipasang"],
+        [deviceId, kode, `Nomor ${application.name}`.slice(0, 100), consumer.id, provider, provider === "log" ? null : kode, provider === "log" ? "tersambung" : "belum_dipasang"],
       );
       await client.query("UPDATE kirim_consumers SET nomor_device_id = $2, updated_at = now() WHERE id = $1", [consumer.id, deviceId]);
       await writeAudit(client, {
@@ -124,7 +124,7 @@ export class KirimModuleCards {
   async useOwnNumber(actor: AdminActor, applicationKey: string, input: z.infer<typeof ownNumberSchema>) {
     return this.change(applicationKey, async (client, application, consumer) => {
       const device = await findDevice(client, input.device, true);
-      if (!device || device.pemilikConsumerId !== consumer.id) throw new KirimApiError(422, "nomor_bukan_milik_modul", "Nomor ini bukan milik modul ini.");
+      if (!device || device.pemilikConsumerId !== consumer.id) throw new KirimApiError(422, "nomor_bukan_milik_modul", "Nomor ini bukan milik aplikasi ini.");
       // §12: a card sending through another module's number lets go of it here, without Putuskan first.
       const dilepas = await releaseBorrowed(client, consumer, device.id);
       const diaktifkan = device.status === "nonaktif";
@@ -144,7 +144,7 @@ export class KirimModuleCards {
     return this.change(applicationKey, async (client, application, consumer) => {
       const device = await findDevice(client, input.device, true);
       if (!device || device.status === "nonaktif") throw new KirimApiError(422, "device_inactive", "Nomor tidak aktif.");
-      if (device.pemilikConsumerId === consumer.id) throw new KirimApiError(409, "nomor_milik_sendiri", "Nomor ini sudah milik modul ini.");
+      if (device.pemilikConsumerId === consumer.id) throw new KirimApiError(409, "nomor_milik_sendiri", "Nomor ini sudah milik aplikasi ini.");
       // §12: Ubah on a card using another module's number may move it to a third one in one step.
       const dilepas = await releaseBorrowed(client, consumer, device.id);
       await client.query(
@@ -173,7 +173,7 @@ export class KirimModuleCards {
     const application = await this.requireApplication(this.pool, applicationKey);
     const consumer = await findLinkedConsumer(this.pool, application);
     const device = consumer?.nomorDeviceId ? await findDeviceById(this.pool, consumer.nomorDeviceId) : null;
-    if (!consumer || !device) throw new KirimApiError(409, "kartu_kosong", "Modul ini belum tersambung.");
+    if (!consumer || !device) throw new KirimApiError(409, "kartu_kosong", "Aplikasi ini belum tersambung.");
     if (device.pemilikConsumerId === consumer.id) {
       await this.admin.disconnect(actor, device.kode, alasan);
       return this.card(this.pool, application);
@@ -255,7 +255,7 @@ export class KirimModuleCards {
       const locked = await client.query<{ nomorDeviceId: string | null }>(
         `SELECT nomor_device_id AS "nomorDeviceId" FROM kirim_consumers WHERE id = $1 FOR UPDATE`, [found.id]);
       const consumer: ConsumerRow = { ...found, nomorDeviceId: locked.rows[0]?.nomorDeviceId ?? null };
-      if (!consumer.aktif) throw new KirimApiError(409, "pemakai_nonaktif", "Pemakai modul ini dinonaktifkan operator.");
+      if (!consumer.aktif) throw new KirimApiError(409, "pemakai_nonaktif", "Pemakai aplikasi ini dinonaktifkan operator.");
       await work(client, application, consumer);
     });
     return this.card(this.pool, application);
@@ -263,7 +263,7 @@ export class KirimModuleCards {
 
   private async requireApplication(db: Queryable, applicationKey: string): Promise<RegistryApplication> {
     const application = await findWhatsAppApplication(db, { applicationKey });
-    if (!application || application.status !== "active") throw new KirimApiError(404, "not_found", "Modul tidak ditemukan atau tidak memakai WhatsApp.");
+    if (!application || application.status !== "active") throw new KirimApiError(404, "not_found", "Aplikasi tidak ditemukan atau tidak memakai WhatsApp.");
     return application;
   }
 
@@ -336,7 +336,7 @@ async function findLinkedConsumer(db: Queryable, application: RegistryApplicatio
 async function releaseBorrowed(db: Queryable, consumer: ConsumerRow, targetId: string): Promise<{ dilepas?: string; rute_lama?: string[] }> {
   const current = consumer.nomorDeviceId && consumer.nomorDeviceId !== targetId ? await findDeviceById(db, consumer.nomorDeviceId) : null;
   if (current && current.pemilikConsumerId === consumer.id) {
-    throw new KirimApiError(409, "kartu_sudah_tersambung", "Modul ini sudah memakai nomornya sendiri. Untuk WhatsApp lain pakai Ganti nomor WhatsApp di kartunya.");
+    throw new KirimApiError(409, "kartu_sudah_tersambung", "Aplikasi ini sudah memakai nomornya sendiri. Untuk WhatsApp lain pakai Ganti nomor WhatsApp di kartunya.");
   }
   const removed = await db.query<{ kode: string }>(
     `WITH gone AS (

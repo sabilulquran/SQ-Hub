@@ -1,7 +1,9 @@
 import { Check, RefreshCw, Search, ShieldCheck, UserMinus, UserPlus, X } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 
+import { useStaffDialog } from "@/admin-staff-dialog";
 import { AppShell } from "@/components/AppShell";
+import { DetailDialog } from "@/components/DetailDialog";
 import type {
   AdminStaff,
   PlatformAdministratorAuditEntry,
@@ -47,7 +49,6 @@ export function PlatformAdministratorsPage({ workspace, onLogout, onAuthorizatio
   const [audit, setAudit] = useState<PlatformAdministratorAuditEntry[]>([]);
   const [query, setQuery] = useState("");
   const [staff, setStaff] = useState<AdminStaff[]>([]);
-  const [selected, setSelected] = useState<AdminStaff | null>(null);
   const [reason, setReason] = useState("");
   const [message, setMessage] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -89,17 +90,32 @@ export function PlatformAdministratorsPage({ workspace, onLogout, onAuthorizatio
 
   useEffect(() => { void run(load); }, [run, load]);
 
+  // The picked person opens a small pop-up for the reason, `?orang=<username>` (sq-core-app-shell.md
+  // "Detail views open as a pop-up"); a link or Back to that address opens the same person.
+  const staffDialog = useStaffDialog({ fetchJson: adminFetch, known: staff });
+  const selected = staffDialog.staff;
+  // The reason belongs to one person: it starts empty each time the pop-up's person changes or it closes.
+  useEffect(() => { setReason(""); }, [selected?.subject]);
+
   const search = () => run(async () => {
     const result = await adminFetch<{ staff: AdminStaff[] }>(`/api/admin/staff?q=${encodeURIComponent(query.trim())}`);
-    setStaff(result.staff); setSelected(null);
+    setStaff(result.staff);
   });
 
   const propose = () => run(async () => {
-    if (!selected || !reason.trim()) throw new RequestError("INVALID_REQUEST");
-    await adminFetch("/api/admin/platform-administrators/proposals", { method: "POST", body: JSON.stringify({ subject: selected.subject, reason: reason.trim() }) });
-    setSelected(null); setReason(""); setStaff([]);
+    const target = selected;
+    if (!target || !reason.trim()) throw new RequestError("INVALID_REQUEST");
+    try {
+      await adminFetch("/api/admin/platform-administrators/proposals", { method: "POST", body: JSON.stringify({ subject: target.subject, reason: reason.trim() }) });
+    } catch (error) {
+      // A refusal for a person whose pop-up was closed or replaced is not shown under someone else.
+      if (staffDialog.mayReport(target.username)) throw error;
+      return;
+    }
+    // Close only this person's pop-up; one opened for someone else meanwhile stays as it is.
+    if (staffDialog.isOpenFor(target.username)) { staffDialog.close(); setReason(""); setStaff([]); }
     await load();
-    setMessage("Usulan dibuat. Admin Platform lain harus mengonfirmasinya dalam 7 hari.");
+    if (staffDialog.mayReport(target.username)) setMessage("Usulan dibuat. Admin Platform lain harus mengonfirmasinya dalam 7 hari.");
   });
 
   const decide = (proposalId: string, decision: "confirm" | "cancel") => run(async () => {
@@ -126,7 +142,7 @@ export function PlatformAdministratorsPage({ workspace, onLogout, onAuthorizatio
     <div className="mt-5 rounded-2xl border border-brand-primary/15 bg-brand-primary-pale/50 p-4 text-sm leading-6 text-brand-primary-deep">
       Mengangkat Admin Platform butuh dua orang: satu mengusulkan, Admin Platform lain mengonfirmasi. Tidak ada yang dapat mengangkat dirinya sendiri. Mencabut cukup satu orang.
     </div>
-    {message ? <div className="mt-4 rounded-xl border border-border bg-surface-raised p-3 text-sm" role="status">{message}</div> : null}
+    {message && !staffDialog.username ? <div className="mt-4 rounded-xl border border-border bg-surface-raised p-3 text-sm" role="status">{message}</div> : null}
     {!overview && busy ? <p className="mt-6 flex items-center gap-2 text-sm text-muted-foreground"><RefreshCw className="h-4 w-4 animate-spin" /> Memuat daftar Admin Platform...</p> : null}
 
     {overview ? <div className="mt-6 grid gap-6 xl:grid-cols-2">
@@ -143,8 +159,7 @@ export function PlatformAdministratorsPage({ workspace, onLogout, onAuthorizatio
       <section className="rounded-2xl border border-border bg-surface-raised p-5 shadow-sm">
         <h2 className="flex items-center gap-2 font-display text-lg font-bold"><UserPlus className="h-5 w-5" /> Usulkan Admin Platform</h2>
         <div className="mt-4 flex gap-2"><input className={input} value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Cari NIP, email, atau nama" /><button className={secondary} disabled={busy || query.trim().length < 2} onClick={() => void search()}><Search className="h-4 w-4" /> Cari</button></div>
-        <div className="mt-3 space-y-2">{staff.map((entry) => <button key={entry.subject} className={entry.subject === selected?.subject ? "w-full rounded-xl border border-brand-primary/40 bg-brand-primary-pale/55 p-3 text-left text-sm" : "w-full rounded-xl border border-border p-3 text-left text-sm"} onClick={() => setSelected(entry)}><strong>{entry.displayName}</strong><span className="block text-xs text-muted-foreground">{entry.username}</span></button>)}</div>
-        {selected ? <><textarea className={input} value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Alasan pengangkatan (wajib), misalnya nomor SK" /><button className={primary} disabled={busy || !reason.trim()} onClick={() => void propose()}><UserPlus className="h-4 w-4" /> Usulkan {selected.displayName}</button></> : null}
+        <div className="mt-3 space-y-2">{staff.map((entry) => <button key={entry.subject} className={staffDialog.username === entry.username ? "w-full rounded-xl border border-brand-primary/40 bg-brand-primary-pale/55 p-3 text-left text-sm" : "w-full rounded-xl border border-border p-3 text-left text-sm"} onClick={() => { setMessage(null); staffDialog.open(entry); }}><strong>{entry.displayName}</strong><span className="block text-xs text-muted-foreground">{entry.username}</span></button>)}</div>
       </section>
 
       <section className="rounded-2xl border border-border bg-surface-raised p-5 shadow-sm xl:col-span-2">
@@ -176,6 +191,14 @@ export function PlatformAdministratorsPage({ workspace, onLogout, onAuthorizatio
           </tr>)}</tbody></table></div>
       </section>
     </div> : null}
+
+    {staffDialog.username ? <DetailDialog title="Usulkan Admin Platform" description={selected ? `${selected.displayName} (${selected.username})` : undefined} onClose={staffDialog.close}>
+      {message ? <div className="mb-3 rounded-xl border border-border bg-surface-raised p-3 text-sm" role="status">{message}</div> : null}
+      {staffDialog.status === "loading" ? <p className="flex items-center gap-2 text-sm text-muted-foreground"><RefreshCw className="h-4 w-4 animate-spin" /> Mencari orang di Akun SQ...</p> : null}
+      {staffDialog.status === "missing" ? <p className="text-sm text-muted-foreground">Tidak ada Akun SQ dengan nama pengguna pada tautan ini. Tutup lalu cari ulang.</p> : null}
+      {staffDialog.status === "error" ? <p className="text-sm text-muted-foreground">Data orang ini belum dapat dimuat. Tutup lalu coba lagi beberapa saat.</p> : null}
+      {selected ? <><p className="text-sm leading-6 text-muted-foreground">Admin Platform lain harus mengonfirmasi usulan ini dalam 7 hari.</p><textarea className={input} value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Alasan pengangkatan (wajib), misalnya nomor SK" /><button className={primary} disabled={busy || !reason.trim()} onClick={() => void propose()}><UserPlus className="h-4 w-4" /> Usulkan {selected.displayName}</button></> : null}
+    </DetailDialog> : null}
   </AppShell>;
 }
 

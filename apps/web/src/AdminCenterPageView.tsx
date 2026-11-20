@@ -10,10 +10,13 @@ import {
   ShieldEllipsis,
   UserRound,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
 
+import { useStaffDialog } from "@/admin-staff-dialog";
 import { AppShell } from "@/components/AppShell";
+import { DetailDialog } from "@/components/DetailDialog";
 import type { HubNavKey } from "@/components/shellNavigation";
+import { useDialogParam } from "@/components/useDialogParam";
 import type {
   AdminApplication,
   AdminAuditRecord,
@@ -53,6 +56,9 @@ function sectionFromPath(pathname: string): Section {
   return sectionByPath[pathname.replace(/\/+$/, "")] ?? "applications";
 }
 
+/** `?aplikasi=baru` opens the form for a new application; any other value is an application key. */
+const NEW_APPLICATION = "baru";
+
 const emptyApplication: AdminApplication = {
   key: "",
   name: "",
@@ -61,11 +67,20 @@ const emptyApplication: AdminApplication = {
   governanceSummaryPath: null,
   governanceAudience: null,
   governanceOrder: 0,
+  decisionPath: null,
+  decisionAudience: null,
+  kind: "modul",
+  whatsappCapable: false,
+  machineClientId: null,
 };
+
+/** Migration 0013 `applications_machine_client_check`: a Keycloak client id. */
+const MACHINE_CLIENT_ID = /^[A-Za-z0-9._:-]{1,255}$/;
 
 const knownErrors: Record<string, string> = {
   INVALID_REQUEST: "Periksa kembali data yang diisi. Pastikan format setiap kolom sudah benar.",
   UNKNOWN_APPLICATION: "Aplikasi tidak ditemukan pada registry.",
+  MACHINE_CLIENT_IN_USE: "Client ID Keycloak ini sudah dipakai aplikasi lain. Satu client hanya untuk satu aplikasi.",
   IDENTITY_DIRECTORY_UNAVAILABLE: "Direktori Staff sedang tidak tersedia. Coba lagi beberapa saat.",
   ADMIN_VERIFICATION_UNAVAILABLE: "Verifikasi administrasi sedang tidak tersedia. Coba lagi beberapa saat.",
 };
@@ -99,6 +114,9 @@ export function AdminCenterPage({
   const [applicationForm, setApplicationForm] = useState<AdminApplication>(emptyApplication);
   const [applicationSaving, setApplicationSaving] = useState(false);
   const [applicationMessage, setApplicationMessage] = useState<string | null>(null);
+  const [applicationNotice, setApplicationNotice] = useState<string | null>(null);
+  const [applicationParam, openApplication, closeApplication] = useDialogParam("aplikasi");
+  const [applicationFormFor, setApplicationFormFor] = useState<string | null>(null);
   const [staffQuery, setStaffQuery] = useState("");
   const [staffSearching, setStaffSearching] = useState(false);
   const [staffResults, setStaffResults] = useState<AdminStaff[]>([]);
@@ -112,10 +130,21 @@ export function AdminCenterPage({
   const [audit, setAudit] = useState<AdminAuditRecord[]>([]);
 
   const applications = state.status === "ready" ? state.applications : [];
-  const editingExisting = useMemo(
-    () => applications.some((application) => application.key === applicationForm.key),
-    [applications, applicationForm.key],
-  );
+  // The pop-up's form is filled once per opened application (sq-core-app-shell.md "Detail views
+  // open as a pop-up"), so a save that refreshes the list does not reset what is being typed.
+  if (applicationParam && state.status === "ready" && applicationFormFor !== applicationParam) {
+    const existing = applicationParam === NEW_APPLICATION ? undefined : applications.find((application) => application.key === applicationParam);
+    setApplicationFormFor(applicationParam);
+    setApplicationForm(existing ? { ...existing } : emptyApplication);
+    setApplicationMessage(null);
+    setApplicationNotice(null);
+  }
+  if (!applicationParam && applicationFormFor !== null) setApplicationFormFor(null);
+  const applicationMissing =
+    applicationParam !== null &&
+    applicationParam !== NEW_APPLICATION &&
+    !applications.some((application) => application.key === applicationParam);
+  const editingExisting = applications.some((application) => application.key === applicationForm.key);
 
   const handleDenied = useCallback(
     (reason: "forbidden" | "reauth") => {
@@ -201,6 +230,34 @@ export function AdminCenterPage({
       setApplicationMessage("Path ringkasan dan audiens token harus diisi bersama, atau dikosongkan bersama.");
       return;
     }
+    // ORGAN-IMPL-001 §4.2: where the Portal Organ Yayasan sends a decision, under an audience
+    // of its own. A read token must never be able to decide, so the two audiences cannot match.
+    const decisionPath = applicationForm.decisionPath?.trim() || null;
+    const decisionAudience = applicationForm.decisionAudience?.trim() || null;
+    if (decisionPath && (!decisionPath.startsWith("/") || decisionPath.startsWith("//"))) {
+      setApplicationMessage("Path keputusan harus diawali satu garis miring, misalnya /governance/decisions. URL lengkap tidak diterima.");
+      return;
+    }
+    if (Boolean(decisionPath) !== Boolean(decisionAudience)) {
+      setApplicationMessage("Path keputusan dan audiens keputusan harus diisi bersama, atau dikosongkan bersama.");
+      return;
+    }
+    if (decisionAudience && decisionAudience === governanceAudience) {
+      setApplicationMessage("Audiens keputusan harus berbeda dari audiens ringkasan, agar token baca tidak bisa memutuskan.");
+      return;
+    }
+    // ADR-0011 amendment 2026-11-17: an outside application uses an API key from the Aplikasi luar card in Kirim.
+    const luar = applicationForm.kind === "luar";
+    const machineClientId = luar ? null : applicationForm.machineClientId?.trim() || null;
+    const whatsappCapable = !luar && Boolean(applicationForm.whatsappCapable);
+    if (machineClientId && !MACHINE_CLIENT_ID.test(machineClientId)) {
+      setApplicationMessage("Client ID Keycloak hanya boleh berisi huruf, angka, titik, garis bawah, titik dua, dan tanda hubung.");
+      return;
+    }
+    if (whatsappCapable && !machineClientId) {
+      setApplicationMessage("Isi client ID Keycloak aplikasi ini bila WhatsApp lewat Kirim dipakai.");
+      return;
+    }
     setApplicationSaving(true);
     setApplicationMessage(null);
     try {
@@ -214,7 +271,12 @@ export function AdminCenterPage({
             status: applicationForm.status,
             governanceSummaryPath,
             governanceAudience,
+            decisionPath,
+            decisionAudience,
             governanceOrder: Number.isFinite(applicationForm.governanceOrder) ? Math.trunc(applicationForm.governanceOrder ?? 0) : 0,
+            kind: applicationForm.kind ?? "modul",
+            whatsappCapable,
+            machineClientId,
           }),
         },
       );
@@ -231,7 +293,9 @@ export function AdminCenterPage({
         };
       });
       setApplicationForm({ ...body.application });
-      setApplicationMessage("Registry aplikasi berhasil diperbarui.");
+      setApplicationMessage(null);
+      setApplicationNotice("Registry aplikasi berhasil diperbarui.");
+      closeApplication();
     } catch (error) {
       setApplicationMessage(readableError(error, "Aplikasi gagal disimpan. Periksa data lalu coba lagi."));
     } finally {
@@ -262,29 +326,56 @@ export function AdminCenterPage({
     }
   };
 
+  // The picked person opens as a pop-up, `?orang=<username>` (sq-core-app-shell.md "Detail views
+  // open as a pop-up"); a link or Back to that address opens the same person.
+  const staffDialog = useStaffDialog({
+    fetchJson: adminFetch,
+    known: staffResults,
+    enabled: state.status === "ready" && section === "access",
+  });
+  const dialogStaff = staffDialog.staff;
+
   const selectStaff = async (staff: AdminStaff) => {
+    // An answer for a person whose pop-up is no longer open is dropped (answerStillWanted).
+    if (!staffDialog.isOpenFor(staff.username)) return;
     setSelectedStaff(staff);
+    setStaffAccess([]);
     setAccessLoading(true);
     setAccessMessage(null);
     try {
       const body = await adminFetch<{ staff: AdminStaff; access: AdminStaffAccess[] }>(
         `/api/admin/staff/${encodeURIComponent(staff.subject)}/access`,
       );
+      if (!staffDialog.isOpenFor(staff.username)) return;
       setSelectedStaff(body.staff);
       setStaffAccess(body.access);
+      setAccessLoading(false);
     } catch (error) {
+      if (!staffDialog.isOpenFor(staff.username)) return;
       setAccessMessage(readableError(error, "Status akses Staff gagal dimuat."));
-    } finally {
       setAccessLoading(false);
     }
   };
 
+  // Each time the pop-up's person changes or it closes, nothing typed or loaded for the previous
+  // person stays: the reason and the access list start empty.
+  useEffect(() => {
+    setAccessReason("");
+    setStaffAccess([]);
+    if (dialogStaff) void selectStaff(dialogStaff);
+    else setSelectedStaff(null);
+    // Once per person shown in the pop-up.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dialogStaff?.subject]);
+  const shownStaff = dialogStaff && selectedStaff?.subject === dialogStaff.subject ? selectedStaff : null;
+
   const mutateAccess = async (applicationKey: string, action: "grant" | "revoke") => {
-    if (!selectedStaff || !accessReason.trim()) {
+    const target = shownStaff;
+    if (!target || !accessReason.trim()) {
       setAccessMessage("Alasan perubahan akses wajib diisi.");
       return;
     }
-    if (action === "revoke" && !window.confirm(`Cabut akses ${selectedStaff.displayName} ke ${applicationKey}?`)) {
+    if (action === "revoke" && !window.confirm(`Cabut akses ${target.displayName} ke ${applicationKey}?`)) {
       return;
     }
     setAccessLoading(true);
@@ -293,15 +384,23 @@ export function AdminCenterPage({
       await adminFetch(`/api/admin/application-access/${action}`, {
         method: "POST",
         body: JSON.stringify({
-          subject: selectedStaff.subject,
+          subject: target.subject,
           applicationKey,
           reason: accessReason.trim(),
         }),
       });
-      setAccessReason("");
-      setAccessMessage(action === "grant" ? "Akses aplikasi diberikan." : "Akses aplikasi dicabut.");
-      await selectStaff(selectedStaff);
+      const done = action === "grant" ? "Akses aplikasi diberikan." : "Akses aplikasi dicabut.";
+      if (staffDialog.isOpenFor(target.username)) {
+        setAccessReason("");
+        await selectStaff(target);
+        if (staffDialog.isOpenFor(target.username)) setAccessMessage(done);
+      } else if (staffDialog.mayReport(target.username)) {
+        // The pop-up was closed meanwhile: the result shows on the page, never under another person.
+        setAccessMessage(done);
+        setAccessLoading(false);
+      }
     } catch (error) {
+      if (!staffDialog.mayReport(target.username)) return;
       setAccessMessage(readableError(error, "Perubahan akses gagal. Coba lagi."));
       setAccessLoading(false);
     }
@@ -348,43 +447,67 @@ export function AdminCenterPage({
           {state.status === "ready" ? (
             <>
               {section === "applications" ? (
-                <section className="mt-5 grid gap-5 xl:grid-cols-[minmax(0,1.25fr)_minmax(19rem,0.75fr)]">
-                  <div>
+                <section className="mt-5">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
                     <SectionHeading eyebrow="Application Registry" title="Aplikasi platform" description="Pilih aplikasi untuk mengubah metadata. Kunci aplikasi tetap stabil setelah dibuat." />
-                    <div className="mt-4 grid gap-3 md:grid-cols-2">
-                      {applications.map((application) => (
-                        <button key={application.key} type="button" onClick={() => { setApplicationForm({ ...application }); setApplicationMessage(null); }} className="rounded-2xl border border-border/70 bg-surface-raised p-4 text-left shadow-[var(--shadow-soft)] transition hover:border-brand-primary/35">
-                          <div className="flex items-start justify-between gap-3">
-                            <div className="min-w-0"><h3 className="truncate font-display text-base font-bold text-brand-heading">{application.name}</h3><p className="mt-1 font-mono text-[10px] text-muted-foreground">{application.key}</p></div>
-                            <StatusPill active={application.status === "active"} activeLabel="Aktif" inactiveLabel="Nonaktif" />
-                          </div>
-                          <p className="mt-3 truncate text-xs text-muted-foreground">{application.canonicalUrl}</p>
-                          {application.governanceSummaryPath ? <p className="mt-1.5 inline-flex rounded-full bg-info-soft px-2 py-0.5 text-[10px] font-bold text-info-ink">Ringkasan tata kelola</p> : null}
-                        </button>
-                      ))}
-                    </div>
+                    <button type="button" onClick={() => openApplication(NEW_APPLICATION)} className="inline-flex shrink-0 items-center justify-center gap-1.5 self-start rounded-xl border border-border px-3 py-2 text-xs font-bold text-brand-primary-deep sm:self-auto"><Plus className="h-3.5 w-3.5" /> Baru</button>
                   </div>
+                  {applicationNotice && !applicationParam ? <InlineMessage>{applicationNotice}</InlineMessage> : null}
+                  <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                    {applications.map((application) => (
+                      <button key={application.key} type="button" onClick={() => openApplication(application.key)} className="rounded-2xl border border-border/70 bg-surface-raised p-4 text-left shadow-[var(--shadow-soft)] transition hover:border-brand-primary/35">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0"><h3 className="truncate font-display text-base font-bold text-brand-heading">{application.name}</h3><p className="mt-1 font-mono text-[10px] text-muted-foreground">{application.key}</p></div>
+                          <StatusPill active={application.status === "active"} activeLabel="Aktif" inactiveLabel="Nonaktif" />
+                        </div>
+                        <p className="mt-3 truncate text-xs text-muted-foreground">{application.canonicalUrl}</p>
+                        <div className="mt-1.5 flex flex-wrap gap-1.5">
+                          {application.kind === "luar" ? <span className="inline-flex rounded-full bg-muted px-2 py-0.5 text-[10px] font-bold text-muted-foreground">Aplikasi luar</span> : null}
+                          {application.whatsappCapable ? <span className="inline-flex rounded-full bg-brand-primary-pale px-2 py-0.5 text-[10px] font-bold text-brand-primary-deep">WhatsApp lewat Kirim</span> : null}
+                          {application.governanceSummaryPath ? <span className="inline-flex rounded-full bg-info-soft px-2 py-0.5 text-[10px] font-bold text-info-ink">Ringkasan tata kelola</span> : null}
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                </section>
+              ) : null}
 
-                  <div className="rounded-2xl border border-border/70 bg-surface-raised p-4 shadow-[var(--shadow-soft)]">
-                    <div className="flex items-center justify-between gap-3">
-                      <h3 className="font-display text-lg font-bold text-brand-heading">{editingExisting ? "Ubah aplikasi" : "Daftarkan aplikasi"}</h3>
-                      <button type="button" onClick={() => { setApplicationForm(emptyApplication); setApplicationMessage(null); }} className="inline-flex items-center gap-1.5 rounded-xl border border-border px-3 py-2 text-xs font-bold text-brand-primary-deep"><Plus className="h-3.5 w-3.5" /> Baru</button>
-                    </div>
-                    <div className="mt-4 space-y-3.5">
+              {section === "applications" && applicationParam ? (
+                applicationMissing ? (
+                  <DetailDialog title="Aplikasi tidak ditemukan" onClose={closeApplication}>
+                    <EmptyState icon={AppWindow} title="Aplikasi tidak ditemukan pada registry." body="Tautan ini menunjuk kunci aplikasi yang tidak terdaftar. Tutup lalu pilih aplikasi dari daftar." />
+                  </DetailDialog>
+                ) : (
+                  <DetailDialog title={editingExisting ? "Ubah aplikasi" : "Daftarkan aplikasi"} onClose={closeApplication}>
+                    <div className="space-y-3.5">
                       <Field label="Kunci aplikasi" helper={editingExisting ? "Kunci tidak dapat diubah setelah aplikasi dibuat." : "Gunakan kunci pendek dan stabil, misalnya spmb."}>
                         <input value={applicationForm.key} disabled={editingExisting} onChange={(event) => setApplicationForm((current) => ({ ...current, key: event.target.value }))} placeholder="contoh: spmb" className="sq-admin-input" />
                       </Field>
                       <Field label="Nama"><input value={applicationForm.name} onChange={(event) => setApplicationForm((current) => ({ ...current, name: event.target.value }))} placeholder="Nama aplikasi" className="sq-admin-input" /></Field>
                       <Field label="URL kanonis" helper="Gunakan URL lengkap, termasuk https://"><input value={applicationForm.canonicalUrl} onChange={(event) => setApplicationForm((current) => ({ ...current, canonicalUrl: event.target.value }))} placeholder="https://app.sabilulquran.or.id" className="sq-admin-input" inputMode="url" /></Field>
                       <Field label="Status"><select value={applicationForm.status} onChange={(event) => setApplicationForm((current) => ({ ...current, status: event.target.value as "active" | "inactive" }))} className="sq-admin-input"><option value="active">Aktif</option><option value="inactive">Nonaktif</option></select></Field>
+                      <Field label="Jenis aplikasi" helper="Aplikasi platform adalah bagian dari Sabilul Qur'an Suite. Aplikasi luar dibangun terpisah; untuk WhatsApp ia memakai kunci API nomor di kartu Aplikasi luar di Kirim, tanpa pendaftaran di sini."><select value={applicationForm.kind ?? "modul"} onChange={(event) => setApplicationForm((current) => ({ ...current, kind: event.target.value as "modul" | "luar" }))} className="sq-admin-input"><option value="modul">Aplikasi platform</option><option value="luar">Aplikasi luar</option></select></Field>
+                      {applicationForm.kind === "luar" ? (
+                        <p className="rounded-xl bg-info-soft px-3 py-2 text-sm text-info-ink">Aplikasi luar tidak perlu didaftarkan untuk WhatsApp: ia memakai kunci API dari nomor di kartu <strong>Aplikasi luar</strong> di Kirim, bukan client Keycloak. Tidak ada yang perlu diisi di sini.</p>
+                      ) : (
+                        <>
+                        <label className="flex items-start gap-2.5 rounded-xl border border-border/70 bg-surface p-3">
+                          <input type="checkbox" checked={Boolean(applicationForm.whatsappCapable)} onChange={(event) => setApplicationForm((current) => ({ ...current, whatsappCapable: event.target.checked }))} className="mt-0.5 h-4 w-4" />
+                          <span><span className="block text-xs font-bold text-brand-heading">Pakai WhatsApp lewat Kirim</span><span className="sq-admin-helper block">Aplikasi mendapat kartu di Kirim dan mengirim WhatsApp dengan token client mesinnya. Nomor disambungkan dari kartunya di Kirim, bukan di sini.</span></span>
+                        </label>
+                        <Field label="Client ID Keycloak (client mesin)" helper="Client service account di Akun SQ yang dipakai aplikasi ini memanggil API. Wajib bila WhatsApp lewat Kirim dipakai; satu client untuk satu aplikasi."><input value={applicationForm.machineClientId ?? ""} onChange={(event) => setApplicationForm((current) => ({ ...current, machineClientId: event.target.value }))} placeholder="contoh: samijaya" className="sq-admin-input" autoCapitalize="off" spellCheck={false} /></Field>
+                        </>
+                      )}
                       <Field label="Path ringkasan tata kelola (opsional)" helper="Path pada origin URL kanonis, misalnya /api/governance/summary. Kosongkan bila aplikasi tidak menerbitkan ringkasan untuk Ringkasan Yayasan."><input value={applicationForm.governanceSummaryPath ?? ""} onChange={(event) => setApplicationForm((current) => ({ ...current, governanceSummaryPath: event.target.value }))} placeholder="/api/governance/summary" className="sq-admin-input" /></Field>
                       <Field label="Audiens token" helper="Client ID Keycloak aplikasi tersebut untuk token exchange. Wajib bila path diisi."><input value={applicationForm.governanceAudience ?? ""} onChange={(event) => setApplicationForm((current) => ({ ...current, governanceAudience: event.target.value }))} placeholder="contoh: hcis-governance" className="sq-admin-input" /></Field>
+                      <Field label="Path keputusan (opsional)" helper="Path tempat aplikasi menerima keputusan dari Portal Organ Yayasan, misalnya /governance/decisions. Kosongkan bila aplikasi tidak menerima keputusan dari portal."><input value={applicationForm.decisionPath ?? ""} onChange={(event) => setApplicationForm((current) => ({ ...current, decisionPath: event.target.value }))} placeholder="/governance/decisions" className="sq-admin-input" /></Field>
+                      <Field label="Audiens keputusan" helper="Client ID Keycloak khusus keputusan, berbeda dari audiens ringkasan. Wajib bila path keputusan diisi."><input value={applicationForm.decisionAudience ?? ""} onChange={(event) => setApplicationForm((current) => ({ ...current, decisionAudience: event.target.value }))} placeholder="contoh: hcis-organ-decision" className="sq-admin-input" /></Field>
                       <Field label="Urutan kartu" helper="Angka kecil tampil lebih dulu; urutan sama diurutkan menurut nama."><input type="number" value={applicationForm.governanceOrder ?? 0} onChange={(event) => setApplicationForm((current) => ({ ...current, governanceOrder: Number(event.target.value) }))} className="sq-admin-input" /></Field>
                     </div>
                     {applicationMessage ? <InlineMessage>{applicationMessage}</InlineMessage> : null}
                     <button type="button" disabled={applicationSaving || Boolean(previewApplications)} onClick={() => void saveApplication()} className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-brand-primary px-4 py-2.5 text-sm font-bold text-brand-foreground shadow-[var(--shadow-button)] disabled:cursor-not-allowed disabled:opacity-50"><Save className="h-4 w-4" />{applicationSaving ? "Menyimpan..." : "Simpan registry"}</button>
-                  </div>
-                </section>
+                  </DetailDialog>
+                )
               ) : null}
 
               {section === "access" ? (
@@ -394,33 +517,40 @@ export function AdminCenterPage({
                     <input value={staffQuery} onChange={(event) => setStaffQuery(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") void searchStaff(); }} placeholder="Cari NIP, email, atau nama Staff" className="sq-admin-input flex-1" />
                     <button type="button" disabled={staffSearching || Boolean(previewApplications)} onClick={() => void searchStaff()} className="inline-flex items-center justify-center gap-2 rounded-xl bg-brand-primary px-4 py-2.5 text-sm font-bold text-brand-foreground disabled:opacity-50">{staffSearching ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}Cari Staff</button>
                   </div>
-                  {accessMessage ? <InlineMessage>{accessMessage}</InlineMessage> : null}
+                  {accessMessage && !staffDialog.username ? <InlineMessage>{accessMessage}</InlineMessage> : null}
 
-                  <div className="mt-4 grid gap-4 xl:grid-cols-[minmax(16rem,0.65fr)_minmax(0,1.35fr)]">
-                    <div className="space-y-2.5">{staffResults.map((staff) => <StaffResult key={staff.subject} staff={staff} selected={selectedStaff?.subject === staff.subject} onClick={() => void selectStaff(staff)} />)}</div>
-                    <div className="rounded-2xl border border-border/70 bg-surface-raised p-4 shadow-[var(--shadow-soft)]">
-                      {!selectedStaff ? <EmptyState icon={UserRound} title="Pilih Staff" body="Hasil pencarian menampilkan identitas manusia tanpa menampilkan subject OIDC mentah." /> : (
-                        <>
-                          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                            <div><p className="font-display text-lg font-bold text-brand-heading">{selectedStaff.displayName}</p><p className="mt-1 text-xs text-muted-foreground">{selectedStaff.username}{selectedStaff.email ? ` · ${selectedStaff.email}` : ""}</p></div>
-                            <div className="flex flex-wrap gap-1.5"><SecurityPill ok={selectedStaff.security.totpConfigured} label="TOTP" /><SecurityPill ok={selectedStaff.security.recoveryCodesConfigured} label="Kode pemulihan" /></div>
-                          </div>
-                          <div className="mt-4"><Field label="Alasan perubahan akses" helper="Wajib diisi untuk setiap grant atau revoke."><input value={accessReason} onChange={(event) => setAccessReason(event.target.value)} placeholder="Contoh: penugasan operasional" className="sq-admin-input" /></Field></div>
-                          {accessLoading ? <div className="mt-4"><LoadingCard label="Memuat status akses..." compact /></div> : (
-                            <div className="mt-4 divide-y divide-border/60 rounded-xl border border-border/70">
-                              {staffAccess.map((item) => (
-                                <div key={item.application.key} className="flex flex-col gap-3 p-3.5 sm:flex-row sm:items-center sm:justify-between">
-                                  <div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><p className="font-bold text-brand-heading">{item.application.name}</p><StatusPill active={item.status === "active"} activeLabel="Akses aktif" inactiveLabel={item.status === "revoked" ? "Dicabut" : "Belum diberi"} /></div><p className="mt-1 max-w-2xl text-xs text-muted-foreground">{item.reason ?? "Belum ada alasan perubahan akses."}</p></div>
-                                  <div className="flex shrink-0 gap-2"><button type="button" disabled={item.status === "active" || !accessReason.trim()} onClick={() => void mutateAccess(item.application.key, "grant")} className="rounded-xl bg-brand-primary px-3 py-2 text-xs font-bold text-brand-foreground disabled:opacity-40">Berikan</button><button type="button" disabled={item.status !== "active" || !accessReason.trim()} onClick={() => void mutateAccess(item.application.key, "revoke")} className="rounded-xl border border-destructive/25 bg-destructive/5 px-3 py-2 text-xs font-bold text-destructive disabled:opacity-40">Cabut</button></div>
-                                </div>
-                              ))}
-                            </div>
-                          )}
-                        </>
-                      )}
-                    </div>
-                  </div>
+                  <div className="mt-4 grid gap-2.5 md:grid-cols-2 xl:grid-cols-3">{staffResults.map((staff) => <StaffResult key={staff.subject} staff={staff} selected={staffDialog.username === staff.username} onClick={() => staffDialog.open(staff)} />)}</div>
+                  {staffResults.length === 0 && !accessMessage ? <div className="mt-4 rounded-2xl border border-border/70 bg-surface-raised p-4 shadow-[var(--shadow-soft)]"><EmptyState icon={UserRound} title="Pilih Staff" body="Hasil pencarian menampilkan identitas manusia tanpa menampilkan subject OIDC mentah. Memilih seseorang membuka akses aplikasinya di jendela pop-up." /></div> : null}
                 </section>
+              ) : null}
+
+              {section === "access" && staffDialog.username ? (
+                <DetailDialog
+                  title={shownStaff?.displayName ?? "Akses aplikasi"}
+                  description={shownStaff ? `${shownStaff.username}${shownStaff.email ? ` · ${shownStaff.email}` : ""}` : undefined}
+                  onClose={staffDialog.close}
+                >
+                  {accessMessage ? <p className="sq-admin-message mb-3" role="status">{accessMessage}</p> : null}
+                  {staffDialog.status === "loading" ? <LoadingCard label="Mencari orang di Akun SQ..." compact /> : null}
+                  {staffDialog.status === "missing" ? <EmptyState icon={UserRound} title="Orang ini tidak ditemukan" body="Tidak ada Akun SQ dengan nama pengguna pada tautan ini. Tutup lalu cari ulang." /> : null}
+                  {staffDialog.status === "error" ? <EmptyState icon={ShieldAlert} title="Data orang ini belum dapat dimuat" body="Direktori Staff sedang tidak tersedia. Tutup lalu coba lagi beberapa saat." /> : null}
+                  {staffDialog.status === "ready" ? (
+                    <>
+                      {shownStaff ? <div className="flex flex-wrap gap-1.5"><SecurityPill ok={shownStaff.security.totpConfigured} label="TOTP" /><SecurityPill ok={shownStaff.security.recoveryCodesConfigured} label="Kode pemulihan" /></div> : null}
+                      <div className="mt-4"><Field label="Alasan perubahan akses" helper="Wajib diisi untuk setiap grant atau revoke."><input value={accessReason} onChange={(event) => setAccessReason(event.target.value)} placeholder="Contoh: penugasan operasional" className="sq-admin-input" /></Field></div>
+                      {accessLoading || !shownStaff ? <div className="mt-4"><LoadingCard label="Memuat status akses..." compact /></div> : (
+                        <div className="mt-4 divide-y divide-border/60 rounded-xl border border-border/70">
+                          {staffAccess.map((item) => (
+                            <div key={item.application.key} className="flex flex-col gap-3 p-3.5 sm:flex-row sm:items-center sm:justify-between">
+                              <div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><p className="font-bold text-brand-heading">{item.application.name}</p><StatusPill active={item.status === "active"} activeLabel="Akses aktif" inactiveLabel={item.status === "revoked" ? "Dicabut" : "Belum diberi"} /></div><p className="mt-1 max-w-2xl text-xs text-muted-foreground">{item.reason ?? "Belum ada alasan perubahan akses."}</p></div>
+                              <div className="flex shrink-0 gap-2"><button type="button" disabled={item.status === "active" || !accessReason.trim()} onClick={() => void mutateAccess(item.application.key, "grant")} className="rounded-xl bg-brand-primary px-3 py-2 text-xs font-bold text-brand-foreground disabled:opacity-40">Berikan</button><button type="button" disabled={item.status !== "active" || !accessReason.trim()} onClick={() => void mutateAccess(item.application.key, "revoke")} className="rounded-xl border border-destructive/25 bg-destructive/5 px-3 py-2 text-xs font-bold text-destructive disabled:opacity-40">Cabut</button></div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </>
+                  ) : null}
+                </DetailDialog>
               ) : null}
 
               {section === "audit" ? (

@@ -1,4 +1,4 @@
-import { Activity, AlertTriangle, Ban, ListOrdered, LoaderCircle, LogOut, ShieldAlert, Smartphone } from "lucide-react";
+import { Activity, AlertTriangle, Ban, BookOpen, ListOrdered, LoaderCircle, LogOut, ShieldAlert, Smartphone } from "lucide-react";
 import { useState, type ReactNode } from "react";
 
 import { AppLauncher } from "@/components/AppLauncher";
@@ -12,10 +12,11 @@ const KIRIM_LAUNCHER_APPLICATION: WorkspaceApplication = { key: "kirim-sq", name
 
 
 const navItems: Array<{ key: Exclude<KirimRoute, "not-found" | "impor">; label: string; href: string; icon: typeof Smartphone }> = [
-  { key: "nomor", label: "Modul", href: "/nomor", icon: Smartphone },
+  { key: "nomor", label: "Aplikasi", href: "/nomor", icon: Smartphone },
   { key: "antrean", label: "Antrean", href: "/antrean", icon: ListOrdered },
   { key: "jangan-hubungi", label: "Jangan hubungi", href: "/jangan-hubungi", icon: Ban },
   { key: "aktivitas", label: "Aktivitas", href: "/aktivitas", icon: Activity },
+  { key: "dokumentasi-api", label: "Dokumentasi API", href: "/dokumentasi-api", icon: BookOpen },
 ];
 
 /**
@@ -76,7 +77,7 @@ export function KirimShell({
         <nav aria-label="Navigasi Kirim SQ" className="mx-auto flex w-full max-w-6xl gap-1 px-4 pb-2 sm:px-6 lg:px-8">
           {navItems.map((item) => {
             const Icon = item.icon;
-            // Impor riwayat is opened from a number's card, so Modul stays highlighted.
+            // Impor riwayat is opened from a number's card, so Aplikasi stays highlighted.
             const current = item.key === active || (item.key === "nomor" && active === "impor");
             return (
               <a

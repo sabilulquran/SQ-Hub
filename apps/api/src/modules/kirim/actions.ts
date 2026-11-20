@@ -253,7 +253,7 @@ export class KirimMessageActions {
   /** Only this number's own messages: typed on its phone, or sent by the calling module. */
   private requireOwn(consumer: ConsumerRow, message: OwnedMessage): void {
     if (message.arah !== "keluar" || (message.asal !== "hp" && message.consumerId !== consumer.id)) {
-      throw new KirimApiError(422, "not_own_message", "Hanya pesan yang dikirim nomor ini lewat modul ini atau dari HP-nya.");
+      throw new KirimApiError(422, "not_own_message", "Hanya pesan yang dikirim nomor ini lewat aplikasi ini atau dari HP-nya.");
     }
   }
 

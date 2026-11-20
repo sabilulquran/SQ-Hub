@@ -11,6 +11,8 @@ export interface KirimConfig {
   workerIntervalMs: number;
   eventPullIntervalMs: number;
   jalurpesan: { baseUrl: string; platformKey: string; webhookSecret: string | null } | null;
+  /** KIRIM-IMPL-005 §11: Kirim SQ's own engine, the `kirim-wa` worker on loopback. */
+  wa: { baseUrl: string; platformKey: string } | null;
   admin: { clientId: string; clientSecret: string; publicOrigin: string } | null;
   /** KIRIM-IMPL-002 §13; omitted values take the documented defaults. */
   groupRefreshIntervalMs?: number;
@@ -56,6 +58,8 @@ const envSchema = z.object({
   JALURPESAN_BASE_URL: optionalNonempty(z.string().url()),
   JALURPESAN_PLATFORM_KEY: optionalNonempty(z.string().min(1)),
   JALURPESAN_WEBHOOK_SECRET: optionalNonempty(z.string().min(1)),
+  KIRIM_WA_BASE_URL: optionalNonempty(z.string().url()),
+  KIRIM_WA_PLATFORM_KEY: optionalNonempty(z.string().min(24)),
   KIRIM_OIDC_CLIENT_ID: optionalNonempty(z.string().trim().min(1)),
   KIRIM_OIDC_CLIENT_SECRET: optionalNonempty(z.string().min(1)),
   KIRIM_PUBLIC_ORIGIN: optionalNonempty(z.string().url()),
@@ -71,6 +75,10 @@ export function loadKirimConfig(env: NodeJS.ProcessEnv = process.env): KirimConf
   const jalurpesanParts = [parsed.JALURPESAN_BASE_URL, parsed.JALURPESAN_PLATFORM_KEY];
   if (jalurpesanParts.some(Boolean) && !jalurpesanParts.every(Boolean)) {
     throw new Error("JALURPESAN_BASE_URL and JALURPESAN_PLATFORM_KEY must be configured together");
+  }
+  const waParts = [parsed.KIRIM_WA_BASE_URL, parsed.KIRIM_WA_PLATFORM_KEY];
+  if (waParts.some(Boolean) && !waParts.every(Boolean)) {
+    throw new Error("KIRIM_WA_BASE_URL and KIRIM_WA_PLATFORM_KEY must be configured together");
   }
   const adminParts = [parsed.KIRIM_OIDC_CLIENT_ID, parsed.KIRIM_OIDC_CLIENT_SECRET, parsed.KIRIM_PUBLIC_ORIGIN];
   if (adminParts.some(Boolean) && !adminParts.every(Boolean)) {
@@ -101,6 +109,9 @@ export function loadKirimConfig(env: NodeJS.ProcessEnv = process.env): KirimConf
           platformKey: parsed.JALURPESAN_PLATFORM_KEY,
           webhookSecret: parsed.JALURPESAN_WEBHOOK_SECRET ?? null,
         }
+      : null,
+    wa: parsed.KIRIM_WA_BASE_URL && parsed.KIRIM_WA_PLATFORM_KEY
+      ? { baseUrl: parsed.KIRIM_WA_BASE_URL.replace(/\/$/, ""), platformKey: parsed.KIRIM_WA_PLATFORM_KEY }
       : null,
     admin: parsed.KIRIM_OIDC_CLIENT_ID && parsed.KIRIM_OIDC_CLIENT_SECRET && parsed.KIRIM_PUBLIC_ORIGIN
       ? {

@@ -1,10 +1,10 @@
-import { AlertTriangle, CalendarClock, CheckSquare, MessageSquare, Paperclip, Users } from "lucide-react";
+import { CheckSquare, MessageSquare, Paperclip, Users } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import { CardDialog, CardLink } from "@/kerja/CardDialog";
 import { kerjaFetch, type RuangRingkas, type TugasSaya } from "@/kerja/api";
 import { formatTanggal, JENIS_SELESAI, PERAN, relatifTenggat } from "@/kerja/format";
-import { AvatarStack, LabelChip, Link, PageHeader, StateCard, useLoad } from "@/kerja/ui";
+import { AvatarStack, DateTile, LabelChip, Link, PageHeader, StateCard, useLoad } from "@/kerja/ui";
 
 export type TugasData = { items: TugasSaya[]; ruang: Array<{ id: string; nama: string }> };
 
@@ -19,49 +19,73 @@ export function TugasPage({ preview }: { preview?: TugasData }) {
   useEffect(() => {
     if (data) setRooms(data.ruang);
   }, [data]);
-  const lewat = data?.items.filter((item) => item.lewatTenggat) ?? [];
-  const lain = data?.items.filter((item) => !item.lewatTenggat) ?? [];
+  const items = data?.items ?? [];
+  const now = Date.now();
+  const lewat = items.filter((item) => item.lewatTenggat);
+  const pekanIni = items.filter((item) => !item.lewatTenggat && item.tenggatEfektif && Date.parse(item.tenggatEfektif) - now < 7 * 86_400_000);
+  const nanti = items.filter((item) => !item.lewatTenggat && item.tenggatEfektif && Date.parse(item.tenggatEfektif) - now >= 7 * 86_400_000);
+  const tanpa = items.filter((item) => !item.lewatTenggat && !item.tenggatEfektif);
+  const groups: Array<{ id: string; title: string; items: TugasSaya[]; danger?: boolean }> = [
+    { id: "lewat", title: "Lewat tenggat", items: lewat, danger: true },
+    { id: "pekan", title: "Tujuh hari ke depan", items: pekanIni },
+    { id: "nanti", title: "Sesudahnya", items: nanti },
+    { id: "tanpa", title: "Tanpa tenggat", items: tanpa },
+  ];
 
   return (
     <>
-      <PageHeader title="Tugas saya">
-        <p className="mt-1 text-sm text-muted-foreground">Kartu dan butir ceklis yang ditugaskan kepada Anda dari semua ruang.</p>
+      <PageHeader
+        title="Tugas saya"
+        actions={(
+          <>
+            <div className="w-full sm:w-56">
+              <select aria-label="Saring ruang" className="sq-admin-input" value={ruang} onChange={(event) => setRuang(event.target.value)}>
+                <option value="">Semua ruang</option>
+                {rooms.map((room) => <option key={room.id} value={room.id}>{room.nama}</option>)}
+              </select>
+            </div>
+            <div className="w-full sm:w-44">
+              <select aria-label="Saring status" className="sq-admin-input" value={status} onChange={(event) => setStatus(event.target.value as typeof status)}>
+                <option value="terbuka">Belum selesai</option>
+                <option value="selesai">Sudah selesai</option>
+                <option value="semua">Semua</option>
+              </select>
+            </div>
+          </>
+        )}
+      >
+        <p className="mt-1 text-sm text-muted-foreground">Kartu dan butir ceklis yang ditugaskan kepada Anda, dari semua ruang</p>
       </PageHeader>
-      <div className="mb-4 grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
-        <select aria-label="Saring ruang" className="sq-admin-input sm:w-56" value={ruang} onChange={(event) => setRuang(event.target.value)}>
-          <option value="">Semua ruang</option>
-          {rooms.map((room) => <option key={room.id} value={room.id}>{room.nama}</option>)}
-        </select>
-        <select aria-label="Saring status" className="sq-admin-input sm:w-44" value={status} onChange={(event) => setStatus(event.target.value as typeof status)}>
-          <option value="terbuka">Belum selesai</option>
-          <option value="selesai">Sudah selesai</option>
-          <option value="semua">Semua</option>
-        </select>
-      </div>
+      {data && items.length > 0 && status === "terbuka" ? (
+        <dl className="mb-8 grid grid-cols-3 gap-3 sm:max-w-xl">
+          {[["Lewat tenggat", lewat.length, true], ["Tujuh hari ke depan", pekanIni.length, false], ["Tanpa tenggat", tanpa.length, false]].map(([label, count, danger]) => (
+            <div key={String(label)} className="rounded-2xl border border-border/70 bg-surface-raised px-4 py-3">
+              <dt className="text-xs text-muted-foreground">{label}</dt>
+              <dd className={`mt-1 text-2xl font-semibold tabular-nums ${danger && Number(count) > 0 ? "text-danger-ink" : "text-foreground"}`}>{count}</dd>
+            </div>
+          ))}
+        </dl>
+      ) : null}
       {state.status === "loading" ? <StateCard kind="loading" title="Memuat tugas" /> : null}
       {state.status === "error" ? <StateCard kind="error" title="Tugas belum dapat dimuat" body={state.message} /> : null}
-      {data && data.items.length === 0 ? (
+      {data && items.length === 0 ? (
         <StateCard
           kind="empty"
           title={status === "terbuka" ? "Tidak ada tugas yang menunggu Anda" : "Belum ada tugas di sini"}
           body="Buka salah satu ruang Anda lalu buat kartu pertama, atau minta penanggung jawab ruang menugaskan kartu kepada Anda."
-          action={<Link href="/ruang" className="inline-flex min-h-10 items-center rounded-xl border border-border px-3 text-sm font-bold text-brand-primary-deep">Lihat ruang saya</Link>}
+          action={<Link href="/ruang" className="inline-flex min-h-10 items-center rounded-xl border border-border px-3 text-sm font-semibold text-brand-primary-deep">Lihat ruang saya</Link>}
         />
       ) : null}
-      {lewat.length > 0 ? (
-        <section className="mb-6" aria-labelledby="tugas-lewat">
-          <h2 id="tugas-lewat" className="mb-2 flex items-center gap-1.5 text-sm font-bold text-danger-ink">
-            <AlertTriangle className="h-4 w-4" aria-hidden="true" /> Lewat tenggat ({lewat.length})
-          </h2>
-          <TaskList items={lewat} />
-        </section>
-      ) : null}
-      {lain.length > 0 ? (
-        <section aria-label="Tugas lain">
-          {lewat.length > 0 ? <h2 className="mb-2 text-sm font-bold text-brand-heading">Berikutnya</h2> : null}
-          <TaskList items={lain} />
-        </section>
-      ) : null}
+      {status === "terbuka"
+        ? groups.filter((group) => group.items.length > 0).map((group) => (
+          <section key={group.id} className="mb-8" aria-labelledby={`tugas-${group.id}`}>
+            <h2 id={`tugas-${group.id}`} className={`mb-3 flex items-baseline gap-2 text-sm font-semibold ${group.danger ? "text-danger-ink" : "text-brand-heading"}`}>
+              {group.title}<span className="text-xs font-normal tabular-nums text-muted-foreground">{group.items.length}</span>
+            </h2>
+            <TaskList items={group.items} />
+          </section>
+        ))
+        : items.length > 0 ? <TaskList items={items} /> : null}
       <CardDialog />
     </>
   );
@@ -69,39 +93,39 @@ export function TugasPage({ preview }: { preview?: TugasData }) {
 
 function TaskList({ items }: { items: TugasSaya[] }) {
   return (
-    <ul className="space-y-2">
+    <ul className="divide-y divide-border/70 overflow-hidden rounded-2xl border border-border/70 bg-surface-raised">
       {items.map((item) => {
         const due = relatifTenggat(item.tenggatEfektif);
         return (
           <li key={item.id}>
-            <CardLink kartuId={item.id} className="block rounded-2xl border border-border/70 bg-surface-raised p-3 shadow-[var(--shadow-soft)] hover:border-brand-primary/50 sm:p-4">
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <p className="truncate text-xs font-semibold text-muted-foreground">{item.ruangNama} · {item.papanNama} · {item.kolomNama}</p>
-                  <p className="mt-0.5 font-bold text-foreground">{item.judul}</p>
+            <CardLink kartuId={item.id} className="flex gap-4 px-4 py-4 transition-colors hover:bg-muted/50 focus-visible:bg-muted/50 focus-visible:outline-none">
+              <DateTile iso={item.tenggatEfektif} nada={item.selesaiJenis ? "selesai" : due?.nada ?? "biasa"} />
+              <div className="min-w-0 flex-1">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="font-semibold leading-snug text-foreground">{item.judul}</p>
+                    <p className="mt-1 truncate text-xs text-muted-foreground">{item.ruangNama} · {item.papanNama} · {item.kolomNama}</p>
+                  </div>
+                  <AvatarStack people={item.orang} />
                 </div>
-                <AvatarStack people={item.orang} />
-              </div>
-              {item.butirSaya.length > 0 ? (
-                <ul className="mt-2 space-y-1">
-                  {item.butirSaya.map((butir) => (
-                    <li key={butir.id} className="flex items-center gap-1.5 text-sm text-muted-foreground">
-                      <CheckSquare className={`h-3.5 w-3.5 shrink-0 ${butir.selesai ? "text-success-ink" : ""}`} aria-hidden="true" />
-                      <span className={butir.selesai ? "line-through" : ""}>{butir.nama}</span>
-                      {butir.tenggatPada ? <span className="text-xs">· {formatTanggal(butir.tenggatPada)}</span> : null}
-                    </li>
-                  ))}
-                </ul>
-              ) : null}
-              <div className="mt-2 flex flex-wrap items-center gap-1.5 text-xs">
-                {item.selesaiJenis ? <span className="rounded-md bg-success-soft px-1.5 py-0.5 font-bold text-success-ink">{JENIS_SELESAI[item.selesaiJenis]}</span> : null}
-                {due && !item.selesaiJenis ? (
-                  <span className={`inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 font-bold ${due.nada === "lewat" ? "bg-danger-soft text-danger-ink" : due.nada === "dekat" ? "bg-warning-soft text-warning-ink" : "bg-muted text-muted-foreground"}`}>
-                    <CalendarClock className="h-3 w-3" aria-hidden="true" />{due.teks}
-                  </span>
+                {item.butirSaya.length > 0 ? (
+                  <ul className="mt-3 space-y-1">
+                    {item.butirSaya.map((butir) => (
+                      <li key={butir.id} className="flex items-center gap-2 text-sm text-muted-foreground">
+                        <CheckSquare className={`h-4 w-4 shrink-0 ${butir.selesai ? "text-success-ink" : ""}`} aria-hidden="true" />
+                        <span className={butir.selesai ? "line-through" : "text-foreground"}>{butir.nama}</span>
+                        {butir.tenggatPada ? <span className="text-xs tabular-nums">{formatTanggal(butir.tenggatPada)}</span> : null}
+                      </li>
+                    ))}
+                  </ul>
                 ) : null}
-                {item.label.map((label) => <LabelChip key={label.id} label={label} />)}
-                <CardCounters ceklis={item.ceklis} komentar={item.komentar} lampiran={item.lampiran} />
+                {item.label.length > 0 || item.selesaiJenis || item.ceklis.total + item.komentar + item.lampiran > 0 ? (
+                  <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
+                    {item.selesaiJenis ? <span className="inline-flex items-center gap-1 font-medium text-success-ink"><CheckSquare className="h-3.5 w-3.5" aria-hidden="true" />{JENIS_SELESAI[item.selesaiJenis]}</span> : null}
+                    {item.label.map((label) => <LabelChip key={label.id} label={label} />)}
+                    <CardCounters ceklis={item.ceklis} komentar={item.komentar} lampiran={item.lampiran} />
+                  </div>
+                ) : null}
               </div>
             </CardLink>
           </li>
@@ -113,10 +137,10 @@ function TaskList({ items }: { items: TugasSaya[] }) {
 
 export function CardCounters({ ceklis, komentar, lampiran }: { ceklis: { selesai: number; total: number }; komentar: number; lampiran: number }) {
   return (
-    <span className="inline-flex items-center gap-2 text-muted-foreground">
-      {ceklis.total > 0 ? <span className={`inline-flex items-center gap-0.5 ${ceklis.selesai === ceklis.total ? "text-success-ink" : ""}`}><CheckSquare className="h-3 w-3" aria-hidden="true" />{ceklis.selesai}/{ceklis.total}</span> : null}
-      {komentar > 0 ? <span className="inline-flex items-center gap-0.5"><MessageSquare className="h-3 w-3" aria-hidden="true" />{komentar}</span> : null}
-      {lampiran > 0 ? <span className="inline-flex items-center gap-0.5"><Paperclip className="h-3 w-3" aria-hidden="true" />{lampiran}</span> : null}
+    <span className="inline-flex items-center gap-3 tabular-nums text-muted-foreground">
+      {ceklis.total > 0 ? <span className={`inline-flex items-center gap-1 ${ceklis.selesai === ceklis.total ? "text-success-ink" : ""}`}><CheckSquare className="h-3.5 w-3.5" aria-hidden="true" />{ceklis.selesai}/{ceklis.total}</span> : null}
+      {komentar > 0 ? <span className="inline-flex items-center gap-1"><MessageSquare className="h-3.5 w-3.5" aria-hidden="true" />{komentar}</span> : null}
+      {lampiran > 0 ? <span className="inline-flex items-center gap-1"><Paperclip className="h-3.5 w-3.5" aria-hidden="true" />{lampiran}</span> : null}
     </span>
   );
 }
@@ -142,20 +166,21 @@ export function RuangListPage({ preview }: { preview?: RuangData }) {
       ) : null}
       {groups.filter((group) => group.items.length > 0).map((group) => (
         <section key={group.title} className="mb-6">
-          <h2 className="mb-2 text-sm font-bold text-brand-heading">{group.title}</h2>
+          <h2 className="mb-3 text-sm font-semibold text-brand-heading">{group.title}</h2>
           <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {group.items.map((room) => (
               <li key={room.id}>
-                <Link href={`/ruang/${room.id}`} className="flex h-full flex-col rounded-2xl border border-border/70 bg-surface-raised p-4 shadow-[var(--shadow-soft)] hover:border-brand-primary/50">
+                <Link href={`/ruang/${room.id}`} className="flex h-full flex-col rounded-2xl border border-border/70 bg-surface-raised p-5 transition-colors hover:border-brand-primary/40">
                   <span className="flex items-start justify-between gap-2">
-                    <span className="font-bold text-foreground">{room.nama}</span>
-                    <span className="inline-flex shrink-0 items-center gap-1 rounded-md bg-muted px-1.5 py-0.5 text-[11px] font-bold text-muted-foreground"><Users className="h-3 w-3" aria-hidden="true" />{PERAN[room.peran]}</span>
+                    <span className="font-semibold text-foreground">{room.nama}</span>
+                    <span className="inline-flex shrink-0 items-center gap-1 text-xs text-muted-foreground"><Users className="h-3.5 w-3.5" aria-hidden="true" />{PERAN[room.peran]}</span>
                   </span>
-                  <span className="mt-2 text-sm text-muted-foreground">
-                    {room.kartuTerbuka} kartu terbuka{room.kartuLewatTenggat > 0 ? <span className="font-bold text-danger-ink"> · {room.kartuLewatTenggat} lewat tenggat</span> : null}
+                  <span className="mt-4 flex items-baseline gap-4 tabular-nums">
+                    <span><span className="text-2xl font-semibold text-foreground">{room.kartuTerbuka}</span> <span className="text-xs text-muted-foreground">terbuka</span></span>
+                    {room.kartuLewatTenggat > 0 ? <span><span className="text-2xl font-semibold text-danger-ink">{room.kartuLewatTenggat}</span> <span className="text-xs text-muted-foreground">lewat tenggat</span></span> : null}
                   </span>
                   {room.berakhirPada ? (
-                    <span className={`mt-2 self-start rounded-md px-1.5 py-0.5 text-xs font-bold ${room.akanBerakhir ? "bg-warning-soft text-warning-ink" : "bg-muted text-muted-foreground"}`}>
+                    <span className={`mt-3 text-xs ${room.akanBerakhir ? "text-warning-ink" : "text-muted-foreground"}`}>
                       Berakhir {formatTanggal(`${room.berakhirPada}T00:00:00+07:00`, false)}
                     </span>
                   ) : null}

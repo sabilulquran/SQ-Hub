@@ -52,6 +52,40 @@ export const governanceRegistrationSchema = z
     path: ["audience"],
   });
 
+/**
+ * ORGAN-IMPL-001 §4.2: where an application takes decisions, under an audience of its own.
+ *
+ * A group of its own, not a field of the governance registration, because that is the shape the
+ * platform-admin route sends and the shape the repository writes. It travelled inside the
+ * governance group once, and the two ends never met: the route's body was refused as an
+ * unrecognized key, and anything that did get through was dropped before the UPDATE.
+ * Omitting the group leaves whatever is stored alone; sending it with nulls clears it.
+ */
+export const decisionRegistrationSchema = z
+  .object({
+    path: governanceSummaryPathSchema.nullable(),
+    audience: governanceAudienceSchema.nullable(),
+  })
+  .strict()
+  .refine((value) => (value.path === null) === (value.audience === null), {
+    message: "decision audience is required exactly when a decision path is set",
+    path: ["audience"],
+  });
+
+/** KIRIM-IMPL-003 K-2 and migration 0013 `applications_machine_client_check`: WhatsApp needs a machine client. */
+export const machineClientIdSchema = z.string().trim().regex(/^[A-Za-z0-9._:-]{1,255}$/);
+
+export const whatsappRegistrationSchema = z
+  .object({
+    capable: z.boolean(),
+    machineClientId: machineClientIdSchema.nullable(),
+  })
+  .strict()
+  .refine((value) => !value.capable || value.machineClientId !== null, {
+    message: "a machine client id is required when the application uses WhatsApp",
+    path: ["machineClientId"],
+  });
+
 export function governanceSummaryUrl(canonicalUrl: string, summaryPath: string): URL {
   const base = new URL(canonicalUrl);
   const target = new URL(summaryPath, base.origin);
@@ -72,6 +106,9 @@ export class ApplicationAccessService {
     canonicalUrl: string;
     status: "active" | "inactive";
     governance?: { summaryPath: string | null; audience: string | null; order: number };
+    decision?: { path: string | null; audience: string | null };
+    kind?: "modul" | "luar";
+    whatsapp?: { capable: boolean; machineClientId: string | null };
     actor: ActorRef;
   }): Promise<ApplicationRecord> {
     const parsed = z
@@ -81,10 +118,26 @@ export class ApplicationAccessService {
         canonicalUrl: z.string().url().max(2048),
         status: z.enum(["active", "inactive"]),
         governance: governanceRegistrationSchema.optional(),
+        decision: decisionRegistrationSchema.optional(),
+        kind: z.enum(["modul", "luar"]).optional(),
+        whatsapp: whatsappRegistrationSchema.optional(),
         actor: actorSchema,
       })
       .strict()
       .superRefine((value, ctx) => {
+        // A decision token that also opens the summary would defeat the separation ADR-0012 D4
+        // is built on, so the registry refuses to name one audience for both.
+        if (
+          value.decision?.audience &&
+          value.governance?.audience &&
+          value.decision.audience === value.governance.audience
+        ) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ["decision", "audience"],
+            message: "the decision audience must differ from the governance summary audience",
+          });
+        }
         if (!value.governance?.summaryPath) return;
         try {
           const canonical = new URL(value.canonicalUrl);
@@ -99,6 +152,27 @@ export class ApplicationAccessService {
         }
       })
       .parse(input);
+
+    // The check above can only compare what this call sent, and the two contracts travel in
+    // separate groups: a call that sets the decision contract without the governance group would
+    // otherwise be free to name the summary audience that is already stored. Migration 0027 holds
+    // the same rule at the table, for callers that never pass through here.
+    if (parsed.decision?.audience && !parsed.governance) {
+      const stored = (await this.repository.listApplications()).find(
+        (application) => application.applicationKey === parsed.applicationKey,
+      );
+      if (stored?.governanceAudience && stored.governanceAudience === parsed.decision.audience) {
+        throw new z.ZodError([
+          {
+            code: "custom",
+            path: ["decision", "audience"],
+            message: "the decision audience must differ from the governance summary audience",
+            input: parsed.decision.audience,
+          },
+        ]);
+      }
+    }
+
     const upsert: ApplicationUpsertInput = {
       applicationKey: parsed.applicationKey,
       name: parsed.name,
@@ -106,6 +180,9 @@ export class ApplicationAccessService {
       status: parsed.status,
       actor: parsed.actor,
       ...(parsed.governance ? { governance: parsed.governance } : {}),
+      ...(parsed.decision ? { decision: parsed.decision } : {}),
+      ...(parsed.kind ? { kind: parsed.kind } : {}),
+      ...(parsed.whatsapp ? { whatsapp: parsed.whatsapp } : {}),
     };
     return this.repository.upsertApplication(upsert);
   }

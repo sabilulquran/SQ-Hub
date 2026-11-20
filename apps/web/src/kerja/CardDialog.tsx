@@ -42,7 +42,7 @@ export function CardDialog({ papan, onChanged }: { papan?: Papan | null; onChang
   const kartuId = useOpenCard();
   if (!kartuId) return null;
   return (
-    <DetailDialog label="Kartu" onClose={closeCard}>
+    <DetailDialog label="Kartu" onClose={closeCard} wide>
       <KartuPanel key={kartuId} kartuId={kartuId} papan={papan ?? null} onClose={closeCard} {...(onChanged ? { onChanged } : {})} />
     </DetailDialog>
   );

@@ -1,4 +1,6 @@
-# Sosial & Dakwah — Rancangan modul (PRD)
+# Sosial & Dakwah — Rancangan aplikasi (PRD)
+
+> **Istilah (ADR-0014, 2026-11-16).** Sosial & Dakwah adalah **aplikasi** di SQ Suite, bukan "modul"; modul adalah bagian di dalam satu aplikasi. Ia dirancang sebagai program dan database sendiri (bawaan ADR-0014 D6). Isi dokumen di bawah ditulis sebelum keputusan itu dan tidak ditulis ulang: baca "modul" untuk Sosial & Dakwah sebagai "aplikasi", "modul SQ Hub"/"modul bersama" sebagai "aplikasi yang berjalan di proses Hub", dan "SQ Core" sebagai "SQ Suite". Nama berkas ini tetap. Status terkini ada di [`struktur-sq-suite.md`](struktur-sq-suite.md) §5.
 
 **Status:** DRAFT / DISCOVERY. Dokumen ini tidak mengizinkan implementasi atau perubahan production.
 **Spesifikasi:** SOS-001 (usulan). Spesifikasi implementasi belum ada.

@@ -1,7 +1,9 @@
-# Sekretariat — Rancangan modul (PRD)
+# Sekretariat SQ — Rancangan aplikasi (PRD)
 
-**Status:** DRAFT / DISCOVERY. Dokumen ini tidak mengizinkan implementasi atau perubahan production.
-**Spesifikasi:** SEK-001 (usulan). Spesifikasi implementasi belum ada.
+> **Istilah (ADR-0014, 2026-11-16).** Sekretariat SQ adalah **aplikasi** di SQ Suite, bukan "modul"; modul adalah bagian di dalam satu aplikasi. Ia berjalan di dalam proses Hub (ADR-0014 D6, alasan 3, kompromi) dan tetap memiliki tabel, aturan, dan flag rilisnya sendiri. Isi dokumen di bawah ditulis sebelum keputusan itu dan tidak ditulis ulang: baca "modul" untuk Sekretariat SQ sebagai "aplikasi", "modul SQ Hub"/"modul bersama" sebagai "aplikasi yang berjalan di proses Hub", dan "SQ Core" sebagai "SQ Suite". Nama berkas ini tetap. Status terkini ada di [`struktur-sq-suite.md`](struktur-sq-suite.md) §5.
+
+**Status:** Rancangan produk (revisi 5). R1 diterima lewat [SEK-IMPL-001](../specs/SEK-IMPL-001-r1-buku-nomor-arsip-kotak-masuk.md) (ACCEPTED 2026-11-13) dan sudah dibangun di repository, belum dinyalakan. R2 dan R3 tetap DRAFT / DISCOVERY; dokumen ini sendiri tidak mengizinkan implementasi atau perubahan production.
+**Spesifikasi:** SEK-001. Implementasi R1: SEK-IMPL-001.
 **Tanggal:** 2026-11-12 (revisi 5; revisi 0 2026-11-11)
 **Terkait:** ADR-0001 (batas platform), ADR-0006 (stack), ADR-0007 (Organization Directory), ADR-0011 (pola modul bersama); `rapat-sq-module-design.md` (RAPAT-001 §2, register keputusan), `kerja-sq-module-design.md` (KERJA-001 §1.3, struktur organisasi dan 26 pengguna), `kirim-sq-module-design.md` (KIRIM-001); HCIS `docs/domain/outgoing-letter-register.md` (DOC-003, buku nomor surat yayasan), `docs/domain/hr-documents.md` (DOC-001/DOC-002) dan register EMP-010; **Pedoman Tata Naskah Dinas YSQ v0.11 (draf)** — sumber kaidah penomoran (§8)
 
@@ -184,7 +186,7 @@ Keputusan owner 2026-11-12: kaidah penomoran mengikuti **Pedoman Tata Naskah Din
 ## 9. Privasi, keamanan, audit
 
 - Surat bisa memuat data pribadi dan urusan sensitif (teguran mitra, perjanjian). Isi dan lampiran hanya terbuka bagi peran pada §7; halaman verifikasi tidak pernah menampilkan isi.
-- Isi email adalah data pihak luar: tunduk pada akses berlapis §7, tidak masuk log, dan kredensial mailbox hanya di secret Mi8. Penarikan IMAP baca-saja — modul tidak menghapus atau memindahkan email di mailbox.
+- Isi email adalah data pihak luar: tunduk pada akses berlapis §7 dan tidak masuk log. Kredensial mailbox disimpan terenkripsi di database sejak SEK-IMPL-002 (sebelumnya hanya di secret Mi8); yang tinggal di env Mi8 hanyalah kunci enkripsinya, dan sandinya tidak pernah dikirim balik ke layar. Penarikan IMAP baca-saja — modul tidak menghapus atau memindahkan email di mailbox.
 - Dokumen legal adalah identitas hukum yayasan; unduhan memakai tautan sementara dan setiap akses tercatat.
 - Audit mencatat alokasi nomor, penerbitan, pembatalan beralasan, register retroaktif, disposisi dan perubahan statusnya, serta unggah/versi dokumen legal.
 - Berkas PDF/JPEG/PNG maksimum 10 MiB; register retroaktif dan pembatalan butuh alasan tertulis.
