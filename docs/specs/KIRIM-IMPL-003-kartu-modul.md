@@ -299,6 +299,30 @@ Koreksi owner: sistem tidak perlu tahu apakah sebuah nomor "nomor SPMB" atau nom
 - Review independen: penerusan pesan juga dilanjutkan dari nomor sekarang; pemeriksaan unit dan pemegang diulang pada chat hasil gabungan; `contact_hmac` diambil dari Kirim SQ, tidak dari nomor peminat yang bisa diubah; dan sebuah chat yang digabung hanya membawa status menunggu dari chat lama bila belum ada balasan sesudahnya. Saat kontak yang sama punya chat di dua unit, catatan dan label chat lama ikut ke unit chat yang sekarang (DRAFT: satu kontak satu chat lebih diutamakan).
 - Keterbatasan: pada Ganti nomor WhatsApp di kode yang sama (G-2, cara pertama), tautan balasan cepat di HP lama masih dianggap milik HP baru. Penanganannya menunggu Hub memberi tanda HP per kode.
 
+## 16. Addendum 2026-11-23: Hapus dan Sambungkan ke nomor yang ada di kartu nomor aplikasi luar
+
+**Status:** ACCEPTED (permintaan owner 2026-11-23, di bawah aturan owner 2026-10-26/27). Keputusan agent dicatat di §16.3.
+
+Owner: kartu tambahan (nomor aplikasi luar) perlu opsi **Hapus** kalau nomornya tidak terkoneksi, dan opsi **Sambungkan ke nomor yang ada** — "perlakukan kaya kartu aplikasi": saat nomor yang dipindai ternyata WhatsApp yang sudah ada di Kirim, nomor baru malah terbaca sebagai nomor ganda dan menyangkut tanpa jalan keluar di kartunya.
+
+### 16.1 Hapus nomor aplikasi luar
+
+- `POST /gerbang/nomor/:kode/hapus`: menghapus satu nomor aplikasi luar beserta kunci API dan rutenya. Kartunya hilang dari layar. Hanya nomor **tanpa sesi WhatsApp hidup** yang boleh dihapus: nomor tanpa mesin (`provider = log`), atau yang berstatus `belum_dipasang`, `terputus`, atau `nonaktif`. Nomor `tersambung`/`menunggu_pairing` ditolak `409 nomor_tersambung` (Putuskan dulu). Nomor yang sudah punya percakapan, antrean, atau data lain milik sendiri ditolak `409 nomor_sudah_berisi` (butuh operator, sama seperti batas gabung §11.3). Nomor yang masih dipakai aplikasi lain (rute/kartu konsumen lain) ditolak `409 nomor_dipakai_modul_lain`. Milik pemakai `aplikasi-luar` saja; bukan nomor di kartu itu → `404`. Audit `gerbang.nomor_hapus` (`status`, `provider`).
+- Perangkat di mesin **tidak** dihapus otomatis (konsisten dengan K-9): operator menghapusnya bila perlu.
+- Kartu: tombol **Hapus** muncul saat nomor tidak terkoneksi (termasuk kartu nonaktif), dengan konfirmasi "tidak bisa dibatalkan".
+
+### 16.2 Sambungkan ke nomor yang ada (nomor ganda)
+
+- Deteksi nomor ganda (§11.3) sudah berlaku untuk nomor aplikasi luar (`nomor_ganda` dibawa kartunya), tetapi kartunya belum menampilkan jalan keluar. Kini kartu nomor luar menampilkan peringatan nomor ganda dengan tombol **Sambungkan ke nomor yang ada**, memanggil `POST /devices/:kode/pakai-nomor-yang-ada` yang sudah ada (§11.3 butir 4). Kedua nomor milik pemakai `aplikasi-luar` yang sama, jadi syarat `pemilik_berbeda` terpenuhi.
+- Perbaikan: `pakai-nomor-yang-ada` kini menghapus kunci API nomor ganda (yang lebih baru) dalam transaksi gabung. Kunci terikat ke nomor lewat `kirim_api_keys.device_id` **tanpa** `ON DELETE CASCADE`, jadi tanpa ini penggabungan nomor luar akan gagal `23503`. Nomor yang lebih dulu ada (`ke`) tetap memakai kuncinya sendiri. Audit `nomor.hapus_duplikat` menambah `kunci_dihapus` bila ada.
+
+### 16.3 Keputusan
+
+| Kode | Keputusan | Status | Alasan |
+| --- | --- | --- | --- |
+| L-1 | "Sambungkan ke nomor yang ada" = penggabungan nomor ganda (§11.3) yang ditampilkan di kartu nomor luar, bukan berbagi satu WhatsApp antar dua kunci/kartu | DRAFT | Identitas kartu nomor luar = satu device (kode). Dua kartu berbagi satu device/WhatsApp butuh beberapa kunci per device dan memecah identitas `kode` di seluruh layar (kunci, Ubah, Putuskan, Hapus jadi ambigu). Bila owner memang ingin dua integrasi luar memakai satu nomor WhatsApp, itu perubahan model tersendiri dan ditinjau terpisah |
+| L-2 | Hapus hanya untuk nomor tanpa sesi hidup, dan tanpa data sendiri | — | Nomor `tersambung` dilepas dulu lewat Putuskan; data/percakapan butuh operator (sama dengan batas gabung K-8) |
+
 ## Riwayat
 
 | Tanggal | Perubahan |
@@ -314,4 +338,5 @@ Koreksi owner: sistem tidak perlu tahu apakah sebuah nomor "nomor SPMB" atau nom
 | 2026-11-08 | §15: aturan ganti nomor yang netral nomor; data aplikasi ikut modul, riwayat nomor lama tetap terbaca, satu kontak satu chat; K-16, K-18, K-19 diganti |
 | 2026-11-16 | K-2 dari GUI: Pusat Admin mengisi `whatsapp_capable`, `machine_client_id`, dan jenis aplikasi (`modul`/`luar`, migration `0022_applications_kind.sql`); aplikasi luar mendapat kartu dengan aturan modul (amandemen ADR-0011 2026-11-16, panduan `docs/kirim/panduan-api-gateway-aplikasi-luar.md`) |
 | 2026-11-17 | Kartu per aplikasi luar (baris 2026-11-16) dibatalkan owner. Gantinya satu kartu generik **Aplikasi luar** milik pemakai `aplikasi-luar` dengan beberapa nomor, kunci API `krm_…` milik tiap nomor, dibuat bersama nomornya, tampil di pop-up untuk disalin, bisa diputar ulang dan dicabut tanpa memutus WhatsApp, tanpa nama aplikasi (`kirim_api_keys`, migration 0023 dan 0024; koreksi owner 2026-11-17), webhook per nomor, dan dokumentasi publik `/dokumentasi-api`. §13 dan §15 tetap: tidak ada kartu nomor, tidak ada logika nomor siapa. Amandemen ADR-0011 2026-11-17 |
+| 2026-11-23 | §16: kartu nomor aplikasi luar mendapat **Hapus** (nomor tanpa sesi hidup, `POST /gerbang/nomor/:kode/hapus`) dan **Sambungkan ke nomor yang ada** (penggabungan nomor ganda §11.3 ditampilkan di kartu); `pakai-nomor-yang-ada` menghapus kunci API nomor ganda agar gabung nomor luar tidak gagal `23503` |
 | 2026-11-17 | Bentuk kartu aplikasi luar diubah owner: **bukan satu kartu gabungan berisi daftar nomor**. Satu ubin **Tambah nomor** (isinya hanya itu), lalu **tiap nomor luar menjadi kartu sendiri** sejajar dan sebentuk dengan kartu aplikasi (status, nomor tersamar, antrean, jam kirim dan laju, aksi yang setara). Manajemen kunci API pindah ke kartu nomor itu sebagai pop-up, bersama tautan `/dokumentasi-api`. Tombol "Kelola nomor dan kunci" dan kartu gabungannya dihapus. `/modules` membawa ringkasan kunci tiap nomor (awalan, dibuat, terakhir dipakai) tetapi **tidak pernah nilai kuncinya**, yang hanya dibaca sekali di pop-up nomor itu. §13 dan §15 tetap: aplikasi tidak punya kartu nomor; yang dapat kartu per nomor hanya nomor aplikasi luar. Baris `luar` yang kosong dihapus dari production. Kartu nomor luar memberi tombol **Ubah**, maka pemilik nomor aplikasi luar dikunci: `PATCH /devices/{kode}` menolak memindahkan nomor keluar dari pemakai `aplikasi-luar` atau masuk ke sana (`409 pemilik_terkunci`), karena kuncinya terikat ke nomor tetapi diperiksa terhadap pemakai itu, sehingga nomor yang berpindah akan tetap mengirim dengan kunci yang tidak bisa dicabut dari layar mana pun. Nomor tanpa mesin (`provider = log`) tidak diberi tombol Pasang, Sambungkan ulang, atau Putuskan |

@@ -117,8 +117,8 @@ const QUEUE_PAGE_SIZE = 50;
 const RECONNECT_STATUSES = new Set(["terputus", "menunggu_pairing", "tersambung"]);
 /** Waits between tries while the engine answers `engine_unavailable`, e.g. while it restarts. */
 const ENGINE_RETRY_DELAYS_MS = [1_500, 3_000];
-/** Tables whose rows tie a number to its own conversations; a number with any of them is not merged. */
-const DEVICE_DATA_TABLES = [
+/** Tables whose rows tie a number to its own conversations; a number with any of them is not merged or deleted. */
+export const DEVICE_DATA_TABLES = [
   "kirim_conversations",
   "kirim_messages",
   "kirim_outbox",
@@ -514,6 +514,10 @@ export class KirimAdminService {
         [source.id, target.id],
       );
       await client.query("DELETE FROM kirim_routes WHERE device_id = $1", [source.id]);
+      // An outside number carries its own API key (kirim_api_keys.device_id, no cascade). The newer
+      // number being merged away is the throwaway one, so its key goes with it; the older number
+      // (`ke`) keeps the key the outside application already uses. A module number has no key here.
+      const droppedKeys = await client.query("DELETE FROM kirim_api_keys WHERE device_id = $1", [source.id]);
       try {
         await client.query("DELETE FROM kirim_devices WHERE id = $1", [source.id]);
       } catch (error) {
@@ -533,7 +537,7 @@ export class KirimAdminService {
       });
       await writeAudit(client, {
         actorKind: "human", actorRef: actor.ref, aksi: "nomor.hapus_duplikat", objekJenis: "device", objekRef: source.kode,
-        metadata: { digabung_ke: target.kode, alasan: input.alasan },
+        metadata: { digabung_ke: target.kode, alasan: input.alasan, ...(droppedKeys.rowCount ? { kunci_dihapus: droppedKeys.rowCount } : {}) },
       });
       return toBrowserDevice((await findDevice(client, target.kode))!);
     });
