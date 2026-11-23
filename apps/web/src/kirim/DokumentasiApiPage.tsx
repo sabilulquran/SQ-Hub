@@ -42,7 +42,7 @@ export function DokumentasiApiPage() {
       <main className="min-w-0 space-y-12">
         <Section id="mulai" title="Dua langkah sebelum memanggil API">
           <div className="grid gap-3 sm:grid-cols-2">
-            <Step n={1} title="Sambungkan nomor">Pengelola Kirim membuka kartu <b>Aplikasi luar</b>, menekan <i>Sambungkan nomor baru</i>, lalu memindai QR dari HP nomor yang akan dipakai. Satu kartu menampung beberapa nomor; tiap nomor langsung punya kunci API sendiri.</Step>
+            <Step n={1} title="Sambungkan nomor">Pengelola Kirim membuka kartu <b>Aplikasi luar</b>, menekan <i>Sambungkan nomor baru</i>, lalu memindai QR dari HP nomor yang akan dipakai. Satu kartu menampung beberapa nomor; tiap nomor langsung punya kunci API sendiri, dan satu nomor boleh punya beberapa kunci agar dua aplikasi berbagi satu WhatsApp.</Step>
             <Step n={2} title="Salin kunci nomor itu ke aplikasi Anda">Di pop-up kartu, tekan <i>Tampilkan</i> atau <i>Salin</i> pada nomor yang dipakai, lalu taruh kunci <code>krm_…</code> di berkas env server aplikasi (misalnya <code>KIRIM_API_KEY</code>). Jangan di kode frontend, repositori, atau tiket.</Step>
           </div>
           <Note>Kirim tidak perlu tahu nama aplikasi Anda: tidak ada pendaftaran aplikasi dan tidak ada akun mesin yang harus dibuat. Kunci melekat pada nomor, seperti kunci device di penyedia WhatsApp lain. Aplikasi tidak pernah menyebut kode nomor saat mengirim; Kirim memakai nomor pemilik kunci. Kunci bisa diputar ulang atau dicabut dari kartu tanpa memutus WhatsApp.</Note>

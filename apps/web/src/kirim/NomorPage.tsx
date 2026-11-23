@@ -8,6 +8,7 @@ import {
   type DeviceUsage,
   type KirimConsumer,
   type KirimDevice,
+  type KirimGatewayCardNumber,
   type KirimModuleCard,
   type KirimModuleList,
   type LiveStatus,
@@ -34,6 +35,7 @@ type Dialog =
   | { kind: "ubah-pemakai"; card: KirimModuleCard }
   | { kind: "putuskan-modul"; card: KirimModuleCard }
   | { kind: "hapus-nomor"; device: KirimDevice }
+  | { kind: "tambah-nomor-luar" }
   | { kind: "kunci"; kode: string };
 
 const POLL_MS = 3_000;
@@ -116,8 +118,22 @@ export function NomorPage({ preview }: { preview?: NomorState }) {
 
   return (
     <>
-      <NomorView state={state} busy={busy} onAddNumber={addNumber} onOpen={(next) => { setError(null); setDialog(next); }} onRetry={() => { setState({ status: "loading" }); void load(); }} />
+      <NomorView state={state} busy={busy} onAddNumber={() => { setError(null); setDialog({ kind: "tambah-nomor-luar" }); }} onOpen={(next) => { setError(null); setDialog(next); }} onRetry={() => { setState({ status: "loading" }); void load(); }} />
       {dialog?.kind === "kunci" ? <KunciDialog kode={dialog.kode} onClose={close} onChanged={load} /> : null}
+      {dialog?.kind === "tambah-nomor-luar" && state.status === "ready" ? (
+        <TambahNomorLuarDialog
+          numbers={(state.list.gerbang?.nomor ?? []).filter((nomor) => nomor.status !== "nonaktif")}
+          busy={busy}
+          error={error}
+          onClose={close}
+          onNewNumber={addNumber}
+          onUseExisting={(kode) => void run(
+            () => kirimFetch(`/gerbang/nomor/${kode}/kunci`, { method: "POST", body: {} }),
+            // The new key is read once in that number's own pop-up, like any other gateway key.
+            () => ({ kind: "kunci", kode }),
+          )}
+        />
+      ) : null}
       {dialog?.kind === "hapus-nomor" ? (
         <ReasonDialog
           title={`Hapus ${dialog.device.label}?`}
@@ -577,6 +593,59 @@ export function TambahDialog({ card, numbers, owners = {}, editing, busy, error,
           <button type="button" className={primaryButton} disabled={busy || (own.length > 0 && !berbeda)} onClick={() => onNewNumber(own.length > 0)}><Plus className="h-4 w-4" aria-hidden="true" /> Buat nomor {card.nama}</button>
         ) : (
           <button type="button" className={primaryButton} disabled={busy || !device} onClick={() => onUseNumber(device, kode)}><Link2 className="h-4 w-4" aria-hidden="true" /> {editing ? "Simpan" : "Sambungkan"}</button>
+        )}
+      </div>
+    </DialogFrame>
+  );
+}
+
+/**
+ * "Tambah nomor" for the outside-number card: a brand-new number (its own key, then pairing), or an
+ * extra API key on a number that is already connected — so another outside application can send
+ * through the same WhatsApp line without a second pairing (KIRIM-IMPL-003 §17, owner 2026-11-23).
+ */
+export function TambahNomorLuarDialog({ numbers, busy, error, onClose, onNewNumber, onUseExisting }: {
+  numbers: KirimGatewayCardNumber[];
+  busy: boolean;
+  error: string | null;
+  onClose: () => void;
+  onNewNumber: () => void;
+  onUseExisting: (kode: string) => void;
+}) {
+  const [mode, setMode] = useState<"baru" | "pakai">("baru");
+  const [kode, setKode] = useState(numbers[0]?.kode ?? "");
+  const option = "flex gap-3 rounded-xl border p-3 text-sm";
+  return (
+    <DialogFrame title="Tambah nomor aplikasi luar">
+      <p className="mt-1.5 text-sm text-muted-foreground">Pilih salah satu. Kode nomor dan kunci API disiapkan otomatis.</p>
+      <div className="mt-3 space-y-3">
+        <label className={`${option} ${mode === "baru" ? "border-brand-primary bg-brand-primary-pale/40" : "border-border"}`}>
+          <input type="radio" name="cara-luar" className="mt-1" checked={mode === "baru"} onChange={() => setMode("baru")} />
+          <span><strong>Sambungkan nomor baru</strong><br /><span className="text-muted-foreground">Nomor baru dengan kuncinya sendiri; setelah dibuat, pindai QR langsung terbuka.</span></span>
+        </label>
+        <label className={`${option} ${mode === "pakai" ? "border-brand-primary bg-brand-primary-pale/40" : "border-border"}`}>
+          <input type="radio" name="cara-luar" className="mt-1" checked={mode === "pakai"} disabled={numbers.length === 0} onChange={() => setMode("pakai")} />
+          <span><strong>Pakai nomor yang sudah ada</strong><br /><span className="text-muted-foreground">{numbers.length === 0 ? "Belum ada nomor aplikasi luar lain." : "Tambah satu kunci API pada nomor yang sudah ada, agar aplikasi luar lain ikut mengirim lewat WhatsApp yang sama. Tidak ada pemindaian ulang."}</span></span>
+        </label>
+        {mode === "pakai" && numbers.length > 0 ? (
+          <fieldset className="space-y-2 rounded-xl border border-border p-3 text-sm">
+            <legend className="px-1 text-xs font-bold text-brand-heading">Nomor aplikasi luar</legend>
+            {numbers.map((item) => (
+              <label key={item.kode} className="flex items-center gap-2">
+                <input type="radio" name="nomor-luar" checked={kode === item.kode} onChange={() => setKode(item.kode)} />
+                <span>{item.label} · {item.nomor_tersamar ?? deviceStatusLabel[item.status]} · {item.kunci.length} kunci</span>
+              </label>
+            ))}
+          </fieldset>
+        ) : null}
+      </div>
+      {error ? <p role="alert" className="mt-3 rounded-xl bg-danger-soft px-3 py-2 text-sm text-danger-ink">{error}</p> : null}
+      <div className="mt-4 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+        <button type="button" className={secondaryButton} onClick={onClose} disabled={busy}>Batal</button>
+        {mode === "baru" ? (
+          <button type="button" className={primaryButton} disabled={busy} onClick={onNewNumber}><Plus className="h-4 w-4" aria-hidden="true" /> Buat nomor</button>
+        ) : (
+          <button type="button" className={primaryButton} disabled={busy || !kode} onClick={() => onUseExisting(kode)}><Link2 className="h-4 w-4" aria-hidden="true" /> Tambah kunci</button>
         )}
       </div>
     </DialogFrame>

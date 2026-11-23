@@ -55,14 +55,16 @@ export interface KirimModuleList extends KirimDeviceList {
 
 /** The number's own API key as the pop-up shows it; `kunci` is null only for a key made before migration 0024. */
 export interface KirimGatewayKey {
+  id: string;
   awalan: string;
   kunci: string | null;
   dibuat_at: string;
   terakhir_dipakai_at: string | null;
 }
 
+/** §17: a number may carry several keys at once, so two outside applications can share one line. */
 export interface KirimGatewayNumber extends KirimDevice {
-  kunci: KirimGatewayKey | null;
+  kunci: KirimGatewayKey[];
   webhook_terdaftar?: boolean;
 }
 
@@ -71,7 +73,7 @@ export type KirimGatewayKeySummary = Omit<KirimGatewayKey, "kunci">;
 
 /** One outside number as its own card (owner decision 2026-11-17), beside the application cards. */
 export interface KirimGatewayCardNumber extends KirimDevice {
-  kunci: KirimGatewayKeySummary | null;
+  kunci: KirimGatewayKeySummary[];
   webhook_terdaftar?: boolean;
 }
 

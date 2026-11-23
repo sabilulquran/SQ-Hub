@@ -14,7 +14,7 @@ import { KirimAppView } from "@/kirim/KirimApp";
 import { KirimShell } from "@/kirim/KirimShell";
 import type { KirimDevice } from "@/kirim/api";
 import { KunciDialogView, NomorLuarCard } from "@/kirim/NomorLuarCard";
-import { DeactivateDialog, DeactivateWarning, EditDeviceDialog, GantiHint, ModuleCard, NomorView, PairingContent, TambahDialog } from "@/kirim/NomorPage";
+import { DeactivateDialog, DeactivateWarning, EditDeviceDialog, GantiHint, ModuleCard, NomorView, PairingContent, TambahDialog, TambahNomorLuarDialog } from "@/kirim/NomorPage";
 import { isKirimHost, resolveKirimRoute } from "@/kirim/routes";
 
 const noop = () => undefined;
@@ -504,7 +504,7 @@ describe("Kartu per nomor aplikasi luar (keputusan owner 2026-11-17)", () => {
     const nomor = kirimGerbangDetailFixture.nomor[0]!;
     const html = renderToStaticMarkup(
       <KunciDialogView state={{ status: "ready", nomor }} busy={false} error={null}
-        onClose={noop} onRetry={noop} onRotateKey={noop} onRevokeKey={noop} />,
+        onClose={noop} onRetry={noop} onAddKey={noop} onRotateKey={noop} onRevokeKey={noop} />,
     );
     expect(html).toContain('role="dialog"');
     // The pop-up is about this number alone, not every number.
@@ -526,7 +526,7 @@ describe("Kartu per nomor aplikasi luar (keputusan owner 2026-11-17)", () => {
   // behind it; a card of its own must do the same, or Sambungkan ulang waits on a QR that is
   // never drawn (the page's own canReconnect already refuses such a number).
   it("offers no WhatsApp action for a number that has no engine behind it", () => {
-    const nomor = { ...kirimGerbangDetailFixture.nomor[0]!, provider: "log" as const, kunci: null };
+    const nomor = { ...kirimGerbangDetailFixture.nomor[0]!, provider: "log" as const, kunci: [] };
     const html = renderToStaticMarkup(<NomorLuarCard nomor={nomor} onDevice={noop} onKeys={noop} />);
     expect(html).not.toContain("Sambungkan ulang");
     expect(html).not.toContain("Putuskan");
@@ -579,11 +579,42 @@ describe("Kartu per nomor aplikasi luar (keputusan owner 2026-11-17)", () => {
     const nomor = kirimGerbangDetailFixture.nomor[1]!;
     const html = renderToStaticMarkup(
       <KunciDialogView state={{ status: "ready", nomor }} busy={false} error={null}
-        onClose={noop} onRetry={noop} onRotateKey={noop} onRevokeKey={noop} />,
+        onClose={noop} onRetry={noop} onAddKey={noop} onRotateKey={noop} onRevokeKey={noop} />,
     );
     expect(html).toContain("Buat kunci");
-    expect(html).toContain("belum ada");
+    expect(html).toContain("Belum ada kunci");
     expect(html).not.toContain("Putar ulang");
+  });
+
+  // Owner 2026-11-23 §17: a number may carry several keys at once, each with its own rotate/revoke,
+  // so two outside applications can share one WhatsApp line.
+  it("lists several keys on one number, each with its own actions, plus Tambah kunci", () => {
+    const base = kirimGerbangDetailFixture.nomor[0]!.kunci[0]!;
+    const nomor = { ...kirimGerbangDetailFixture.nomor[0]!, kunci: [
+      base,
+      { id: "22222222-2222-4222-8222-222222222222", awalan: "krm_Zz99Yy88", kunci: "krm_Zz99Yy88WwVvUuTtSsRrQqPpOoNnMm", dibuat_at: "2026-11-20T01:00:00.000Z", terakhir_dipakai_at: null },
+    ] };
+    const html = renderToStaticMarkup(
+      <KunciDialogView state={{ status: "ready", nomor }} busy={false} error={null}
+        onClose={noop} onRetry={noop} onAddKey={noop} onRotateKey={noop} onRevokeKey={noop} />,
+    );
+    expect(html).toContain("krm_Ab12Cd34…");
+    expect(html).toContain("krm_Zz99Yy88…");
+    // Per-key actions and a way to add another.
+    expect(html.match(/Cabut/g)?.length).toBeGreaterThanOrEqual(2);
+    expect(html).toContain("Tambah kunci");
+  });
+
+  // Owner 2026-11-23 §17: "Tambah nomor" can add a key to a number already connected, no re-pairing.
+  it("lets Tambah nomor pick an existing number to add a key to", () => {
+    const numbers = kirimNomorFixture.status === "ready" ? kirimNomorFixture.list.gerbang!.nomor : [];
+    const html = renderToStaticMarkup(
+      <TambahNomorLuarDialog numbers={numbers} busy={false} error={null} onClose={noop} onNewNumber={noop} onUseExisting={noop} />,
+    );
+    expect(html).toContain("Sambungkan nomor baru");
+    expect(html).toContain("Pakai nomor yang sudah ada");
+    // With existing numbers, the "pakai" option is selectable (not disabled).
+    expect(html).not.toMatch(/name="cara-luar"[^>]*disabled/);
   });
 });
 

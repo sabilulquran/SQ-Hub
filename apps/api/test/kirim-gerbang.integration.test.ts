@@ -54,7 +54,8 @@ const adminAuth: HubAuthRuntime = {
   clearTransactionCookie: () => "",
 };
 
-type NumberDetail = { kode: string; status: string; kunci: { awalan: string; kunci: string | null; terakhir_dipakai_at: string | null } | null };
+type KeyDetail = { id: string; awalan: string; kunci: string | null; terakhir_dipakai_at: string | null };
+type NumberDetail = { kode: string; status: string; kunci: KeyDetail[] };
 
 function admin(method: "GET" | "POST" | "PATCH", url: string, payload?: unknown) {
   return app.inject({ method, url: `/admin/kirim${url}`, headers: { cookie: "sq_kirim_session=admin-session", origin: ORIGIN }, ...(payload !== undefined ? { payload: payload as Record<string, unknown> } : {}) });
@@ -87,7 +88,8 @@ async function newNumber() {
   const kode = number.json().kode as string;
   const detail = (await admin("GET", "/gerbang")).json() as { nomor: NumberDetail[] };
   const row = detail.nomor.find((nomor) => nomor.kode === kode)!;
-  return { kode, kunci: row.kunci!.kunci!, awalan: row.kunci!.awalan };
+  const key = row.kunci[0]!;
+  return { kode, kunci: key.kunci!, awalan: key.awalan, keyId: key.id };
 }
 
 beforeAll(async () => {
@@ -154,14 +156,14 @@ describe("Kartu Aplikasi luar (admin)", () => {
     expect(second.json()).toMatchObject({ kode: "luar-2", label: "Aplikasi luar 2" });
 
     const card = (await admin("GET", "/modules")).json();
-    // Owner 2026-11-17: each number is its own card, so the list carries that number's own key
-    // summary -- its prefix and how it is doing, never the key itself.
-    expect(card.gerbang.nomor.map((nomor: { kode: string; kunci: { awalan: string } | null }) => [nomor.kode, nomor.kunci?.awalan?.slice(0, 4)])).toEqual([
-      ["luar", "krm_"],
-      ["luar-2", "krm_"],
+    // Owner 2026-11-17/§17: each number is its own card and carries its key summaries (prefix, how
+    // each is doing), never the key value. A new number starts with exactly one key.
+    expect(card.gerbang.nomor.map((nomor: { kode: string; kunci: Array<{ awalan: string }> }) => [nomor.kode, nomor.kunci.length, nomor.kunci[0]?.awalan?.slice(0, 4)])).toEqual([
+      ["luar", 1, "krm_"],
+      ["luar-2", 1, "krm_"],
     ]);
-    for (const nomor of card.gerbang.nomor as Array<{ kunci: Record<string, unknown> | null }>) {
-      expect(Object.keys(nomor.kunci ?? {}).sort()).toEqual(["awalan", "dibuat_at", "terakhir_dipakai_at"]);
+    for (const nomor of card.gerbang.nomor as Array<{ kunci: Array<Record<string, unknown>> }>) {
+      expect(Object.keys(nomor.kunci[0] ?? {}).sort()).toEqual(["awalan", "dibuat_at", "id", "terakhir_dipakai_at"]);
     }
     expect(card.modules).toEqual([]);
     // The card face carries the key's prefix but never the key itself; the pop-up carries that,
@@ -169,9 +171,10 @@ describe("Kartu Aplikasi luar (admin)", () => {
     expect(JSON.stringify(card.gerbang)).not.toMatch(/krm_[A-Za-z0-9_-]{32}/);
     const detail = (await admin("GET", "/gerbang")).json() as { nomor: NumberDetail[] };
     for (const nomor of detail.nomor) {
-      expect(nomor.kunci?.kunci).toMatch(/^krm_[A-Za-z0-9_-]{32}$/);
-      expect(nomor.kunci?.awalan).toBe(nomor.kunci?.kunci?.slice(0, 12));
-      expect(nomor.kunci?.terakhir_dipakai_at).toBeNull();
+      const key = nomor.kunci[0]!;
+      expect(key.kunci).toMatch(/^krm_[A-Za-z0-9_-]{32}$/);
+      expect(key.awalan).toBe(key.kunci?.slice(0, 12));
+      expect(key.terakhir_dipakai_at).toBeNull();
     }
     expect(JSON.stringify(detail)).not.toContain("nama_aplikasi");
     // Stored: the lookup hash and the sealed value, never the plain key.
@@ -185,31 +188,59 @@ describe("Kartu Aplikasi luar (admin)", () => {
     expect(Number(routes.rows[0].count)).toBe(2);
   });
 
-  it("rotates a key (old one stops, number untouched) and revokes it, with audit", async () => {
-    const { kode, kunci: old, awalan } = await newNumber();
+  it("rotates one key (old one stops, number untouched) and revokes it, with audit", async () => {
+    const { kode, kunci: old, awalan, keyId } = await newNumber();
     expect((await withKey(old, "GET", "/sambungan")).statusCode).toBe(200);
-    const rotated = await admin("POST", `/gerbang/nomor/${kode}/kunci`, {});
+    const rotated = await admin("POST", `/gerbang/nomor/${kode}/kunci/${keyId}/putar`, {});
     expect(rotated.statusCode).toBe(200);
     const fresh = rotated.json().kunci as string;
+    const freshId = rotated.json().id as string;
     expect(fresh).toMatch(/^krm_/);
     expect(fresh).not.toBe(old);
     expect((await withKey(old, "GET", "/sambungan")).statusCode).toBe(401);
     expect((await withKey(fresh, "GET", "/sambungan")).json().nomor).toMatchObject({ kode, status: "tersambung" });
     const detail = (await admin("GET", "/gerbang")).json() as { nomor: NumberDetail[] };
-    expect(detail.nomor.find((nomor) => nomor.kode === kode)?.kunci?.kunci).toBe(fresh);
+    const after = detail.nomor.find((nomor) => nomor.kode === kode)!;
+    expect(after.kunci.map((key) => key.kunci)).toEqual([fresh]);
 
-    const revoked = await admin("POST", `/gerbang/nomor/${kode}/kunci/cabut`, { alasan: "aplikasi berhenti" });
+    const revoked = await admin("POST", `/gerbang/nomor/${kode}/kunci/${freshId}/cabut`, { alasan: "aplikasi berhenti" });
     expect(revoked.statusCode).toBe(200);
     expect((await withKey(fresh, "GET", "/sambungan")).statusCode).toBe(401);
-    const after = (await admin("GET", "/gerbang")).json() as { nomor: NumberDetail[] };
-    expect(after.nomor.find((nomor) => nomor.kode === kode)).toMatchObject({ status: "tersambung", kunci: null });
-    expect((await admin("POST", `/gerbang/nomor/${kode}/kunci/cabut`, { alasan: "lagi" })).statusCode).toBe(404);
-    expect((await admin("GET", "/modules")).json().gerbang.nomor.find((nomor: { kode: string }) => nomor.kode === kode).kunci).toBeNull();
+    const none = (await admin("GET", "/gerbang")).json() as { nomor: NumberDetail[] };
+    expect(none.nomor.find((nomor) => nomor.kode === kode)!.kunci).toEqual([]);
+    expect((await admin("POST", `/gerbang/nomor/${kode}/kunci/${freshId}/cabut`, { alasan: "lagi" })).statusCode).toBe(404);
+    expect((await admin("GET", "/modules")).json().gerbang.nomor.find((nomor: { kode: string }) => nomor.kode === kode).kunci).toEqual([]);
 
     const audit = await pool.query<{ aksi: string; metadata: Record<string, unknown> }>("SELECT aksi, metadata FROM kirim_audit WHERE aksi LIKE 'gerbang.%' ORDER BY occurred_at, aksi");
     expect(audit.rows.map((row) => row.aksi)).toEqual(["gerbang.kunci_buat", "gerbang.nomor_baru", "gerbang.kunci_putar", "gerbang.kunci_cabut"]);
     expect(audit.rows[2]?.metadata.menggantikan).toBe(awalan);
     expect(JSON.stringify(audit.rows)).not.toContain(fresh);
+  });
+
+  // Owner 2026-11-23 §17: a number may carry several keys at once, so two outside applications can
+  // share one WhatsApp line. Each key sends through the same number and is rotated/revoked on its own.
+  it("lets one number carry several keys that each send, and revokes one without touching the other", async () => {
+    const { kode, kunci: first, keyId: firstId } = await newNumber();
+    const added = await admin("POST", `/gerbang/nomor/${kode}/kunci`, {});
+    expect(added.statusCode).toBe(201);
+    const second = added.json().kunci as string;
+    const secondId = added.json().id as string;
+    expect(second).not.toBe(first);
+    expect(secondId).not.toBe(firstId);
+
+    // Both keys authenticate and send through the same number.
+    for (const key of [first, second]) {
+      expect((await withKey(key, "GET", "/sambungan")).json().nomor).toMatchObject({ kode });
+    }
+    const detail = (await admin("GET", "/gerbang")).json() as { nomor: NumberDetail[] };
+    expect(detail.nomor.find((nomor) => nomor.kode === kode)!.kunci).toHaveLength(2);
+
+    // Revoking one leaves the other working.
+    expect((await admin("POST", `/gerbang/nomor/${kode}/kunci/${firstId}/cabut`, { alasan: "satu aplikasi berhenti" })).statusCode).toBe(200);
+    expect((await withKey(first, "GET", "/sambungan")).statusCode).toBe(401);
+    expect((await withKey(second, "GET", "/sambungan")).statusCode).toBe(200);
+    const left = (await admin("GET", "/gerbang")).json() as { nomor: NumberDetail[] };
+    expect(left.nomor.find((nomor) => nomor.kode === kode)!.kunci.map((key) => key.id)).toEqual([secondId]);
   });
 
   it("refuses key actions on a number that is not on the card", async () => {

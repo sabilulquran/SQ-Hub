@@ -162,9 +162,11 @@ export function registerKirimAdminRoutes(
   if (gateway) {
     read("/gerbang", () => gateway.detail());
     write("POST", "/gerbang/nomor-baru", (_request, actor) => gateway.connectNewNumber(actor), 201);
-    // The key belongs to the number: make or rotate it, or revoke it; the WhatsApp session is untouched.
-    write("POST", "/gerbang/nomor/:kode/kunci", (request, actor) => gateway.rotateKey(actor, params(request).kode!));
-    write("POST", "/gerbang/nomor/:kode/kunci/cabut", (request, actor) => gateway.revokeKey(actor, params(request).kode!, revokeKeySchema.parse(body(request)).alasan));
+    // Keys belong to the number: a number may carry several at once (§17), so make/rotate/revoke
+    // each one on its own. The WhatsApp session is untouched.
+    write("POST", "/gerbang/nomor/:kode/kunci", (request, actor) => gateway.addKey(actor, params(request).kode!), 201);
+    write("POST", "/gerbang/nomor/:kode/kunci/:id/putar", (request, actor) => gateway.rotateKey(actor, params(request).kode!, params(request).id!));
+    write("POST", "/gerbang/nomor/:kode/kunci/:id/cabut", (request, actor) => gateway.revokeKey(actor, params(request).kode!, params(request).id!, revokeKeySchema.parse(body(request)).alasan));
     // "Hapus" on an outside number's card: only a number with no live WhatsApp session and no data of its own.
     write("POST", "/gerbang/nomor/:kode/hapus", (request, actor) => gateway.deleteNumber(actor, params(request).kode!));
   }

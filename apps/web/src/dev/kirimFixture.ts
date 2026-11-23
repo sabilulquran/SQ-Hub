@@ -35,8 +35,8 @@ export const kirimGerbangDetailFixture: KirimGatewayDetail = {
   nama: "Aplikasi luar",
   keterangan: "Portal atau aplikasi di luar Sabilul Qur'an Suite yang memakai API",
   nomor: [
-    { ...luarDevice, webhook_terdaftar: false, kunci: { awalan: "krm_Ab12Cd34", kunci: "krm_Ab12Cd34EfGh56IjKl78MnOp90QrSt", dibuat_at: "2026-11-17T01:05:00.000Z", terakhir_dipakai_at: "2026-11-17T02:00:00.000Z" } },
-    { ...luarDevice2, webhook_terdaftar: false, kunci: null },
+    { ...luarDevice, webhook_terdaftar: false, kunci: [{ id: "11111111-1111-4111-8111-111111111111", awalan: "krm_Ab12Cd34", kunci: "krm_Ab12Cd34EfGh56IjKl78MnOp90QrSt", dibuat_at: "2026-11-17T01:05:00.000Z", terakhir_dipakai_at: "2026-11-17T02:00:00.000Z" }] },
+    { ...luarDevice2, webhook_terdaftar: false, kunci: [] },
   ],
 };
 
@@ -60,8 +60,8 @@ export const kirimNomorFixture: NomorState = {
       nama: kirimGerbangDetailFixture.nama,
       keterangan: kirimGerbangDetailFixture.keterangan,
       nomor: [
-        { ...luarDevice, webhook_terdaftar: false, kunci: { awalan: "krm_Ab12Cd34", dibuat_at: "2026-11-17T01:05:00.000Z", terakhir_dipakai_at: "2026-11-17T02:00:00.000Z" } },
-        { ...luarDevice2, webhook_terdaftar: false, kunci: null },
+        { ...luarDevice, webhook_terdaftar: false, kunci: [{ id: "11111111-1111-4111-8111-111111111111", awalan: "krm_Ab12Cd34", dibuat_at: "2026-11-17T01:05:00.000Z", terakhir_dipakai_at: "2026-11-17T02:00:00.000Z" }] },
+        { ...luarDevice2, webhook_terdaftar: false, kunci: [] },
       ],
     },
   },

@@ -323,6 +323,38 @@ Owner: kartu tambahan (nomor aplikasi luar) perlu opsi **Hapus** kalau nomornya 
 | L-1 | "Sambungkan ke nomor yang ada" = penggabungan nomor ganda (§11.3) yang ditampilkan di kartu nomor luar, bukan berbagi satu WhatsApp antar dua kunci/kartu | DRAFT | Identitas kartu nomor luar = satu device (kode). Dua kartu berbagi satu device/WhatsApp butuh beberapa kunci per device dan memecah identitas `kode` di seluruh layar (kunci, Ubah, Putuskan, Hapus jadi ambigu). Bila owner memang ingin dua integrasi luar memakai satu nomor WhatsApp, itu perubahan model tersendiri dan ditinjau terpisah |
 | L-2 | Hapus hanya untuk nomor tanpa sesi hidup, dan tanpa data sendiri | — | Nomor `tersambung` dilepas dulu lewat Putuskan; data/percakapan butuh operator (sama dengan batas gabung K-8) |
 
+## 17. Addendum 2026-11-23: beberapa kunci API per nomor aplikasi luar (berbagi satu WhatsApp)
+
+**Status:** ACCEPTED (permintaan owner 2026-11-23, lanjutan §16, di bawah aturan owner 2026-10-26/27). Keputusan agent di §17.3.
+
+Owner menyetujui: dua integrasi aplikasi luar bisa **berbagi satu nomor WhatsApp**, masing-masing dengan kunci API sendiri. Sebelumnya satu nomor dianggap punya satu kunci; menautkan WhatsApp yang sama dengan nomor lain hanya menghasilkan nomor ganda.
+
+### 17.1 Model
+
+- Satu nomor aplikasi luar (satu device milik pemakai `aplikasi-luar`) boleh punya **beberapa kunci API aktif** sekaligus. Semua kunci itu mengirim lewat **sesi WhatsApp yang sama** (satu device, satu tenant mesin). Lapisan autentikasi sudah mendukung banyak kunci (pencarian per `kunci_hash`); yang berubah hanya pengelolaan kunci menjadi per-kunci.
+- Kartu tetap **satu per nomor** (identitas kartu = `kode` device). Kunci-kuncinya dikelola di pop-up Kunci API nomor itu, masing-masing dengan Tampilkan/Salin, Putar ulang, dan Cabut sendiri, plus tombol **Tambah kunci**. Muka kartu menunjukkan jumlah kunci.
+- `GET /gerbang` dan `/modules` membawa `kunci` sebagai **array** (tiap kunci: `id`, `awalan`, `dibuat_at`, `terakhir_dipakai_at`; nilai `kunci` hanya di pop-up detail, tidak pernah di muka kartu).
+
+### 17.2 Endpoint (per-kunci)
+
+| Endpoint | Perilaku |
+| --- | --- |
+| `POST /gerbang/nomor/:kode/kunci` | **Tambah** satu kunci baru pada nomor (tidak mencabut yang lain). Mengembalikan nilai kunci sekali. `201`. Untuk nomor tanpa kunci = "Buat kunci". |
+| `POST /gerbang/nomor/:kode/kunci/:id/putar` | Putar ulang **satu** kunci: kunci itu dicabut, kunci baru dibuat; kunci lain tak tersentuh. Audit `gerbang.kunci_putar` (`menggantikan`). |
+| `POST /gerbang/nomor/:kode/kunci/:id/cabut` | Cabut **satu** kunci. Audit `gerbang.kunci_cabut`. |
+
+`:id` divalidasi sebagai GUID dan harus milik nomor itu, selain `kode` harus nomor di kartu Aplikasi luar (`404` bila tidak). WhatsApp tidak diputus oleh aksi kunci mana pun.
+
+- Layar: **Tambah nomor** pada kartu Aplikasi luar membuka dialog dua pilihan: *Sambungkan nomor baru* (seperti biasa) atau *Pakai nomor yang sudah ada* → pilih nomor, lalu satu kunci baru ditambahkan pada nomor itu dan pop-up kuncinya terbuka untuk disalin. Tidak ada pemindaian ulang.
+
+### 17.3 Keputusan
+
+| Kode | Keputusan | Status | Alasan |
+| --- | --- | --- | --- |
+| L-3 | Satu kartu per nomor; banyak kunci dikelola di pop-up (bukan satu kartu per kunci) | DRAFT | Identitas kartu nomor luar = `kode` device; satu kartu per kunci akan menggandakan `kode` dan membuat aksi tingkat-device (Pasang, Ubah, Putuskan, Hapus) ambigu. Pop-up kunci sudah tempat alami mengelola kredensial. |
+| L-4 | Webhook tetap **per nomor** (dibagi semua kunci), bukan per kunci | DRAFT | Fokus fitur adalah kirim keluar untuk dua aplikasi. Bila nanti perlu webhook masuk terpisah per aplikasi, itu perubahan tersendiri. |
+| L-5 | Hapus nomor (§16) menolak bila masih dipakai aplikasi lain; mencabut satu kunci tidak menghapus nomor | — | Konsisten dengan §16: nomor dihapus hanya saat kosong dan tak dipakai; kunci individual dicabut tanpa menyentuh nomor atau kunci lain. |
+
 ## Riwayat
 
 | Tanggal | Perubahan |
@@ -339,4 +371,5 @@ Owner: kartu tambahan (nomor aplikasi luar) perlu opsi **Hapus** kalau nomornya 
 | 2026-11-16 | K-2 dari GUI: Pusat Admin mengisi `whatsapp_capable`, `machine_client_id`, dan jenis aplikasi (`modul`/`luar`, migration `0022_applications_kind.sql`); aplikasi luar mendapat kartu dengan aturan modul (amandemen ADR-0011 2026-11-16, panduan `docs/kirim/panduan-api-gateway-aplikasi-luar.md`) |
 | 2026-11-17 | Kartu per aplikasi luar (baris 2026-11-16) dibatalkan owner. Gantinya satu kartu generik **Aplikasi luar** milik pemakai `aplikasi-luar` dengan beberapa nomor, kunci API `krm_…` milik tiap nomor, dibuat bersama nomornya, tampil di pop-up untuk disalin, bisa diputar ulang dan dicabut tanpa memutus WhatsApp, tanpa nama aplikasi (`kirim_api_keys`, migration 0023 dan 0024; koreksi owner 2026-11-17), webhook per nomor, dan dokumentasi publik `/dokumentasi-api`. §13 dan §15 tetap: tidak ada kartu nomor, tidak ada logika nomor siapa. Amandemen ADR-0011 2026-11-17 |
 | 2026-11-23 | §16: kartu nomor aplikasi luar mendapat **Hapus** (nomor tanpa sesi hidup, `POST /gerbang/nomor/:kode/hapus`) dan **Sambungkan ke nomor yang ada** (penggabungan nomor ganda §11.3 ditampilkan di kartu); `pakai-nomor-yang-ada` menghapus kunci API nomor ganda agar gabung nomor luar tidak gagal `23503` |
+| 2026-11-23 | §17: beberapa kunci API per nomor aplikasi luar agar dua aplikasi berbagi satu WhatsApp; endpoint kunci jadi per-kunci (`/kunci` tambah, `/kunci/:id/putar`, `/kunci/:id/cabut`); **Tambah nomor → Pakai nomor yang sudah ada** menambah kunci tanpa pindai ulang |
 | 2026-11-17 | Bentuk kartu aplikasi luar diubah owner: **bukan satu kartu gabungan berisi daftar nomor**. Satu ubin **Tambah nomor** (isinya hanya itu), lalu **tiap nomor luar menjadi kartu sendiri** sejajar dan sebentuk dengan kartu aplikasi (status, nomor tersamar, antrean, jam kirim dan laju, aksi yang setara). Manajemen kunci API pindah ke kartu nomor itu sebagai pop-up, bersama tautan `/dokumentasi-api`. Tombol "Kelola nomor dan kunci" dan kartu gabungannya dihapus. `/modules` membawa ringkasan kunci tiap nomor (awalan, dibuat, terakhir dipakai) tetapi **tidak pernah nilai kuncinya**, yang hanya dibaca sekali di pop-up nomor itu. §13 dan §15 tetap: aplikasi tidak punya kartu nomor; yang dapat kartu per nomor hanya nomor aplikasi luar. Baris `luar` yang kosong dihapus dari production. Kartu nomor luar memberi tombol **Ubah**, maka pemilik nomor aplikasi luar dikunci: `PATCH /devices/{kode}` menolak memindahkan nomor keluar dari pemakai `aplikasi-luar` atau masuk ke sana (`409 pemilik_terkunci`), karena kuncinya terikat ke nomor tetapi diperiksa terhadap pemakai itu, sehingga nomor yang berpindah akan tetap mengirim dengan kunci yang tidak bisa dicabut dari layar mana pun. Nomor tanpa mesin (`provider = log`) tidak diberi tombol Pasang, Sambungkan ulang, atau Putuskan |
