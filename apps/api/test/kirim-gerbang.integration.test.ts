@@ -220,6 +220,43 @@ describe("Kartu Aplikasi luar (admin)", () => {
     expect((await admin("POST", "/gerbang/nomor/spmb/kunci/cabut", { alasan: "x" })).statusCode).toBe(404);
   });
 
+  // Owner 2026-11-23: a number created by mistake, or never connected, can be removed from its card.
+  it("deletes an outside number that has no data, with its key and routes, and audits it", async () => {
+    const { kode, kunci } = await newNumber();
+    expect((await withKey(kunci, "GET", "/sambungan")).statusCode).toBe(200);
+
+    const removed = await admin("POST", `/gerbang/nomor/${kode}/hapus`, {});
+    expect(removed.statusCode).toBe(200);
+    expect(removed.json()).toMatchObject({ kode, dihapus: true });
+
+    // Gone from the card, the key no longer authenticates, and no orphan rows are left behind.
+    expect((await admin("GET", "/modules")).json().gerbang.nomor.find((nomor: { kode: string }) => nomor.kode === kode)).toBeUndefined();
+    expect((await withKey(kunci, "GET", "/sambungan")).statusCode).toBe(401);
+    expect(Number((await pool.query("SELECT count(*) AS c FROM kirim_devices WHERE kode = $1", [kode])).rows[0].c)).toBe(0);
+    expect(Number((await pool.query("SELECT count(*) AS c FROM kirim_api_keys")).rows[0].c)).toBe(0);
+    expect(Number((await pool.query("SELECT count(*) AS c FROM kirim_routes")).rows[0].c)).toBe(0);
+    // Deleting again is a 404.
+    expect((await admin("POST", `/gerbang/nomor/${kode}/hapus`, {})).statusCode).toBe(404);
+    const audit = await pool.query("SELECT 1 FROM kirim_audit WHERE aksi = 'gerbang.nomor_hapus' AND objek_ref = $1", [kode]);
+    expect(audit.rowCount).toBe(1);
+  });
+
+  it("refuses to delete a number that is not on the card, or one another application still uses", async () => {
+    const other = randomUUID();
+    await pool.query("INSERT INTO kirim_consumers (id, client_id, nama) VALUES ($1, 'spmb-api', 'spmb')", [other]);
+    await pool.query("INSERT INTO kirim_devices (id, kode, label, pemilik_consumer_id, provider, status) VALUES ($1, 'spmb', 'SPMB', $2, 'log', 'tersambung')", [randomUUID(), other]);
+    expect((await admin("POST", "/gerbang/nomor/spmb/hapus", {})).statusCode).toBe(404);
+
+    const { kode } = await newNumber();
+    const device = await pool.query<{ id: string }>("SELECT id FROM kirim_devices WHERE kode = $1", [kode]);
+    await pool.query("INSERT INTO kirim_routes (consumer_id, device_id, jenis) VALUES ($1, $2, 'notifikasi')", [other, device.rows[0]!.id]);
+    const refused = await admin("POST", `/gerbang/nomor/${kode}/hapus`, {});
+    expect(refused.statusCode).toBe(409);
+    expect(refused.json().error.code).toBe("nomor_dipakai_modul_lain");
+    // The number is still there.
+    expect((await admin("GET", "/modules")).json().gerbang.nomor.find((nomor: { kode: string }) => nomor.kode === kode)).toBeTruthy();
+  });
+
   // The number's key is bound to the number but authenticated against the gateway consumer, so a
   // number that leaves the card would keep sending while no screen could rotate or revoke its key.
   it("keeps an outside number with its own consumer, in both directions", async () => {

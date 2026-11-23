@@ -1,4 +1,4 @@
-import { BookOpen, Copy, Eye, EyeOff, Globe, KeyRound, Plus, QrCode, RotateCcw, Settings2, Unplug } from "lucide-react";
+import { BookOpen, Copy, Eye, EyeOff, Globe, KeyRound, Merge, Plus, QrCode, RotateCcw, Settings2, Trash2, Unplug } from "lucide-react";
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 
 import {
@@ -32,7 +32,9 @@ export type GerbangDeviceAction =
   | { kind: "sambung-ulang"; device: KirimDevice }
   | { kind: "disconnect"; device: KirimDevice }
   | { kind: "edit"; device: KirimDevice }
-  | { kind: "deactivate"; device: KirimDevice };
+  | { kind: "deactivate"; device: KirimDevice }
+  | { kind: "gabung"; device: KirimDevice; ke: { kode: string; label: string } }
+  | { kind: "hapus-nomor"; device: KirimDevice };
 
 /** The one tile that adds a number. It holds nothing else: the numbers themselves are cards. */
 export function TambahNomorLuarTile({ busy, onAdd }: { busy: boolean; onAdd: () => void }) {
@@ -61,6 +63,8 @@ export function NomorLuarCard({ nomor, onDevice, onKeys }: {
   const inactive = nomor.status === "nonaktif";
   /** A number with no engine behind it has no WhatsApp session to pair, reconnect or drop. */
   const engineless = nomor.provider === "log";
+  /** "Hapus" is offered only when there is no live WhatsApp session to lose (never mid-pairing). */
+  const canDelete = engineless || (nomor.status !== "tersambung" && nomor.status !== "menunggu_pairing");
   return (
     <Panel className="h-full">
       <div className="flex items-start gap-3">
@@ -97,6 +101,15 @@ export function NomorLuarCard({ nomor, onDevice, onKeys }: {
       {nomor.webhook_terdaftar ? <p className="mt-1 text-xs text-muted-foreground">Webhook terdaftar.</p> : null}
       {engineless && !inactive ? <p className="mt-1 text-xs text-muted-foreground">Belum ada mesin WhatsApp di balik nomor ini; pilih mesinnya lewat Ubah.</p> : null}
 
+      {nomor.nomor_ganda && !inactive ? (
+        <div role="alert" className="mt-3 rounded-xl bg-danger-soft px-3 py-2 text-sm text-danger-ink">
+          <p>WhatsApp di nomor ini sama dengan <strong>{nomor.nomor_ganda.label}</strong>. Pesan masuk ditahan sampai disambungkan ke nomor itu.</p>
+          <button type="button" className={`${secondaryButton} mt-2`} onClick={() => onDevice({ kind: "gabung", device: nomor, ke: nomor.nomor_ganda! })}>
+            <Merge className="h-4 w-4" aria-hidden="true" /> Sambungkan ke nomor yang ada
+          </button>
+        </div>
+      ) : null}
+
       <div className="mt-4 flex flex-wrap gap-2">
         {!inactive ? (
           <>
@@ -110,9 +123,15 @@ export function NomorLuarCard({ nomor, onDevice, onKeys }: {
             {!engineless && nomor.status !== "belum_dipasang" ? (
               <button type="button" className={dangerButton} onClick={() => onDevice({ kind: "disconnect", device: nomor })}><Unplug className="h-4 w-4" aria-hidden="true" /> Putuskan</button>
             ) : null}
+            {canDelete ? (
+              <button type="button" className={dangerButton} onClick={() => onDevice({ kind: "hapus-nomor", device: nomor })}><Trash2 className="h-4 w-4" aria-hidden="true" /> Hapus</button>
+            ) : null}
           </>
         ) : (
-          <p className="text-sm text-muted-foreground">Nomor dinonaktifkan.</p>
+          <>
+            <p className="w-full text-sm text-muted-foreground">Nomor dinonaktifkan.</p>
+            <button type="button" className={dangerButton} onClick={() => onDevice({ kind: "hapus-nomor", device: nomor })}><Trash2 className="h-4 w-4" aria-hidden="true" /> Hapus</button>
+          </>
         )}
         <a className={secondaryButton} href={DOCS_PATH} target="_blank" rel="noreferrer"><BookOpen className="h-4 w-4" aria-hidden="true" /> Dokumentasi API</a>
       </div>

@@ -165,6 +165,8 @@ export function registerKirimAdminRoutes(
     // The key belongs to the number: make or rotate it, or revoke it; the WhatsApp session is untouched.
     write("POST", "/gerbang/nomor/:kode/kunci", (request, actor) => gateway.rotateKey(actor, params(request).kode!));
     write("POST", "/gerbang/nomor/:kode/kunci/cabut", (request, actor) => gateway.revokeKey(actor, params(request).kode!, revokeKeySchema.parse(body(request)).alasan));
+    // "Hapus" on an outside number's card: only a number with no live WhatsApp session and no data of its own.
+    write("POST", "/gerbang/nomor/:kode/hapus", (request, actor) => gateway.deleteNumber(actor, params(request).kode!));
   }
   write("POST", "/modules/:app/nomor-baru", (request, actor) => input.cards.connectNewNumber(actor, params(request).app!, newNumberSchema.parse(body(request))));
   write("POST", "/modules/:app/pakai-nomor-lama", (request, actor) => input.cards.useOwnNumber(actor, params(request).app!, ownNumberSchema.parse(body(request))));

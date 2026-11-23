@@ -3,7 +3,7 @@ import { randomBytes, randomUUID } from "node:crypto";
 import type { Pool } from "pg";
 import { z } from "zod";
 
-import { toBrowserDevice, type AdminActor } from "./admin.js";
+import { DEVICE_DATA_TABLES, toBrowserDevice, type AdminActor } from "./admin.js";
 import { columnAad, type KirimCrypto } from "./crypto.js";
 import { KirimApiError } from "./errors.js";
 import { GATEWAY_CONSUMER_NAME, wibDayStart } from "./policy.js";
@@ -201,6 +201,65 @@ export class KirimGateway {
         metadata: { awalan: row.awalan, alasan },
       });
       return { nomor: device.kode, dicabut: true };
+    });
+  }
+
+  /**
+   * "Hapus" on an outside number's card: the card is removed for good, with its API key and routes.
+   * Owner 2026-11-23: an outside number that was never connected (or came loose) can be cleaned up
+   * from its own card, so a number created by mistake — or a duplicate that was scanned onto a
+   * WhatsApp already in Kirim — does not sit on the home screen with nothing behind it.
+   *
+   * Only a number with **no live WhatsApp session** is deleted: an engineless (`log`) number, or
+   * one that is `belum_dipasang`, `terputus` or `nonaktif`. A `tersambung` or `menunggu_pairing`
+   * number is refused (`409 nomor_tersambung`) — Putuskan it first. A number that already holds
+   * conversations, a queue or any other data of its own is refused (`409 nomor_sudah_berisi`); those
+   * need an operator. The engine tenant is left in place (§K-9): Kirim SQ never drops it on its own.
+   */
+  async deleteNumber(actor: AdminActor, kode: string) {
+    return withTransaction(this.pool, async (client) => {
+      const consumer = await this.consumer(client);
+      const device = await findDevice(client, kode, true);
+      if (!device || device.pemilikConsumerId !== consumer.id) {
+        throw new KirimApiError(404, "not_found", "Nomor ini bukan nomor di kartu Aplikasi luar.");
+      }
+      if (device.provider !== "log" && (device.status === "tersambung" || device.status === "menunggu_pairing")) {
+        throw new KirimApiError(409, "nomor_tersambung", "Nomor ini masih tersambung ke WhatsApp. Putuskan dulu sebelum menghapus.");
+      }
+      const counts = await client.query<{ n: string }>(
+        `SELECT (${DEVICE_DATA_TABLES.map((table) => `(SELECT count(*) FROM ${table} WHERE device_id = $1)`).join(" + ")})::text AS n`,
+        [device.id],
+      );
+      if (Number(counts.rows[0]?.n ?? 0) > 0) {
+        throw new KirimApiError(409, "nomor_sudah_berisi", `${device.label} sudah menyimpan percakapan atau antrean sendiri, jadi tidak bisa dihapus dari layar. Hubungi operator.`);
+      }
+      // No other application may still point at this number (it should not, but a shared route would
+      // leave that application sending through a number that no longer exists).
+      const otherUse = await client.query(
+        `SELECT 1 FROM kirim_consumers WHERE nomor_device_id = $1 AND id <> $2
+         UNION ALL SELECT 1 FROM kirim_routes WHERE device_id = $1 AND consumer_id <> $2 LIMIT 1`,
+        [device.id, consumer.id],
+      );
+      if ((otherUse.rowCount ?? 0) > 0) {
+        throw new KirimApiError(409, "nomor_dipakai_modul_lain", "Nomor ini masih dipakai aplikasi lain. Putuskan dulu dari kartunya.");
+      }
+      await client.query("DELETE FROM kirim_api_keys WHERE device_id = $1", [device.id]);
+      await client.query("DELETE FROM kirim_routes WHERE device_id = $1", [device.id]);
+      await client.query("UPDATE kirim_consumers SET nomor_device_id = NULL, updated_at = now() WHERE nomor_device_id = $1", [device.id]);
+      try {
+        await client.query("DELETE FROM kirim_devices WHERE id = $1", [device.id]);
+      } catch (error) {
+        // A send or event landed on the number after the count above: its rows now reference it.
+        if ((error as { code?: string }).code === "23503") {
+          throw new KirimApiError(409, "nomor_sudah_berisi", `${device.label} baru saja dipakai, jadi tidak bisa dihapus dari layar. Hubungi operator.`);
+        }
+        throw error;
+      }
+      await writeAudit(client, {
+        actorKind: "human", actorRef: actor.ref, aksi: "gerbang.nomor_hapus", objekJenis: "device", objekRef: kode,
+        metadata: { status: device.status, provider: device.provider },
+      });
+      return { kode, dihapus: true };
     });
   }
 

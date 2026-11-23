@@ -33,6 +33,7 @@ type Dialog =
   | { kind: "tambah"; card: KirimModuleCard }
   | { kind: "ubah-pemakai"; card: KirimModuleCard }
   | { kind: "putuskan-modul"; card: KirimModuleCard }
+  | { kind: "hapus-nomor"; device: KirimDevice }
   | { kind: "kunci"; kode: string };
 
 const POLL_MS = 3_000;
@@ -117,6 +118,19 @@ export function NomorPage({ preview }: { preview?: NomorState }) {
     <>
       <NomorView state={state} busy={busy} onAddNumber={addNumber} onOpen={(next) => { setError(null); setDialog(next); }} onRetry={() => { setState({ status: "loading" }); void load(); }} />
       {dialog?.kind === "kunci" ? <KunciDialog kode={dialog.kode} onClose={close} onChanged={load} /> : null}
+      {dialog?.kind === "hapus-nomor" ? (
+        <ReasonDialog
+          title={`Hapus ${dialog.device.label}?`}
+          body="Kartu nomor ini dihapus dari layar beserta kunci API-nya. Aplikasi luar yang masih memakai kuncinya akan ditolak. Tindakan ini tidak bisa dibatalkan."
+          confirmLabel="Hapus"
+          danger
+          busy={busy}
+          error={error}
+          reasonRequired={false}
+          onClose={close}
+          onConfirm={() => void run(() => kirimFetch(`/gerbang/nomor/${dialog.device.kode}/hapus`, { method: "POST", body: {} }))}
+        />
+      ) : null}
       {dialog?.kind === "disconnect" ? (
         <ReasonDialog title={`Putuskan ${dialog.device.label}?`} body={sharedBody(shared(dialog.device), "Sesi WhatsApp di mesin dilepas. Nomor perlu dipasang ulang sebelum bisa mengirim lagi.")} confirmLabel="Putuskan" danger busy={busy} error={error} onClose={close}
           onConfirm={(alasan) => void run(() => kirimFetch(`/devices/${dialog.device.kode}/disconnect`, { method: "POST", body: { alasan } }))}>
@@ -569,9 +583,12 @@ export function TambahDialog({ card, numbers, owners = {}, editing, busy, error,
   );
 }
 
-/** Only numbers a module card shows: the screen has module cards, not number cards (§13). */
+/** Numbers a card shows: module cards (§13) and the outside-number cards beside them (2026-11-17). */
 function Warnings({ list }: { list: KirimModuleList }) {
-  const onCards = new Set(list.modules.flatMap((card) => (card.nomor ? [card.nomor.kode] : [])));
+  const onCards = new Set([
+    ...list.modules.flatMap((card) => (card.nomor ? [card.nomor.kode] : [])),
+    ...(list.gerbang?.nomor ?? []).map((nomor) => nomor.kode),
+  ]);
   const terputus = list.peringatan.terputus.filter((kode) => onCards.has(kode));
   const ganda = (list.peringatan.nomor_ganda ?? []).filter((kode) => onCards.has(kode));
   if (terputus.length === 0 && list.peringatan.webhook_habis === 0 && ganda.length === 0) return null;

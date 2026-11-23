@@ -555,6 +555,26 @@ describe("Kartu per nomor aplikasi luar (keputusan owner 2026-11-17)", () => {
     expect(modul).toContain('<option value="hcis"');
   });
 
+  // Owner 2026-11-23: a number with no live WhatsApp session behind it can be removed from its card.
+  it("offers Hapus only when the outside number is not connected", () => {
+    const connected = kirimGerbangDetailFixture.nomor[0]!; // tersambung
+    const notConnected = kirimGerbangDetailFixture.nomor[1]!; // belum_dipasang
+    expect(renderToStaticMarkup(<NomorLuarCard nomor={connected} onDevice={noop} onKeys={noop} />)).not.toContain("Hapus");
+    expect(renderToStaticMarkup(<NomorLuarCard nomor={notConnected} onDevice={noop} onKeys={noop} />)).toContain("Hapus");
+    expect(renderToStaticMarkup(<NomorLuarCard nomor={{ ...connected, status: "terputus" }} onDevice={noop} onKeys={noop} />)).toContain("Hapus");
+    // A deactivated number can be cleaned up too.
+    expect(renderToStaticMarkup(<NomorLuarCard nomor={{ ...connected, status: "nonaktif" }} onDevice={noop} onKeys={noop} />)).toContain("Hapus");
+  });
+
+  // Owner 2026-11-23: "perlakukan kaya kartu aplikasi" — an outside number that turns out to be a
+  // WhatsApp already in Kirim can be joined to the existing one instead of becoming a stuck duplicate.
+  it("offers Sambungkan ke nomor yang ada when the outside number duplicates one already in Kirim", () => {
+    const nomor = { ...kirimGerbangDetailFixture.nomor[1]!, nomor_ganda: { kode: "luar", label: "Aplikasi luar" } };
+    const html = renderToStaticMarkup(<NomorLuarCard nomor={nomor} onDevice={noop} onKeys={noop} />);
+    expect(html).toContain("Sambungkan ke nomor yang ada");
+    expect(html).toContain("Aplikasi luar");
+  });
+
   it("offers to make a key for a number that has none", () => {
     const nomor = kirimGerbangDetailFixture.nomor[1]!;
     const html = renderToStaticMarkup(
