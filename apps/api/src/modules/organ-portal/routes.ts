@@ -103,9 +103,13 @@ export function registerOrganAuthRoutes(
     try {
       result = await input.auth.completeLogin(callbackUrl, readCookie(request.headers.cookie, ORGAN_OIDC_TRANSACTION_COOKIE_NAME), context(request));
     } catch (error) {
-      app.log.warn({ event: "oidc_callback_refused", client: "organ", code: oidcCallbackRefusalCode(error) }, "OIDC callback refused");
+      const code = oidcCallbackRefusalCode(error);
+      app.log.warn({ event: "oidc_callback_refused", client: "organ", code }, "OIDC callback refused");
       reply.header("Set-Cookie", input.auth.clearTransactionCookie());
-      return reply.redirect("/?authError=oidc_failed");
+      // HUB-IMPL-005 Rev 2: a refused step-up has its own category. `oidc_failed` is retried once
+      // automatically by the web entry, and that retry signs in at the ordinary level; a member
+      // who did not prove the TOTP level must see why instead.
+      return reply.redirect(code === "OIDC_STEP_UP_FAILED" ? "/?authError=organ_step_up_failed" : "/?authError=oidc_failed");
     }
 
     // §1.2: no session for anyone the gate refuses. The new session is revoked at once.

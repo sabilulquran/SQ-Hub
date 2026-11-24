@@ -148,13 +148,13 @@ Finding: the OIDC transaction lives 10 minutes (`HUB_OIDC_TRANSACTION_TTL_MINUTE
 - Loop bound: a retry is allowed only when no marker is newer than 2 minutes; a marker dated in the future counts as recent. A second `oidc_failed` inside the window shows the application's existing error and retry state. When the marker cannot be stored (cookies blocked, `document.cookie` throwing, or the value not reading back) there is no automatic retry: with cookies blocked the transaction cookie is lost too, so this is the case that would otherwise loop.
 - The marker is a cookie, not web storage, because the web source keeps no authentication material in `localStorage` or `sessionStorage` (guardrail `apps/web/src/security.test.ts`, unchanged). It carries only a timestamp; it is not a token, state, code, or identity.
 - Only `oidc_failed` is retried. `identity_unavailable`, `organ_access_denied`, `organ_membership_required` and any other value keep their current behaviour.
-- The URL contract, transaction TTL and transaction cookies are unchanged. The retry starts a new transaction owned by the same browser, so it adds no login CSRF path. Portal Organ's step-up start (`?stepUp=1`) is not repeated automatically: a failed step-up comes back signed in at the normal level and the member asks for the step-up again.
+- The URL contract, transaction TTL and transaction cookies are unchanged. The retry starts a new transaction owned by the same browser, so it adds no login CSRF path. Portal Organ's step-up start (`?stepUp=1`) is not repeated automatically. A refused step-up (`OIDC_STEP_UP_FAILED`) returns `/?authError=organ_step_up_failed`, not `oidc_failed`, so it is never retried as an ordinary sign-in; the portal says the two-step verification did not succeed and its "Coba lagi" button asks for the step-up again.
 - Observability: callback routes stay `logLevel: "silent"` so the authorization code never reaches a request log. A refused callback now writes one warning `{ event: "oidc_callback_refused", client, code }`, where `code` is the fixed `HubAuthError` code (for example `OIDC_TRANSACTION_MISSING`, `OIDC_TRANSACTION_EXPIRED`, `OIDC_COMPLETION_FAILED`, `OIDC_STEP_UP_FAILED`) or `OIDC_CALLBACK_UNEXPECTED`. No message, state, code, token, cookie or identity is logged.
 - No migration and no new audit table.
 - Acceptance:
   - HUB-IMPL-005-R2-A: the first `oidc_failed` in a tab restarts the sign-in automatically, without rendering the application's error state.
   - HUB-IMPL-005-R2-B: a second `oidc_failed` within 2 minutes renders the existing error state; there is no loop.
-  - HUB-IMPL-005-R2-C: other `authError` values are not retried.
+  - HUB-IMPL-005-R2-C: other `authError` values are not retried; a refused Portal Organ step-up arrives as `organ_step_up_failed` and is not retried.
   - HUB-IMPL-005-R2-D: when the marker cookie cannot be stored the behaviour is the same as before Rev 2.
   - HUB-IMPL-005-R2-E: every refused callback in every Hub-family client logs exactly the fixed refusal code and no request value.
 
