@@ -590,6 +590,7 @@ describe("Kartu per nomor aplikasi luar (keputusan owner 2026-11-17)", () => {
   });
 
   it("says what Pakai nomor yang ada does, the way the server does it", () => {
+    if (kirimNomorFixture.status !== "ready") throw new Error("fixture must be ready");
     const gas: KirimDevice = { ...kirimNomorFixture.list.devices[0]!, kode: "luar", label: "Google App Script", pemilik: "aplikasi-luar", status: "tersambung" };
     const hcis: KirimDevice = { ...kirimNomorFixture.list.devices[0]!, kode: "hcis", label: "Nomor HCIS", pemilik: "hcis", status: "tersambung" };
     const list = {
