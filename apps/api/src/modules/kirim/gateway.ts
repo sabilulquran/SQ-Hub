@@ -53,15 +53,23 @@ interface ApiKeyRow {
   deviceId: string;
   awalan: string;
   kunciEnc: string | null;
+  namaAplikasi: string | null;
   dibuatAt: Date;
   terakhirDipakaiAt: Date | null;
   dicabutAt: Date | null;
 }
 
 const keyColumns = (alias: string) => `
-  ${alias}.id, ${alias}.device_id AS "deviceId", ${alias}.awalan, ${alias}.kunci_enc AS "kunciEnc", ${alias}.dibuat_at AS "dibuatAt",
-  ${alias}.terakhir_dipakai_at AS "terakhirDipakaiAt", ${alias}.dicabut_at AS "dicabutAt"
+  ${alias}.id, ${alias}.device_id AS "deviceId", ${alias}.awalan, ${alias}.kunci_enc AS "kunciEnc", ${alias}.nama_aplikasi AS "namaAplikasi",
+  ${alias}.dibuat_at AS "dibuatAt", ${alias}.terakhir_dipakai_at AS "terakhirDipakaiAt", ${alias}.dicabut_at AS "dicabutAt"
 `;
+
+/**
+ * KIRIM-IMPL-003 §17: how the "Aplikasi luar" card stands to a number. `pemilik` = one of its own
+ * numbers. `pemakai` = another application's number that an outside application sends through with
+ * its key after "Pakai nomor yang ada"; the WhatsApp session belongs to the owner's card.
+ */
+export type GatewayPeran = "pemilik" | "pemakai";
 
 /** The number's key as the card shows it; `kunci` is null only for a key made before migration 0024. */
 export interface GatewayNumberKey {
@@ -176,12 +184,15 @@ export class KirimGateway {
   async rotateKey(actor: AdminActor, kode: string): Promise<GatewayNumberKey> {
     return withTransaction(this.pool, async (client) => {
       const consumer = await this.consumer(client);
-      const device = await this.requireGatewayDevice(client, consumer, kode);
-      const revoked = await client.query<{ awalan: string }>(
-        "UPDATE kirim_api_keys SET dicabut_at = now(), dicabut_oleh = $2, dicabut_alasan = 'diputar ulang' WHERE device_id = $1 AND dicabut_at IS NULL RETURNING awalan",
+      const { device } = await this.requireGatewayDevice(client, consumer, kode);
+      const revoked = await client.query<{ awalan: string; namaAplikasi: string | null }>(
+        `UPDATE kirim_api_keys SET dicabut_at = now(), dicabut_oleh = $2, dicabut_alasan = 'diputar ulang'
+          WHERE device_id = $1 AND dicabut_at IS NULL RETURNING awalan, nama_aplikasi AS "namaAplikasi"`,
         [device.id, actor.ref],
       );
-      return this.issueKey(client, actor, consumer, device.id, device.kode, revoked.rows[0] ? "gerbang.kunci_putar" : "gerbang.kunci_buat", revoked.rows[0]?.awalan);
+      // §17: the application's name on a number it uses stays with the new key.
+      const nama = revoked.rows[0]?.namaAplikasi ?? (await this.lastKeyName(client, consumer, device.id));
+      return this.issueKey(client, actor, consumer, device.id, device.kode, revoked.rows[0] ? "gerbang.kunci_putar" : "gerbang.kunci_buat", revoked.rows[0]?.awalan, nama);
     });
   }
 
@@ -189,7 +200,7 @@ export class KirimGateway {
   async revokeKey(actor: AdminActor, kode: string, alasan: string) {
     return withTransaction(this.pool, async (client) => {
       const consumer = await this.consumer(client);
-      const device = await this.requireGatewayDevice(client, consumer, kode);
+      const { device } = await this.requireGatewayDevice(client, consumer, kode);
       const updated = await client.query<{ awalan: string }>(
         "UPDATE kirim_api_keys SET dicabut_at = now(), dicabut_oleh = $2, dicabut_alasan = $3 WHERE device_id = $1 AND dicabut_at IS NULL RETURNING awalan",
         [device.id, actor.ref, alasan],
@@ -220,6 +231,9 @@ export class KirimGateway {
     return withTransaction(this.pool, async (client) => {
       const consumer = await this.consumer(client);
       const device = await findDevice(client, kode, true);
+      if (device && device.pemilikConsumerId !== consumer.id && (await this.usesNumber(client, consumer, device.id))) {
+        return this.releaseNumber(client, actor, consumer, device);
+      }
       if (!device || device.pemilikConsumerId !== consumer.id) {
         throw new KirimApiError(404, "not_found", "Nomor ini bukan nomor di kartu Aplikasi luar.");
       }
@@ -332,22 +346,60 @@ export class KirimGateway {
     return this.crypto.lookup(`api_key:${kunci}`);
   }
 
-  private async requireGatewayDevice(db: Queryable, consumer: ConsumerRow, kode: string): Promise<DeviceRow> {
+  /** §17: the gateway sends through another application's number when it holds a route on it. */
+  private async usesNumber(db: Queryable, consumer: ConsumerRow, deviceId: string): Promise<boolean> {
+    const routed = await db.query("SELECT 1 FROM kirim_routes WHERE consumer_id = $1 AND device_id = $2 LIMIT 1", [consumer.id, deviceId]);
+    return (routed.rowCount ?? 0) > 0;
+  }
+
+  private async lastKeyName(db: Queryable, consumer: ConsumerRow, deviceId: string): Promise<string | null> {
+    const last = await db.query<{ nama: string | null }>(
+      "SELECT nama_aplikasi AS nama FROM kirim_api_keys WHERE consumer_id = $1 AND device_id = $2 ORDER BY dibuat_at DESC, id LIMIT 1",
+      [consumer.id, deviceId],
+    );
+    return last.rows[0]?.nama ?? null;
+  }
+
+  /**
+   * §17 "Hapus" on the card of a number the gateway only uses: the outside application lets go of it.
+   * Its key is revoked (kept for the record), its routes and the number's webhook go, and the number
+   * itself, its session and its owner's card are untouched.
+   */
+  private async releaseNumber(db: Queryable, actor: AdminActor, consumer: ConsumerRow, device: DeviceRow) {
+    const revoked = await db.query<{ awalan: string }>(
+      `UPDATE kirim_api_keys SET dicabut_at = now(), dicabut_oleh = $3, dicabut_alasan = 'dilepas dari nomor'
+        WHERE consumer_id = $1 AND device_id = $2 AND dicabut_at IS NULL RETURNING awalan`,
+      [consumer.id, device.id, actor.ref],
+    );
+    await db.query("DELETE FROM kirim_routes WHERE consumer_id = $1 AND device_id = $2", [consumer.id, device.id]);
+    await db.query("UPDATE kirim_devices SET webhook_url = NULL, webhook_secret_enc = NULL, updated_at = now() WHERE id = $1", [device.id]);
+    await writeAudit(db, {
+      actorKind: "human", actorRef: actor.ref, aksi: "gerbang.nomor_lepas", objekJenis: "device", objekRef: device.kode,
+      metadata: { pemilik: device.pemilik, ...(revoked.rows[0] ? { kunci_dicabut: revoked.rows[0].awalan } : {}) },
+    });
+    return { kode: device.kode, dihapus: true, dilepas: true };
+  }
+
+  /** A number the card may manage keys on: one of its own, or (§17) one it uses. */
+  private async requireGatewayDevice(db: Queryable, consumer: ConsumerRow, kode: string): Promise<{ device: DeviceRow; peran: GatewayPeran }> {
     const device = await findDevice(db, kode, true);
-    if (!device || device.pemilikConsumerId !== consumer.id) throw new KirimApiError(404, "not_found", "Nomor ini bukan nomor di kartu Aplikasi luar.");
+    const peran: GatewayPeran | null = !device ? null
+      : device.pemilikConsumerId === consumer.id ? "pemilik"
+        : (await this.usesNumber(db, consumer, device.id)) ? "pemakai" : null;
+    if (!device || !peran) throw new KirimApiError(404, "not_found", "Nomor ini bukan nomor di kartu Aplikasi luar.");
     if (device.status === "nonaktif") throw new KirimApiError(422, "device_inactive", "Nomor tidak aktif.");
-    return device;
+    return { device, peran };
   }
 
   /** Makes a key for a number: the hash for lookup, the sealed value so the card can show it again. */
-  private async issueKey(db: Queryable, actor: AdminActor, consumer: ConsumerRow, deviceId: string, kode: string, aksi: string, replaced?: string): Promise<GatewayNumberKey> {
+  private async issueKey(db: Queryable, actor: AdminActor, consumer: ConsumerRow, deviceId: string, kode: string, aksi: string, replaced?: string, namaAplikasi: string | null = null): Promise<GatewayNumberKey> {
     const kunci = `${API_KEY_PREFIX}${randomBytes(24).toString("base64url")}`;
     const awalan = kunci.slice(0, API_KEY_PREFIX.length + 8);
     const id = randomUUID();
     await db.query(
-      `INSERT INTO kirim_api_keys (id, consumer_id, device_id, awalan, kunci_hash, kunci_enc, dibuat_oleh)
-       VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-      [id, consumer.id, deviceId, awalan, this.hash(kunci), this.crypto.seal(kunci, columnAad("kirim_api_keys", "kunci_enc", id)), actor.ref],
+      `INSERT INTO kirim_api_keys (id, consumer_id, device_id, awalan, kunci_hash, kunci_enc, dibuat_oleh, nama_aplikasi)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+      [id, consumer.id, deviceId, awalan, this.hash(kunci), this.crypto.seal(kunci, columnAad("kirim_api_keys", "kunci_enc", id)), actor.ref, namaAplikasi],
     );
     await writeAudit(db, {
       actorKind: "human", actorRef: actor.ref, aksi, objekJenis: "device", objekRef: kode,
@@ -360,6 +412,8 @@ export class KirimGateway {
   private async numbers(consumer: ConsumerRow) {
     const now = await dbNow(this.pool);
     const held = await heldDevices(this.pool);
+    // §17: the card's own numbers, then the other applications' numbers it sends through with a key.
+    const used = "EXISTS (SELECT 1 FROM kirim_routes r WHERE r.consumer_id = $1 AND r.device_id = d.id)";
     const devices = await this.pool.query<DeviceRow>(
       `SELECT d.id, d.kode, d.label, d.pemilik_consumer_id AS "pemilikConsumerId", c.nama AS pemilik,
               d.provider, d.provider_ref AS "providerRef", d.nomor_tersamar AS "nomorTersamar", d.status,
@@ -367,22 +421,30 @@ export class KirimGateway {
               to_char(d.jam_kirim_mulai, 'HH24:MI') AS "jamKirimMulai", to_char(d.jam_kirim_selesai, 'HH24:MI') AS "jamKirimSelesai",
               d.status_berubah_at AS "statusBerubahAt", d.updated_at AS "updatedAt"
          FROM kirim_devices d JOIN kirim_consumers c ON c.id = d.pemilik_consumer_id
-        WHERE d.pemilik_consumer_id = $1 ORDER BY d.created_at, d.kode`,
+        WHERE d.pemilik_consumer_id = $1 OR ${used}
+        ORDER BY (d.pemilik_consumer_id <> $1), d.created_at, d.kode`,
       [consumer.id],
     );
+    // On a number it only uses, the card counts its own messages, not the owner's.
     const counts = await this.pool.query<{ deviceId: string; antre: string; gagal: string; webhook: boolean }>(
       `SELECT d.id AS "deviceId",
-              (SELECT count(*) FROM kirim_outbox o WHERE o.device_id = d.id AND o.status = 'antre') AS antre,
-              (SELECT count(*) FROM kirim_outbox o WHERE o.device_id = d.id AND o.status = 'gagal' AND o.updated_at >= $2) AS gagal,
+              (SELECT count(*) FROM kirim_outbox o WHERE o.device_id = d.id AND o.consumer_id = $1 AND o.status = 'antre') AS antre,
+              (SELECT count(*) FROM kirim_outbox o WHERE o.device_id = d.id AND o.consumer_id = $1 AND o.status = 'gagal' AND o.updated_at >= $2) AS gagal,
               d.webhook_url IS NOT NULL AS webhook
-         FROM kirim_devices d WHERE d.pemilik_consumer_id = $1`,
+         FROM kirim_devices d WHERE d.pemilik_consumer_id = $1 OR ${used}`,
       [consumer.id, wibDayStart(now)],
     );
     const keys = await this.pool.query<ApiKeyRow>(`SELECT ${keyColumns("k")} FROM kirim_api_keys k WHERE k.consumer_id = $1 AND k.dicabut_at IS NULL`, [consumer.id]);
+    const names = await this.pool.query<{ deviceId: string; nama: string | null }>(
+      `SELECT DISTINCT ON (device_id) device_id AS "deviceId", nama_aplikasi AS nama FROM kirim_api_keys WHERE consumer_id = $1 ORDER BY device_id, dibuat_at DESC, id`,
+      [consumer.id],
+    );
     const byDevice = new Map(counts.rows.map((row) => [row.deviceId, row]));
     const keyByDevice = new Map(keys.rows.map((row) => [row.deviceId, row]));
+    const nameByDevice = new Map(names.rows.map((row) => [row.deviceId, row.nama]));
     return devices.rows.map((device) => {
       const key = keyByDevice.get(device.id);
+      const peran: GatewayPeran = device.pemilikConsumerId === consumer.id ? "pemilik" : "pemakai";
       const kunci: GatewayNumberKey | null = key
         ? {
             awalan: key.awalan,
@@ -396,6 +458,10 @@ export class KirimGateway {
         antrean: { antre: Number(byDevice.get(device.id)?.antre ?? 0), gagal_hari_ini: Number(byDevice.get(device.id)?.gagal ?? 0) },
         webhook_terdaftar: byDevice.get(device.id)?.webhook ?? false,
         kunci,
+        peran,
+        // Only a number the card uses carries a name: the label of the outside number it came from (§17).
+        // The card's own numbers stay nameless, as on 2026-11-17.
+        ...(peran === "pemakai" ? { nama_aplikasi: key?.namaAplikasi ?? nameByDevice.get(device.id) ?? null } : {}),
       };
     });
   }

@@ -52,6 +52,12 @@ import type { ConsumerRow } from "./repository.js";
 
 /** KIRIM-IMPL-001 §6.1 and §6.3, KIRIM-IMPL-002 §6 and §8. Loopback only; the edge answers 404 for `/internal/*` (§10). */
 export const KIRIM_INTERNAL_PREFIX = "/internal/kirim";
+/**
+ * KIRIM-IMPL-003 §17.4: the public API for applications outside the server, reached as
+ * `https://kirim.sabilulquran.or.id/api/v1/*` (the edge strips `/api`). API keys (`krm_…`) only; the
+ * module API with Keycloak tokens stays on loopback.
+ */
+export const KIRIM_PUBLIC_PREFIX = "/v1";
 
 export function sendKirimError(
   reply: FastifyReply,
@@ -155,7 +161,23 @@ export function registerKirimInternalRoutes(
     return consumer;
   }
 
-  void app.register(async (scope) => {
+  /** §17.4: the public path takes an API key only. Anything else, a missing header included, is 401. */
+  async function authenticateApiKey(request: FastifyRequest, reply: FastifyReply): Promise<ConsumerRow | null> {
+    reply.header("Cache-Control", "no-store");
+    const token = readBearerToken(request.headers.authorization);
+    if (!token || !token.startsWith("krm_") || !input.gateway) {
+      sendKirimError(reply, 401, "unauthenticated", "Kunci API wajib: header Authorization: Bearer krm_….");
+      return null;
+    }
+    try {
+      return await input.gateway.authenticate(token);
+    } catch (error) {
+      handleKirimError(reply, error);
+      return null;
+    }
+  }
+
+  async function prepareScope(scope: FastifyInstance) {
     // §17.3–§17.4: a body over a route's limit is answered in Kirim's error shape; on an image route it is an image
     // too large, like one the decoder refuses (422 gambar_invalid).
     scope.setErrorHandler((error, request, reply) => {
@@ -170,7 +192,33 @@ export function registerKirimInternalRoutes(
     await scope.register(multipart, {
       limits: { fileSize: MEDIA_MAX_BYTES, files: 1, fields: 2, fieldSize: 100, parts: 3, headerPairs: 50 },
     });
+  }
 
+  void app.register(async (scope) => {
+    await prepareScope(scope);
+    registerSendRoutes(scope, authenticate);
+    const conversations = input.conversations;
+    if (conversations) {
+      registerConversationRoutes(scope, conversations, authenticateModule, {
+        ...(input.actions ? { actions: input.actions } : {}),
+        ...(input.photos ? { photos: input.photos } : {}),
+        ...(input.groupAdmin ? { groupAdmin: input.groupAdmin } : {}),
+        ...(input.business ? { business: input.business } : {}),
+      });
+    }
+  }, { prefix: KIRIM_INTERNAL_PREFIX });
+
+  // §17.4: the same handlers, service and queue as the loopback path (Idempotency-Key, payload checks,
+  // routes, opt-outs, daily quota, audit), reachable from outside the server with an API key.
+  if (input.gateway) {
+    void app.register(async (scope) => {
+      await prepareScope(scope);
+      registerSendRoutes(scope, authenticateApiKey);
+    }, { prefix: KIRIM_PUBLIC_PREFIX });
+  }
+
+  /** What both a module token and an API key may do: send, read status, opt-outs, the connection, media. */
+  function registerSendRoutes(scope: FastifyInstance, authenticate: Authenticate) {
     scope.post("/messages", async (request, reply) => {
       const consumer = await authenticate(request, reply);
       if (!consumer) return reply;
@@ -256,16 +304,6 @@ export function registerKirimInternalRoutes(
       });
     }
 
-    const conversations = input.conversations;
-    if (conversations) {
-      registerConversationRoutes(scope, conversations, authenticateModule, {
-        ...(input.actions ? { actions: input.actions } : {}),
-        ...(input.photos ? { photos: input.photos } : {}),
-        ...(input.groupAdmin ? { groupAdmin: input.groupAdmin } : {}),
-        ...(input.business ? { business: input.business } : {}),
-      });
-    }
-
     scope.post("/media", async (request, reply) => {
       const consumer = await authenticate(request, reply);
       if (!consumer) return reply;
@@ -294,7 +332,7 @@ export function registerKirimInternalRoutes(
         return handleKirimError(reply, error);
       }
     });
-  }, { prefix: KIRIM_INTERNAL_PREFIX });
+  }
 
   const ingest = input.ingest;
   const secret = input.jalurpesanWebhookSecret;

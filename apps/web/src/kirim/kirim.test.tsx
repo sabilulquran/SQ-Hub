@@ -14,7 +14,7 @@ import { KirimAppView } from "@/kirim/KirimApp";
 import { KirimShell } from "@/kirim/KirimShell";
 import type { KirimDevice } from "@/kirim/api";
 import { KunciDialogView, NomorLuarCard } from "@/kirim/NomorLuarCard";
-import { DeactivateDialog, DeactivateWarning, EditDeviceDialog, GantiHint, ModuleCard, NomorView, PairingContent, TambahDialog } from "@/kirim/NomorPage";
+import { DeactivateDialog, DeactivateWarning, EditDeviceDialog, gabungText, GantiHint, hapusNomorText, ModuleCard, NomorView, PairingContent, TambahDialog } from "@/kirim/NomorPage";
 import { isKirimHost, resolveKirimRoute } from "@/kirim/routes";
 
 const noop = () => undefined;
@@ -573,6 +573,42 @@ describe("Kartu per nomor aplikasi luar (keputusan owner 2026-11-17)", () => {
     const html = renderToStaticMarkup(<NomorLuarCard nomor={nomor} onDevice={noop} onKeys={noop} />);
     expect(html).toContain("Sambungkan ke nomor yang ada");
     expect(html).toContain("Aplikasi luar");
+  });
+
+  // §17 (2026-11-24): after "Pakai Nomor HCIS" the outside application sends through HCIS's number with its key.
+  it("shows an outside application on another application's number as a user of it, with its key and no WhatsApp actions", () => {
+    const nomor = { ...kirimGerbangDetailFixture.nomor[0]!, kode: "hcis", label: "Nomor HCIS", pemilik: "hcis", peran: "pemakai" as const, nama_aplikasi: "Google App Script" };
+    const html = renderToStaticMarkup(<NomorLuarCard nomor={nomor} onDevice={noop} onKeys={noop} />);
+    expect(html).toContain("Google App Script");
+    expect(html).toContain("memakai Nomor HCIS");
+    expect(html).toContain("Kunci API");
+    expect(html).toContain("Hapus");
+    for (const action of ["Pasang", "Sambungkan ulang", "Putuskan", "Ubah"]) expect(html).not.toContain(`> ${action}</button>`);
+    expect(hapusNomorText(nomor)).toMatchObject({ title: "Lepas Google App Script dari Nomor HCIS?" });
+    expect(hapusNomorText(nomor).body).toContain("tetap berjalan untuk pemiliknya");
+    expect(hapusNomorText(kirimGerbangDetailFixture.nomor[1]!).title).toMatch(/^Hapus /);
+  });
+
+  it("says what Pakai nomor yang ada does, the way the server does it", () => {
+    const gas: KirimDevice = { ...kirimNomorFixture.list.devices[0]!, kode: "luar", label: "Google App Script", pemilik: "aplikasi-luar", status: "tersambung" };
+    const hcis: KirimDevice = { ...kirimNomorFixture.list.devices[0]!, kode: "hcis", label: "Nomor HCIS", pemilik: "hcis", status: "tersambung" };
+    const list = {
+      devices: [gas, hcis],
+      modules: [{ ...kirimNomorFixture.list.modules[0]!, nama: "HCIS", peran: "pemilik" as const, nomor: hcis }],
+      gerbang: { nama: "Aplikasi luar", keterangan: "", nomor: [{ ...gas, kunci: null }] },
+    };
+    const text = gabungText(gas, { kode: "hcis", label: "Nomor HCIS" }, list);
+    expect(text).toContain("Sesi WhatsApp Nomor HCIS yang sedang tersambung tetap dipakai");
+    expect(text).toContain("Nomor HCIS tetap milik HCIS");
+    expect(text).toContain("kunci API yang sama");
+    expect(text).not.toContain("Google App Script dihapus");
+    // An older number without a session takes the duplicate's session and its held messages.
+    const moved = gabungText(gas, { kode: "hcis", label: "Nomor HCIS" }, { ...list, devices: [gas, { ...hcis, status: "terputus" }] });
+    expect(moved).toContain("Sesi WhatsApp Google App Script pindah ke Nomor HCIS");
+    expect(moved).toContain("pesan masuk yang ditahan diambil lagi");
+    // Same owner: the duplicate goes.
+    const same = gabungText({ ...gas, kode: "luar-3" }, { kode: "luar", label: "Google App Script" }, { ...list, devices: [gas, { ...gas, kode: "luar-3" }] });
+    expect(same).toContain("lalu Google App Script dihapus");
   });
 
   it("offers to make a key for a number that has none", () => {

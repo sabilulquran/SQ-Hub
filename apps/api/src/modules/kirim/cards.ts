@@ -15,6 +15,7 @@ import {
   findDeviceById,
   findWhatsAppApplication,
   freeIdentifier,
+  consumerNameSql,
   heldDevices,
   listWhatsAppApplications,
   setDeviceStatus,
@@ -290,7 +291,7 @@ export class KirimModuleCards {
       [consumer.id, device.id, wibDayStart(now)],
     );
     const names = await db.query<{ id: string; nama: string }>(
-      `SELECT c.id, coalesce(a.name, c.nama) AS nama
+      `SELECT c.id, ${consumerNameSql("$1")} AS nama
          FROM kirim_consumers c LEFT JOIN applications a ON a.application_key = c.application_key OR (c.application_key IS NULL AND a.machine_client_id = c.client_id)
         WHERE c.aktif AND (c.id = $2 OR c.nomor_device_id = $1 OR EXISTS (SELECT 1 FROM kirim_routes r WHERE r.consumer_id = c.id AND r.device_id = $1))
         ORDER BY 2`,

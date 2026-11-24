@@ -61,9 +61,9 @@ export function DokumentasiApiPage() {
         <Section id="alamat" title="Alamat dasar">
           <Table head={["Aplikasi berjalan di", "Alamat dasar", "Keadaan"]} rows={[
             ["Server yang sama dengan Kirim (Mi8)", <code>http://127.0.0.1:3302/internal/kirim</code>, <Chip live>berjalan</Chip>],
-            ["Server lain atau hosting luar", <code>https://kirim.sabilulquran.or.id/api/v1</code>, <Chip>rancangan</Chip>],
+            ["Server lain atau hosting luar (Google Apps Script, hosting web)", <code>https://kirim.sabilulquran.or.id/api/v1</code>, <Chip live>berjalan</Chip>],
           ]} />
-          <p>Alamat <code>/internal/*</code> hanya bisa dicapai dari host yang sama; edge publik menjawab 404. Contoh di halaman ini memakai variabel <code>$KIRIM</code> sebagai alamat dasar dan <code>$KUNCI</code> sebagai kunci API.</p>
+          <p>Alamat <code>/internal/*</code> hanya bisa dicapai dari host yang sama; edge publik menjawab 404. Alamat <code>/api/v1</code> hanya menerima kunci API <code>krm_…</code>: tanpa kunci jawabannya <code>401</code>. Keduanya memakai antrean yang sama. Contoh di halaman ini memakai variabel <code>$KIRIM</code> sebagai alamat dasar dan <code>$KUNCI</code> sebagai kunci API.</p>
         </Section>
 
         <Section id="bentuk" title="Bentuk jawaban">
