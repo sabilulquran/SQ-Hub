@@ -333,18 +333,23 @@ const REFUSALS: Record<string, { title: string; body: string }> = {
   },
   identity_unavailable: { title: "Akun Sabilul Qur'an belum dapat dihubungi", body: "Coba lagi beberapa saat." },
   oidc_failed: { title: "Proses masuk belum selesai", body: "Proses masuk melalui Akun Sabilul Qur'an belum dapat diselesaikan. Silakan coba lagi." },
+  organ_step_up_failed: {
+    title: "Verifikasi dua langkah belum berhasil",
+    body: "Mengambil keputusan memerlukan verifikasi dua langkah yang baru melalui Akun Sabilul Qur'an. Silakan coba lagi.",
+  },
 };
 
 function Refusal({ code }: { code: string }) {
   const text = REFUSALS[code] ?? REFUSALS.organ_access_denied!;
-  const retryable = code === "identity_unavailable" || code === "oidc_failed";
+  const retryable = code === "identity_unavailable" || code === "oidc_failed" || code === "organ_step_up_failed";
+  const retryHref = code === "organ_step_up_failed" ? "/api/auth/oidc/start?stepUp=1" : "/api/auth/oidc/start";
   return (
     <div className="mt-6 rounded-xl border border-border bg-surface-raised px-6 py-10 text-center">
       <h1 className="text-xl font-semibold text-brand-heading">{text.title}</h1>
       <p className="mx-auto mt-1.5 max-w-md text-sm text-muted-foreground">{text.body}</p>
       <div className="mt-5 flex flex-wrap justify-center gap-2">
         {retryable ? (
-          <a href="/api/auth/oidc/start" className="inline-flex h-9 items-center rounded-lg bg-brand-primary px-4 text-sm font-medium text-brand-foreground">Masuk lagi</a>
+          <a href={retryHref} className="inline-flex h-9 items-center rounded-lg bg-brand-primary px-4 text-sm font-medium text-brand-foreground">{code === "organ_step_up_failed" ? "Coba lagi" : "Masuk lagi"}</a>
         ) : null}
         <a href="https://hub.sabilulquran.or.id/" className="inline-flex h-9 items-center rounded-lg border border-border px-4 text-sm text-brand-heading">Ke SQ Hub</a>
       </div>

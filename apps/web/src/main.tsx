@@ -2,6 +2,8 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 
 import { AccountPage } from "@/AccountPage";
+import { claimOidcRetryStart, cookieRetryStorage } from "@/auth-retry";
+import { SignInHandOff } from "@/SignInHandOff";
 import { AdminCenterPage } from "@/AdminCenterPage";
 import { NotFoundPage, WorkspaceApp } from "@/WorkspaceApp";
 import { WorkspaceShell } from "@/WorkspaceShell";
@@ -131,8 +133,15 @@ if (organPreview) installOrganPreview();
 const kerjaPreview = previewEnabled && params.get("preview") === "kerja";
 if (kerjaPreview) installKerjaPreview();
 
+// HUB-IMPL-005 Rev 2: after `authError=oidc_failed`, start the Akun SQ sign-in once more before
+// any application renders its error. Decided here, outside React, so it happens exactly once.
+const retryStart = previewEnabled
+  ? null
+  : claimOidcRetryStart(window.location.pathname, window.location.search, cookieRetryStorage(), Date.now());
+if (retryStart) window.location.replace(retryStart);
+
 createRoot(document.getElementById("root")!).render(
-  <StrictMode>{isOrganHost(window.location.hostname) || organPreview ? <OrganApp /> : isKirimHost(window.location.hostname) ? <KirimApp /> : isSekretariatHost(window.location.hostname) ? <SekretariatApp /> : isKerjaHost(window.location.hostname) || kerjaPreview ? <KerjaApp /> : previewEnabled ? renderPreviewApp() : <WorkspaceApp />}</StrictMode>,
+  <StrictMode>{retryStart ? <SignInHandOff /> : isOrganHost(window.location.hostname) || organPreview ? <OrganApp /> : isKirimHost(window.location.hostname) ? <KirimApp /> : isSekretariatHost(window.location.hostname) ? <SekretariatApp /> : isKerjaHost(window.location.hostname) || kerjaPreview ? <KerjaApp /> : previewEnabled ? renderPreviewApp() : <WorkspaceApp />}</StrictMode>,
 );
 
 if (previewEnabled) {

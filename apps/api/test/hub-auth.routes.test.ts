@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { buildApp } from "../src/app.js";
 import { KeycloakAccountSelfService } from "../src/modules/account-self-service/client.js";
 import type { HubOidcAction } from "../src/modules/hub-auth/oidc-provider.js";
-import { HubAuthError, type HubAuthRuntime } from "../src/modules/hub-auth/service.js";
+import { HubAuthError, oidcCallbackRefusalCode, type HubAuthRuntime } from "../src/modules/hub-auth/service.js";
 import {
   IdentityDirectoryError,
   type IdentityDirectory,
@@ -570,6 +570,39 @@ describe("SQ Hub browser auth routes", () => {
 
     expect(response.statusCode).toBe(302);
     expect(response.headers.location).toBe("/account?authError=oidc_failed");
+  });
+
+  it("logs only the refusal code of a failed callback (HUB-IMPL-005 Rev 2)", async () => {
+    const app = appWithHub(
+      fakeHub({
+        completeLogin: async () => {
+          throw new HubAuthError(400, "OIDC_TRANSACTION_EXPIRED", "Transaksi masuk sudah berakhir.");
+        },
+      }),
+    );
+    const warn = vi.spyOn(app.log, "warn");
+    const response = await app.inject({
+      method: "GET",
+      url: "/auth/callback?code=synthetic-secret-code&state=synthetic-state",
+      headers: { cookie: "sq_hub_oidc_tx=synthetic-transaction" },
+    });
+    await app.close();
+
+    expect(response.headers.location).toBe("/?authError=oidc_failed");
+    expect(warn).toHaveBeenCalledWith(
+      { event: "oidc_callback_refused", client: "hub", code: "OIDC_TRANSACTION_EXPIRED" },
+      "OIDC callback refused",
+    );
+    const logged = JSON.stringify(warn.mock.calls);
+    expect(logged).not.toContain("synthetic-secret-code");
+    expect(logged).not.toContain("synthetic-state");
+    expect(logged).not.toContain("synthetic-transaction");
+    expect(logged).not.toContain("sudah berakhir");
+  });
+
+  it("logs an unexpected callback failure under a fixed code", () => {
+    expect(oidcCallbackRefusalCode(new Error("db password=secret"))).toBe("OIDC_CALLBACK_UNEXPECTED");
+    expect(oidcCallbackRefusalCode(new HubAuthError(400, "OIDC_TRANSACTION_MISSING", "x"))).toBe("OIDC_TRANSACTION_MISSING");
   });
 
   it("clears the local session and returns the official OIDC logout URL", async () => {

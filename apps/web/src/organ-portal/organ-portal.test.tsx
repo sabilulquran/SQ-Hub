@@ -76,6 +76,15 @@ describe("Portal Organ Yayasan view", () => {
     expect(visible).not.toContain("Keluar");
   });
 
+  it("explains a refused step-up and asks for the step-up again (HUB-IMPL-005 Rev 2)", () => {
+    const html = renderToStaticMarkup(<OrganAppView route={{ name: "ringkasan" }} state={{ status: "refused", code: "organ_step_up_failed" }} />);
+    const visible = text(html);
+    expect(visible).toContain("Verifikasi dua langkah belum berhasil");
+    expect(visible).toContain("Coba lagi");
+    expect(html).toContain('href="/api/auth/oidc/start?stepUp=1"');
+    expect(visible).not.toContain("Keluar");
+  });
+
   it("links each section's Rincian to the organ host, not the application", () => {
     const html = renderToStaticMarkup(<OrganAppView route={{ name: "ringkasan" }} state={{ status: "ready", session, snapshot: governanceFixture }} />);
     const ready = governanceFixture.cards.find((card) => card.state === "ready");

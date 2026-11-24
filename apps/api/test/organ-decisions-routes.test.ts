@@ -1,5 +1,5 @@
 import Fastify from "fastify";
-import { describe, expect, it } from "vitest";
+import { vi, describe, expect, it } from "vitest";
 
 import type { GovernanceService } from "../src/modules/governance/service.js";
 import type { HubOidcAuthorizationTransaction, HubOidcProviderLike, HubOidcStepUp } from "../src/modules/hub-auth/oidc-provider.js";
@@ -252,10 +252,16 @@ describe("ORGAN-IMPL-001 §4.2 step 2: the step-up itself", () => {
     ["no auth_time to judge", { acr: "2", authTime: null }],
   ])("refuses the sign-in when the realm answers with %s", async (_label, completion) => {
     const { app, store } = setup({ completion });
+    const warn = vi.spyOn(app.log, "warn");
     const { callback } = await signIn(app, "/auth/oidc/start?stepUp=1");
     await app.close();
+    expect(warn).toHaveBeenCalledWith(
+      { event: "oidc_callback_refused", client: "organ", code: "OIDC_STEP_UP_FAILED" },
+      "OIDC callback refused",
+    );
     // The refusal lands on the portal's own page; no session, so nothing can be decided with it.
-    expect(callback.headers.location).toContain("authError");
+    // It has its own category, so the web entry does not retry it as an ordinary sign-in.
+    expect(callback.headers.location).toBe("/?authError=organ_step_up_failed");
     expect(store.sessions.size).toBe(0);
   });
 
