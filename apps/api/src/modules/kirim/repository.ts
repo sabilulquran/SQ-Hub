@@ -139,6 +139,18 @@ export async function freeIdentifier(db: Queryable, table: "kirim_consumers" | "
     // holds (after 2026-11-05 `spmb` runs on tenant `spmb-2`).
     const tenants = await db.query<{ value: string }>("SELECT provider_ref AS value FROM kirim_devices WHERE provider_ref = $1 OR provider_ref LIKE $2", [base, `${base}-%`]);
     for (const row of tenants.rows) taken.add(row.value);
+    // §17: a tenant left in the engine by a number that is gone (merged away, or deleted from its card, K-9)
+    // is never handed to a new number, so its leftover events can never land on an unrelated number.
+    const released = await db.query<{ value: string }>(
+      `SELECT value FROM (
+         SELECT DISTINCT provider_ref AS value FROM kirim_events WHERE provider_ref IS NOT NULL
+         UNION SELECT metadata->>'tenant' FROM kirim_audit WHERE aksi IN ('nomor.lepas_sesi_ganda', 'gerbang.nomor_hapus')
+         UNION SELECT metadata->>'tenant_dilepas' FROM kirim_audit WHERE aksi = 'nomor.gabung_duplikat'
+         UNION SELECT metadata->>'tenant_lama' FROM kirim_audit WHERE aksi = 'nomor.gabung_duplikat'
+       ) t WHERE value = $1 OR value LIKE $2`,
+      [base, `${base}-%`],
+    );
+    for (const row of released.rows) taken.add(row.value);
   }
   if (!taken.has(base)) return base;
   for (let n = 2; ; n += 1) if (!taken.has(`${base}-${n}`)) return `${base}-${n}`;

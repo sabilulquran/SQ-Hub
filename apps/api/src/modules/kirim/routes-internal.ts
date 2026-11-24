@@ -58,6 +58,7 @@ export const KIRIM_INTERNAL_PREFIX = "/internal/kirim";
  * module API with Keycloak tokens stays on loopback.
  */
 export const KIRIM_PUBLIC_PREFIX = "/v1";
+const OPTOUT_KEY_REFUSAL = "Kunci API hanya boleh memakai nomornya sendiri; di nomor milik aplikasi lain pakai cakupan consumer.";
 
 export function sendKirimError(
   reply: FastifyReply,
@@ -257,7 +258,7 @@ export function registerKirimInternalRoutes(
       if (!consumer) return reply;
       const parsed = optoutSchema.safeParse(request.body);
       if (!parsed.success) return sendInvalidBody(request, reply, parsed.error);
-      if (!apiKeyMayUseDevice(consumer, parsed.data)) return sendKirimError(reply, 403, "not_owner", "Kunci API hanya boleh memakai nomornya sendiri.");
+      if (!apiKeyMayUseDevice(consumer, parsed.data)) return sendKirimError(reply, 403, "not_owner", OPTOUT_KEY_REFUSAL);
       try {
         return reply.send(await input.service.addConsumerOptout(consumer, parsed.data));
       } catch (error) {
@@ -270,7 +271,7 @@ export function registerKirimInternalRoutes(
       if (!consumer) return reply;
       const parsed = optoutSchema.safeParse(request.body);
       if (!parsed.success) return sendInvalidBody(request, reply, parsed.error);
-      if (!apiKeyMayUseDevice(consumer, parsed.data)) return sendKirimError(reply, 403, "not_owner", "Kunci API hanya boleh memakai nomornya sendiri.");
+      if (!apiKeyMayUseDevice(consumer, parsed.data)) return sendKirimError(reply, 403, "not_owner", OPTOUT_KEY_REFUSAL);
       try {
         return reply.send(await input.service.removeConsumerOptout(consumer, parsed.data));
       } catch (error) {
@@ -378,10 +379,14 @@ function apiKeyOf(consumer: ConsumerRow): GatewayConsumer["apiKey"] | null {
   return (consumer as Partial<GatewayConsumer>).apiKey ?? null;
 }
 
-/** An API key's `cakupan: device` opt-out may only name the key's own number. */
+/**
+ * An API key's `cakupan: device` opt-out may only name the key's own number, and only one the
+ * "Aplikasi luar" card owns (D-5): on another application's number it uses (§17) such an opt-out would
+ * stop that application's own messages too.
+ */
 function apiKeyMayUseDevice(consumer: ConsumerRow, input: { cakupan: "consumer" } | { cakupan: "device"; device: string }): boolean {
   const apiKey = apiKeyOf(consumer);
-  return !apiKey || input.cakupan !== "device" || input.device === apiKey.device.kode;
+  return !apiKey || input.cakupan !== "device" || (input.device === apiKey.device.kode && apiKey.device.pemilikConsumerId === consumer.id);
 }
 
 /** KIRIM-IMPL-002 §6 and KIRIM-IMPL-004: the number owner's conversation API. Every handler checks ownership itself. */

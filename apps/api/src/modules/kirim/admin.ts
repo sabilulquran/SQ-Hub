@@ -510,13 +510,23 @@ export class KirimAdminService {
         });
         throw providerError(error);
       }
+      // Recorded on its own, outside the merge transaction: the logout stands even if the merge below fails.
+      await writeAudit(this.pool, {
+        actorKind: "human", actorRef: actor.ref, aksi: "nomor.lepas_sesi_ganda", objekJenis: "device", objekRef: plan.source.kode,
+        metadata: { tetap_di: plan.target.kode, tenant: plan.source.providerRef, alasan: input.alasan },
+      });
     }
     return withTransaction(this.pool, async (client) => {
       await client.query("SELECT id FROM kirim_devices WHERE kode = ANY($1::text[]) ORDER BY id FOR UPDATE", [[kode, input.ke]]);
       const checked = await this.mergePlan(client, kode, input.ke);
       if (checked.selesai) return checked.selesai;
-      const { source, target, sourceIsGateway } = checked;
-      // The session decision taken before the engine step holds: once the duplicate is logged out, `ke` keeps its own.
+      const { source, target, keysFollow } = checked;
+      // Once the duplicate is logged out, `ke` keeps its own session whatever happens next. The other way round,
+      // `ke` came back online between the check and the lock: moving the duplicate's session now would orphan
+      // that live session, so the admin tries again (and the next try keeps it).
+      if (plan.sesi === "pindah" && checked.sesi === "tetap") {
+        throw new KirimApiError(409, "conflict", `${target.label} baru saja tersambung lagi. Coba sekali lagi.`);
+      }
       const sesi = plan.sesi;
       const crossOwner = source.pemilikConsumerId !== target.pemilikConsumerId;
 
@@ -542,7 +552,7 @@ export class KirimAdminService {
 
       let kunciPindah: string | null = null;
       let droppedKeys = 0;
-      if (crossOwner && sourceIsGateway) {
+      if (keysFollow) {
         // The outside application keeps its key and its webhook: both follow it onto `ke`, named after
         // the duplicate so its card still says which application it is.
         const moved = await client.query<{ awalan: string; aktif: boolean }>(
@@ -555,8 +565,8 @@ export class KirimAdminService {
         await this.moveNumberWebhook(client, source.id, target.id);
         await client.query("UPDATE kirim_webhook_deliveries SET device_id = $2 WHERE device_id = $1", [source.id, target.id]);
       } else {
-        // Same owner: the duplicate is the throwaway one, so an outside duplicate's key goes with it and
-        // `ke` keeps the key its application already uses (§16.2). Its queued webhooks lose their target.
+        // Both numbers are the "Aplikasi luar" card's own: the duplicate is the throwaway one, so its key goes
+        // with it and `ke` keeps the key its application already uses (§16.2). Its queued webhooks lose their target.
         droppedKeys = (await client.query("DELETE FROM kirim_api_keys WHERE device_id = $1", [source.id])).rowCount ?? 0;
         await client.query("UPDATE kirim_webhook_deliveries SET device_id = NULL WHERE device_id = $1", [source.id]);
       }
@@ -599,8 +609,8 @@ export class KirimAdminService {
    * locks. `selesai` is set when the duplicate is already gone into `ke` (a second click).
    */
   private async mergePlan(db: Queryable, kode: string, ke: string): Promise<
-    | { selesai: ReturnType<typeof toBrowserDevice>; source?: never; target?: never; sourceIsGateway?: never; sesi?: never }
-    | { selesai?: never; source: DeviceRow; target: DeviceRow; sourceIsGateway: boolean; sesi: "tetap" | "pindah" }
+    | { selesai: ReturnType<typeof toBrowserDevice>; source?: never; target?: never; keysFollow?: never; sesi?: never }
+    | { selesai?: never; source: DeviceRow; target: DeviceRow; keysFollow: boolean; sesi: "tetap" | "pindah" }
   > {
     const source = await findDevice(db, kode);
     const target = await findDevice(db, ke);
@@ -621,17 +631,20 @@ export class KirimAdminService {
     }
     const owners = await db.query<{ id: string; gerbang: boolean }>("SELECT id, gerbang FROM kirim_consumers WHERE id = ANY($1::uuid[])", [[source.pemilikConsumerId, target.pemilikConsumerId]]);
     const isGateway = (id: string) => owners.rows.some((row) => row.id === id && row.gerbang);
-    const sourceIsGateway = isGateway(source.pemilikConsumerId);
-    if (source.pemilikConsumerId !== target.pemilikConsumerId) {
-      // An outside number stays with the "Aplikasi luar" card (§16, `pemilik_terkunci`): an application's number is not merged into one.
-      if (isGateway(target.pemilikConsumerId)) {
-        throw new KirimApiError(409, "pemilik_berbeda", `${target.label} adalah nomor aplikasi luar, jadi nomor aplikasi tidak digabung ke sana. Putuskan ${source.label}, lalu sambungkan kartunya ke nomor lain.`);
-      }
-      if (sourceIsGateway) {
-        const keyed = await db.query("SELECT 1 FROM kirim_api_keys WHERE device_id = $1 AND dicabut_at IS NULL LIMIT 1", [target.id]);
-        if ((keyed.rowCount ?? 0) > 0) {
-          throw new KirimApiError(409, "nomor_sudah_berkunci", `${target.label} sudah dipakai aplikasi luar lain dengan kuncinya sendiri. Satu nomor hanya memegang satu kunci API.`);
-        }
+    const targetIsGateway = isGateway(target.pemilikConsumerId);
+    // An outside number stays with the "Aplikasi luar" card (§16, `pemilik_terkunci`): an application's number is not merged into one.
+    if (source.pemilikConsumerId !== target.pemilikConsumerId && targetIsGateway) {
+      throw new KirimApiError(409, "pemilik_berbeda", `${target.label} adalah nomor aplikasi luar, jadi nomor aplikasi tidak digabung ke sana. Putuskan ${source.label}, lalu sambungkan kartunya ke nomor lain.`);
+    }
+    // Keys follow the application holding them, whoever owns the duplicate: an outside number's own key, or the
+    // key of an outside application already using a module's number (§17). Only between two of the "Aplikasi
+    // luar" card's own numbers is the duplicate's key the throwaway one (§16.2).
+    const keys = await db.query<{ aktif: boolean }>("SELECT dicabut_at IS NULL AS aktif FROM kirim_api_keys WHERE device_id = $1", [source.id]);
+    const keysFollow = !targetIsGateway && keys.rows.length > 0;
+    if (keysFollow && keys.rows.some((row) => row.aktif)) {
+      const keyed = await db.query("SELECT 1 FROM kirim_api_keys WHERE device_id = $1 AND dicabut_at IS NULL LIMIT 1", [target.id]);
+      if ((keyed.rowCount ?? 0) > 0) {
+        throw new KirimApiError(409, "nomor_sudah_berkunci", `${target.label} sudah dipakai aplikasi luar lain dengan kuncinya sendiri. Satu nomor hanya memegang satu kunci API.`);
       }
     }
     const counts = await db.query<{ n: string }>(
@@ -641,7 +654,7 @@ export class KirimAdminService {
     if (Number(counts.rows[0]?.n ?? 0) > 0) {
       throw new KirimApiError(409, "nomor_sudah_berisi", `${source.label} sudah menyimpan percakapan atau antrean sendiri, jadi tidak bisa digabung dari layar. Hubungi operator.`);
     }
-    return { source, target, sourceIsGateway, sesi: target.status === "tersambung" ? "tetap" : "pindah" };
+    return { source, target, keysFollow, sesi: target.status === "tersambung" ? "tetap" : "pindah" };
   }
 
   /** An outside number's webhook follows its key: the secret is sealed again for its new row (AAD = row id). */

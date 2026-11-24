@@ -1502,6 +1502,18 @@ describe("Module cards (KIRIM-IMPL-003)", () => {
     expect(Number((await pool.query("SELECT count(*) AS c FROM kirim_outbox o JOIN kirim_devices d ON d.id = o.device_id WHERE d.kode = 'spmb' AND o.consumer_id = $1", [GATEWAY_ID])).rows[0].c)).toBe(1);
     expect((await api(kunci, "GET", `/v1/messages/${sent.json().id}`)).json()).toMatchObject({ id: sent.json().id, status: "antre" });
     expect(await gatewayRoutes("spmb")).toEqual(["kode", "notifikasi"]);
+    // On a number it only uses, the key cannot stop the owner's messages with a number-wide opt-out (D-5);
+    // an opt-out for its own messages stays open.
+    const wide = await api(kunci, "POST", "/v1/optouts", { nomor: PHONE, cakupan: "device", device: "spmb", alasan: "minta berhenti" });
+    expect(wide.statusCode).toBe(403);
+    expect(wide.json().error.code).toBe("not_owner");
+    expect((await api(kunci, "POST", "/v1/optouts", { nomor: PHONE, cakupan: "consumer", alasan: "minta berhenti" })).statusCode).toBe(200);
+    expect((await pool.query("SELECT 1 FROM kirim_optouts WHERE cakupan = 'device'")).rowCount).toBe(0);
+    // The duplicate's code and engine tenant stay retired: a new outside number gets another one.
+    const fresh = await admin("POST", "/gerbang/nomor-baru", { payload: {} });
+    expect(fresh.json().kode).not.toBe(kode);
+    expect(fresh.json().provider_ref).not.toBe(kode);
+    await admin("POST", `/gerbang/nomor/${fresh.json().kode}/hapus`, { payload: {} });
 
     // One card owns the number; the outside card uses it, under the application's name, with its key.
     const screen = (await admin("GET", "/modules")).json();

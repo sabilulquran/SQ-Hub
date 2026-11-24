@@ -271,7 +271,7 @@ export class KirimGateway {
       }
       await writeAudit(client, {
         actorKind: "human", actorRef: actor.ref, aksi: "gerbang.nomor_hapus", objekJenis: "device", objekRef: kode,
-        metadata: { status: device.status, provider: device.provider },
+        metadata: { status: device.status, provider: device.provider, ...(device.providerRef ? { tenant: device.providerRef } : {}) },
       });
       return { kode, dihapus: true };
     });
