@@ -11,7 +11,7 @@ import {
   GovernanceUnavailableError,
   type GovernanceService,
 } from "../governance/service.js";
-import { HubAuthError, readCookie, type HubAuthRuntime } from "../hub-auth/service.js";
+import { HubAuthError, oidcCallbackRefusalCode, readCookie, type HubAuthRuntime } from "../hub-auth/service.js";
 import {
   DecisionApplicationUnknownError,
   DecisionNotSentError,
@@ -102,7 +102,8 @@ export function registerOrganAuthRoutes(
     let result;
     try {
       result = await input.auth.completeLogin(callbackUrl, readCookie(request.headers.cookie, ORGAN_OIDC_TRANSACTION_COOKIE_NAME), context(request));
-    } catch {
+    } catch (error) {
+      app.log.warn({ event: "oidc_callback_refused", client: "organ", code: oidcCallbackRefusalCode(error) }, "OIDC callback refused");
       reply.header("Set-Cookie", input.auth.clearTransactionCookie());
       return reply.redirect("/?authError=oidc_failed");
     }

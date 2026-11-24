@@ -7,7 +7,7 @@ import { z } from "zod";
 
 import { listLauncherApplications } from "../application-access/launcher.js";
 import type { ApplicationAccessService } from "../application-access/service.js";
-import { HubAuthError, readCookie, type HubAuthRuntime } from "../hub-auth/service.js";
+import { HubAuthError, oidcCallbackRefusalCode, readCookie, type HubAuthRuntime } from "../hub-auth/service.js";
 import type { HubWorkspaceApplicationSource } from "../hub-auth/workspace-repository.js";
 import type { KerjaDirectory } from "../kerja/directory.js";
 import { isSekretariatAdmin, loadPeran, type Viewer } from "./akses.js";
@@ -412,7 +412,8 @@ export function registerSekretariatAuthRoutes(app: FastifyInstance, input: { aut
       );
       reply.raw.setHeader("Set-Cookie", result.setCookies);
       return reply.redirect("/");
-    } catch {
+    } catch (error) {
+      app.log.warn({ event: "oidc_callback_refused", client: "sekretariat", code: oidcCallbackRefusalCode(error) }, "OIDC callback refused");
       reply.header("Set-Cookie", input.auth.clearTransactionCookie());
       return reply.redirect("/?authError=oidc_failed");
     }

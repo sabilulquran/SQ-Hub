@@ -13,6 +13,7 @@ import {
   HUB_OIDC_TRANSACTION_COOKIE_NAME,
   HUB_SESSION_COOKIE_NAME,
   HubAuthError,
+  oidcCallbackRefusalCode,
   readCookie,
   type HubAuthRuntime,
 } from "./service.js";
@@ -145,6 +146,7 @@ export function registerHubAuthRoutes(
       reply.raw.setHeader("Set-Cookie", result.setCookies);
       return reply.redirect(result.returnPath);
     } catch (error) {
+      app.log.warn({ event: "oidc_callback_refused", client: "hub", code: oidcCallbackRefusalCode(error) }, "OIDC callback refused");
       reply.header("Set-Cookie", hubAuth.clearTransactionCookie());
       const returnPath =
         error instanceof HubAuthError && error.returnPath

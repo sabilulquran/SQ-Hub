@@ -136,6 +136,28 @@ The web application boot sequence is:
 
 OIDC callback is server-side at `/auth/callback` and redirects back to `/` after session creation.
 
+### Rev 2 - 24 November 2026: one automatic retry after a failed callback
+
+**Status:** ACCEPTED (owner, 2026-11-24: "Ya, perbaiki" on the audit of sign-ins that landed on the "Masuk dengan Akun SQ" retry state).
+
+Applies to every application the Hub web bundle serves and that reuses the Hub auth code: SQ Hub, Kerja SQ, Kirim SQ, Sekretariat SQ, and Portal Organ.
+
+Finding: the OIDC transaction lives 10 minutes (`HUB_OIDC_TRANSACTION_TTL_MINUTES`, and `transactionTtlMinutes: 10` in the Kerja, Kirim, Sekretariat and Organ modules), while the Akun SQ sign-in page (realm `sq-staff` `login_lifespan`) lives 30 minutes. A sign-in page left open for 10 to 30 minutes lets Keycloak accept the sign-in, but the callback finds no transaction and redirects to `/?authError=oidc_failed`. The page then stopped at its error state although the Akun SQ SSO session was already active. One transaction cookie per application also lets two tabs, or two starts sent close together, replace each other's transaction; the losing callback fails the same way.
+
+- Before any application renders, the web entry reads `authError`. On `oidc_failed` it writes a marker cookie `sq_oidc_retry_at` (epoch milliseconds; host-only, `Path=/`, `Max-Age=120`, `SameSite=Lax`, `Secure` on HTTPS; not `HttpOnly` because the page itself must read it back), reads it back, and replaces the location with `/api/auth/oidc/start` (`?returnTo=account` on `/account`). Meanwhile only a neutral "Membuka Akun SQ…" status shows. Because the SSO session is usually active, the person lands in the application without seeing the error.
+- Loop bound: a retry is allowed only when no marker is newer than 2 minutes; a marker dated in the future counts as recent. A second `oidc_failed` inside the window shows the application's existing error and retry state. When the marker cannot be stored (cookies blocked, `document.cookie` throwing, or the value not reading back) there is no automatic retry: with cookies blocked the transaction cookie is lost too, so this is the case that would otherwise loop.
+- The marker is a cookie, not web storage, because the web source keeps no authentication material in `localStorage` or `sessionStorage` (guardrail `apps/web/src/security.test.ts`, unchanged). It carries only a timestamp; it is not a token, state, code, or identity.
+- Only `oidc_failed` is retried. `identity_unavailable`, `organ_access_denied`, `organ_membership_required` and any other value keep their current behaviour.
+- The URL contract, transaction TTL and transaction cookies are unchanged. The retry starts a new transaction owned by the same browser, so it adds no login CSRF path. Portal Organ's step-up start (`?stepUp=1`) is not repeated automatically: a failed step-up comes back signed in at the normal level and the member asks for the step-up again.
+- Observability: callback routes stay `logLevel: "silent"` so the authorization code never reaches a request log. A refused callback now writes one warning `{ event: "oidc_callback_refused", client, code }`, where `code` is the fixed `HubAuthError` code (for example `OIDC_TRANSACTION_MISSING`, `OIDC_TRANSACTION_EXPIRED`, `OIDC_COMPLETION_FAILED`, `OIDC_STEP_UP_FAILED`) or `OIDC_CALLBACK_UNEXPECTED`. No message, state, code, token, cookie or identity is logged.
+- No migration and no new audit table.
+- Acceptance:
+  - HUB-IMPL-005-R2-A: the first `oidc_failed` in a tab restarts the sign-in automatically, without rendering the application's error state.
+  - HUB-IMPL-005-R2-B: a second `oidc_failed` within 2 minutes renders the existing error state; there is no loop.
+  - HUB-IMPL-005-R2-C: other `authError` values are not retried.
+  - HUB-IMPL-005-R2-D: when the marker cookie cannot be stored the behaviour is the same as before Rev 2.
+  - HUB-IMPL-005-R2-E: every refused callback in every Hub-family client logs exactly the fixed refusal code and no request value.
+
 The account-menu `Keluar` action:
 
 1. `POST /api/auth/logout`;
@@ -174,6 +196,7 @@ At minimum, SQ Hub records security events for:
 
 - successful Hub session creation;
 - failed/expired OIDC transaction completion where safely attributable;
+- (Rev 2) every refused callback, as the operational warning `oidc_callback_refused` with only its fixed code;
 - Hub logout.
 
 Audit payload must not contain credentials, cookies, authorization codes, access/refresh/ID tokens, PKCE verifiers, or client secrets.

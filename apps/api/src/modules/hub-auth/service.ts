@@ -34,6 +34,16 @@ export interface HubWorkspaceSnapshot {
   };
 }
 
+/**
+ * HUB-IMPL-005 Rev 2: the only thing logged about a refused OIDC callback. Callback routes stay
+ * `logLevel: "silent"` so the authorization code never reaches a request log; this returns a
+ * fixed code (`OIDC_TRANSACTION_MISSING`, `OIDC_TRANSACTION_EXPIRED`, ...), never a message,
+ * state, code, token, or identity.
+ */
+export function oidcCallbackRefusalCode(error: unknown): string {
+  return error instanceof HubAuthError ? error.code : "OIDC_CALLBACK_UNEXPECTED";
+}
+
 export class HubAuthError extends Error {
   constructor(
     public readonly statusCode: number,
