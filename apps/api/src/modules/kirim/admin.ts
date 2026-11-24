@@ -4,11 +4,12 @@ import { z } from "zod";
 
 import { createHash } from "node:crypto";
 
-import { InvalidNumberError, maskPhone, normalizePhone, phoneCanonical, type KirimCrypto } from "./crypto.js";
+import { columnAad, InvalidNumberError, maskPhone, normalizePhone, phoneCanonical, type KirimCrypto } from "./crypto.js";
 import type { KirimIngest } from "./ingest.js";
 import { GATEWAY_CONSUMER_NAME, wibDayStart } from "./policy.js";
 import { ProviderOperationError, type KirimProvider, type PairingResult, type ProviderName } from "./providers/types.js";
 import {
+  consumerNameSql,
   conversationContact,
   dbNow,
   deviceSharers,
@@ -465,11 +466,11 @@ export class KirimAdminService {
   private async deviceUsage(db: Queryable, device: Pick<DeviceRow, "id">) {
     const appName = "LEFT JOIN applications a ON a.application_key = c.application_key OR (c.application_key IS NULL AND a.machine_client_id = c.client_id)";
     const cards = await db.query<{ nama: string }>(
-      `SELECT DISTINCT coalesce(a.name, c.nama) AS nama FROM kirim_consumers c ${appName} WHERE c.nomor_device_id = $1 ORDER BY 1`,
+      `SELECT DISTINCT ${consumerNameSql("$1")} AS nama FROM kirim_consumers c ${appName} WHERE c.nomor_device_id = $1 ORDER BY 1`,
       [device.id],
     );
     const routes = await db.query<{ nama: string; jenis: string }>(
-      `SELECT DISTINCT coalesce(a.name, c.nama) AS nama, r.jenis FROM kirim_routes r JOIN kirim_consumers c ON c.id = r.consumer_id ${appName}
+      `SELECT DISTINCT ${consumerNameSql("$1")} AS nama, r.jenis FROM kirim_routes r JOIN kirim_consumers c ON c.id = r.consumer_id ${appName}
         WHERE r.device_id = $1 ORDER BY 1, 2`,
       [device.id],
     );
@@ -477,47 +478,98 @@ export class KirimAdminService {
   }
 
   /**
-   * KIRIM-IMPL-003 §11.3 "Pakai nomor yang ada": `kode` is a newer number whose phone is already the
-   * phone of the older number `ke`. The older number takes over the newer one's engine session,
-   * cards and routes, and the newer row is removed, as ops did by hand on 2026-11-05. Refused once
-   * the newer number holds conversations or a queue of its own; those need an operator.
+   * KIRIM-IMPL-003 §11.3 and §17 "Pakai nomor yang ada": `kode` is a newer number whose phone is
+   * already the phone of the older number `ke`. One number stays: `ke`, with its one owner. Cards and
+   * routes of the duplicate move onto it and the duplicate row is removed.
+   *
+   * §17 (2026-11-24) transfer rules:
+   * - **Owners.** Same owner: as before. Different owners: `ke` keeps its owner and the duplicate's
+   *   owner becomes a user of `ke` (§14) with a `notifikasi` route, plus the routes it had. An outside
+   *   number keeps its **API key**, which moves onto `ke` with the duplicate's name, and its webhook,
+   *   so the outside application changes nothing. `ke` may carry one outside key only
+   *   (`409 nomor_sudah_berkunci`); a module number is never merged onto an outside number.
+   * - **Session.** When `ke` is `tersambung`, its live session stays and the duplicate's session is
+   *   logged out of WhatsApp first, so one session remains (its messages already reached `ke`, which is
+   *   linked to the same WhatsApp). Otherwise the duplicate's session moves onto `ke` and the held
+   *   messages are pulled from its tenant, as on 2026-11-05.
+   * - Refused once the duplicate holds conversations or a queue of its own; those need an operator.
+   * - Clicked twice, the second call answers with `ke` as the first left it.
    */
   async useExistingNumber(actor: AdminActor, kode: string, input: z.infer<typeof mergeDuplicateSchema>) {
     if (!kodeSchema.safeParse(kode).success || kode === input.ke) throw new KirimApiError(404, "not_found", "Nomor tidak ditemukan.");
+    // Checked before the engine step, so a merge the rules refuse never logs a session out.
+    const plan = await this.mergePlan(this.pool, kode, input.ke);
+    if (plan.selesai) return plan.selesai;
+    if (plan.sesi === "tetap") {
+      try {
+        await this.provider(plan.source).disconnect(plan.source);
+      } catch (error) {
+        await writeAudit(this.pool, {
+          actorKind: "human", actorRef: actor.ref, aksi: "nomor.gabung_duplikat", objekJenis: "device", objekRef: plan.target.kode, hasil: "gagal",
+          metadata: { dari: plan.source.kode, langkah: "lepas_sesi_ganda", code: providerCode(error), alasan: input.alasan },
+        });
+        throw providerError(error);
+      }
+      // Recorded on its own, outside the merge transaction: the logout stands even if the merge below fails.
+      await writeAudit(this.pool, {
+        actorKind: "human", actorRef: actor.ref, aksi: "nomor.lepas_sesi_ganda", objekJenis: "device", objekRef: plan.source.kode,
+        metadata: { tetap_di: plan.target.kode, tenant: plan.source.providerRef, alasan: input.alasan },
+      });
+    }
     return withTransaction(this.pool, async (client) => {
       await client.query("SELECT id FROM kirim_devices WHERE kode = ANY($1::text[]) ORDER BY id FOR UPDATE", [[kode, input.ke]]);
-      const source = await findDevice(client, kode);
-      const target = await findDevice(client, input.ke);
-      if (!source || !target) throw new KirimApiError(404, "not_found", "Nomor tidak ditemukan.");
-      const match = (await samePhoneDevices(client, source.id)).find((other) => other.kode === target.kode);
-      if (!match) throw new KirimApiError(409, "nomor_tidak_sama", "Kedua nomor tidak tertaut ke WhatsApp yang sama.");
-      if (!match.lebihDulu) throw new KirimApiError(409, "nomor_lebih_baru", "Pilih nomor yang lebih dulu ada sebagai tujuan.");
-      // Merging moves one number's engine tenant onto the other, so both must be on the same engine.
-      if (source.provider === "log" || source.provider !== target.provider || !source.providerRef) {
-        throw new KirimApiError(409, "pairing_not_applicable", "Hanya dua nomor pada mesin yang sama yang bisa digabung.");
+      const checked = await this.mergePlan(client, kode, input.ke);
+      if (checked.selesai) return checked.selesai;
+      const { source, target, keysFollow } = checked;
+      // Once the duplicate is logged out, `ke` keeps its own session whatever happens next. The other way round,
+      // `ke` came back online between the check and the lock: moving the duplicate's session now would orphan
+      // that live session, so the admin tries again (and the next try keeps it).
+      if (plan.sesi === "pindah" && checked.sesi === "tetap") {
+        throw new KirimApiError(409, "conflict", `${target.label} baru saja tersambung lagi. Coba sekali lagi.`);
       }
-      if (source.pemilikConsumerId !== target.pemilikConsumerId) {
-        throw new KirimApiError(409, "pemilik_berbeda", `${target.label} milik aplikasi lain. Putuskan nomor baru ini, lalu pakai "Pakai nomor yang sudah aktif" di kartu aplikasinya.`);
-      }
-      const counts = await client.query<{ n: string }>(
-        `SELECT (${DEVICE_DATA_TABLES.map((table) => `(SELECT count(*) FROM ${table} WHERE device_id = $1)`).join(" + ")})::text AS n`,
-        [source.id],
-      );
-      if (Number(counts.rows[0]?.n ?? 0) > 0) {
-        throw new KirimApiError(409, "nomor_sudah_berisi", `${source.label} sudah menyimpan percakapan atau antrean sendiri, jadi tidak bisa digabung dari layar. Hubungi operator.`);
-      }
+      const sesi = plan.sesi;
+      const crossOwner = source.pemilikConsumerId !== target.pemilikConsumerId;
+
       // Engine event cursors are global, so the older number keeps pulling from its own cursor.
       await client.query("UPDATE kirim_events SET device_id = $2 WHERE device_id = $1", [source.id, target.id]);
-      await client.query("UPDATE kirim_consumers SET nomor_device_id = $2, updated_at = now() WHERE nomor_device_id = $1", [source.id, target.id]);
+      const movedCards = await client.query<{ id: string }>(
+        "UPDATE kirim_consumers SET nomor_device_id = $2, updated_at = now() WHERE nomor_device_id = $1 RETURNING id",
+        [source.id, target.id],
+      );
       await client.query(
         "INSERT INTO kirim_routes (consumer_id, device_id, jenis) SELECT consumer_id, $2, jenis FROM kirim_routes WHERE device_id = $1 ON CONFLICT DO NOTHING",
         [source.id, target.id],
       );
       await client.query("DELETE FROM kirim_routes WHERE device_id = $1", [source.id]);
-      // An outside number carries its own API key (kirim_api_keys.device_id, no cascade). The newer
-      // number being merged away is the throwaway one, so its key goes with it; the older number
-      // (`ke`) keeps the key the outside application already uses. A module number has no key here.
-      const droppedKeys = await client.query("DELETE FROM kirim_api_keys WHERE device_id = $1", [source.id]);
+      // Across owners the duplicate's owner (and any card that was on it) now uses `ke` like any other
+      // card (§14): what owning the duplicate allowed without a route becomes an explicit route.
+      const pemakaiBaru = crossOwner
+        ? [...new Set([source.pemilikConsumerId, ...movedCards.rows.map((row) => row.id)])].filter((id) => id !== target.pemilikConsumerId)
+        : [];
+      for (const consumerId of pemakaiBaru) {
+        await client.query("INSERT INTO kirim_routes (consumer_id, device_id, jenis) VALUES ($1, $2, 'notifikasi') ON CONFLICT DO NOTHING", [consumerId, target.id]);
+      }
+
+      let kunciPindah: string | null = null;
+      let droppedKeys = 0;
+      if (keysFollow) {
+        // The outside application keeps its key and its webhook: both follow it onto `ke`, named after
+        // the duplicate so its card still says which application it is.
+        const moved = await client.query<{ awalan: string; aktif: boolean }>(
+          `UPDATE kirim_api_keys SET device_id = $2,
+                  nama_aplikasi = CASE WHEN dicabut_at IS NULL THEN coalesce(nama_aplikasi, $3) ELSE nama_aplikasi END
+            WHERE device_id = $1 RETURNING awalan, dicabut_at IS NULL AS aktif`,
+          [source.id, target.id, source.label.trim().slice(0, 60)],
+        );
+        kunciPindah = moved.rows.find((row) => row.aktif)?.awalan ?? null;
+        await this.moveNumberWebhook(client, source.id, target.id);
+        await client.query("UPDATE kirim_webhook_deliveries SET device_id = $2 WHERE device_id = $1", [source.id, target.id]);
+      } else {
+        // Both numbers are the "Aplikasi luar" card's own: the duplicate is the throwaway one, so its key goes
+        // with it and `ke` keeps the key its application already uses (§16.2). Its queued webhooks lose their target.
+        droppedKeys = (await client.query("DELETE FROM kirim_api_keys WHERE device_id = $1", [source.id])).rowCount ?? 0;
+        await client.query("UPDATE kirim_webhook_deliveries SET device_id = NULL WHERE device_id = $1", [source.id]);
+      }
       try {
         await client.query("DELETE FROM kirim_devices WHERE id = $1", [source.id]);
       } catch (error) {
@@ -527,20 +579,93 @@ export class KirimAdminService {
         }
         throw error;
       }
-      await client.query("UPDATE kirim_devices SET provider_ref = $2, updated_at = now() WHERE id = $1", [target.id, source.providerRef]);
-      if (target.status !== source.status) {
-        await setDeviceStatus(client, this.crypto, target.id, source.status === "nonaktif" ? "terputus" : source.status, { allowFromNonaktif: true });
+      if (sesi === "pindah") {
+        await client.query("UPDATE kirim_devices SET provider_ref = $2, updated_at = now() WHERE id = $1", [target.id, source.providerRef]);
+        if (target.status !== source.status) {
+          await setDeviceStatus(client, this.crypto, target.id, source.status === "nonaktif" ? "terputus" : source.status, { allowFromNonaktif: true });
+        }
       }
       await writeAudit(client, {
         actorKind: "human", actorRef: actor.ref, aksi: "nomor.gabung_duplikat", objekJenis: "device", objekRef: target.kode,
-        metadata: { dari: source.kode, tenant_lama: target.providerRef, tenant_baru: source.providerRef, alasan: input.alasan },
+        metadata: {
+          dari: source.kode,
+          sesi,
+          ...(sesi === "pindah" ? { tenant_lama: target.providerRef, tenant_baru: source.providerRef } : { tenant_dilepas: source.providerRef }),
+          ...(crossOwner ? { pemilik_tetap: target.pemilik, pemakai_baru: source.pemilik } : {}),
+          ...(kunciPindah ? { kunci_pindah: kunciPindah } : {}),
+          alasan: input.alasan,
+        },
       });
       await writeAudit(client, {
         actorKind: "human", actorRef: actor.ref, aksi: "nomor.hapus_duplikat", objekJenis: "device", objekRef: source.kode,
-        metadata: { digabung_ke: target.kode, alasan: input.alasan, ...(droppedKeys.rowCount ? { kunci_dihapus: droppedKeys.rowCount } : {}) },
+        metadata: { digabung_ke: target.kode, alasan: input.alasan, ...(droppedKeys ? { kunci_dihapus: droppedKeys } : {}) },
       });
       return toBrowserDevice((await findDevice(client, target.kode))!);
     });
+  }
+
+  /**
+   * The checks of "Pakai nomor yang ada", run once before the engine step and again under the row
+   * locks. `selesai` is set when the duplicate is already gone into `ke` (a second click).
+   */
+  private async mergePlan(db: Queryable, kode: string, ke: string): Promise<
+    | { selesai: ReturnType<typeof toBrowserDevice>; source?: never; target?: never; keysFollow?: never; sesi?: never }
+    | { selesai?: never; source: DeviceRow; target: DeviceRow; keysFollow: boolean; sesi: "tetap" | "pindah" }
+  > {
+    const source = await findDevice(db, kode);
+    const target = await findDevice(db, ke);
+    if (!source && target) {
+      const done = await db.query(
+        "SELECT 1 FROM kirim_audit WHERE aksi = 'nomor.gabung_duplikat' AND hasil = 'berhasil' AND objek_ref = $1 AND metadata->>'dari' = $2 LIMIT 1",
+        [ke, kode],
+      );
+      if ((done.rowCount ?? 0) > 0) return { selesai: toBrowserDevice(target, (await heldDevices(db)).get(target.id)) };
+    }
+    if (!source || !target) throw new KirimApiError(404, "not_found", "Nomor tidak ditemukan.");
+    const match = (await samePhoneDevices(db, source.id)).find((other) => other.kode === target.kode);
+    if (!match) throw new KirimApiError(409, "nomor_tidak_sama", "Kedua nomor tidak tertaut ke WhatsApp yang sama.");
+    if (!match.lebihDulu) throw new KirimApiError(409, "nomor_lebih_baru", "Pilih nomor yang lebih dulu ada sebagai tujuan.");
+    // Both numbers must be on the same engine: either session may end up being the one that stays.
+    if (source.provider === "log" || source.provider !== target.provider || !source.providerRef) {
+      throw new KirimApiError(409, "pairing_not_applicable", "Hanya dua nomor pada mesin yang sama yang bisa digabung.");
+    }
+    const owners = await db.query<{ id: string; gerbang: boolean }>("SELECT id, gerbang FROM kirim_consumers WHERE id = ANY($1::uuid[])", [[source.pemilikConsumerId, target.pemilikConsumerId]]);
+    const isGateway = (id: string) => owners.rows.some((row) => row.id === id && row.gerbang);
+    const targetIsGateway = isGateway(target.pemilikConsumerId);
+    // An outside number stays with the "Aplikasi luar" card (§16, `pemilik_terkunci`): an application's number is not merged into one.
+    if (source.pemilikConsumerId !== target.pemilikConsumerId && targetIsGateway) {
+      throw new KirimApiError(409, "pemilik_berbeda", `${target.label} adalah nomor aplikasi luar, jadi nomor aplikasi tidak digabung ke sana. Putuskan ${source.label}, lalu sambungkan kartunya ke nomor lain.`);
+    }
+    // Keys follow the application holding them, whoever owns the duplicate: an outside number's own key, or the
+    // key of an outside application already using a module's number (§17). Only between two of the "Aplikasi
+    // luar" card's own numbers is the duplicate's key the throwaway one (§16.2).
+    const keys = await db.query<{ aktif: boolean }>("SELECT dicabut_at IS NULL AS aktif FROM kirim_api_keys WHERE device_id = $1", [source.id]);
+    const keysFollow = !targetIsGateway && keys.rows.length > 0;
+    if (keysFollow && keys.rows.some((row) => row.aktif)) {
+      const keyed = await db.query("SELECT 1 FROM kirim_api_keys WHERE device_id = $1 AND dicabut_at IS NULL LIMIT 1", [target.id]);
+      if ((keyed.rowCount ?? 0) > 0) {
+        throw new KirimApiError(409, "nomor_sudah_berkunci", `${target.label} sudah dipakai aplikasi luar lain dengan kuncinya sendiri. Satu nomor hanya memegang satu kunci API.`);
+      }
+    }
+    const counts = await db.query<{ n: string }>(
+      `SELECT (${DEVICE_DATA_TABLES.map((table) => `(SELECT count(*) FROM ${table} WHERE device_id = $1)`).join(" + ")})::text AS n`,
+      [source.id],
+    );
+    if (Number(counts.rows[0]?.n ?? 0) > 0) {
+      throw new KirimApiError(409, "nomor_sudah_berisi", `${source.label} sudah menyimpan percakapan atau antrean sendiri, jadi tidak bisa digabung dari layar. Hubungi operator.`);
+    }
+    return { source, target, keysFollow, sesi: target.status === "tersambung" ? "tetap" : "pindah" };
+  }
+
+  /** An outside number's webhook follows its key: the secret is sealed again for its new row (AAD = row id). */
+  private async moveNumberWebhook(db: Queryable, fromId: string, toId: string) {
+    const current = await db.query<{ url: string | null; enc: string | null }>("SELECT webhook_url AS url, webhook_secret_enc AS enc FROM kirim_devices WHERE id = $1", [fromId]);
+    const row = current.rows[0];
+    const secret = row?.url && row.enc ? this.crypto.open(row.enc, columnAad("kirim_devices", "webhook_secret_enc", fromId)) : null;
+    await db.query(
+      "UPDATE kirim_devices SET webhook_url = $2, webhook_secret_enc = $3, updated_at = now() WHERE id = $1",
+      [toId, secret ? row!.url : null, secret ? this.crypto.seal(secret, columnAad("kirim_devices", "webhook_secret_enc", toId)) : null],
+    );
   }
 
   /**

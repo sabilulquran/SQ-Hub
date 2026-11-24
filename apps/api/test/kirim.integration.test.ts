@@ -1383,9 +1383,13 @@ describe("Module cards (KIRIM-IMPL-003)", () => {
 
     expect((await admin("POST", "/devices/spmb/pakai-nomor-yang-ada", { payload: { ke: "spmb-baru", alasan: "uji" } })).json().error.code).toBe("nomor_lebih_baru");
     expect((await admin("POST", "/devices/spmb-baru/pakai-nomor-yang-ada", { payload: { ke: "hcis", alasan: "uji" } })).json().error.code).toBe("nomor_tidak_sama");
+    // §17: the older number has lost its session (as SPMB had on 5 November), so the duplicate's session moves onto it.
+    stub.tenants.get("spmb")!.live = "disconnected";
+    await pool.query("UPDATE kirim_devices SET status = 'terputus' WHERE kode = 'spmb'");
     const merged = await admin("POST", "/devices/spmb-baru/pakai-nomor-yang-ada", { payload: { ke: "spmb", alasan: "WhatsApp sama, nomor kedua tidak sengaja" } });
     expect(merged.statusCode).toBe(200);
     expect(merged.json()).toMatchObject({ kode: "spmb", provider_ref: "spmb-baru", status: "tersambung", nomor_ganda: null });
+    expect(stub.requests.some((request) => request.path.endsWith("/device/logout"))).toBe(false);
     expect((await pool.query<{ kode: string }>("SELECT kode FROM kirim_devices ORDER BY kode")).rows.map((row) => row.kode)).toEqual(["hcis", "spmb"]);
 
     await kirim.ingest!.runOnce();
@@ -1425,5 +1429,206 @@ describe("Module cards (KIRIM-IMPL-003)", () => {
     const refused = await admin("POST", "/devices/spmb-baru/pakai-nomor-yang-ada", { payload: { ke: "spmb", alasan: "uji" } });
     expect(refused.json().error.code).toBe("nomor_sudah_berisi");
     expect((await pool.query("SELECT 1 FROM kirim_devices WHERE kode = 'spmb-baru'")).rowCount).toBe(1);
+  });
+
+  /**
+   * §17 (2026-11-24): "Pakai nomor yang ada" across applications. Production case: the outside number
+   * "Google App Script" was paired to the WhatsApp of Nomor HCIS and the merge stopped at `pemilik_berbeda`.
+   * Here SPMB plays the module number the outside application wants to send payroll through.
+   */
+  const GATEWAY_ID = "00000000-0000-4000-8000-00000000a1a1";
+
+  function api(key: string | null, method: "GET" | "POST" | "PUT", url: string, payload?: Record<string, unknown>, idempotencyKey?: string) {
+    return app.inject({
+      method,
+      url,
+      headers: { ...(key ? { authorization: `Bearer ${key}` } : {}), ...(idempotencyKey ? { "idempotency-key": idempotencyKey } : {}) },
+      ...(payload !== undefined ? { payload } : {}),
+    });
+  }
+
+  async function gatewayConsumer() {
+    await pool.query("INSERT INTO kirim_consumers (id, client_id, nama, gerbang) VALUES ($1, 'gerbang:aplikasi-luar', 'aplikasi-luar', true)", [GATEWAY_ID]);
+  }
+
+  /** A new outside number, paired to the same WhatsApp as `spmb`; returns its code and key. */
+  async function outsideDuplicate(label: string) {
+    await admin("GET", "/devices/spmb/status"); // spmb learns its phone
+    const created = await admin("POST", "/gerbang/nomor-baru", { payload: {} });
+    expect(created.statusCode).toBe(201);
+    const kode = created.json().kode as string;
+    await pool.query("UPDATE kirim_devices SET label = $2 WHERE kode = $1", [kode, label]);
+    stub.addTenant(kode); // the same phone as spmb
+    expect((await admin("GET", `/devices/${kode}/status`)).json()).toMatchObject({ status: "tersambung", nomor_sama: [expect.objectContaining({ kode: "spmb", lebih_dulu: true })] });
+    const detail = (await admin("GET", "/gerbang")).json() as { nomor: Array<{ kode: string; kunci: { kunci: string } }> };
+    return { kode, kunci: detail.nomor.find((nomor) => nomor.kode === kode)!.kunci.kunci };
+  }
+
+  async function gatewayRoutes(kode: string) {
+    const rows = await pool.query<{ jenis: string }>(
+      "SELECT r.jenis FROM kirim_routes r JOIN kirim_devices d ON d.id = r.device_id WHERE r.consumer_id = $1 AND d.kode = $2 ORDER BY 1",
+      [GATEWAY_ID, kode],
+    );
+    return rows.rows.map((row) => row.jenis);
+  }
+
+  it("§17 moves an outside number onto a module's number: one owner, one session, the same key, its routes and webhook", async () => {
+    await registry();
+    await adminAs("admin-session");
+    await gatewayConsumer();
+    const { kode, kunci } = await outsideDuplicate("Google App Script");
+    const hook = await api(kunci, "PUT", "/v1/sambungan/webhook", { url: "https://gas.example.com/kirim" });
+    expect(hook.statusCode).toBe(200);
+    const secret = hook.json().webhook.secret as string;
+
+    const merged = await admin("POST", `/devices/${kode}/pakai-nomor-yang-ada`, { payload: { ke: "spmb", alasan: "Nomor payroll sama dengan nomor SPMB" } });
+    expect(merged.statusCode).toBe(200);
+    // spmb keeps its one owner and its live session; the duplicate's session is logged out of WhatsApp.
+    expect(merged.json()).toMatchObject({ kode: "spmb", pemilik: "spmb", provider_ref: "spmb", status: "tersambung", nomor_ganda: null });
+    expect(stub.tenants.get(kode)!.live).toBe("disconnected");
+    expect(stub.tenants.get("spmb")!.live).toBe("connected");
+    expect((await pool.query<{ kode: string }>("SELECT kode FROM kirim_devices ORDER BY kode")).rows.map((row) => row.kode)).toEqual(["hcis", "spmb"]);
+
+    // The outside application changes nothing: the same key, now on spmb, with its webhook and secret.
+    const connection = await api(kunci, "GET", "/v1/sambungan");
+    expect(connection.statusCode).toBe(200);
+    expect(connection.json()).toMatchObject({ nomor: { kode: "spmb", status: "tersambung" }, webhook: { url: "https://gas.example.com/kirim", secret } });
+    const body = { jenis: "notifikasi", to: PHONE, text: "Slip gaji November sudah terbit" };
+    const sent = await api(kunci, "POST", "/v1/messages", body, "payroll-2026-11-001");
+    expect(sent.statusCode).toBe(202);
+    expect(sent.json()).toEqual({ id: expect.any(String), status: "antre" });
+    const replayed = await api(kunci, "POST", "/v1/messages", body, "payroll-2026-11-001");
+    expect(replayed.json().id).toBe(sent.json().id);
+    expect(Number((await pool.query("SELECT count(*) AS c FROM kirim_outbox o JOIN kirim_devices d ON d.id = o.device_id WHERE d.kode = 'spmb' AND o.consumer_id = $1", [GATEWAY_ID])).rows[0].c)).toBe(1);
+    expect((await api(kunci, "GET", `/v1/messages/${sent.json().id}`)).json()).toMatchObject({ id: sent.json().id, status: "antre" });
+    expect(await gatewayRoutes("spmb")).toEqual(["kode", "notifikasi"]);
+    // On a number it only uses, the key cannot stop the owner's messages with a number-wide opt-out (D-5);
+    // an opt-out for its own messages stays open.
+    const wide = await api(kunci, "POST", "/v1/optouts", { nomor: PHONE, cakupan: "device", device: "spmb", alasan: "minta berhenti" });
+    expect(wide.statusCode).toBe(403);
+    expect(wide.json().error.code).toBe("not_owner");
+    expect((await api(kunci, "POST", "/v1/optouts", { nomor: PHONE, cakupan: "consumer", alasan: "minta berhenti" })).statusCode).toBe(200);
+    expect((await pool.query("SELECT 1 FROM kirim_optouts WHERE cakupan = 'device'")).rowCount).toBe(0);
+    // The duplicate's code and engine tenant stay retired: a new outside number gets another one.
+    const fresh = await admin("POST", "/gerbang/nomor-baru", { payload: {} });
+    expect(fresh.json().kode).not.toBe(kode);
+    expect(fresh.json().provider_ref).not.toBe(kode);
+    await admin("POST", `/gerbang/nomor/${fresh.json().kode}/hapus`, { payload: {} });
+
+    // One card owns the number; the outside card uses it, under the application's name, with its key.
+    const screen = (await admin("GET", "/modules")).json();
+    const owner = screen.modules.find((card: { application_key: string }) => card.application_key === "spmb-sq");
+    expect(owner).toMatchObject({ peran: "pemilik", nomor: { kode: "spmb" } });
+    expect(owner.dipakai_juga_oleh).toContain("Google App Script");
+    expect(screen.gerbang.nomor).toEqual([expect.objectContaining({ kode: "spmb", peran: "pemakai", nama_aplikasi: "Google App Script", kunci: expect.objectContaining({ awalan: kunci.slice(0, 12) }) })]);
+    expect(JSON.stringify(screen.gerbang)).not.toContain(kunci);
+
+    // Reason and actor are audited.
+    const audit = await pool.query<{ actor_ref: string; metadata: Record<string, unknown> }>("SELECT actor_ref, metadata FROM kirim_audit WHERE aksi = 'nomor.gabung_duplikat'");
+    expect(audit.rows).toHaveLength(1);
+    expect(audit.rows[0]!.actor_ref).not.toBe("");
+    expect(audit.rows[0]!.metadata).toMatchObject({
+      dari: kode, sesi: "tetap", tenant_dilepas: kode, pemilik_tetap: "spmb", pemakai_baru: "aplikasi-luar", kunci_pindah: kunci.slice(0, 12), alasan: "Nomor payroll sama dengan nomor SPMB",
+    });
+
+    // A second click answers with the same result and changes nothing.
+    const before = await auditCount();
+    const again = await admin("POST", `/devices/${kode}/pakai-nomor-yang-ada`, { payload: { ke: "spmb", alasan: "Nomor payroll sama dengan nomor SPMB" } });
+    expect(again.statusCode).toBe(200);
+    expect(again.json()).toMatchObject({ kode: "spmb", provider_ref: "spmb" });
+    expect(await auditCount()).toBe(before);
+
+    // The owner cannot cut the number while the outside application sends through it (K-3).
+    const cut = await admin("POST", "/devices/spmb/disconnect", { payload: { alasan: "uji" } });
+    expect(cut.statusCode).toBe(409);
+    expect(cut.json().error.message).toContain("Google App Script");
+
+    // Hapus on the outside card lets go: the key is refused, its routes go, spmb runs on.
+    const released = await admin("POST", "/gerbang/nomor/spmb/hapus", { payload: {} });
+    expect(released.statusCode).toBe(200);
+    expect(released.json()).toMatchObject({ kode: "spmb", dilepas: true });
+    expect((await api(kunci, "GET", "/v1/sambungan")).statusCode).toBe(401);
+    expect(await gatewayRoutes("spmb")).toEqual([]);
+    expect((await admin("GET", "/modules")).json().gerbang.nomor).toEqual([]);
+    expect((await pool.query<{ status: string }>("SELECT status FROM kirim_devices WHERE kode = 'spmb'")).rows[0]!.status).toBe("tersambung");
+  });
+
+  it("§17 refuses a second outside key on a number, and a module number onto an outside number", async () => {
+    await registry();
+    await adminAs("admin-session");
+    await gatewayConsumer();
+    const first = await outsideDuplicate("Google App Script");
+    expect((await admin("POST", `/devices/${first.kode}/pakai-nomor-yang-ada`, { payload: { ke: "spmb", alasan: "uji" } })).statusCode).toBe(200);
+
+    const second = await outsideDuplicate("Aplikasi kedua");
+    const refused = await admin("POST", `/devices/${second.kode}/pakai-nomor-yang-ada`, { payload: { ke: "spmb", alasan: "uji" } });
+    expect(refused.statusCode).toBe(409);
+    expect(refused.json().error.code).toBe("nomor_sudah_berkunci");
+    // Refused before the engine step: the second number, its session and its key are as they were.
+    expect(stub.tenants.get(second.kode)!.live).toBe("connected");
+    expect((await api(second.kunci, "GET", "/v1/sambungan")).json()).toMatchObject({ nomor: { kode: second.kode } });
+    expect((await api(first.kunci, "GET", "/v1/sambungan")).json()).toMatchObject({ nomor: { kode: "spmb" } });
+
+    // An outside number stays with the "Aplikasi luar" card: a module's newer number is not merged into one.
+    const outside = await admin("POST", "/gerbang/nomor-baru", { payload: {} });
+    const outsideKode = outside.json().kode as string;
+    stub.addTenant(outsideKode, { phone: "6281299990000" });
+    await admin("GET", `/devices/${outsideKode}/status`);
+    await admin("POST", "/devices", { payload: { kode: "hcis-wa", label: "HCIS WhatsApp", pemilik: "hcis", provider: "jalurpesan", provider_ref: "hcis-wa" } });
+    stub.addTenant("hcis-wa", { phone: "6281299990000" });
+    await admin("GET", "/devices/hcis-wa/status");
+    const wrongWay = await admin("POST", "/devices/hcis-wa/pakai-nomor-yang-ada", { payload: { ke: outsideKode, alasan: "uji" } });
+    expect(wrongWay.statusCode).toBe(409);
+    expect(wrongWay.json().error.code).toBe("pemilik_berbeda");
+    expect(stub.tenants.get("hcis-wa")!.live).toBe("connected");
+  });
+
+  it("§17 rolls the whole transfer back when a step fails, and a retry then completes it", async () => {
+    await registry();
+    await adminAs("admin-session");
+    await gatewayConsumer();
+    const { kode, kunci } = await outsideDuplicate("Google App Script");
+    await pool.query("CREATE OR REPLACE FUNCTION kirim_test_fail() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'uji gagal'; END $$");
+    await pool.query("CREATE TRIGGER kirim_test_fail BEFORE DELETE ON kirim_devices FOR EACH ROW EXECUTE FUNCTION kirim_test_fail()");
+    try {
+      const failed = await admin("POST", `/devices/${kode}/pakai-nomor-yang-ada`, { payload: { ke: "spmb", alasan: "uji" } });
+      expect(failed.statusCode).toBeGreaterThanOrEqual(500);
+    } finally {
+      await pool.query("DROP TRIGGER IF EXISTS kirim_test_fail ON kirim_devices");
+      await pool.query("DROP FUNCTION IF EXISTS kirim_test_fail()");
+    }
+    // Nothing moved: the duplicate, its key, its routes, spmb's routes; no successful merge audited.
+    expect((await pool.query("SELECT 1 FROM kirim_devices WHERE kode = $1", [kode])).rowCount).toBe(1);
+    expect((await pool.query<{ kode: string }>("SELECT d.kode FROM kirim_api_keys k JOIN kirim_devices d ON d.id = k.device_id")).rows).toEqual([{ kode }]);
+    expect(await gatewayRoutes(kode)).toEqual(["kode"]);
+    expect(await gatewayRoutes("spmb")).toEqual([]);
+    expect((await pool.query("SELECT 1 FROM kirim_audit WHERE aksi = 'nomor.gabung_duplikat' AND hasil = 'berhasil'")).rowCount).toBe(0);
+    expect((await api(kunci, "GET", "/v1/sambungan")).json()).toMatchObject({ nomor: { kode } });
+
+    const retried = await admin("POST", `/devices/${kode}/pakai-nomor-yang-ada`, { payload: { ke: "spmb", alasan: "uji" } });
+    expect(retried.statusCode).toBe(200);
+    expect((await api(kunci, "GET", "/v1/sambungan")).json()).toMatchObject({ nomor: { kode: "spmb" } });
+    expect((await pool.query("SELECT 1 FROM kirim_devices WHERE kode = $1", [kode])).rowCount).toBe(0);
+  });
+
+  it("§17 lets a module's duplicate number join another module's number as a user of it", async () => {
+    await registry();
+    await adminAs("admin-session");
+    await admin("GET", "/devices/spmb/status");
+    await admin("POST", "/devices", { payload: { kode: "hcis-wa", label: "HCIS WhatsApp", pemilik: "hcis", provider: "jalurpesan", provider_ref: "hcis-wa" } });
+    await pool.query("UPDATE kirim_consumers SET nomor_device_id = (SELECT id FROM kirim_devices WHERE kode = 'hcis-wa') WHERE nama = 'hcis'");
+    stub.addTenant("hcis-wa");
+    await admin("GET", "/devices/hcis-wa/status");
+
+    const merged = await admin("POST", "/devices/hcis-wa/pakai-nomor-yang-ada", { payload: { ke: "spmb", alasan: "WhatsApp sama" } });
+    expect(merged.statusCode).toBe(200);
+    expect(merged.json()).toMatchObject({ kode: "spmb", pemilik: "spmb", provider_ref: "spmb" });
+    const card = (await admin("GET", "/modules")).json().modules.find((item: { application_key: string }) => item.application_key === "hcis");
+    expect(card).toMatchObject({ peran: "pemakai", nomor: { kode: "spmb" }, pemilik_nomor: "SPMB SQ" });
+    const routes = await pool.query<{ jenis: string }>(
+      "SELECT r.jenis FROM kirim_routes r JOIN kirim_consumers c ON c.id = r.consumer_id JOIN kirim_devices d ON d.id = r.device_id WHERE c.nama = 'hcis' AND d.kode = 'spmb'",
+    );
+    expect(routes.rows.map((row) => row.jenis)).toEqual(["notifikasi"]);
+    expect((await send("hcis-api", { jenis: "notifikasi", to: PHONE, text: "Pengumuman" })).statusCode).toBe(202);
   });
 });

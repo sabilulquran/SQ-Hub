@@ -2,6 +2,7 @@ import { BookOpen, Copy, Eye, EyeOff, Globe, KeyRound, Merge, Plus, QrCode, Rota
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 
 import {
+  gatewayCardTitle,
   kirimFetch,
   KirimRequestError,
   type KirimDevice,
@@ -60,6 +61,7 @@ export function NomorLuarCard({ nomor, onDevice, onKeys }: {
   onDevice: (action: GerbangDeviceAction) => void;
   onKeys: () => void;
 }) {
+  if (nomor.peran === "pemakai") return <NomorLuarPemakaiCard nomor={nomor} onDevice={onDevice} onKeys={onKeys} />;
   const inactive = nomor.status === "nonaktif";
   /** A number with no engine behind it has no WhatsApp session to pair, reconnect or drop. */
   const engineless = nomor.provider === "log";
@@ -139,6 +141,55 @@ export function NomorLuarCard({ nomor, onDevice, onKeys }: {
   );
 }
 
+/**
+ * KIRIM-IMPL-003 §17: an outside application that sends through another application's number with
+ * its key. The card keeps the key manageable; the WhatsApp session and its actions stay on the
+ * owner's card, so this one has no Pasang, Sambungkan ulang, Ubah or Putuskan. Hapus lets go of the
+ * number: the key is revoked and the number keeps running for its owner.
+ */
+function NomorLuarPemakaiCard({ nomor, onDevice, onKeys }: {
+  nomor: KirimGatewayCardNumber;
+  onDevice: (action: GerbangDeviceAction) => void;
+  onKeys: () => void;
+}) {
+  return (
+    <Panel className="h-full">
+      <div className="flex items-start gap-3">
+        <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-muted text-muted-foreground">
+          <Globe className="h-5 w-5" aria-hidden="true" />
+        </span>
+        <div className="min-w-0 flex-1">
+          <h2 className="truncate font-display text-lg font-bold text-brand-heading">{gatewayCardTitle(nomor)}</h2>
+          <p className="mt-0.5 text-xs text-muted-foreground">Aplikasi luar · memakai {nomor.label}</p>
+        </div>
+        <span className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-bold ${deviceStatusTone[nomor.status]}`}>{deviceStatusLabel[nomor.status]}</span>
+      </div>
+
+      <dl className="mt-3 grid grid-cols-2 gap-x-3 gap-y-2 text-sm">
+        <div><dt className="text-xs text-muted-foreground">Nomor</dt><dd className="font-semibold">{nomor.nomor_tersamar ?? "—"}</dd></div>
+        <div>
+          <dt className="text-xs text-muted-foreground">Kunci API</dt>
+          <dd className="font-semibold">
+            {nomor.kunci ? <span className="font-mono text-xs">{nomor.kunci.awalan}…</span> : <span className="text-muted-foreground">belum ada</span>}
+          </dd>
+        </div>
+        <div className="col-span-2">
+          <dt className="text-xs text-muted-foreground">Antrean aplikasi ini</dt>
+          <dd className="font-semibold">{nomor.antrean?.antre ?? 0} antre · {nomor.antrean?.gagal_hari_ini ?? 0} gagal hari ini</dd>
+        </div>
+      </dl>
+      <p className="mt-2 text-xs text-muted-foreground">Sambungan WhatsApp diurus di kartu pemilik {nomor.label}. Balasan masuk ke pemilik nomor.</p>
+      {nomor.webhook_terdaftar ? <p className="mt-1 text-xs text-muted-foreground">Webhook terdaftar.</p> : null}
+
+      <div className="mt-4 flex flex-wrap gap-2">
+        <button type="button" className={primaryButton} onClick={onKeys}><KeyRound className="h-4 w-4" aria-hidden="true" /> Kunci API</button>
+        <button type="button" className={dangerButton} onClick={() => onDevice({ kind: "hapus-nomor", device: nomor })}><Trash2 className="h-4 w-4" aria-hidden="true" /> Hapus</button>
+        <a className={secondaryButton} href={DOCS_PATH} target="_blank" rel="noreferrer"><BookOpen className="h-4 w-4" aria-hidden="true" /> Dokumentasi API</a>
+      </div>
+    </Panel>
+  );
+}
+
 export type KunciDialogState =
   | { status: "loading" }
   | { status: "error" }
@@ -206,7 +257,7 @@ export function KunciDialogView({ state, busy, error, onClose, onRetry, onRotate
   onRotateKey: () => void;
   onRevokeKey: (alasan: string) => void;
 }) {
-  const title = state.status === "ready" ? `Kunci API ${state.nomor.label}` : "Kunci API";
+  const title = state.status === "ready" ? `Kunci API ${gatewayCardTitle(state.nomor)}` : "Kunci API";
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 sm:items-center sm:p-4" role="dialog" aria-modal="true" aria-label={title}>
       <div className="max-h-[92vh] w-full max-w-lg overflow-y-auto rounded-t-2xl bg-surface-raised p-5 shadow-[var(--shadow-raised)] sm:rounded-2xl">

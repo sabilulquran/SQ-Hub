@@ -139,6 +139,18 @@ export async function freeIdentifier(db: Queryable, table: "kirim_consumers" | "
     // holds (after 2026-11-05 `spmb` runs on tenant `spmb-2`).
     const tenants = await db.query<{ value: string }>("SELECT provider_ref AS value FROM kirim_devices WHERE provider_ref = $1 OR provider_ref LIKE $2", [base, `${base}-%`]);
     for (const row of tenants.rows) taken.add(row.value);
+    // §17: a tenant left in the engine by a number that is gone (merged away, or deleted from its card, K-9)
+    // is never handed to a new number, so its leftover events can never land on an unrelated number.
+    const released = await db.query<{ value: string }>(
+      `SELECT value FROM (
+         SELECT DISTINCT provider_ref AS value FROM kirim_events WHERE provider_ref IS NOT NULL
+         UNION SELECT metadata->>'tenant' FROM kirim_audit WHERE aksi IN ('nomor.lepas_sesi_ganda', 'gerbang.nomor_hapus')
+         UNION SELECT metadata->>'tenant_dilepas' FROM kirim_audit WHERE aksi = 'nomor.gabung_duplikat'
+         UNION SELECT metadata->>'tenant_lama' FROM kirim_audit WHERE aksi = 'nomor.gabung_duplikat'
+       ) t WHERE value = $1 OR value LIKE $2`,
+      [base, `${base}-%`],
+    );
+    for (const row of released.rows) taken.add(row.value);
   }
   if (!taken.has(base)) return base;
   for (let n = 2; ; n += 1) if (!taken.has(`${base}-${n}`)) return `${base}-${n}`;
@@ -229,10 +241,20 @@ export async function backfillDeviceHmac(db: Queryable, crypto: KirimCrypto): Pr
   return filled;
 }
 
+/**
+ * The name a screen shows for consumer `c` (with registry row `a`) on the number `deviceParam`. The
+ * "Aplikasi luar" consumer is named after the application holding its key on that number (§17), never
+ * by its technical name.
+ */
+export function consumerNameSql(deviceParam: string): string {
+  return `CASE WHEN c.gerbang THEN coalesce((SELECT k.nama_aplikasi FROM kirim_api_keys k WHERE k.consumer_id = c.id AND k.device_id = ${deviceParam}
+            AND k.dicabut_at IS NULL ORDER BY k.dibuat_at DESC LIMIT 1), 'Aplikasi luar') ELSE coalesce(a.name, c.nama) END`;
+}
+
 /** Consumers other than the owner that use a number: by route or as their card's number. */
 export async function deviceSharers(db: Queryable, device: Pick<DeviceRow, "id" | "pemilikConsumerId">): Promise<string[]> {
   const result = await db.query<{ nama: string }>(
-    `SELECT DISTINCT coalesce(a.name, c.nama) AS nama
+    `SELECT DISTINCT ${consumerNameSql("$1")} AS nama
        FROM kirim_consumers c LEFT JOIN applications a ON a.application_key = c.application_key OR (c.application_key IS NULL AND a.machine_client_id = c.client_id)
       WHERE c.id <> $2 AND c.aktif
         AND (c.nomor_device_id = $1 OR EXISTS (SELECT 1 FROM kirim_routes r WHERE r.consumer_id = c.id AND r.device_id = $1))

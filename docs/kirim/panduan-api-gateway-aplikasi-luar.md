@@ -15,7 +15,10 @@ Untuk aplikasi **di luar SQ Suite**, konsepnya generik, seperti JalurPesan atau 
 - **Setiap nomor di kartu punya kunci API sendiri** (`krm_…`), dibuat otomatis saat nomor disambungkan. Pop-up kartu menampilkan per nomor: status sambungan, kuncinya (tombol **Tampilkan**, **Salin**, **Putar ulang**, **Cabut**), dan kapan terakhir dipakai. Memutar ulang atau mencabut kunci **tidak memutus WhatsApp** nomor itu.
 - Kirim **tidak perlu tahu aplikasi mana** yang memegang kunci. Tidak ada pendaftaran aplikasi, tidak ada client Keycloak, tidak ada client ID mesin. Owner menyalin kunci dari kartu dan menempelkannya ke aplikasi luar mana pun yang ia mau.
 - Aplikasi mengirim **tanpa menyebut nomor**; Kirim memakai nomor pemilik kunci.
-- API Kirim hanya bisa dicapai dari **loopback host yang sama** (`http://127.0.0.1:3302`). Edge publik menjawab `404` untuk semua `/internal/*`. Alamat publik `https://kirim.sabilulquran.or.id/api/v1` untuk aplikasi di hosting lain adalah rancangan (DRAFT), belum aktif.
+- Dua alamat dasar, satu antrean (KIRIM-IMPL-003 §17.4):
+  - aplikasi di host yang sama: `http://127.0.0.1:3302/internal/kirim` (loopback; edge publik menjawab `404` untuk semua `/internal/*`);
+  - aplikasi di hosting lain (mis. Google Apps Script): `https://kirim.sabilulquran.or.id/api/v1`. Hanya menerima kunci `krm_…`; tanpa kunci atau dengan token lain jawabannya `401`. Endpoint yang ada: `GET /sambungan`, `PUT /sambungan/webhook`, `POST /messages`, `GET /messages/:id`, `POST`/`DELETE /optouts`, `POST /media`. Percakapan dan grup tidak tersedia di alamat ini.
+- **Nomor aplikasi lain** (§17): bila nomor luar ternyata dipindai ke WhatsApp yang sudah dimiliki aplikasi lain (mis. Nomor HCIS), tombol **Sambungkan ke nomor yang ada** memindahkan **kunci yang sama** ke nomor itu. Aplikasi luarnya tidak perlu diubah; kartunya tetap tampil sebagai "memakai Nomor HCIS" untuk mengurus kunci, dan **Hapus** di kartu itu melepas nomornya (kunci dicabut, nomor tetap berjalan untuk pemiliknya).
 
 Aplikasi di dalam SQ Suite tetap memakai jalur lama: registry Pusat Admin, kartu per aplikasi, dan token Keycloak (KIRIM-IMPL-003). Jenis "Aplikasi luar" di Pusat Admin hanya label; ia tidak menentukan kartu Kirim maupun akses API.
 
@@ -33,6 +36,8 @@ Di pop-up, pada nomor yang dipakai, tekan **Tampilkan** atau **Salin**, lalu tar
 KIRIM_BASE_URL=http://127.0.0.1:3302
 KIRIM_API_KEY=<kunci krm_… dari nomor di kartu Aplikasi luar>
 ```
+
+Contoh di bawah memakai jalur loopback `$KIRIM_BASE_URL/internal/kirim/…`. Dari hosting lain (mis. Google Apps Script; simpan kuncinya di Script Properties, bukan di kode), ganti awalan itu dengan `https://kirim.sabilulquran.or.id/api/v1/…`, misalnya `POST https://kirim.sabilulquran.or.id/api/v1/messages`.
 
 Kunci setara kata sandi: simpan di env server (mode 600), bukan di kode frontend, repositori, log, atau chat. Bila bocor, **Putar ulang** memberi kunci baru dan mematikan yang lama seketika; **Cabut** mematikan kunci tanpa pengganti. WhatsApp nomor itu tetap tersambung. Audit Kirim mencatat `gerbang.nomor_baru`, `gerbang.kunci_buat`, `gerbang.kunci_putar`, `gerbang.kunci_cabut`, dan `gerbang.webhook` (awalan kunci saja, tanpa nilainya).
 
@@ -168,6 +173,7 @@ Implementasi Samijaya: `server/kirim-client.js` (env `WHATSAPP_PROVIDER=kirim`, 
 
 | Tanggal | Perubahan |
 | --- | --- |
+| 2026-11-24 | Alamat publik `https://kirim.sabilulquran.or.id/api/v1` aktif (kunci API saja, antrean sama). Nomor luar yang ternyata WhatsApp milik aplikasi lain bisa disambungkan ke nomor itu dengan kunci yang sama (KIRIM-IMPL-003 §17) |
 | 2026-11-17 | Koreksi owner: kunci melekat pada nomor, bukan aplikasi; tidak ada pendaftaran aplikasi; kunci tampil di pop-up untuk disalin, diputar ulang, dicabut. Dokumentasi dua langkah |
 | 2026-11-17 | Desain ulang: satu kartu generik "Aplikasi luar" dengan beberapa nomor, kunci API terbitan Kirim, dokumentasi publik `/dokumentasi-api` |
 | 2026-11-16 | Dokumen pertama (client Keycloak, kartu per aplikasi luar); digantikan |

@@ -53,6 +53,42 @@ function messageFor(error: unknown): string {
   return "Kirim SQ sedang tidak dapat dihubungi. Coba lagi.";
 }
 
+/**
+ * KIRIM-IMPL-003 §17: what "Pakai nomor yang ada" will do, said the way the server does it. The
+ * older number keeps its one owner; its live session stays when it has one; an outside application
+ * keeps its key and its card.
+ */
+export function gabungText(device: KirimDevice, ke: { kode: string; label: string }, list: Pick<KirimModuleList, "devices" | "modules" | "gerbang">): string {
+  const target = list.devices.find((item) => item.kode === ke.kode);
+  const outside = (list.gerbang?.nomor ?? []).some((item) => item.kode === device.kode && item.peran !== "pemakai");
+  const sameOwner = !target || target.pemilik === device.pemilik;
+  const owner = list.modules.find((card) => card.peran === "pemilik" && card.nomor?.kode === ke.kode)?.nama ?? ke.label;
+  const sesi = target?.status === "tersambung"
+    ? `Sesi WhatsApp ${ke.label} yang sedang tersambung tetap dipakai, dan sesi ${device.label} dilepas dari WhatsApp.`
+    : `Sesi WhatsApp ${device.label} pindah ke ${ke.label}, dan pesan masuk yang ditahan diambil lagi.`;
+  const kartu = sameOwner
+    ? `Kartu dan rute pindah ke ${ke.label}, lalu ${device.label} dihapus.`
+    : outside
+      ? `${ke.label} tetap milik ${owner}. ${device.label} ikut mengirim lewat ${ke.label} dengan kunci API yang sama, jadi aplikasinya tidak perlu diubah; kartunya tetap ada untuk mengurus kunci. Balasan masuk ke ${owner}.`
+      : `${ke.label} tetap milik ${owner}. Aplikasi di ${device.label} ikut mengirim lewat ${ke.label} dan balasan masuk ke ${owner}; ${device.label} dihapus.`;
+  return `${device.label} tertaut ke WhatsApp yang sama dengan ${ke.label}. ${sesi} ${kartu}`;
+}
+
+/** §16 Hapus on an outside number's card; §17 on a number it only uses, Hapus lets go of it. */
+export function hapusNomorText(device: KirimDevice & { peran?: "pemilik" | "pemakai"; nama_aplikasi?: string | null }): { title: string; body: string } {
+  if (device.peran === "pemakai") {
+    const nama = device.nama_aplikasi ?? "Aplikasi luar";
+    return {
+      title: `Lepas ${nama} dari ${device.label}?`,
+      body: `${nama} berhenti memakai ${device.label}: kunci API-nya dicabut, jadi aplikasi yang memakainya akan ditolak. ${device.label} dan sambungan WhatsApp-nya tetap berjalan untuk pemiliknya.`,
+    };
+  }
+  return {
+    title: `Hapus ${device.label}?`,
+    body: "Kartu nomor ini dihapus dari layar beserta kunci API-nya. Aplikasi luar yang masih memakai kuncinya akan ditolak. Tindakan ini tidak bisa dibatalkan.",
+  };
+}
+
 /** KIRIM-IMPL-003: the Kirim SQ home page, one card per module that may use WhatsApp. */
 export function NomorPage({ preview }: { preview?: NomorState }) {
   const [state, setState] = useState<NomorState>(preview ?? { status: "loading" });
@@ -120,8 +156,7 @@ export function NomorPage({ preview }: { preview?: NomorState }) {
       {dialog?.kind === "kunci" ? <KunciDialog kode={dialog.kode} onClose={close} onChanged={load} /> : null}
       {dialog?.kind === "hapus-nomor" ? (
         <ReasonDialog
-          title={`Hapus ${dialog.device.label}?`}
-          body="Kartu nomor ini dihapus dari layar beserta kunci API-nya. Aplikasi luar yang masih memakai kuncinya akan ditolak. Tindakan ini tidak bisa dibatalkan."
+          {...hapusNomorText(dialog.device)}
           confirmLabel="Hapus"
           danger
           busy={busy}
@@ -146,7 +181,7 @@ export function NomorPage({ preview }: { preview?: NomorState }) {
       {dialog?.kind === "gabung" ? (
         <ReasonDialog
           title={`Pakai ${dialog.ke.label}?`}
-          body={`${dialog.device.label} tertaut ke WhatsApp yang sama dengan ${dialog.ke.label}. Sesi WhatsApp, kartu, dan rute pindah ke ${dialog.ke.label} beserta percakapannya yang lama, lalu ${dialog.device.label} dihapus. Pesan masuk yang ditahan diambil lagi.`}
+          body={state.status === "ready" ? gabungText(dialog.device, dialog.ke, state.list) : ""}
           confirmLabel={`Pakai ${dialog.ke.label}`}
           busy={busy}
           error={error}

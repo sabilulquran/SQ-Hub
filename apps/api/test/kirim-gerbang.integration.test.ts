@@ -257,6 +257,39 @@ describe("Kartu Aplikasi luar (admin)", () => {
     expect((await admin("GET", "/modules")).json().gerbang.nomor.find((nomor: { kode: string }) => nomor.kode === kode)).toBeTruthy();
   });
 
+  // §17.4: https://kirim.sabilulquran.or.id/api/v1/* reaches the Hub as /v1/* (the edge strips /api).
+  it("answers the public /v1 API with an API key only, through the same queue as the loopback path", async () => {
+    await grantAdmin();
+    const { kode, kunci } = await newNumber();
+    const call = (method: "GET" | "POST", url: string, headers: Record<string, string>, payload?: Record<string, unknown>) =>
+      app.inject({ method, url, headers, ...(payload !== undefined ? { payload } : {}) });
+
+    // Without a key the answer is 401, never 404; a module token is not taken outside the server either.
+    for (const [method, url] of [["GET", "/v1/sambungan"], ["POST", "/v1/messages"], ["GET", `/v1/messages/${randomUUID()}`]] as const) {
+      const response = await call(method, url, {});
+      expect(response.statusCode).toBe(401);
+      expect(response.json().error.code).toBe("unauthenticated");
+    }
+    expect((await call("GET", "/v1/sambungan", { authorization: "Bearer eyJhbGciOiJSUzI1NiJ9.e30.x" })).statusCode).toBe(401);
+    expect((await call("GET", "/v1/sambungan", { authorization: `Bearer krm_${"x".repeat(32)}` })).statusCode).toBe(401);
+
+    const auth = { authorization: `Bearer ${kunci}` };
+    expect((await call("GET", "/v1/sambungan", auth)).json()).toMatchObject({ nomor: { kode, status: "tersambung" }, jenis: ["notifikasi", "kode"] });
+    const body = { jenis: "notifikasi", to: PHONE, text: "Slip gaji sudah terbit" };
+    expect((await call("POST", "/v1/messages", auth, body)).json().error.code).toBe("idempotency_key_required");
+    expect((await call("POST", "/v1/messages", { ...auth, "idempotency-key": "bad" }, { jenis: "notifikasi" })).json().error.code).toBe("invalid_request");
+    const sent = await call("POST", "/v1/messages", { ...auth, "idempotency-key": "gaji-1" }, body);
+    expect(sent.statusCode).toBe(202);
+    expect(sent.json()).toEqual({ id: expect.any(String), status: "antre" });
+    expect((await call("POST", "/v1/messages", { ...auth, "idempotency-key": "gaji-1" }, body)).json().id).toBe(sent.json().id);
+    expect(Number((await pool.query("SELECT count(*) AS c FROM kirim_outbox")).rows[0].c)).toBe(1);
+    // The loopback path sees the same message: one queue.
+    expect((await withKey(kunci, "GET", `/messages/${sent.json().id}`)).json()).toMatchObject({ id: sent.json().id, status: "antre" });
+    expect((await call("GET", `/v1/messages/${sent.json().id}`, auth)).json()).toMatchObject({ id: sent.json().id, status: "antre" });
+    // Conversations stay with SQ Suite applications on loopback.
+    expect((await call("GET", `/v1/devices/${kode}/conversations`, auth)).statusCode).toBe(404);
+  });
+
   // The number's key is bound to the number but authenticated against the gateway consumer, so a
   // number that leaves the card would keep sending while no screen could rotate or revoke its key.
   it("keeps an outside number with its own consumer, in both directions", async () => {

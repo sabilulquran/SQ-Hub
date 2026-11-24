@@ -61,7 +61,17 @@ export interface KirimGatewayKey {
   terakhir_dipakai_at: string | null;
 }
 
-export interface KirimGatewayNumber extends KirimDevice {
+/**
+ * KIRIM-IMPL-003 §17: `pemilik` = one of the card's own numbers; `pemakai` = another application's
+ * number an outside application sends through with its key (after "Pakai nomor yang ada"). The
+ * session of a `pemakai` number belongs to its owner's card. `nama_aplikasi` names that application.
+ */
+interface KirimGatewayRole {
+  peran?: "pemilik" | "pemakai";
+  nama_aplikasi?: string | null;
+}
+
+export interface KirimGatewayNumber extends KirimDevice, KirimGatewayRole {
   kunci: KirimGatewayKey | null;
   webhook_terdaftar?: boolean;
 }
@@ -70,9 +80,14 @@ export interface KirimGatewayNumber extends KirimDevice {
 export type KirimGatewayKeySummary = Omit<KirimGatewayKey, "kunci">;
 
 /** One outside number as its own card (owner decision 2026-11-17), beside the application cards. */
-export interface KirimGatewayCardNumber extends KirimDevice {
+export interface KirimGatewayCardNumber extends KirimDevice, KirimGatewayRole {
   kunci: KirimGatewayKeySummary | null;
   webhook_terdaftar?: boolean;
+}
+
+/** The title of an outside number's card: the application's name on a number it only uses. */
+export function gatewayCardTitle(nomor: Pick<KirimGatewayCardNumber, "label" | "peran" | "nama_aplikasi">): string {
+  return nomor.peran === "pemakai" ? nomor.nama_aplikasi ?? "Aplikasi luar" : nomor.label;
 }
 
 export interface KirimGatewayCard {
