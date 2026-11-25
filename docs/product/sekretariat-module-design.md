@@ -204,7 +204,7 @@ Ruang staf: **Ringkasan** (surat terbaru, disposisi terbuka, izin mendekati habi
 | --- | --- | --- |
 | **R1 · Buku nomor, arsip & kotak masuk** | **Buku nomor surat** (jenis, penerbit, hak ambil, penghitung — model DOC-003) + **migrasi data DOC-003 dari HCIS** + API alokasi untuk HCIS; surat keluar + arsip PDF unggahan; kotak masuk (email `sekretariat@` lewat IMAP + pindaian surat fisik) + disposisi in-app; akses berlapis; register retroaktif | Buku DOC-003 di HCIS (layarnya pensiun); arsip surat tanpa sistem; email yayasan tanpa register |
 | **R2 · SK, legal, integrasi** | Register SK + tautan Rapat SQ, arsip dokumen legal + pengingat kedaluwarsa, disposisi → kartu Kerja SQ, notifikasi Kirim SQ, halaman verifikasi publik | Berkas legal tersebar; izin tanpa pengingat |
-| **R3 · Render dari templat** | Surat dirender dari templat + data (pola HCIS D-01), kop seragam, blok tanda tangan | Ketik manual di Word per unit |
+| **R3 · Render dari templat** | Surat dirender dari templat + data (pola HCIS D-01), kop seragam, blok tanda tangan. **Langkah pertamanya adalah [SEK-IMPL-004](../specs/SEK-IMPL-004-asisten-surat.md) (DRAFT 2026-11-25): Asisten Surat untuk jenis 07 Peringatan, pratinjau kerangka B-1, unduh `.docx` tanpa kop** | Ketik manual di Word per unit |
 
 R1 tidak menunggu Rapat SQ, Kirim SQ production, atau modul lain, tetapi memikul cutover buku dari HCIS (§5.5 nomor 3). Peralihan sisi HCIS — alokasi lewat API dan pensiun layar `/app/letters` — adalah pekerjaan HCIS dengan spesifikasinya sendiri, dijadwalkan bersama cutover R1.
 

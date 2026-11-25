@@ -61,6 +61,7 @@ Yang tidak termasuk:
 | Admin SQ (Organ Yayasan) | Tambah anggota | pilih (tanpa query) → `isi` → `periksa` → `selesai` |
 | Admin SQ (Organ Yayasan) | Akhiri keanggotaan (dialog) | layar akhiri menggantikan detail di dalam dialog (state dialog) |
 | Kirim SQ | Impor dari berkas ekspor chat | unggah (tanpa query) → `pratinjau` → `selesai` |
+| Sekretariat SQ | Asisten Surat (SEK-IMPL-004, DRAFT — belum dibangun) | konteks (tanpa query) → `lengkapi` → `periksa` → `selesai` |
 | HCIS | lihat `docs/development/step-flow-audit-2026-11-20.md` di repository `hcisysq` | — |
 
 Implementasi platform: `apps/web/src/components/useWizardStep.ts` (memakai `pushState`/`popstate` seperti `useDialogParam`, karena aplikasi web Hub tidak memakai router) dan `apps/web/src/components/WizardSteps.tsx`.
