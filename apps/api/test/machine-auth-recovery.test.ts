@@ -1,7 +1,7 @@
 import { createServer, type Server } from "node:http";
 
 import { exportJWK, generateKeyPair, SignJWT } from "jose";
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { buildApp } from "../src/app.js";
 import {
@@ -23,6 +23,14 @@ beforeAll(async () => {
   privateKey = pair.privateKey;
   const jwk = await exportJWK(pair.publicKey);
   keys = ["original", "rotated"].map((kid) => ({ ...jwk, kid, alg: "RS256", use: "sig" }));
+});
+
+// One fixture per test, on its own port. The HTTP client pools keep-alive sockets
+// per origin, so a socket left pooled here can never carry a later test's JWKS
+// request: that request would die in transport, before this handler counts it.
+beforeEach(async () => {
+  mode = "healthy";
+  requests = 0;
   server = createServer((_request, response) => {
     requests++;
     if (mode === "headers-stall") return;
@@ -38,19 +46,17 @@ beforeAll(async () => {
     }
     response.end(mode === "invalid-json" ? "{" : JSON.stringify({ keys }));
   });
+  server.keepAliveTimeout = 0; // nor may the fixture drop an idle socket mid-test
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
   const address = server.address();
   if (!address || typeof address === "string") throw new Error("fixture did not bind");
   issuer = `http://127.0.0.1:${address.port}/realms/test`;
 });
 
-beforeEach(() => { mode = "healthy"; requests = 0; });
-afterEach(() => {
+afterEach(async () => {
   vi.restoreAllMocks();
   vi.useRealTimers();
   server.closeAllConnections();
-});
-afterAll(async () => {
   await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
 });
 
