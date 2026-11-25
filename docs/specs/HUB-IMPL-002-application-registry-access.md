@@ -148,6 +148,17 @@ old generation must not invalidate a newer generation. JWT signature, configured
 public issuer, audience, and client allowlist validation remain mandatory.
 Invalid claims and unknown keys retain normal JOSE cache/cooldown behavior.
 
+A JWKS request that fails in transport before any response exists is resent
+exactly once. Keycloak and the load balancer in front of it close idle
+keep-alive sockets; a request written to a socket the peer has just closed never
+reaches Keycloak, so rejecting the token on it would answer `401 INVALID_TOKEN`
+to a caller that presented a valid one. The resend shares the original request's
+2500 ms transport timeout and the caller's 3000 ms deadline: neither budget is
+extended, and a deadline or timeout is never resent. A request the server
+answered is never resent either — a non-200 status or an unparsable key set is a
+reply, not a lost request — so a rejected token still costs Keycloak at most the
+key loads that JOSE cache/cooldown already permits.
+
 Verifier unavailability fails closed through the existing `401 INVALID_TOKEN`
 wire contract; it does not authorize access or reach body validation/database
 work. This category does not prove that a presented token is cryptographically
@@ -157,7 +168,9 @@ verification is rejected if its elapsed budget has already expired.
 
 This is defensive reliability hardening for the observed process-local >15 s
 stall and restart recovery. The exact historical JOSE trigger remains unknown;
-tests of a transport ignoring cancellation are explicit fault injection.
+tests of a transport ignoring cancellation, and of a request that dies before
+any response, are explicit fault injection rather than reproductions of an
+observed production incident.
 
 ## Runtime dependency rule
 Application Access is checked when HCIS creates a **new** authenticated application session.
