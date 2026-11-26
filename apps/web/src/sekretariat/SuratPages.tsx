@@ -1,9 +1,10 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import {
   berkasUrl, errorMessage, formatTanggal, formatUkuran, sekretariatFetch, sekretariatUpload,
-  type Jenis, type SuratKeluar,
+  type IsiSurat, type Jenis, type SekretariatContext, type SuratKeluar,
 } from "@/sekretariat/api";
+import { TombolAsisten } from "@/sekretariat/AsistenPages";
 import { Pager, type PenerbitRingkas } from "@/sekretariat/KotakPages";
 import { navigate } from "@/sekretariat/routes";
 import { ErrorNote, Field, Link, PageHeader, Panel, primaryButton, ReasonDialog, secondaryButton, StateCard, StatusBadge, useLoad } from "@/sekretariat/ui";
@@ -136,7 +137,7 @@ function SuratForm({ penerbitId, jenis, retroaktif, onClose }: { penerbitId: str
 }
 
 /** One letter: its PDF, publish and void. Publishing locks the file (§6). */
-export function SuratPage({ suratId }: { suratId: string }) {
+export function SuratPage({ suratId, context }: { suratId: string; context: SekretariatContext }) {
   const { state, reload } = useLoad(
     () => sekretariatFetch<SuratKeluar & { berkas: Array<{ id: string; nama: string; ukuran: number; sha256: string; terkunci: boolean }> }>(`/surat/${suratId}`),
     suratId,
@@ -144,6 +145,17 @@ export function SuratPage({ suratId }: { suratId: string }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [confirmBatal, setConfirmBatal] = useState(false);
+  // SEK-IMPL-004: only to pick the button's wording; a failure here must never break this page.
+  const [adaIsi, setAdaIsi] = useState(false);
+  const asisten = context.asisten;
+  useEffect(() => {
+    if (!asisten?.tersedia) return;
+    let batal = false;
+    sekretariatFetch<IsiSurat>(`/surat/${suratId}/isi`)
+      .then((isi) => { if (!batal) setAdaIsi(isi.ada); })
+      .catch(() => undefined);
+    return () => { batal = true; };
+  }, [suratId, asisten?.tersedia]);
   if (state.status === "loading") return <StateCard kind="loading" title="Memuat surat" />;
   if (state.status === "error") return <StateCard kind="error" title="Surat belum dapat dimuat" body={state.message} />;
   const surat = state.data;
@@ -163,6 +175,15 @@ export function SuratPage({ suratId }: { suratId: string }) {
               <button type="button" className={primaryButton} disabled={busy || surat.berkas.length === 0} onClick={() => run(() => sekretariatFetch(`/surat/${surat.id}/terbit`, { method: "POST", body: {} }))}>
                 Terbitkan (ambil nomor)
               </button>
+            ) : null}
+            {surat.status === "draf" ? (
+              <TombolAsisten
+                suratId={surat.id}
+                jenisKode={surat.jenisKode}
+                tersedia={asisten?.tersedia ?? false}
+                jenis={asisten?.jenis ?? []}
+                adaIsi={adaIsi}
+              />
             ) : null}
             {surat.status !== "dibatalkan" ? (
               <button type="button" className={secondaryButton} disabled={busy} onClick={() => setConfirmBatal(true)}>{surat.status === "draf" ? "Hapus draf" : "Batalkan"}</button>

@@ -15,6 +15,8 @@ export type SekretariatRoute =
   | { name: "surat-keluar" }
   | { name: "penerbit-surat"; penerbitId: string }
   | { name: "surat"; suratId: string }
+  /** SEK-IMPL-004: the step-by-step Asisten Surat flow over one draft; the step lives in `?langkah=`. */
+  | { name: "asisten"; suratId: string }
   | { name: "buku" }
   | { name: "pengaturan"; bagian: PengaturanBagian }
   | { name: "not-found" };
@@ -37,6 +39,8 @@ export function resolveSekretariatRoute(pathname: string): SekretariatRoute {
   if (suratMasuk) return { name: "surat-masuk", suratMasukId: suratMasuk };
   const penerbit = match(`/penerbit/${ID}/surat`);
   if (penerbit) return { name: "penerbit-surat", penerbitId: penerbit };
+  const asisten = match(`/surat/${ID}/asisten`);
+  if (asisten) return { name: "asisten", suratId: asisten };
   const surat = match(`/surat/${ID}`);
   if (surat) return { name: "surat", suratId: surat };
   return { name: "not-found" };

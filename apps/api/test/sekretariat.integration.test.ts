@@ -14,6 +14,7 @@ import type { SekretariatConfig } from "../src/modules/sekretariat/config.js";
 import { imporDoc003 } from "../src/modules/sekretariat/migrasi.js";
 import { createSekretariatModule, type SekretariatModule } from "../src/modules/sekretariat/module.js";
 import type { FetchedMail, MailFetcher, MailState } from "../src/modules/sekretariat/mail.js";
+import { PenyusunError, type MasukanAsisten, type Penyusun, type Pertanyaan } from "../src/modules/sekretariat/penyusun.js";
 
 const { Pool } = pg;
 const databaseUrl = process.env.DATABASE_URL;
@@ -73,6 +74,36 @@ const auth: HubAuthRuntime = {
   clearTransactionCookie: () => "",
 };
 
+/**
+ * SEK-IMPL-004 test seam: a drafter that never touches the network. It deliberately returns raw
+ * text, so the server's own number filter (§6.5 nomor 3) is what the suite exercises.
+ */
+class FakePenyusun implements Penyusun {
+  readonly mode = "claude" as const;
+  pertanyaan: Pertanyaan[] = [{ kunci: "dasar", pertanyaan: "Apa dasarnya?", mengapa: "Unsur wajib." }];
+  bagian: Record<string, string> = { dasar: "Perjanjian kerja sama katering.", fakta: "Terlambat tiga kali." };
+  gagal: null | "tolak" | "galat" = null;
+  panggilan = 0;
+  terakhir: MasukanAsisten | null = null;
+
+  private jalan(masukan: MasukanAsisten) {
+    this.panggilan += 1;
+    this.terakhir = masukan;
+    if (this.gagal === "tolak") throw new PenyusunError("AI_DITOLAK", "ditolak");
+    if (this.gagal === "galat") throw new PenyusunError("AI_GALAT", "galat");
+  }
+
+  async tanya(masukan: MasukanAsisten) {
+    this.jalan(masukan);
+    return { pertanyaan: this.pertanyaan, tokenMasuk: 11, tokenKeluar: 22 };
+  }
+
+  async susun(masukan: MasukanAsisten) {
+    this.jalan(masukan);
+    return { bagian: { ...this.bagian }, tokenMasuk: 33, tokenKeluar: 44 };
+  }
+}
+
 /** Test seam fetcher: the suite pushes mails; UIDVALIDITY can be rotated to test the generation change. */
 class FakeFetcher implements MailFetcher {
   readonly mailbox = "sekretariat@sabilulquran.or.id";
@@ -96,6 +127,10 @@ let machineAllowed = true;
 /** SEK-IMPL-002: what the fake IMAP probe was handed, and whether it refuses. */
 let probeCalls: Array<{ host: string; user: string; pass: string }> = [];
 let probeRefusal: string | null = null;
+/** SEK-IMPL-004: the assistant is on in the suite, with a generous monthly ceiling by default. */
+let asistenAktif = true;
+let maksPanggilanBulan = 100;
+let penyusun: FakePenyusun;
 
 function config(): SekretariatConfig {
   return {
@@ -108,6 +143,14 @@ function config(): SekretariatConfig {
     dataKeys: [{ kid: "k1", key: Buffer.alloc(32, 7) }],
     allowedMachineClients: new Set(["hcis-sekretariat"]),
     minFreeDiskBytes: 0,
+    asisten: {
+      enabled: asistenAktif,
+      mode: "claude",
+      model: "model-uji",
+      apiKey: "kunci-uji",
+      maksPanggilanBulan: maksPanggilanBulan,
+      timeoutMs: 1000,
+    },
   };
 }
 
@@ -199,10 +242,14 @@ beforeEach(async () => {
   await pool.query("DELETE FROM sekretariat_kotak WHERE penerbit_id IN (SELECT id FROM sekretariat_penerbit WHERE kelompok IN ('panitia', 'lainnya'))");
   await pool.query("DELETE FROM sekretariat_penerbit WHERE kelompok IN ('panitia', 'lainnya')");
   await pool.query("DELETE FROM sekretariat_jenis WHERE urutan = 900");
+  await pool.query("TRUNCATE sekretariat_surat_isi, sekretariat_ai_pemakaian CASCADE");
   now = new Date("2026-11-13T03:00:00Z");
   machineAllowed = true;
   probeCalls = [];
   probeRefusal = null;
+  asistenAktif = true;
+  maksPanggilanBulan = 100;
+  penyusun = new FakePenyusun();
   fetcher = new FakeFetcher();
   sekretariat = createSekretariatModule({
     pool,
@@ -224,6 +271,7 @@ beforeEach(async () => {
     },
     now: () => now,
     freeBytes: async () => 50 * 1024 * 1024 * 1024,
+    penyusun,
   });
   await app?.close();
   app = Fastify();
@@ -818,5 +866,270 @@ describe("SEK-IMPL-003 kotak masuk yang mudah dibaca dan dicari", () => {
     expect(petugas.body.items.find((item: { personId: string }) => item.personId === TU_SDIT).nama).toBe("TU SDIT");
     const pemegang = await call(HCM, "GET", "/admin/sekretariat/disposisi-pemegang");
     expect(pemegang.body.items[0].nama).toBe("Direktur");
+  });
+});
+
+describe("SEK-IMPL-004 Asisten Surat", () => {
+  /** A type-07 draft for KEU.YSQ, which STAF_KEU is the officer of. */
+  async function drafPeringatan(who = STAF_KEU, kode = "KEU.YSQ"): Promise<string> {
+    const id = await penerbitId(kode);
+    const draf = await call(who, "POST", `/sekretariat/penerbit/${id}/surat`, {
+      jenis_kode: "07", perihal: "Peringatan keterlambatan katering", tujuan: "PT Boga Uji", penandatangan: "Direktur",
+    });
+    expect(draf.status).toBe(201);
+    return draf.body.id as string;
+  }
+
+  async function suratMasukFisik(who: string, kotakId: string, isi: string): Promise<string> {
+    const dibuat = await call(who, "POST", `/sekretariat/kotak/${kotakId}/surat`, {
+      dari: "PT Boga Uji", perihal: "Penjelasan keterlambatan", isi_teks: isi,
+    });
+    expect(dibuat.status).toBe(201);
+    return dibuat.body.id as string;
+  }
+
+  const penjelasan = "Vendor katering terlambat tiga kali bulan ini dan belum memberi penjelasan.";
+
+  it("menyusun isi tanpa menyentuh buku nomor sama sekali", async () => {
+    const surat = await drafPeringatan();
+    const sebelum = await pool.query<{ c: string }>("SELECT count(*) AS c FROM sekretariat_nomor");
+    const tanya = await call(STAF_KEU, "POST", `/sekretariat/surat/${surat}/asisten/tanya`, { penjelasan });
+    expect(tanya.status).toBe(200);
+    expect(tanya.body.pertanyaan[0].kunci).toBe("dasar");
+    const susun = await call(STAF_KEU, "POST", `/sekretariat/surat/${surat}/asisten/susun`, {
+      penjelasan, jawaban: [{ kunci: "dasar", nilai: "Perjanjian kerja sama katering." }],
+    });
+    expect(susun.status).toBe(200);
+    expect(susun.body.bagian.dasar).toBe("Perjanjian kerja sama katering.");
+    const sesudah = await pool.query<{ c: string }>("SELECT count(*) AS c FROM sekretariat_nomor");
+    expect(sesudah.rows[0]!.c).toBe(sebelum.rows[0]!.c);
+    expect((await pool.query<{ c: string }>("SELECT count(*) AS c FROM sekretariat_penghitung")).rows[0]!.c).toBe("0");
+    const isi = await call(STAF_KEU, "GET", `/sekretariat/surat/${surat}/isi`);
+    expect(isi.body.ada).toBe(true);
+    expect(isi.body.naskah.meta[0].nilai).toBe("[nomor diisi saat terbit]");
+  });
+
+  it("petugas penerbit lain mendapat 404 dan modelnya tidak pernah dipanggil", async () => {
+    const surat = await drafPeringatan();
+    // Every route gets a body its own schema accepts: the schemas are strict, so one shared
+    // payload would be rejected by zod as 400 and the access check below it would never run.
+    const jalur = [
+      ["POST", "/asisten/tanya", { penjelasan }],
+      ["POST", "/asisten/susun", { penjelasan, jawaban: [{ kunci: "dasar", nilai: "Perjanjian katering." }] }],
+      ["GET", "/isi", undefined],
+      ["PUT", "/isi", { bagian: { fakta: "Terlambat tiga kali." } }],
+      ["DELETE", "/isi", undefined],
+      ["GET", "/docx", undefined],
+    ] as const;
+    for (const [method, path, payload] of jalur) {
+      const response = await call(TU_SDIT, method, `/sekretariat/surat/${surat}${path}`, payload);
+      expect(response.status).toBe(404);
+    }
+    expect(penyusun.panggilan).toBe(0);
+  });
+
+  it("tanpa akses aplikasi ditolak 403 sebelum model dipanggil", async () => {
+    const surat = await drafPeringatan();
+    sekretariat = createSekretariatModule({
+      pool, config: config(), keycloakIssuer: ISSUER,
+      access: { checkAccess: async () => ({ allowed: false }) as never },
+      directorySource: { read: async () => projection() }, auth, mailFetcher: fetcher, now: () => now,
+      freeBytes: async () => 50 * 1024 * 1024 * 1024, penyusun,
+    });
+    await app.close();
+    app = Fastify();
+    sekretariat.register(app);
+    await app.ready();
+    expect((await call(STAF_KEU, "POST", `/sekretariat/surat/${surat}/asisten/tanya`, { penjelasan })).status).toBe(403);
+    expect(penyusun.panggilan).toBe(0);
+  });
+
+  it("mutasi asisten dari origin lain ditolak", async () => {
+    const surat = await drafPeringatan();
+    const response = await call(STAF_KEU, "POST", `/sekretariat/surat/${surat}/asisten/tanya`, { penjelasan }, { origin: "https://lain.example" });
+    expect(response.status).toBe(403);
+    expect(penyusun.panggilan).toBe(0);
+  });
+
+  it("surat yang sudah terbit terkunci untuk asisten, tetapi isinya tetap terbaca", async () => {
+    const surat = await drafPeringatan();
+    await call(STAF_KEU, "POST", `/sekretariat/surat/${surat}/asisten/susun`, { penjelasan, jawaban: [] });
+    expect((await upload(STAF_KEU, `/surat/${surat}/berkas`, "surat.pdf", PDF)).status).toBe(201);
+    expect((await call(STAF_KEU, "POST", `/sekretariat/surat/${surat}/terbit`, {})).status).toBe(200);
+    expect((await call(STAF_KEU, "POST", `/sekretariat/surat/${surat}/asisten/susun`, { penjelasan, jawaban: [] })).status).toBe(409);
+    expect((await call(STAF_KEU, "PUT", `/sekretariat/surat/${surat}/isi`, { bagian: { fakta: "x" } })).status).toBe(409);
+    expect((await call(STAF_KEU, "GET", `/sekretariat/surat/${surat}/isi`)).status).toBe(200);
+    expect((await call(STAF_KEU, "GET", `/sekretariat/surat/${surat}/docx`)).status).toBe(200);
+  });
+
+  it("kutipan hanya dari surat yang boleh dibaca, dipotong server, dan offset nakal ditolak", async () => {
+    const surat = await drafPeringatan();
+    const isiSurat = "Baris pertama penjelasan vendor. Baris kedua yang akan dikutip staf.";
+    const milikKeu = await suratMasukFisik(STAF_KEU, await kotakPenerbit("KEU.YSQ"), isiSurat);
+    const milikYayasan = await suratMasukFisik(HCM, await kotakYayasanId(), isiSurat);
+
+    const terlarang = await call(STAF_KEU, "POST", `/sekretariat/surat/${surat}/asisten/tanya`, {
+      penjelasan, kutipan: [{ surat_masuk_id: milikYayasan, awal: 0, panjang: 10 }],
+    });
+    expect(terlarang.status).toBe(404);
+    expect(penyusun.panggilan).toBe(0);
+
+    const lewatBatas = await call(STAF_KEU, "POST", `/sekretariat/surat/${surat}/asisten/tanya`, {
+      penjelasan, kutipan: [{ surat_masuk_id: milikKeu, awal: isiSurat.length - 2, panjang: 50 }],
+    });
+    expect(lewatBatas.status).toBe(400);
+    expect(lewatBatas.body.error).toBe("kutipan_tidak_sah");
+    expect(penyusun.panggilan).toBe(0);
+
+    const sah = await call(STAF_KEU, "POST", `/sekretariat/surat/${surat}/asisten/tanya`, {
+      penjelasan, kutipan: [{ surat_masuk_id: milikKeu, awal: 33, panjang: 11 }],
+    });
+    expect(sah.status).toBe(200);
+    // The server cut the text itself; the browser only sent offsets.
+    expect(penyusun.terakhir?.kutipan).toEqual([isiSurat.slice(33, 44)]);
+  });
+
+  it("nomor surat dari keluaran model ditolak, bukan ikut tersimpan", async () => {
+    const surat = await drafPeringatan();
+    penyusun.bagian = { dasar: "Menunjuk 07.003/KEU.YSQ/XI/2026.", fakta: "Terlambat tiga kali." };
+    const susun = await call(STAF_KEU, "POST", `/sekretariat/surat/${surat}/asisten/susun`, { penjelasan, jawaban: [] });
+    expect(susun.status).toBe(200);
+    expect(susun.body.ditolak).toEqual(["dasar"]);
+    expect(susun.body.bagian.dasar).toBeUndefined();
+    expect(susun.body.bagian.fakta).toBe("Terlambat tiga kali.");
+  });
+
+  it("dua kali menyusun tetap satu baris isi", async () => {
+    const surat = await drafPeringatan();
+    await call(STAF_KEU, "POST", `/sekretariat/surat/${surat}/asisten/susun`, { penjelasan, jawaban: [] });
+    await call(STAF_KEU, "POST", `/sekretariat/surat/${surat}/asisten/susun`, { penjelasan, jawaban: [] });
+    expect((await pool.query<{ c: string }>("SELECT count(*) AS c FROM sekretariat_surat_isi")).rows[0]!.c).toBe("1");
+    expect((await pool.query<{ putaran: number }>("SELECT putaran FROM sekretariat_surat_isi")).rows[0]!.putaran).toBe(2);
+  });
+
+  it("menghapus draf yang punya isi tetap berhasil (FK cascade)", async () => {
+    const surat = await drafPeringatan();
+    await call(STAF_KEU, "POST", `/sekretariat/surat/${surat}/asisten/susun`, { penjelasan, jawaban: [] });
+    const hapus = await call(STAF_KEU, "POST", `/sekretariat/surat/${surat}/batal`, { alasan: "Draf dihapus oleh pembuatnya." });
+    expect(hapus.status).toBe(200);
+    expect(hapus.body.dihapus).toBe(true);
+    expect((await pool.query<{ c: string }>("SELECT count(*) AS c FROM sekretariat_surat_isi")).rows[0]!.c).toBe("0");
+  });
+
+  it("penolakan dan kegagalan model tidak merusak isi yang sudah tersimpan", async () => {
+    const surat = await drafPeringatan();
+    await call(STAF_KEU, "POST", `/sekretariat/surat/${surat}/asisten/susun`, { penjelasan, jawaban: [] });
+    penyusun.gagal = "tolak";
+    expect((await call(STAF_KEU, "POST", `/sekretariat/surat/${surat}/asisten/susun`, { penjelasan, jawaban: [] })).status).toBe(422);
+    penyusun.gagal = "galat";
+    expect((await call(STAF_KEU, "POST", `/sekretariat/surat/${surat}/asisten/susun`, { penjelasan, jawaban: [] })).status).toBe(503);
+    const isi = await call(STAF_KEU, "GET", `/sekretariat/surat/${surat}/isi`);
+    expect(isi.body.bagian.fakta).toBe("Terlambat tiga kali.");
+  });
+
+  it("batas putaran per draf dan pagar pemakaian bulanan sama-sama menutup", async () => {
+    const surat = await drafPeringatan();
+    for (let putaran = 0; putaran < 4; putaran += 1) {
+      expect((await call(STAF_KEU, "POST", `/sekretariat/surat/${surat}/asisten/susun`, { penjelasan, jawaban: [] })).status).toBe(200);
+    }
+    const kelima = await call(STAF_KEU, "POST", `/sekretariat/surat/${surat}/asisten/susun`, { penjelasan, jawaban: [] });
+    expect(kelima.status).toBe(429);
+    expect(kelima.body.error).toBe("putaran_habis");
+
+    await pool.query("UPDATE sekretariat_ai_pemakaian SET panggilan = 1000");
+    const lain = await drafPeringatan();
+    const anggaran = await call(STAF_KEU, "POST", `/sekretariat/surat/${lain}/asisten/tanya`, { penjelasan });
+    expect(anggaran.status).toBe(429);
+    expect(anggaran.body.error).toBe("anggaran_habis");
+  });
+
+  it("mengunduh .docx yang memuat perihal dan tanpa nomor surat", async () => {
+    const surat = await drafPeringatan();
+    await call(STAF_KEU, "POST", `/sekretariat/surat/${surat}/asisten/susun`, { penjelasan, jawaban: [] });
+    const response = await call(STAF_KEU, "GET", `/sekretariat/surat/${surat}/docx`);
+    expect(response.status).toBe(200);
+    expect(response.raw.headers["content-disposition"]).toContain("draf-07-KEU.YSQ-");
+    const berkas = response.raw.rawPayload.toString("latin1");
+    expect(berkas.slice(0, 2)).toBe("PK");
+    expect(berkas).toContain("[nomor diisi saat terbit]");
+    expect(/\d{2}\.\d{3,}\//.test(berkas)).toBe(false);
+  });
+
+  it("tiap panggilan menulis satu audit tanpa teks apa pun", async () => {
+    const surat = await drafPeringatan();
+    await call(STAF_KEU, "POST", `/sekretariat/surat/${surat}/asisten/tanya`, { penjelasan });
+    await call(STAF_KEU, "POST", `/sekretariat/surat/${surat}/asisten/susun`, { penjelasan, jawaban: [] });
+    const audit = await pool.query<{ aksi: string; metadata: Record<string, unknown> }>(
+      "SELECT aksi, metadata FROM sekretariat_audit WHERE aksi LIKE 'surat.asisten%' ORDER BY aksi",
+    );
+    expect(audit.rows.map((row) => row.aksi)).toEqual(["surat.asisten.susun", "surat.asisten.tanya"]);
+    const teks = JSON.stringify(audit.rows);
+    expect(teks).not.toContain("Vendor katering");
+    expect(teks).not.toContain("Terlambat tiga kali");
+    expect(audit.rows[0]!.metadata.tokenMasuk).toBe(33);
+    const pemakaian = await pool.query<{ panggilan: number }>("SELECT panggilan FROM sekretariat_ai_pemakaian WHERE bulan = '2026-11'");
+    expect(pemakaian.rows[0]!.panggilan).toBe(2);
+  });
+
+  it("suntingan staf menulis nama bagian yang berubah, bukan isinya", async () => {
+    const surat = await drafPeringatan();
+    const simpan = await call(STAF_KEU, "PUT", `/sekretariat/surat/${surat}/isi`, {
+      bagian: { fakta: "Rahasia yang tidak boleh masuk audit.", tenggat: "7 hari" },
+    });
+    expect(simpan.status).toBe(200);
+    expect(simpan.body.kosong).toContain("dasar");
+    const audit = await pool.query<{ metadata: { bagianBerubah: string[] } }>(
+      "SELECT metadata FROM sekretariat_audit WHERE aksi = 'surat.isi.sunting'",
+    );
+    expect(audit.rows[0]!.metadata.bagianBerubah).toEqual(["fakta", "tenggat"]);
+    expect(JSON.stringify(audit.rows)).not.toContain("Rahasia");
+  });
+
+  it("jenis di luar daftar dukungan ditolak sebelum model dipanggil", async () => {
+    const id = await penerbitId("KEU.YSQ");
+    const draf = await call(STAF_KEU, "POST", `/sekretariat/penerbit/${id}/surat`, {
+      jenis_kode: "12", perihal: "Undangan rapat", tujuan: "Seluruh unit", penandatangan: "Kepala Divisi",
+    });
+    const response = await call(STAF_KEU, "POST", `/sekretariat/surat/${draf.body.id}/asisten/tanya`, { penjelasan });
+    expect(response.status).toBe(400);
+    expect(response.body.error).toBe("jenis_tidak_didukung");
+    expect(penyusun.panggilan).toBe(0);
+  });
+
+  it("flag mati menyembunyikan asisten sepenuhnya", async () => {
+    const surat = await drafPeringatan();
+    asistenAktif = false;
+    sekretariat = createSekretariatModule({
+      pool, config: config(), keycloakIssuer: ISSUER,
+      access: { checkAccess: async (_identity, key) => ({ allowed: key === "sekretariat-sq" }) as never },
+      directorySource: { read: async () => projection() }, auth, mailFetcher: fetcher, now: () => now,
+      freeBytes: async () => 50 * 1024 * 1024 * 1024, penyusun,
+    });
+    await app.close();
+    app = Fastify();
+    sekretariat.register(app);
+    await app.ready();
+    expect((await call(STAF_KEU, "POST", `/sekretariat/surat/${surat}/asisten/tanya`, { penjelasan })).status).toBe(404);
+    const context = await call(STAF_KEU, "GET", "/sekretariat/context");
+    expect(context.body.asisten.tersedia).toBe(false);
+    expect(penyusun.panggilan).toBe(0);
+  });
+
+  it("satu putaran tanya saja belum membuat isi yang bisa diunduh", async () => {
+    const surat = await drafPeringatan();
+    expect((await call(STAF_KEU, "POST", `/sekretariat/surat/${surat}/asisten/tanya`, { penjelasan })).status).toBe(200);
+    const isi = await call(STAF_KEU, "GET", `/sekretariat/surat/${surat}/isi`);
+    expect(isi.body.ada).toBe(false);
+    // The context is remembered, so coming back to the flow keeps what was typed.
+    expect(isi.body.konteks.penjelasan).toBe(penjelasan);
+    const unduh = await call(STAF_KEU, "GET", `/sekretariat/surat/${surat}/docx`);
+    expect(unduh.status).toBe(409);
+    expect(unduh.body.error).toBe("isi_belum_ada");
+  });
+
+  it("arsip surat tetap hanya menerima PDF", async () => {
+    const surat = await drafPeringatan();
+    const docx = await upload(STAF_KEU, `/surat/${surat}/berkas`, "draf.docx", Buffer.from("PK bukan pdf"));
+    expect(docx.status).toBe(415);
   });
 });

@@ -17,6 +17,14 @@ describe("Sekretariat routes (SEK-IMPL-001 §9, SEK-IMPL-003)", () => {
     expect(resolveSekretariatRoute("/lainnya")).toEqual({ name: "not-found" });
   });
 
+  it("opens Asisten Surat on its own page, over one draft (SEK-IMPL-004)", () => {
+    const id = "00000000-0000-4000-8000-000000000001";
+    expect(resolveSekretariatRoute(`/surat/${id}/asisten`)).toEqual({ name: "asisten", suratId: id });
+    // The step lives in the query (UX-FLOW-001 rule 2), so the path alone still resolves.
+    expect(resolveSekretariatRoute(`/surat/${id}/asisten/`)).toEqual({ name: "asisten", suratId: id });
+    expect(resolveSekretariatRoute(`/surat/${id}/asisten/lain`)).toEqual({ name: "not-found" });
+  });
+
   it("gives every settings concern its own page instead of one long stack", () => {
     expect(resolveSekretariatRoute("/pengaturan")).toEqual({ name: "pengaturan", bagian: "kotak-masuk" });
     for (const bagian of ["kotak-masuk", "penerbit", "petugas", "disposisi", "nomor-awal"] as const) {

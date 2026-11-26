@@ -15,6 +15,15 @@ export interface SekretariatConfig {
   /** Client ids allowed on /internal/sekretariat (D-3); empty until the HCIS cutover (§14 langkah 9). */
   allowedMachineClients: Set<string>;
   minFreeDiskBytes: number;
+  /** SEK-IMPL-004 §10: Asisten Surat. Off by default — no routes, no button, no network. */
+  asisten: {
+    enabled: boolean;
+    mode: "mati" | "log" | "claude";
+    model: string;
+    apiKey: string | null;
+    maksPanggilanBulan: number;
+    timeoutMs: number;
+  };
 }
 
 const booleanString = z.enum(["true", "false"]).transform((value) => value === "true");
@@ -37,6 +46,13 @@ const envSchema = z.object({
   SEKRETARIAT_DATA_KEYS: z.string().default(""),
   SEKRETARIAT_ALLOWED_MACHINE_CLIENTS: z.string().default(""),
   SEKRETARIAT_MIN_FREE_DISK_BYTES: z.coerce.number().int().min(0).default(5 * 1024 * 1024 * 1024),
+  SEKRETARIAT_ASISTEN_ENABLED: booleanString.prefault("false"),
+  SEKRETARIAT_AI_MODE: z.enum(["mati", "log", "claude"]).default("mati"),
+  SEKRETARIAT_AI_MODEL: z.string().trim().min(1).default("claude-opus-5-5"),
+  // ORGAN-IMPL-001 §2 already names this env for the Hub process; Asisten Surat is its first user.
+  ANTHROPIC_API_KEY: optionalNonempty(z.string().min(1)),
+  SEKRETARIAT_AI_MAKS_PANGGILAN_BULAN: z.coerce.number().int().min(0).max(100_000).default(300),
+  SEKRETARIAT_AI_TIMEOUT_MS: z.coerce.number().int().min(1_000).max(120_000).default(20_000),
 });
 
 /** Returns null when SEKRETARIAT_ENABLED is not true: no route, no timer, no launcher tile. */
@@ -61,6 +77,10 @@ export function loadSekretariatConfig(env: NodeJS.ProcessEnv = process.env): Sek
       pass: parsed.SEKRETARIAT_IMAP_PASS,
     };
   }
+  // SEK-IMPL-004 §10: a key is required only when the assistant is actually meant to call Claude.
+  if (parsed.SEKRETARIAT_ASISTEN_ENABLED && parsed.SEKRETARIAT_AI_MODE === "claude" && !parsed.ANTHROPIC_API_KEY) {
+    throw new Error("ANTHROPIC_API_KEY is required when SEKRETARIAT_ASISTEN_ENABLED=true and SEKRETARIAT_AI_MODE=claude");
+  }
   return {
     oidc: { clientId: parsed.SEKRETARIAT_OIDC_CLIENT_ID, clientSecret: parsed.SEKRETARIAT_OIDC_CLIENT_SECRET },
     publicOrigin: parsed.SEKRETARIAT_PUBLIC_ORIGIN.replace(/\/$/, ""),
@@ -73,5 +93,14 @@ export function loadSekretariatConfig(env: NodeJS.ProcessEnv = process.env): Sek
       parsed.SEKRETARIAT_ALLOWED_MACHINE_CLIENTS.split(",").map((value) => value.trim()).filter((value) => value.length > 0),
     ),
     minFreeDiskBytes: parsed.SEKRETARIAT_MIN_FREE_DISK_BYTES,
+    asisten: {
+      // `mati` as the mode is the same thing as the flag being off: there is nothing to run.
+      enabled: parsed.SEKRETARIAT_ASISTEN_ENABLED && parsed.SEKRETARIAT_AI_MODE !== "mati",
+      mode: parsed.SEKRETARIAT_AI_MODE,
+      model: parsed.SEKRETARIAT_AI_MODEL,
+      apiKey: parsed.ANTHROPIC_API_KEY ?? null,
+      maksPanggilanBulan: parsed.SEKRETARIAT_AI_MAKS_PANGGILAN_BULAN,
+      timeoutMs: parsed.SEKRETARIAT_AI_TIMEOUT_MS,
+    },
   };
 }
