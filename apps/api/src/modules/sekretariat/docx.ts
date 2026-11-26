@@ -18,7 +18,11 @@ const INDEN_BARIS_PERTAMA = 709;
 const UKURAN_HURUF = 22; // half-points: 11 pt
 const UKURAN_KECIL = 16; // half-points: 8 pt, for the draft note
 
-/** Only the five XML predefined entities exist in XML 1.0; control characters are dropped. */
+/**
+ * Only the five XML predefined entities exist in XML 1.0; control characters are dropped.
+ * Line breaks are **not** this function's job: a bare newline inside one `<w:t>` would vanish and
+ * glue the words on either side together, so `run()` splits on them first and emits `<w:br/>`.
+ */
 export function escapeXml(value: string): string {
   let keluar = "";
   for (const char of value) {
@@ -50,8 +54,13 @@ function run(teks: string, gaya: GayaParagraf): string {
     gaya.tebal ? "<w:b/>" : "",
     `<w:sz w:val="${ukuran}"/><w:szCs w:val="${ukuran}"/>`,
   ].join("");
-  // xml:space preserve keeps the leading and trailing spaces of a line intact.
-  return `<w:r><w:rPr>${props}</w:rPr><w:t xml:space="preserve">${escapeXml(teks)}</w:t></w:r>`;
+  // A line the staff member typed stays a line: one <w:t> per line, <w:br/> between them.
+  // xml:space preserve keeps the leading and trailing spaces of each line intact.
+  const isi = teks
+    .split(/\r\n|[\r\n]/)
+    .map((baris) => `<w:t xml:space="preserve">${escapeXml(baris)}</w:t>`)
+    .join("<w:br/>");
+  return `<w:r><w:rPr>${props}</w:rPr>${isi}</w:r>`;
 }
 
 function paragraf(teks: string, gaya: GayaParagraf = {}): string {

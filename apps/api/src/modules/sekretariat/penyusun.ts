@@ -214,9 +214,11 @@ export class ClaudePenyusun implements Penyusun {
     this.client = new Anthropic({ apiKey });
   }
 
-  private async panggil(prompt: string, schema: unknown): Promise<JawabanModel> {
+  private async panggil(prompt: string, schema: Record<string, unknown>): Promise<JawabanModel> {
     let message;
     try {
+      // No cast: the SDK types every field used here, and the one path that cannot be exercised
+      // locally is exactly the one that needs the compiler watching it.
       message = await this.client.beta.messages.create(
         {
           model: this.model,
@@ -226,7 +228,7 @@ export class ClaudePenyusun implements Penyusun {
           betas: [BETA_FALLBACK],
           fallbacks: "default",
           messages: [{ role: "user", content: prompt }],
-        } as never,
+        },
         { timeout: this.timeoutMs },
       );
     } catch (error) {

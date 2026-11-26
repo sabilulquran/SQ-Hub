@@ -122,6 +122,18 @@ describe("SEK-IMPL-004 penulis .docx (§7.3)", () => {
     expect(escapeXml("baris\tkolom")).toBe("baris\tkolom");
   });
 
+  it("mempertahankan pergantian baris sebagai <w:br/>, bukan merekatkan kata", () => {
+    const naskah = rakitNaskah({
+      jenis: JENIS, perihal: "P", tujuan: "T", penandatangan: "Direktur",
+      penerbitNama: "Divisi General Affairs", tanggal: "2026-11-26",
+      bagian: { fakta: "Baris satu\nBaris dua\r\nBaris tiga" },
+    });
+    const dokumen = bacaZip(renderDocx(naskah))[2]!.isi.toString("utf8");
+    expect(dokumen).not.toContain("Baris satuBaris dua");
+    expect(dokumen).toContain('<w:t xml:space="preserve">Baris satu</w:t><w:br/><w:t xml:space="preserve">Baris dua</w:t>');
+    expect(dokumen).toContain("Baris tiga");
+  });
+
   it("menulis ZIP yang dapat dibaca ulang dengan CRC yang benar", () => {
     const zip = zipStore([
       { nama: "satu.txt", data: Buffer.from("isi pertama", "utf8") },

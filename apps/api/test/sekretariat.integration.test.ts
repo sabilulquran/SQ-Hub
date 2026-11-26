@@ -1110,6 +1110,18 @@ describe("SEK-IMPL-004 Asisten Surat", () => {
     expect(penyusun.panggilan).toBe(0);
   });
 
+  it("satu putaran tanya saja belum membuat isi yang bisa diunduh", async () => {
+    const surat = await drafPeringatan();
+    expect((await call(STAF_KEU, "POST", `/sekretariat/surat/${surat}/asisten/tanya`, { penjelasan })).status).toBe(200);
+    const isi = await call(STAF_KEU, "GET", `/sekretariat/surat/${surat}/isi`);
+    expect(isi.body.ada).toBe(false);
+    // The context is remembered, so coming back to the flow keeps what was typed.
+    expect(isi.body.konteks.penjelasan).toBe(penjelasan);
+    const unduh = await call(STAF_KEU, "GET", `/sekretariat/surat/${surat}/docx`);
+    expect(unduh.status).toBe(409);
+    expect(unduh.body.error).toBe("isi_belum_ada");
+  });
+
   it("arsip surat tetap hanya menerima PDF", async () => {
     const surat = await drafPeringatan();
     const docx = await upload(STAF_KEU, `/surat/${surat}/berkas`, "draf.docx", Buffer.from("PK bukan pdf"));

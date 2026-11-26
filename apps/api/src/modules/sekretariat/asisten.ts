@@ -164,12 +164,15 @@ export class SekretariatAsisten {
   async baca(viewer: Viewer, admin: boolean, suratId: string) {
     const { draf, jenis } = await this.siapkan(viewer, admin, suratId, { izinkanTerbit: true });
     const isi = await this.bacaIsi(suratId);
+    // A question round alone saves the context but no body yet, so "ada" follows the body: the
+    // preview and the done screen are not reachable, and no empty letter can be downloaded.
+    const adaIsi = isi !== null && Object.keys(isi.bagian).length > 0;
     return {
       suratId,
       jenisKode: draf.jenis_kode,
       jenisNama: jenis?.nama ?? null,
       didukung: jenis !== null,
-      ada: isi !== null,
+      ada: adaIsi,
       bagian: isi?.bagian ?? {},
       sumber: isi?.sumber ?? null,
       disunting: isi?.disunting ?? false,
@@ -229,7 +232,9 @@ export class SekretariatAsisten {
     const { draf, jenis } = await this.siapkan(viewer, admin, suratId, { izinkanTerbit: true });
     if (!jenis) invalid("Jenis naskah ini belum punya kerangka di Asisten Surat.", "jenis_tidak_didukung");
     const isi = await this.bacaIsi(suratId);
-    if (!isi) throw new SekretariatError(409, "isi_belum_ada", "Draf ini belum punya isi untuk diunduh.");
+    if (!isi || Object.keys(isi.bagian).length === 0) {
+      throw new SekretariatError(409, "isi_belum_ada", "Draf ini belum punya isi untuk diunduh.");
+    }
     const tanggal = jakartaParts(this.now()).tanggal;
     const naskah = rakitNaskah(this.sumberNaskah(draf, jenis, isi.bagian));
     return { nama: namaBerkasDocx(draf.jenis_kode, draf.penerbit_kode, tanggal), data: renderDocx(naskah) };
