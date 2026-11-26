@@ -911,12 +911,17 @@ describe("SEK-IMPL-004 Asisten Surat", () => {
 
   it("petugas penerbit lain mendapat 404 dan modelnya tidak pernah dipanggil", async () => {
     const surat = await drafPeringatan();
+    // Every route gets a body its own schema accepts: the schemas are strict, so one shared
+    // payload would be rejected by zod as 400 and the access check below it would never run.
     const jalur = [
-      ["POST", "/asisten/tanya"], ["POST", "/asisten/susun"], ["GET", "/isi"],
-      ["PUT", "/isi"], ["DELETE", "/isi"], ["GET", "/docx"],
+      ["POST", "/asisten/tanya", { penjelasan }],
+      ["POST", "/asisten/susun", { penjelasan, jawaban: [{ kunci: "dasar", nilai: "Perjanjian katering." }] }],
+      ["GET", "/isi", undefined],
+      ["PUT", "/isi", { bagian: { fakta: "Terlambat tiga kali." } }],
+      ["DELETE", "/isi", undefined],
+      ["GET", "/docx", undefined],
     ] as const;
-    for (const [method, path] of jalur) {
-      const payload = method === "GET" ? undefined : { penjelasan, bagian: {} };
+    for (const [method, path, payload] of jalur) {
       const response = await call(TU_SDIT, method, `/sekretariat/surat/${surat}${path}`, payload);
       expect(response.status).toBe(404);
     }
