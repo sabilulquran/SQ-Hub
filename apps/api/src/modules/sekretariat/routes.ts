@@ -11,12 +11,14 @@ import { HubAuthError, oidcCallbackRefusalCode, readCookie, type HubAuthRuntime 
 import type { HubWorkspaceApplicationSource } from "../hub-auth/workspace-repository.js";
 import type { KerjaDirectory } from "../kerja/directory.js";
 import { isSekretariatAdmin, loadPeran, type Viewer } from "./akses.js";
+import { isiSchema, susunSchema, tanyaSchema, type SekretariatAsisten } from "./asisten.js";
 import type { SekretariatBerkas } from "./berkas.js";
 import { batalSchema, nomorAwalSchema, registerQuerySchema, type SekretariatBuku } from "./buku.js";
 import { SekretariatError } from "./db.js";
 import { disposisiSchema, fisikSchema, selesaiSchema, type SekretariatKotak } from "./kotak.js";
 import type { SekretariatMail } from "./mail.js";
 import { mailboxSchema, statusSchema, type SekretariatMailbox } from "./mailbox.js";
+import { JENIS_ASISTEN } from "./naskah.js";
 import {
   cabutSchema, panitiaSchema, pemegangSchema, penerbitPatchSchema, petugasSchema, type SekretariatPengaturan,
 } from "./pengaturan.js";
@@ -26,6 +28,8 @@ import { retroaktifSchema, suratBatalSchema, suratCreateSchema, type Sekretariat
 export const SEKRETARIAT_PREFIX = "/sekretariat";
 export const SEKRETARIAT_ADMIN_PREFIX = "/admin/sekretariat";
 export const SEKRETARIAT_APPLICATION_KEY = "sekretariat-sq";
+/** The letter types Asisten Surat has a skeleton for (SEK-IMPL-004 §6.4). */
+const ASISTEN_JENIS = Object.keys(JENIS_ASISTEN);
 export const SEKRETARIAT_SESSION_COOKIE_NAME = "sq_sekretariat_session";
 export const SEKRETARIAT_OIDC_TRANSACTION_COOKIE_NAME = "sq_sekretariat_oidc_tx";
 
@@ -36,6 +40,7 @@ export interface SekretariatRouteDeps {
   directory: KerjaDirectory;
   buku: SekretariatBuku;
   surat: SekretariatSurat;
+  asisten: SekretariatAsisten;
   kotak: SekretariatKotak;
   berkas: SekretariatBerkas;
   pengaturan: SekretariatPengaturan;
@@ -126,7 +131,7 @@ export function registerSekretariatRoutes(app: FastifyInstance, deps: Sekretaria
     });
   }
 
-  function write<T>(method: "POST" | "PATCH" | "DELETE", path: string, handler: (request: FastifyRequest, v: Viewer, admin: boolean) => Promise<T>, status = 200) {
+  function write<T>(method: "POST" | "PUT" | "PATCH" | "DELETE", path: string, handler: (request: FastifyRequest, v: Viewer, admin: boolean) => Promise<T>, status = 200) {
     app.route({
       method,
       url: `${SEKRETARIAT_PREFIX}${path}`,
@@ -162,6 +167,8 @@ export function registerSekretariatRoutes(app: FastifyInstance, deps: Sekretaria
         directoryTersedia: view !== null,
         pengelola,
         peran,
+        // SEK-IMPL-004 §9: the screen shows "Buat dengan AI" only for the types it can handle.
+        asisten: { tersedia: deps.asisten.tersedia, jenis: ASISTEN_JENIS },
       });
     } catch (error) {
       return fail(reply, error);
@@ -218,6 +225,38 @@ export function registerSekretariatRoutes(app: FastifyInstance, deps: Sekretaria
   get("/surat/:id", (request, v, isAdmin) => deps.surat.detail(v, isAdmin, params(request).id!));
   write("POST", "/surat/:id/terbit", (request, v, isAdmin) => deps.surat.terbitkan(v, isAdmin, params(request).id!));
   write("POST", "/surat/:id/batal", (request, v, isAdmin) => deps.surat.batalkan(v, isAdmin, params(request).id!, suratBatalSchema.parse(body(request)).alasan));
+  // ---- SEK-IMPL-004: Asisten Surat (§5.3) ----
+  // Deliberately inside the same write()/get() helpers: session, Application Access, Directory,
+  // issuer scope, Origin and no-store all apply without being restated here.
+  write("POST", "/surat/:id/asisten/tanya", (request, v, isAdmin) =>
+    deps.asisten.tanya(v, isAdmin, params(request).id!, tanyaSchema.parse(body(request))));
+  write("POST", "/surat/:id/asisten/susun", (request, v, isAdmin) =>
+    deps.asisten.susun(v, isAdmin, params(request).id!, susunSchema.parse(body(request))));
+  get("/surat/:id/isi", (request, v, isAdmin) => deps.asisten.baca(v, isAdmin, params(request).id!));
+  write("PUT", "/surat/:id/isi", (request, v, isAdmin) =>
+    deps.asisten.simpan(v, isAdmin, params(request).id!, isiSchema.parse(body(request))));
+  write("DELETE", "/surat/:id/isi", async (request, v, isAdmin) => {
+    await deps.asisten.hapus(v, isAdmin, params(request).id!);
+    return null;
+  }, 204);
+
+  // Rendered on demand (A-8), so it needs its own headers rather than the JSON helper.
+  app.get(`${SEKRETARIAT_PREFIX}/surat/:id/docx`, async (request, reply) => {
+    try {
+      const context = await viewer(request, false);
+      const berkas = await deps.asisten.docx(context.v, context.admin, params(request).id!);
+      return reply
+        .header("Cache-Control", "private, no-store")
+        .header("Content-Type", "application/vnd.openxmlformats-officedocument.wordprocessingml.document")
+        .header("Content-Length", String(berkas.data.length))
+        .header("X-Content-Type-Options", "nosniff")
+        .header("Content-Disposition", `attachment; filename="${berkas.nama}"`)
+        .send(berkas.data);
+    } catch (error) {
+      return fail(reply, error);
+    }
+  });
+
   get("/register", (request, v, isAdmin) => deps.buku.register(v, isAdmin, registerQuerySchema.parse(request.query)));
   write("POST", "/nomor/:id/batal", async (request, v, isAdmin) => {
     const peran = await loadPeran(deps.pool, v, isAdmin);

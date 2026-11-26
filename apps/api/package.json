@@ -19,6 +19,7 @@
     "sekretariat:admin": "node --env-file-if-exists=.env.local --import tsx src/cli/sekretariat-admin.ts"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "0.133.0",
     "@fastify/multipart": "10.1.2",
     "fastify": "5.12.6",
     "imapflow": "2.11.0",

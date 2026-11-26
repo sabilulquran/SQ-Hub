@@ -1,6 +1,6 @@
 # SEK-IMPL-004 — Asisten Surat: draf Surat Keluar dibantu Claude, unduh .docx
 
-**Status:** DRAFT
+**Status:** ACCEPTED (Product Owner, 2026-11-26, "Ya, ACCEPTED"). Keputusan §16 dikunci; implementasi di repository diizinkan. Langkah production §14 mengikuti aturan rilis owner 2026-10-27.
 **Produk:** SQ Hub — aplikasi Sekretariat SQ, area Surat Keluar
 **Owner produk:** Kepala HCM (`sekretariat_admin`, SEK-001 §13 nomor 2)
 **Tanggal:** 2026-11-25
@@ -408,21 +408,38 @@ Tidak ada perubahan Keycloak, tidak ada client baru, tidak ada rute edge baru, d
 
 ## 16. Keputusan
 
-Nomor A-1 diputuskan owner. A-2 sampai A-7 adalah default `DRAFT` yang diambil agent sesuai aturan owner 2026-10-26 ("ambil default yang paling masuk akal, catat sebagai asumsi `DRAFT`, jalan terus, dan laporkan asumsinya belakangan"); semuanya dapat dibalik owner sebelum implementasi dimulai.
+A-1 diputuskan owner 2026-11-25. A-2 sampai A-8 mulanya default yang diambil agent sesuai aturan owner 2026-10-26, dan **seluruhnya diterima owner pada 2026-11-26** bersama penerimaan spesifikasi ini.
 
 | # | Topik | Keputusan |
 | --- | --- | --- |
 | A-1 | Jenis pada versi pertama | **07 Peringatan** (owner, 2026-11-25) |
-| A-2 | Menghasilkan bentuk naskah sebelum Pedoman disahkan | Boleh, dengan penanda draf pada `.docx` (§7.2). `.docx` adalah bahan kerja; yang mengikat tetap PDF yang diunggah manusia — `DRAFT` |
-| A-3 | Kop pada `.docx` | Tanpa kop; ruang kosong setinggi kop — `DRAFT` |
-| A-4 | SP pegawai atau pihak luar | Pihak luar; SP pegawai tetap di HCIS — `DRAFT`, dan inilah asumsi yang paling mahal bila dibalik belakangan |
-| A-5 | Penanda tangan | Jabatan yang sudah diketik staf pada draf; kalimat kewenangan disodorkan server menurut Pedoman Pasal 21 — `DRAFT` |
-| A-6 | Demo publik | Di luar spesifikasi ini — `DRAFT` |
-| A-7 | Kunci API | Memakai ulang `ANTHROPIC_API_KEY` Hub, dengan pagar pemakaian per bulan di database — `DRAFT` (mengoreksi usulan kunci terpisah di audit §4.6) |
-| A-8 | `.docx` disimpan atau tidak | **Tidak disimpan**, dirender saat diminta — `DRAFT`; ditinjau ulang bila salinan off-host `sekretariat_media` sudah terpasang |
+| A-2 | Menghasilkan bentuk naskah sebelum Pedoman disahkan | Boleh, dengan penanda draf pada `.docx` (§7.2). `.docx` adalah bahan kerja; yang mengikat tetap PDF yang diunggah manusia |
+| A-3 | Kop pada `.docx` | Tanpa kop; ruang kosong setinggi kop |
+| A-4 | SP pegawai atau pihak luar | Pihak luar; SP pegawai tetap di HCIS. Mengubahnya kelak menuntut cutover buku DOC-003 lebih dulu |
+| A-5 | Penanda tangan | Jabatan yang sudah diketik staf pada draf; kalimat kewenangan disodorkan server menurut Pedoman Pasal 21 |
+| A-6 | Demo publik | Di luar spesifikasi ini |
+| A-7 | Kunci API | Memakai ulang `ANTHROPIC_API_KEY` Hub, dengan pagar pemakaian per bulan di database (mengoreksi usulan kunci terpisah di audit §4.6) |
+| A-8 | `.docx` disimpan atau tidak | **Tidak disimpan**, dirender saat diminta; ditinjau ulang bila salinan off-host `sekretariat_media` sudah terpasang |
+
+## 17. Catatan implementasi (2026-11-26)
+
+Dibangun di repository pada 2026-11-26. Butir di bawah adalah keputusan teknis yang tidak tertulis di bagian sebelumnya.
+
+| Topik | Yang dibangun |
+| --- | --- |
+| Berkas | `asisten.ts` (layanan), `penyusun.ts` (port + adapter `log`/`claude`), `naskah.ts` (katalog unsur + kerangka B-1), `docx.ts` (penulis OOXML); layar `apps/web/src/sekretariat/AsistenPages.tsx` |
+| Saringan nomor | Ada **dua kali**: di adapter (`bersihkanBagian`) dan sekali lagi di layanan sesudah model menjawab, sehingga adapter mana pun yang ditulis kelak tetap tidak bisa menyelundupkan nomor. Jawaban rute membawa `ditolak: [kunci]` supaya layar dapat mengatakannya |
+| Dependensi | `@anthropic-ai/sdk@0.133.0`, versi yang sama dengan yang sudah berjalan di Karir SQ. Tidak ada pustaka `.docx` |
+| `.docx` | ZIP entri *stored* dengan `zlib.crc32`, lima bagian termasuk `word/footer1.xml` untuk penanda draf; waktu berkas dipatok 1980-01-01 agar hasilnya deterministik |
+| Pratinjau | Dirakit server (`rakitNaskah`) dan dikirim sebagai `naskah` pada `GET /surat/:id/isi`, sehingga layar dan `.docx` tidak pernah berbeda kerangkanya |
+| Konteks tersimpan | Satu baris `sekretariat_surat_isi` menyimpan penjelasan, jawaban, dan kutipan; kembali ke alur tidak kehilangan ketikan |
+| Mode `mati` | Disamakan dengan flag mati: rute menjawab 404 dan `GET /context` membawa `asisten.tersedia = false` |
+| Surat terbit | Isi dan `.docx`-nya **masih terbaca** (arsip sudah terkunci di tempat lain), tetapi `tanya`, `susun`, dan `PUT /isi` menjawab 409 |
 
 ## Riwayat
 
 | Tanggal | Perubahan |
 | --- | --- |
 | 2026-11-25 | DRAFT pertama, dari audit 2026-11-25 dan keputusan owner "SP = 07 Peringatan" |
+| 2026-11-26 | ACCEPTED oleh Product Owner; keputusan §16 dikunci sesuai usulan |
+| 2026-11-26 | Dibangun di repository (bawaan `SEKRETARIAT_ASISTEN_ENABLED=false`); catatan implementasi di §17 |

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { BukuPage } from "@/sekretariat/AdminPages";
+import { AsistenPage } from "@/sekretariat/AsistenPages";
 import { loadSekretariatLauncher, sekretariatFetch, SekretariatRequestError, type KotakRingkas, type SekretariatContext } from "@/sekretariat/api";
 import { BerandaPage, KotakPage, SuratKeluarPage, SuratMasukRedirect } from "@/sekretariat/KotakPages";
 import { PengaturanPage } from "@/sekretariat/PengaturanPages";
@@ -150,7 +151,8 @@ function Page({ route, context, kotak, onChanged }: { route: SekretariatRoute; c
     case "surat-masuk": return <SuratMasukRedirect key={route.suratMasukId} suratMasukId={route.suratMasukId} kotak={kotak} />;
     case "surat-keluar": return <SuratKeluarPage context={context} />;
     case "penerbit-surat": return <PenerbitSuratPage key={route.penerbitId} penerbitId={route.penerbitId} />;
-    case "surat": return <SuratPage key={route.suratId} suratId={route.suratId} />;
+    case "surat": return <SuratPage key={route.suratId} suratId={route.suratId} context={context} />;
+    case "asisten": return <AsistenPage key={route.suratId} suratId={route.suratId} kotak={kotak} />;
     case "buku": return <BukuPage context={context} />;
     case "pengaturan": return context.pengelola
       ? <PengaturanPage key={route.bagian} bagian={route.bagian} />

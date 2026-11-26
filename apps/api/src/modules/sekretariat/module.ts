@@ -9,8 +9,11 @@ import { HubAuthService, type HubAuthRuntime } from "../hub-auth/service.js";
 import { HubTokenVault } from "../hub-auth/token-vault.js";
 import { PgHubWorkspaceRepository, type HubWorkspaceApplicationSource } from "../hub-auth/workspace-repository.js";
 import { KerjaDirectory, type KerjaDirectorySource } from "../kerja/directory.js";
+import { SekretariatAsisten } from "./asisten.js";
 import { assertMediaRoot, SekretariatBerkas } from "./berkas.js";
 import { SekretariatBuku } from "./buku.js";
+import { assertDocxTersedia } from "./docx.js";
+import { ClaudePenyusun, LogPenyusun, type Penyusun } from "./penyusun.js";
 import type { SekretariatConfig } from "./config.js";
 import { SekretariatCrypto } from "./crypto.js";
 import { SekretariatKotak } from "./kotak.js";
@@ -37,6 +40,7 @@ export type SekretariatLog = (entry: Record<string, unknown>, message: string) =
 export interface SekretariatModule {
   buku: SekretariatBuku;
   surat: SekretariatSurat;
+  asisten: SekretariatAsisten;
   kotak: SekretariatKotak;
   berkas: SekretariatBerkas;
   pengaturan: SekretariatPengaturan;
@@ -63,6 +67,8 @@ export function createSekretariatModule(input: {
   mailboxProbe?: MailboxProbe;
   now?: () => Date;
   freeBytes?: (path: string) => Promise<number>;
+  /** SEK-IMPL-004 test seam: a fake drafter, so tests never reach the network. */
+  penyusun?: Penyusun;
   log?: SekretariatLog;
 }): SekretariatModule {
   const { pool, config } = input;
@@ -86,6 +92,17 @@ export function createSekretariatModule(input: {
     pool,
     config.dataKeys ? new SekretariatCrypto(config.dataKeys) : null,
     input.mailboxProbe ?? probeImapMailbox,
+  );
+  // SEK-IMPL-004 §2: `log` is the default, so no key and no network are needed to run the module.
+  const penyusun = input.penyusun
+    ?? (config.asisten.mode === "claude" && config.asisten.apiKey
+      ? new ClaudePenyusun(config.asisten.apiKey, config.asisten.model, config.asisten.timeoutMs)
+      : new LogPenyusun());
+  const asisten = new SekretariatAsisten(
+    pool,
+    penyusun,
+    { enabled: config.asisten.enabled, maksPanggilanBulan: config.asisten.maksPanggilanBulan },
+    input.now ?? (() => new Date()),
   );
   const workspaceApplications = input.workspaceApplications ?? new PgHubWorkspaceRepository(pool);
 
@@ -112,6 +129,7 @@ export function createSekretariatModule(input: {
   return {
     buku,
     surat,
+    asisten,
     kotak,
     berkas,
     pengaturan,
@@ -126,6 +144,7 @@ export function createSekretariatModule(input: {
         directory,
         buku,
         surat,
+        asisten,
         kotak,
         berkas,
         pengaturan,
@@ -142,6 +161,8 @@ export function createSekretariatModule(input: {
     },
     async start(startLog) {
       await assertMediaRoot(config.mediaRoot);
+      // §7.3: fail at boot rather than hand a staff member a corrupt .docx later.
+      if (config.asisten.enabled) assertDocxTersedia();
       // §7 nomor 5: a failing round backs off up to an hour and never stops the module.
       let backoffRounds = 0;
       let skip = 0;

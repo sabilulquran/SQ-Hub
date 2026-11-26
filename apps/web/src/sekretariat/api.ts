@@ -8,6 +8,66 @@ export interface SekretariatContext {
   directoryTersedia: boolean;
   pengelola: boolean;
   peran: { disposisi: boolean; penerbitIds: string[] } | null;
+  /** SEK-IMPL-004 §9: whether Asisten Surat is on, and the letter types it has a skeleton for. */
+  asisten?: { tersedia: boolean; jenis: string[] };
+}
+
+/** SEK-IMPL-004: one question the assistant asks about a mandatory element. */
+export interface PertanyaanAsisten {
+  kunci: string;
+  pertanyaan: string;
+  mengapa: string;
+}
+
+export type BagianSurat = Partial<Record<"dasar" | "fakta" | "tindakan_korektif" | "tenggat" | "tanggapan" | "tembusan", string>>;
+
+/** The B-1 skeleton the server assembles; the preview renders exactly this (SEK-IMPL-004 §7.1). */
+export interface NaskahSurat {
+  meta: Array<{ label: string; nilai: string }>;
+  kanan: string[];
+  yth: string;
+  di: string;
+  basmalah: string;
+  salam: string;
+  isi: string[];
+  penutup: string;
+  tandaTangan: string[];
+  tembusan: string | null;
+  catatanKaki: string;
+}
+
+export interface IsiSurat {
+  suratId: string;
+  jenisKode: string;
+  jenisNama: string | null;
+  didukung: boolean;
+  ada: boolean;
+  bagian: BagianSurat;
+  sumber: "asisten" | "manual" | null;
+  disunting: boolean;
+  putaran: number;
+  sisaPutaran: number;
+  jenisBerubah: boolean;
+  kosong: string[];
+  konteks: {
+    penjelasan: string;
+    jawaban: Array<{ kunci: string; nilai: string }>;
+    kutipan: Array<{ suratMasukId: string; teks: string }>;
+  };
+  naskah: NaskahSurat | null;
+}
+
+export const LABEL_BAGIAN: Record<string, string> = {
+  dasar: "Dasar",
+  fakta: "Pelanggaran atau fakta",
+  tindakan_korektif: "Tindakan korektif",
+  tenggat: "Tenggat",
+  tanggapan: "Kesempatan menanggapi",
+  tembusan: "Tembusan",
+};
+
+export function docxUrl(suratId: string): string {
+  return `/api/sekretariat/surat/${encodeURIComponent(suratId)}/docx`;
 }
 
 export interface KotakRingkas {

@@ -38,6 +38,7 @@ function activeKey(route: SekretariatRoute, defaultKotakId: string | null): stri
     case "kotak": return `kotak:${route.kotakId}`;
     case "surat-keluar":
     case "penerbit-surat":
+    case "asisten":
     case "surat": return "surat-keluar";
     case "buku": return "buku";
     case "pengaturan": return `pengaturan:${route.bagian}`;
